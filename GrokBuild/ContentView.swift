@@ -657,9 +657,9 @@ struct ContentView: View {
 
     private func persistSessionLayout(saveMessages: Bool = true) {
         if saveMessages {
-            for session in liveSessions {
-                SessionMessageStore.save(session.store.messages, for: session.id)
-            }
+            SessionMessageStore.saveAll(
+                Dictionary(uniqueKeysWithValues: liveSessions.map { ($0.id, $0.store.messages) })
+            )
         }
         var records: [SavedSessionRecord] = []
         for session in liveSessions {

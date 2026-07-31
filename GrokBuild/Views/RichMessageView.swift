@@ -74,9 +74,25 @@ enum MarkdownBlockParser {
         return best
     }
 
+    // Compiled once — these run inside body-adjacent parsing for every
+    // rendered block, and NSRegularExpression construction is not cheap.
+    private static let fencedRegexes: [String: NSRegularExpression] = {
+        var regexes: [String: NSRegularExpression] = [:]
+        for language in ["mermaid", "latex", "tex", "math"] {
+            regexes[language] = try? NSRegularExpression(
+                pattern: "```\(language)\\s*([\\s\\S]*?)```",
+                options: .caseInsensitive
+            )
+        }
+        return regexes
+    }()
+
+    private static let displayMathRegex = try? NSRegularExpression(pattern: #"\$\$([\s\S]*?)\$\$"#)
+
+    private static let inlineMathRegex = try? NSRegularExpression(pattern: #"(?<!\$)\$(?!\$)([^\$\n]+?)\$(?!\$)"#)
+
     private static func matchFenced(in text: String, language: String) -> Match? {
-        let pattern = "```\(language)\\s*([\\s\\S]*?)```"
-        guard let regex = try? NSRegularExpression(pattern: pattern, options: .caseInsensitive) else { return nil }
+        guard let regex = fencedRegexes[language] else { return nil }
         let ns = text as NSString
         guard let result = regex.firstMatch(in: text, range: NSRange(location: 0, length: ns.length)),
               result.numberOfRanges > 1,
@@ -90,7 +106,7 @@ enum MarkdownBlockParser {
     }
 
     private static func matchDisplayMath(in text: String) -> Match? {
-        guard let regex = try? NSRegularExpression(pattern: #"\$\$([\s\S]*?)\$\$"#) else { return nil }
+        guard let regex = displayMathRegex else { return nil }
         let ns = text as NSString
         guard let result = regex.firstMatch(in: text, range: NSRange(location: 0, length: ns.length)),
               result.numberOfRanges > 1,
@@ -100,7 +116,7 @@ enum MarkdownBlockParser {
     }
 
     private static func matchInlineMath(in text: String) -> Match? {
-        guard let regex = try? NSRegularExpression(pattern: #"(?<!\$)\$(?!\$)([^\$\n]+?)\$(?!\$)"#) else { return nil }
+        guard let regex = inlineMathRegex else { return nil }
         let ns = text as NSString
         for result in regex.matches(in: text, range: NSRange(location: 0, length: ns.length)) {
             guard result.numberOfRanges > 1,

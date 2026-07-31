@@ -11,14 +11,28 @@ enum SessionMessageStore {
     }
 
     static func save(_ messages: [Message], for sessionID: UUID) {
+        saveAll([sessionID: messages])
+    }
+
+    /// Merge and persist several sessions' transcripts with one defaults
+    /// fetch and one write. The per-session `save` used to load the full
+    /// multi-session map twice and rewrite it once per call, which made
+    /// `persistSessionLayout` O(sessions x total transcript bytes).
+    static func saveAll(_ messagesBySession: [UUID: [Message]]) {
+        guard !messagesBySession.isEmpty else { return }
         var map = loadMap()
-        let existing = Self.messages(for: sessionID)
-        let persistable = messages.filter { shouldPersist($0) }
-        let merged = mergeTranscripts(existing: existing, incoming: persistable)
-        if merged.isEmpty {
-            map.removeValue(forKey: sessionID.uuidString)
-        } else if let data = try? JSONEncoder().encode(merged) {
-            map[sessionID.uuidString] = data
+        let decoder = JSONDecoder()
+        let encoder = JSONEncoder()
+        for (sessionID, messages) in messagesBySession {
+            let mapKey = sessionID.uuidString
+            let existing = map[mapKey].flatMap { try? decoder.decode([Message].self, from: $0) } ?? []
+            let persistable = messages.filter { shouldPersist($0) }
+            let merged = mergeTranscripts(existing: existing, incoming: persistable)
+            if merged.isEmpty {
+                map.removeValue(forKey: mapKey)
+            } else if let data = try? encoder.encode(merged) {
+                map[mapKey] = data
+            }
         }
         UserDefaults.standard.set(map, forKey: key)
     }

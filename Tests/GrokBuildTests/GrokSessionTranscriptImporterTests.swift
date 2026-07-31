@@ -175,6 +175,35 @@ final class GrokSessionTranscriptImporterTests: XCTestCase {
         )
     }
 
+    func testSaveAllPersistsMultipleSessionsWithNeverShrinkMerge() {
+        let first = UUID()
+        let second = UUID()
+        defer {
+            SessionMessageStore.remove(for: first)
+            SessionMessageStore.remove(for: second)
+        }
+
+        let longer = [
+            Message(role: .user, content: "one"),
+            Message(role: .assistant, content: "two"),
+            Message(role: .user, content: "three"),
+        ]
+        SessionMessageStore.save(longer, for: first)
+
+        // One batched write: `first` shrinks in memory (partial restore),
+        // `second` is brand new. The on-disk longer transcript must survive.
+        SessionMessageStore.saveAll([
+            first: [longer[0]],
+            second: [Message(role: .user, content: "hello second")],
+        ])
+
+        XCTAssertEqual(SessionMessageStore.messages(for: first).count, 3)
+        XCTAssertEqual(
+            SessionMessageStore.messages(for: second).map(\.content),
+            ["hello second"]
+        )
+    }
+
     private func writeTempJSONL(_ contents: String) throws -> URL {
         let url = FileManager.default.temporaryDirectory
             .appendingPathComponent("chat_history-\(UUID().uuidString).jsonl")
