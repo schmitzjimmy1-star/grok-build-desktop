@@ -35,6 +35,8 @@ private struct FileChipView: View {
                     .font(.caption2)
             }
             .buttonStyle(.plain)
+            .help(attachment.isHidden ? "Include in prompt" : "Exclude from prompt")
+            .accessibilityLabel(attachment.isHidden ? "Include attachment in prompt" : "Exclude attachment from prompt")
 
             Text(attachment.relativePath.split(separator: "/").last.map(String.init) ?? attachment.relativePath)
                 .font(.caption)
@@ -45,6 +47,8 @@ private struct FileChipView: View {
                     .font(.caption2)
             }
             .buttonStyle(.plain)
+            .help("Remove attachment")
+            .accessibilityLabel("Remove attachment")
         }
         .padding(.horizontal, 8)
         .padding(.vertical, 4)
@@ -178,6 +182,8 @@ struct BtwAsideBanner: View {
                     Image(systemName: "xmark.circle.fill")
                 }
                 .buttonStyle(.plain)
+                .help("Dismiss aside")
+                .accessibilityLabel("Dismiss aside")
                 .foregroundStyle(.secondary)
             }
             Text(text)

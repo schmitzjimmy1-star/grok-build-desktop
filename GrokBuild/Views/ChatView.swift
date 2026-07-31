@@ -73,6 +73,7 @@ struct ChatView: View {
     @State private var pendingReasoningEffortChange: String?
     @State private var showSessionControls = false
     @FocusState private var inputFocused: Bool
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @AppStorage(BrowserSettingsKeys.appliedEnabled) private var browserToolsEnabled = BrowserSettings.defaults.enabled
     @AppStorage(ComputerUseSettingsKeys.appliedEnabled) private var computerUseEnabled = ComputerUseSettings.defaults.enabled
     @AppStorage(GrokSettingsKeys.memoryEnabled) private var memoryEnabled = GrokPermissionSettings.defaults.memoryEnabled
@@ -365,6 +366,11 @@ struct ChatView: View {
         .onReceive(NotificationCenter.default.publisher(for: .workflowsConfigChanged)) { _ in
             workflowsEnabled = WorkflowsConfigStore.loadEnabled()
         }
+        .onChange(of: store.isStreaming) { wasStreaming, isStreamingNow in
+            if wasStreaming && !isStreamingNow {
+                AccessibilityNotification.Announcement("Grok finished responding").post()
+            }
+        }
         .onChange(of: store.connectionState) { _, newState in
             if case .ready = newState {
                 // Clear stale auth message if the CLI became ready again
@@ -590,7 +596,10 @@ struct ChatView: View {
     }
 
     private func scrollToBottom(proxy: ScrollViewProxy) {
-        if let last = store.messages.last {
+        guard let last = store.messages.last else { return }
+        if reduceMotion {
+            proxy.scrollTo(last.id, anchor: .bottom)
+        } else {
             withAnimation(.easeOut(duration: 0.15)) {
                 proxy.scrollTo(last.id, anchor: .bottom)
             }
@@ -1440,6 +1449,8 @@ struct ChatView: View {
                     .font(.title2)
             }
             .buttonStyle(.plain)
+            .help("Send message")
+            .accessibilityLabel("Send message")
             .disabled(input.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && !store.hasVisibleFileAttachments ||
                       store.currentWorkspace == nil ||
                       store.authRequiredMessage != nil)
@@ -1846,6 +1857,8 @@ private struct ModelSwitchBanner: View {
                     .foregroundStyle(.secondary)
             }
             .buttonStyle(.plain)
+            .help("Dismiss")
+            .accessibilityLabel("Dismiss")
         }
         .padding(10)
         .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 8))
@@ -1956,6 +1969,8 @@ struct AuthBanner: View {
 // MARK: - Permission Card with Diff Preview
 
 struct PermissionCard: View {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
     let permission: PermissionRequest
     let onRespond: (String) -> Void
 
@@ -2001,8 +2016,8 @@ struct PermissionCard: View {
             RoundedRectangle(cornerRadius: 10)
                 .stroke(Color.orange.opacity(0.35), lineWidth: 1)
         )
-        .transition(.scale.combined(with: .opacity))
-        .animation(.spring(response: 0.3), value: permission.id)
+        .transition(.opacity)
+        .animation(reduceMotion ? nil : .spring(response: 0.3), value: permission.id)
     }
 
     private func openNativeDiffPreview(_ toolCall: ToolCall) {

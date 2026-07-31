@@ -666,6 +666,8 @@ struct DiffView: View {
                         Image(systemName: "doc.on.doc")
                     }
                     .buttonStyle(.plain)
+                    .help("Copy diff")
+                    .accessibilityLabel("Copy diff")
                 }
             }
 

@@ -27,6 +27,8 @@ struct MessageBubble: View {
                     }
                     .frame(maxWidth: 500, alignment: .trailing)
             }
+            .accessibilityElement(children: .combine)
+            .accessibilityLabel("You: \(message.content)")
         case .assistant:
             if !message.content.isEmpty {
                 VStack(alignment: .leading, spacing: 7) {
@@ -54,6 +56,8 @@ struct MessageBubble: View {
                 .foregroundStyle(AppTheme.Palette.textMuted)
                 .frame(maxWidth: .infinity, alignment: .center)
                 .padding(.vertical, 6)
+                .accessibilityElement(children: .combine)
+                .accessibilityLabel("Note: \(message.content)")
         }
     }
 }
