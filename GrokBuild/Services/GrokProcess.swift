@@ -201,6 +201,31 @@ enum AcpEvent: @unchecked Sendable {
     case error(String)
 }
 
+/// Newline-delimited framing over raw pipe bytes. Buffering as `Data` (not
+/// `String`) keeps the split linear — no grapheme walking, one front removal
+/// per drain — and makes chunk boundaries safe: a multi-byte UTF-8 codepoint
+/// split across two reads stays in the buffer until its line completes, where
+/// the old per-chunk `String(data:encoding:)` decode silently dropped the
+/// whole chunk.
+enum AcpLineBuffer {
+    /// Appends `chunk`, removes every complete `\n`-terminated line from the
+    /// front of `buffer`, and returns them decoded as UTF-8 (without the
+    /// newline). Incomplete trailing bytes remain in `buffer`.
+    static func drainLines(buffer: inout Data, appending chunk: Data) -> [String] {
+        buffer.append(chunk)
+        var lines: [String] = []
+        var start = buffer.startIndex
+        while let newline = buffer[start...].firstIndex(of: 0x0A) {
+            lines.append(String(decoding: buffer[start..<newline], as: UTF8.self))
+            start = buffer.index(after: newline)
+        }
+        if start != buffer.startIndex {
+            buffer.removeSubrange(buffer.startIndex..<start)
+        }
+        return lines
+    }
+}
+
 /// ACP client for `grok agent stdio`.
 /// Replaces the old TUI scraping approach with proper JSON-RPC.
 @Observable
@@ -208,7 +233,6 @@ final class GrokProcess: @unchecked Sendable {
     private let ioLock = NSLock()
     private(set) var state: GrokProcessState = .idle
     private(set) var currentWorkspace: Workspace?
-    private(set) var outputLines: [String] = []
 
     var needsAuthentication: Bool {
         if case .failed(let message) = state {
@@ -223,18 +247,16 @@ final class GrokProcess: @unchecked Sendable {
     private let _acpEventStream: AsyncStream<AcpEvent>
     private var acpEventContinuation: AsyncStream<AcpEvent>.Continuation?
 
-    /// Legacy text stream for incremental migration.
-    var outputStream: AsyncStream<String> { _outputStream }
-    private let _outputStream: AsyncStream<String>
-    private var outputContinuation: AsyncStream<String>.Continuation?
-
     private var process: Process?
     private var stdin: FileHandle?
     private var stdout: Pipe?
     private var stderr: Pipe?
     private var readerTask: Task<Void, Never>?
-    private var stdoutBuffer = ""
+    private var stdoutBuffer = Data()
     private var startupStderr = ""
+    /// Startup diagnostics only — the earliest stderr bytes explain a launch
+    /// failure; capping prevents a chatty long-lived CLI from growing memory.
+    private static let startupStderrLimit = 64 * 1024
 
     private var nextRequestId = 1
     private struct PendingRequest {
@@ -356,10 +378,6 @@ final class GrokProcess: @unchecked Sendable {
         var acpC: AsyncStream<AcpEvent>.Continuation!
         _acpEventStream = AsyncStream(bufferingPolicy: .unbounded) { acpC = $0 }
         acpEventContinuation = acpC
-
-        var txtC: AsyncStream<String>.Continuation!
-        _outputStream = AsyncStream(bufferingPolicy: .unbounded) { txtC = $0 }
-        outputContinuation = txtC
     }
 
     // MARK: - Lifecycle
@@ -369,7 +387,6 @@ final class GrokProcess: @unchecked Sendable {
 
         state = .starting
         currentWorkspace = workspace
-        outputLines.removeAll()
         sessionId = nil
         sessionLoadStartedFreshFallback = false
         staleResumeSessionID = nil
@@ -442,7 +459,7 @@ final class GrokProcess: @unchecked Sendable {
         self.stdin = i.fileHandleForWriting
         self.stdout = o
         self.stderr = e
-        self.stdoutBuffer = ""
+        self.stdoutBuffer = Data()
         self.startupStderr = ""
 
         setupReaders(stdout: o, stderr: e)
@@ -508,7 +525,6 @@ final class GrokProcess: @unchecked Sendable {
         ))
 
         acpEventContinuation?.yield(.rawLine("[process stopped]"))
-        outputContinuation?.yield("\n[process stopped]\n")
         if setIdle {
             state = .idle
         }
@@ -523,7 +539,6 @@ final class GrokProcess: @unchecked Sendable {
         guard let sid = sessionId, state == .ready || state == .busy else { return false }
         state = .busy
         notifyStatus()
-        outputContinuation?.yield("<<USER>> \(text)\n")
 
         do {
             _ = try await sendRequest(method: "session/prompt", params: [
@@ -828,15 +843,8 @@ final class GrokProcess: @unchecked Sendable {
     }
 
     private func handleStdoutData(_ data: Data) {
-        var lines: [String] = []
         ioLock.lock()
-        if let chunk = String(data: data, encoding: .utf8) {
-            stdoutBuffer += chunk
-            while let newline = stdoutBuffer.firstIndex(of: "\n") {
-                lines.append(String(stdoutBuffer[..<newline]))
-                stdoutBuffer.removeSubrange(...newline)
-            }
-        }
+        let lines = AcpLineBuffer.drainLines(buffer: &stdoutBuffer, appending: data)
         ioLock.unlock()
 
         for rawLine in lines {
@@ -846,23 +854,19 @@ final class GrokProcess: @unchecked Sendable {
 
     private func handleStderrData(_ data: Data) {
         ioLock.lock()
-        let chunk = String(data: data, encoding: .utf8)
-        if let chunk {
+        if startupStderr.count < Self.startupStderrLimit,
+           let chunk = String(data: data, encoding: .utf8) {
             startupStderr += chunk
+            if startupStderr.count > Self.startupStderrLimit {
+                startupStderr = String(startupStderr.prefix(Self.startupStderrLimit))
+            }
         }
         ioLock.unlock()
-
-        if let chunk {
-            outputContinuation?.yield("[stderr] \(chunk)")
-        }
     }
 
     private func handleAcpRawLine(_ rawLine: String) {
         let line = rawLine.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !line.isEmpty else { return }
-
-        outputLines.append(line)
-        outputContinuation?.yield(line + "\n")
         handleJsonLine(line)
     }
 
