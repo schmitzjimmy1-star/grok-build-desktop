@@ -9,7 +9,6 @@ SwiftPM windowed macOS app — UI for `grok agent stdio`, not a replacement for 
 
 ## Key facts
 
-- Target: `GrokBuild/` executable, entry `main.swift` + `AppDelegate` (not `GrokBuildApp.swift` @main).
 - Version: `VERSION` file → `AppVersion.display`.
 - Build: `make run`, `make test`, `make app`, `make release` (see `BUILDING.md`).
 - Full reference: `ARCHITECTURE.md`, agent entry: `AGENTS.md`.

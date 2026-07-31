@@ -52,7 +52,7 @@ GrokBuild is a **windowed macOS app** (SwiftUI + AppKit) that is a **UI shell ov
 2. **Reuse services** — extend `GrokProcess`, `GrokCLIService`, `ChatStore`, `WorkspaceStore`, `SessionLayoutStore`, and feature services below.
 3. **Match conventions** — read surrounding code before editing; minimize diff scope.
 4. **Draft vs applied settings** — settings panes edit *draft* keys; live Grok sessions use *applied* keys (see [Settings system](#settings-system)).
-5. **Post notifications** — auth/process changes → `.grokStatusChanged`; session title changes → `.liveSessionMessagesChanged`.
+5. **Post notifications** — message/turn changes → `.liveSessionMessagesChanged` (titles, transcript save, diff detection); settings that affect MCP → `reloadConfiguration()`.
 6. **Docs + tests with every code change** — run `make test`, add/extend `Tests/GrokBuildTests/`, update this file and other relevant docs in the same session (`.cursor/rules/docs-and-tests.mdc`).
 7. **Commit only when asked** — user rule in this repo.
 
@@ -63,7 +63,7 @@ GrokBuild is a **windowed macOS app** (SwiftUI + AppKit) that is a **UI shell ov
 ```
 grok-deck2/
 ├── GrokBuild/                    # Main app target (SwiftUI + AppKit)
-│   ├── main.swift                # NSApplication entry (NOT GrokBuildApp.swift)
+│   ├── main.swift                # NSApplication entry
 │   ├── AppDelegate.swift         # Single instance, main window, menus
 │   ├── MainWindowLayout.swift    # Main window min/default size + composer max width
 │   ├── AppTheme.swift            # Neutral graphite palette, typography, radii, shared surface modifier
@@ -76,6 +76,7 @@ grok-deck2/
 │   │   └── Skills/               # Bundled grok skills (copied at build)
 │   ├── AboutPanel.swift          # AppKit About panel
 │   └── UpdatePanel.swift         # AppKit Updates panel
+├── GrokBuildComputerUseCore/     # Shared Computer Use contract (tools, argv, policy, env)
 ├── GrokBuildComputerUseMCP/      # Separate SPM target: stdio MCP bridge → agent-desktop
 ├── Tests/GrokBuildTests/         # Unit/integration tests
 ├── scripts/                      # build-macos-app.sh, release.sh, notarize.sh, install-update
@@ -86,7 +87,7 @@ grok-deck2/
 └── BUILDING.md                   # Signing, notarization, CI
 ```
 
-**Excluded from build:** `GrokBuild/GrokBuildApp.swift` (legacy `@main` — do not use).
+The AppKit pair `main.swift` + `AppDelegate` is the only entry point (the legacy SwiftUI `GrokBuildApp.swift` was deleted).
 
 ---
 
@@ -167,7 +168,7 @@ flowchart TB
 4. `GrokProcess.send(prompt)` → ACP `session/prompt` JSON-RPC on stdin.
 5. `GrokProcess` reader parses stdout → `AcpEvent` stream.
 6. `ChatStore.consumeOutput()` maps events → message text, tool cards, permissions, thinking blocks.
-7. On completion → `isStreaming = false`, posts `.liveSessionMessagesChanged` (also on user send), `.grokStatusChanged`.
+7. On completion → `isStreaming = false`, posts `.liveSessionMessagesChanged` (also on user send).
 
 ### CLI discovery (shared)
 
@@ -619,7 +620,7 @@ OpenAI-compatible provider URLs; not a replacement for grok-native models. Custo
 
 Ordered config-first (session config → capabilities → grok ecosystem/inspection → app). `.agents` is the default landing tab (generic Settings gear + initial state; `.app` when an update is pending).
 
-The settings chrome uses a persistent grouped **vertical sidebar** (`SettingsView.settingsSidebar`) rather than a horizontal tab strip. `SettingsSection` organizes the fourteen destinations into Intelligence, Tools, Extensions, Safety & System, and Application groups. Visited panes stay mounted in a `ZStack` (`SettingsTabKeepAlive`) so `@State` / `.task` are not reset when switching destinations.
+The settings chrome uses a persistent grouped **vertical sidebar** (`SettingsView.settingsSidebar`) rather than a horizontal tab strip. `SettingsSection` organizes the fourteen destinations into Grok, Tools, Extensions, Controls, and Application groups (`SettingsTabTests` pins the exact grouping). Visited panes stay mounted in a `ZStack` (`SettingsTabKeepAlive`) so `@State` / `.task` are not reset when switching destinations.
 
 | Tab | Pane | Data source |
 |-----|------|-------------|
@@ -732,7 +733,7 @@ Menu **Simulate Updates** (`#if DEBUG` only — use `make run-debug`, not `make 
 
 ### Main window (`ContentView`)
 
-Minimum size **1100×720** and default logical canvas **1440×900** (`MainWindowLayout` via `AppDelegate`). On first launch (no saved frame) new main windows fill the current display's available frame, matching the usable canvas of a 13-inch Apple Silicon MacBook Air instead of opening as a floating utility; on later launches the user's saved window frame is restored via the `"MainWindow"` autosave. Displays smaller than the minimum get a minimum-size frame with the title bar pinned on-screen. The titlebar and chat toolbar omit separator rules. The project sidebar stays compact (220–280 pt) when visible and can collapse into a full-width chat canvas; the leading chat-toolbar button restores it. `SidebarVisibility` owns the persisted chat preference, while Settings always suppresses the project sidebar and uses only its own compact navigation rail. The chat toolbar keeps only sidebar/new-session controls visible on the leading edge, with direct Settings access and one overflow menu on the trailing edge. The transcript centers in a 760 pt reading column, the matte composer is bounded at 820 pt, and every Settings pane uses the shared centered 760 pt detail column. The composer shows only primary actions by default; project/session status controls live behind **Show session controls**. Skills, workflows, research, and imagine commands share one menu instead of occupying permanent chip rows. The empty state uses a responsive four-card quick-start row within a 960 pt content width.
+Minimum size **1100×720** and default logical canvas **1440×900** (`MainWindowLayout` via `AppDelegate`). On first launch (no saved frame) new main windows fill the current display's available frame, matching the usable canvas of a 13-inch Apple Silicon MacBook Air instead of opening as a floating utility; on later launches the user's saved window frame is restored via the `"MainWindow"` autosave. Displays smaller than the minimum get a minimum-size frame with the title bar pinned on-screen. The titlebar and chat toolbar omit separator rules. The project sidebar stays compact (220–280 pt) when visible and can collapse into a full-width chat canvas; the leading chat-toolbar button restores it. `SidebarVisibility` owns the persisted chat preference, while Settings always suppresses the project sidebar and uses only its own compact navigation rail. The chat toolbar keeps only sidebar/new-session controls visible on the leading edge, with direct Settings access and one overflow menu on the trailing edge. The transcript centers in a 760 pt reading column, the matte composer is bounded at 820 pt, and every Settings pane uses the shared centered 760 pt detail column. The composer shows only primary actions by default; project/session status controls live behind **Show session controls**. Skills, workflows, research, and imagine commands share one menu instead of occupying permanent chip rows. The empty state uses a responsive four-card quick-start row inside the 760 pt transcript column.
 
 `AppTheme.swift` owns the monochrome graphite palette, flat matte surfaces, compact 11/14/17 pt native SF type scale, restrained 4/6/8 pt radii, layout widths, and `grokGlassSurface` modifier. Decorative color, assistant avatars, and capsule treatments are removed; monospace is reserved for actual commands, code, and diagnostic logs. `ChatTranscriptLayout` attaches the current turn's Thinking disclosure to the streaming or most recent assistant message so it renders immediately above the answer rather than as a transcript footer; when the latest turn has no assistant answer (a failed turn removes its empty reply), the disclosure falls back to the transcript tail below the prompt so the trace is never lost or attached to an older answer. The composer model control is a native `Menu` with compact Model and Effort submenus rather than a custom all-options popover. The legacy modifier name remains to avoid pointless call-site churn; its implementation has no material or highlight gradient and only a minimal composer shadow. `AppDelegate` forces the dark appearance, transparent title bar, and screen-filling launch frame.
 
@@ -785,14 +786,11 @@ Defined in `ContentView.swift` (`extension Notification.Name`).
 
 | Name | Posted when | Handler |
 |------|-------------|---------|
-| `.grokStatusChanged` | Process state/auth change | Session stores keep visible connection/auth state current |
-| `.showMainWindowRequested` | App reopen request | `AppDelegate.openMainWindow` |
 | `.chooseWorkspaceRequested` | Add project | `ContentView` → picker sheet |
 | `.newSessionRequested` | Menu new session | `ContentView.startNewSessionForCurrentProject` |
 | `.sessionsRequested` | Browse sessions | Session browser sheet |
 | `.stopGenerationRequested` | Stop shortcut | `ChatStore.stop` |
 | `.focusInputRequested` | Focus composer | `ChatView` |
-| `.retryConnectionRequested` | Session retry | `ContentView` → `activeStore.retryConnection()` |
 | `.openSettingsRequested` | Settings from the application menu or toolbar (⌘,) | `ContentView.openSettings` (`.app` tab when update pending, else `.agents`) |
 | `.workspaceAgentSettingsChanged` | Reasoning effort saved | Sync effort to sibling sessions in project |
 | `.liveSessionModelChanged` | Tab model changed in composer | `persistSessionLayout()` |
@@ -800,7 +798,6 @@ Defined in `ContentView.swift` (`extension Notification.Name`).
 | `.liveSessionMessagesChanged` | Messages updated (prompt boundaries: send / turn complete / failure) | Bumps `sessionListRevision` → sidebar title cache refresh; saves that session's transcript; diff auto-selection for the active session |
 | `.subagentRolesChanged` | Custom subagent roles saved in Settings | `ChatView` refreshes `cachedCustomSubagentNames` in the agent pill |
 
-`GrokProcess.notifyStatus()` posts `.grokStatusChanged` **asynchronously on the main queue** so background CLI/IO threads never block UI state updates. `ChatStore.postStatusUpdate` runs on `@MainActor` and posts inline.
 
 ### Updates
 
@@ -812,9 +809,7 @@ Defined in `ContentView.swift` (`extension Notification.Name`).
 | `.grokBuildCLIUpdaterPhaseChanged` | CLI update phase |
 | `.grokBuildPrepareForShutdown` | Stop all live sessions |
 | `.grokBuildRestartSessionsRequested` | Reconnect after CLI update |
-| `.grokBuildCLIUpdated` | CLI update succeeded |
 
-**Convention:** post `.grokStatusChanged` with `userInfo: ["status": "ready"|"busy"|"error"|"starting"|"idle", "authenticated": Bool]`.
 
 ---
 
@@ -865,7 +860,7 @@ See `BUILDING.md` for signing, notarization, CI workflow.
 | Task | Start here |
 |------|------------|
 | **Composer, send, streaming** | `ChatView.swift`, `ChatStore.send`, `consumeOutput` |
-| **Workflow slash chips** | `WorkflowSlashCommands` in `ComposerModels.swift`, `WorkflowChipBar` in `ComposerViews.swift`, `ChatView` composer |
+| **Workflow slash commands** | `WorkflowSlashCommands` in `ComposerModels.swift`, consolidated Skills and workflows menu in `ChatView` |
 | **Session goal banner** | `GoalBanner` in `ComposerViews.swift`, `ChatStore.goalState` + `/goal` helpers, `GoalCommand` in `ComposerModels.swift` |
 | **Empty/welcome state, quick starts** | `ChatView.swift` (`welcomeState`, `noProjectState`, `QuickStartChip`), `QuickStartPrompt` in `ComposerModels.swift` |
 | **ACP events / tool cards** | `GrokProcess` (`AcpEvent`), `RichMessageView` |
@@ -924,6 +919,8 @@ make test    # Tests/GrokBuildTests/
 | `GrokCLIUpdaterTests.swift` | Updater helpers / phase reset |
 | `AppMenuTests.swift` | Standard application-menu update title helpers |
 | `MarkdownBlockParserTests.swift` | Inline-math heuristic plus Markdown headings, lists, quotes, tables, fenced code, dividers, mermaid, and LaTeX block parsing |
+| `ChatTranscriptLayoutTests.swift` | Thinking attachment/tail-fallback placement, hasDiff markers, model-menu effort names |
+| `AcpLineBufferTests.swift` | Byte-wise ACP line framing incl. UTF-8 codepoints split across pipe reads |
 | `SettingsTabTests.swift` | Settings destination metadata, ordering, keep-alive behavior, and exact grouped-sidebar coverage |
 
 Prefer extending existing test files. Test pure logic without launching real `grok` when possible.
@@ -935,11 +932,11 @@ Prefer extending existing test files. Test pure logic without launching real `gr
 | Don't | Do instead |
 |-------|------------|
 | Reimplement ACP, MCP protocol, or grok skills in Swift | Inject MCP configs; let CLI execute tools |
-| Add `@main` to `GrokBuildApp.swift` | Keep `main.swift` + `AppDelegate` |
+| Reintroduce a SwiftUI `@main` entry point | `main.swift` + `AppDelegate` own the app lifecycle |
 | Read draft browser/computer settings in `ChatStore` | Use `loadApplied()` at process start |
 | Use `/releases/latest` for app updates | Use notarized release scan in `UpdateChecker` |
 | Auto-run `grok update` silently | Explicit button + confirm in `UpdatePanel` |
-| Store chat history in UserDefaults | Messages live in memory; only session *metadata* persists |
+| Add new per-chunk or per-keystroke UserDefaults writes | Transcripts persist only via `SessionMessageStore` at prompt boundaries (batched `saveAll`) |
 | Add an Xcode project | Stay on SwiftPM + Makefile |
 | Commit without user request | Ask first |
 

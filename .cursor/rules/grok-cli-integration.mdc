@@ -8,7 +8,7 @@ alwaysApply: false
 
 ## Services
 
-- `GrokProcess` — spawns `grok agent … stdio`, parses ACP, posts `.grokStatusChanged`.
+- `GrokProcess` — spawns `grok agent … stdio`, parses ACP into `AcpEvent`s.
 - `GrokCLIService` — one-shot CLI commands (`run`, session list, `--version`, `formatVersionOutput`).
 - `ChatStore` — bridges UI to `GrokProcess`, session resume IDs, permission settings.
 - `UpdateChecker` — notarized GitHub releases for app; `grok update --check --json` for CLI.
