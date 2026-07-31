@@ -93,5 +93,8 @@ cat > "$APP_BUNDLE/Contents/Info.plist" << EOF
 </plist>
 EOF
 
-"$SCRIPT_DIR/codesign-app-bundle.sh" "$APP_BUNDLE"
+# Sign with SIGN_IDENTITY from .env when present. Ad-hoc signatures get a new
+# CDHash on every build, so macOS drops Accessibility/Screen Recording grants
+# after each `make run`; a stable identity makes those grants persist.
+"$SCRIPT_DIR/codesign-app-bundle.sh" "$APP_BUNDLE" "${SIGN_IDENTITY:--}"
 echo "Dev app ready: $APP_BUNDLE"

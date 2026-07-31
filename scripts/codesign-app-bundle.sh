@@ -40,7 +40,10 @@ else
 </dict>
 </plist>
 EOF
-    codesign --force --deep --sign "$IDENTITY" \
+    # No --deep: nested tools were just signed with --identifier
+    # "$BUNDLE_ID" so one Accessibility grant covers all three, and --deep
+    # would re-sign them with filename-derived identifiers and break that.
+    codesign --force --sign "$IDENTITY" \
         --options runtime \
         --entitlements "$ENTITLEMENTS_PLIST" \
         "$APP_BUNDLE"
