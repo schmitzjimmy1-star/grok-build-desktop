@@ -40,3 +40,6 @@ jobs:
         run: |
           test -d "dist/GrokBuild.app"
           test -x "dist/GrokBuild.app/Contents/MacOS/agent-desktop"
+          # test -x proves a file exists; only running it proves the bundled
+          # copy is a working standalone binary rather than a broken shim.
+          "dist/GrokBuild.app/Contents/MacOS/agent-desktop" version

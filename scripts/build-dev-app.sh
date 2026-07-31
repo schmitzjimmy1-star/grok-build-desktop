@@ -57,7 +57,14 @@ done
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 chmod +x "$SCRIPT_DIR/bundle-agent-desktop.sh" "$SCRIPT_DIR/codesign-app-bundle.sh"
-"$SCRIPT_DIR/bundle-agent-desktop.sh" "$APP_BUNDLE/Contents/MacOS" || true
+# Computer Use is a first-class feature: a build without agent-desktop is
+# broken, so bundling failures fail the build unless explicitly waived.
+if [ "${GROKBUILD_ALLOW_MISSING_AGENT_DESKTOP:-0}" = "1" ]; then
+    "$SCRIPT_DIR/bundle-agent-desktop.sh" "$APP_BUNDLE/Contents/MacOS" \
+        || echo "WARNING: continuing WITHOUT agent-desktop — Computer Use will not work in this build."
+else
+    "$SCRIPT_DIR/bundle-agent-desktop.sh" "$APP_BUNDLE/Contents/MacOS"
+fi
 
 cat > "$APP_BUNDLE/Contents/Info.plist" << EOF
 <?xml version="1.0" encoding="UTF-8"?>

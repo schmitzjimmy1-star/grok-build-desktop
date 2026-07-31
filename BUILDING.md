@@ -77,7 +77,7 @@ The build script (`scripts/build-macos-app.sh`) also:
 - Copies Grok brand-mark assets into `Contents/Resources/`
 - Bundles `Resources/Skills/` into the app
 - Copies `scripts/grokbuild-install-update.sh` → `Contents/Resources/grokbuild-install-update` (in-app upgrade helper)
-- Bundles `agent-desktop` into `Contents/MacOS/` when present on the build machine (CI installs it via npm)
+- Bundles `agent-desktop` into `Contents/MacOS/` and verifies the copy runs (`agent-desktop version`). **Packaging fails if agent-desktop is missing** — install it with `npm install -g agent-desktop` (CI does), or set `AGENT_DESKTOP_PATH`, or knowingly waive the requirement for a build with non-functional Computer Use via `GROKBUILD_ALLOW_MISSING_AGENT_DESKTOP=1`
 
 ## Scripts
 

@@ -89,6 +89,7 @@ jobs:
           make app
           make dmg-package
           test -x "dist/${{ env.APP_NAME }}.app/Contents/MacOS/agent-desktop"
+          "dist/${{ env.APP_NAME }}.app/Contents/MacOS/agent-desktop" version
 
       - name: Build signed + notarized
         if: steps.config.outputs.notarized == 'true'
@@ -108,6 +109,7 @@ jobs:
           export APPLE_API_KEY_PATH
           make signed SIGN_IDENTITY="$SIGN_IDENTITY"
           test -x "dist/${{ env.APP_NAME }}.app/Contents/MacOS/agent-desktop"
+          "dist/${{ env.APP_NAME }}.app/Contents/MacOS/agent-desktop" version
           ./scripts/notarize.sh dist/${{ env.APP_NAME }}.app
           rm -f "$APPLE_API_KEY_PATH"
           make dmg-package
