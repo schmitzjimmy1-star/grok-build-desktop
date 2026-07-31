@@ -124,3 +124,14 @@ final class ComputerUseCoreTests: XCTestCase {
         XCTAssertNotNil(mappedStructuredFailure(from: #"{"ok":false,"error":{"message":"nope"}}"#))
     }
 }
+
+extension ComputerUseCoreTests {
+    /// Requesting is pointless when screenshots are off or the permission is
+    /// already granted; macOS only ever shows the prompt once per app.
+    func testScreenRecordingRequestGating() {
+        XCTAssertTrue(ComputerUseService.shouldRequestScreenRecording(includeScreenshots: true, granted: false))
+        XCTAssertFalse(ComputerUseService.shouldRequestScreenRecording(includeScreenshots: true, granted: true))
+        XCTAssertFalse(ComputerUseService.shouldRequestScreenRecording(includeScreenshots: false, granted: false))
+        XCTAssertFalse(ComputerUseService.shouldRequestScreenRecording(includeScreenshots: false, granted: true))
+    }
+}

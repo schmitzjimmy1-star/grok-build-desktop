@@ -307,6 +307,24 @@ enum ComputerUseService {
         CGPreflightScreenCaptureAccess()
     }
 
+    /// Ask macOS for Screen Recording. Until an app *requests* capture it
+    /// never appears in Privacy & Security → Screen & System Audio
+    /// Recording at all, so there is no row for the user to enable — this
+    /// call is what creates it.
+    ///
+    /// macOS shows the prompt only once per app; afterwards this is a no-op
+    /// and the user must toggle the (now existing) row themselves.
+    @discardableResult
+    static func requestScreenRecordingAccess() -> Bool {
+        CGRequestScreenCaptureAccess()
+    }
+
+    /// Requesting is worth doing only when screenshots are enabled and the
+    /// permission is not already granted.
+    static func shouldRequestScreenRecording(includeScreenshots: Bool, granted: Bool) -> Bool {
+        includeScreenshots && !granted
+    }
+
     static var runningExecutablePath: String {
         Bundle.main.executableURL?.path ?? ProcessInfo.processInfo.arguments[0]
     }
@@ -513,6 +531,18 @@ enum ComputerUseService {
         var lines = [
             "GrokBuild accessibility: \(grokBuildGranted ? "granted" : "not granted yet")"
         ]
+
+        if shouldRequestScreenRecording(
+            includeScreenshots: settings.includeScreenshots,
+            granted: localScreenRecordingGranted()
+        ) {
+            let granted = await MainActor.run { requestScreenRecordingAccess() }
+            lines.append(
+                granted
+                    ? "Screen Recording: granted."
+                    : "Screen Recording: requested — approve the macOS prompt, then enable GrokBuild in Privacy & Security → Screen & System Audio Recording (the entry exists now) and relaunch."
+            )
+        }
 
         if usesBundledAgentDesktop(settings: settings) {
             if !grokBuildGranted {

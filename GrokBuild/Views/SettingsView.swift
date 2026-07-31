@@ -2535,6 +2535,19 @@ private struct ComputerUseSettingsPane: View {
                     subtitle: "Use screenshots only when Accessibility snapshots are not enough. Requires Screen Recording permission.",
                     isOn: $includeScreenshots
                 )
+                .onChange(of: includeScreenshots) { _, isEnabled in
+                    // Enabling the tool is the moment Screen Recording starts
+                    // mattering, and asking is the only way GrokBuild ever
+                    // appears in that Privacy pane.
+                    guard ComputerUseService.shouldRequestScreenRecording(
+                        includeScreenshots: isEnabled,
+                        granted: ComputerUseService.localScreenRecordingGranted()
+                    ) else { return }
+                    Task {
+                        ComputerUseService.requestScreenRecordingAccess()
+                        await refreshStatus()
+                    }
+                }
 
                 Stepper("Command timeout: \(commandTimeoutSeconds)s", value: $commandTimeoutSeconds, in: 5...180, step: 5)
             }
