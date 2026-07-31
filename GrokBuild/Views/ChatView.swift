@@ -14,13 +14,20 @@ enum ProjectOpenTarget {
 enum ChatTranscriptLayout {
     /// Thinking belongs to the assistant response for the active turn. During
     /// streaming that response has an explicit id; after completion it is the
-    /// most recent assistant message.
+    /// most recent assistant message — but only when that message is the
+    /// latest turn's answer. When a failed turn removed its empty assistant
+    /// reply (the transcript then ends with the user prompt), this returns
+    /// nil and ChatView renders the block at the transcript tail instead, so
+    /// the trace is neither lost nor attached to an older answer.
     static func thinkingMessageID(
         messages: [Message],
         streamingMessageID: UUID?
     ) -> UUID? {
-        streamingMessageID
-            ?? messages.last(where: { $0.role == .assistant })?.id
+        if let streamingMessageID { return streamingMessageID }
+        guard let lastTurnMessage = messages.last(where: { $0.role == .assistant || $0.role == .user }) else {
+            return nil
+        }
+        return lastTurnMessage.role == .assistant ? lastTurnMessage.id : nil
     }
 }
 
@@ -115,14 +122,33 @@ struct ChatView: View {
         !slashMenuEntries.isEmpty && inputFocused
     }
 
+    private var hasThinkingContent: Bool {
+        !store.thinkingText.isEmpty || store.thinkingDuration != nil
+    }
+
     private var thinkingMessageID: UUID? {
-        guard !store.thinkingText.isEmpty || store.thinkingDuration != nil else {
-            return nil
-        }
+        guard hasThinkingContent else { return nil }
         return ChatTranscriptLayout.thinkingMessageID(
             messages: store.messages,
             streamingMessageID: store.streamingMessageID
         )
+    }
+
+    /// A failed turn removes its empty assistant reply, leaving thinking with
+    /// no anchor. Render it at the tail so the diagnostic is not lost.
+    private var showThinkingAtTail: Bool {
+        hasThinkingContent && thinkingMessageID == nil
+    }
+
+    private var thinkingBlock: some View {
+        ThinkingBlock(
+            text: store.thinkingText,
+            duration: store.thinkingDuration,
+            isExpanded: store.isThinkingExpanded,
+            isLive: store.isStreaming && store.thinkingDuration == nil
+        ) {
+            store.toggleThinkingExpanded()
+        }
     }
 
     var body: some View {
@@ -174,14 +200,7 @@ struct ChatView: View {
 
                         ForEach(store.messages) { msg in
                             if thinkingMessageID == msg.id {
-                                ThinkingBlock(
-                                    text: store.thinkingText,
-                                    duration: store.thinkingDuration,
-                                    isExpanded: store.isThinkingExpanded,
-                                    isLive: store.isStreaming && store.thinkingDuration == nil
-                                ) {
-                                    store.toggleThinkingExpanded()
-                                }
+                                thinkingBlock
                             }
 
                             MessageBubble(
@@ -189,6 +208,10 @@ struct ChatView: View {
                                 isStreaming: store.isStreaming && msg.id == store.streamingMessageID
                             )
                             .id(msg.id)
+                        }
+
+                        if showThinkingAtTail {
+                            thinkingBlock
                         }
 
                         if store.isGrokking {
