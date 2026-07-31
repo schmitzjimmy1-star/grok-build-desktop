@@ -88,7 +88,11 @@ struct ChatView: View {
     @State private var showImagine = false
     @State private var createSkillName = ""
     @State private var imaginePrompt = ""
-    @State private var workflowsEnabled = WorkflowsConfigStore.loadEnabled()
+    // Constant default (matches WorkflowsConfigStore's missing-file default,
+    // pinned by WorkflowRunTests); the real value loads in .onAppear. A file
+    // read here would run on every ChatView struct init — once per streamed
+    // token while ContentView invalidates.
+    @State private var workflowsEnabled = true
 
     private var slashMatch: (query: String, range: Range<String.Index>)? {
         SlashAutocomplete.match(in: input)
