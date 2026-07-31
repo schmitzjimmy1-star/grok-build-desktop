@@ -31,9 +31,11 @@ enum HelperError: LocalizedError {
     }
 }
 
+// The complete environment contract with the app (ComputerUseService
+// builds exactly this set, plus AGENT_DESKTOP_PATH; an env-parity test
+// keeps the two in sync).
 let agentDesktop = ProcessInfo.processInfo.environment["AGENT_DESKTOP_PATH"] ?? "agent-desktop"
-let sessionName = ProcessInfo.processInfo.environment["GROKBUILD_COMPUTER_USE_SESSION"] ?? "grokbuild"
-let permissionPolicy = ProcessInfo.processInfo.environment["GROKBUILD_COMPUTER_USE_POLICY"] ?? "ask"
+let permissionPolicy = ProcessInfo.processInfo.environment["GROKBUILD_COMPUTER_USE_POLICY"] ?? "auto"
 let commandTimeout = TimeInterval(Int(ProcessInfo.processInfo.environment["GROKBUILD_COMPUTER_USE_TIMEOUT"] ?? "60") ?? 60)
 let includeScreenshots = ProcessInfo.processInfo.environment["GROKBUILD_COMPUTER_USE_SCREENSHOTS"] == "true"
 

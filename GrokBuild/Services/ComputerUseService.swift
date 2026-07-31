@@ -72,12 +72,6 @@ enum ComputerUseService {
     }
 
     static func executableURL(settings: ComputerUseSettings = ComputerUseSettingsStore.load()) -> URL? {
-        let configured = settings.agentDesktopPath.trimmingCharacters(in: .whitespacesAndNewlines)
-        if !configured.isEmpty {
-            let url = URL(fileURLWithPath: (configured as NSString).expandingTildeInPath)
-            if FileManager.default.isExecutableFile(atPath: url.path) { return url }
-        }
-
         if let bundled = bundledAgentDesktopURL() {
             return bundled
         }
@@ -145,13 +139,12 @@ enum ComputerUseService {
             return nil
         }
 
+        // Exactly the set the helper reads (see GrokBuildComputerUseMCP/main.swift);
+        // an env-parity test keeps the two in sync.
         var env: [String: String] = [
             "GROKBUILD_COMPUTER_USE_POLICY": settings.permissionPolicy.rawValue,
             "GROKBUILD_COMPUTER_USE_TIMEOUT": String(settings.commandTimeoutSeconds),
-            "GROKBUILD_COMPUTER_USE_MAX_STEPS": String(settings.maxSteps),
-            "GROKBUILD_COMPUTER_USE_SCREENSHOTS": settings.includeScreenshots ? "true" : "false",
-            "GROKBUILD_COMPUTER_USE_ALLOW_PHYSICAL_MOUSE": settings.allowPhysicalMouse ? "true" : "false",
-            "GROKBUILD_COMPUTER_USE_SESSION": normalizedSessionName(settings.sessionName)
+            "GROKBUILD_COMPUTER_USE_SCREENSHOTS": settings.includeScreenshots ? "true" : "false"
         ]
 
         if let executable = agentDesktopOverride ?? executableURL(settings: settings) {
@@ -589,11 +582,6 @@ enum ComputerUseService {
 
     static func commandPreview(_ args: [String], settings: ComputerUseSettings = ComputerUseSettingsStore.load()) -> [String] {
         [executableURL(settings: settings)?.path ?? "agent-desktop"] + args
-    }
-
-    static func normalizedSessionName(_ raw: String) -> String {
-        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
-        return trimmed.isEmpty ? ComputerUseSettings.defaults.sessionName : trimmed
     }
 
     static func parseVersion(_ output: String) -> String? {

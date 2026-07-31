@@ -2253,12 +2253,8 @@ private struct ComputerUseSettingsPane: View {
     @AppStorage(ComputerUseSettingsKeys.enabled) private var enabled = ComputerUseSettings.defaults.enabled
     @AppStorage(ComputerUseSettingsKeys.backend) private var backend = ComputerUseSettings.defaults.backend.rawValue
     @AppStorage(ComputerUseSettingsKeys.permissionPolicy) private var permissionPolicy = ComputerUseSettings.defaults.permissionPolicy.rawValue
-    @AppStorage(ComputerUseSettingsKeys.maxSteps) private var maxSteps = ComputerUseSettings.defaults.maxSteps
     @AppStorage(ComputerUseSettingsKeys.commandTimeoutSeconds) private var commandTimeoutSeconds = ComputerUseSettings.defaults.commandTimeoutSeconds
-    @AppStorage(ComputerUseSettingsKeys.screenshotMode) private var screenshotMode = ComputerUseSettings.defaults.screenshotMode.rawValue
     @AppStorage(ComputerUseSettingsKeys.includeScreenshots) private var includeScreenshots = ComputerUseSettings.defaults.includeScreenshots
-    @AppStorage(ComputerUseSettingsKeys.allowPhysicalMouse) private var allowPhysicalMouse = ComputerUseSettings.defaults.allowPhysicalMouse
-    @AppStorage(ComputerUseSettingsKeys.sessionName) private var sessionName = ComputerUseSettings.defaults.sessionName
     @AppStorage(ComputerUseSettingsKeys.cursorIntegrationEnabled) private var cursorIntegrationEnabled = false
     @AppStorage(ComputerUseSettingsKeys.appliedCursorIntegrationEnabled) private var appliedCursorIntegrationEnabled = false
 
@@ -2452,12 +2448,12 @@ private struct ComputerUseSettingsPane: View {
     }
 
     private var safetyCard: some View {
-        computerSettingsCard(title: "Safety and Session", systemImage: "hand.raised") {
+        computerSettingsCard(title: "Safety", systemImage: "hand.raised") {
             VStack(alignment: .leading, spacing: 14) {
-                Text("Grok asks before high-risk actions.")
+                Text("Tool approval is governed by grok's permission flow (Settings → Permissions). Block All additionally stops clicks, typing, and key presses at the helper.")
                     .foregroundStyle(.secondary)
 
-                settingRow("Action policy") {
+                settingRow("Actions") {
                     Picker("", selection: $permissionPolicy) {
                         ForEach(ComputerUsePermissionPolicy.allCases) { policy in
                             Text(policy.displayName).tag(policy.rawValue)
@@ -2466,61 +2462,15 @@ private struct ComputerUseSettingsPane: View {
                     .labelsHidden()
                     .pickerStyle(.segmented)
                     .frame(width: 240)
-                    .onChange(of: permissionPolicy) { _, _ in
-                        syncCursorConfiguration()
-                    }
                 }
 
                 SettingsToggleRow(
                     "Allow screenshot tool",
-                    subtitle: "Use screenshots only when Accessibility snapshots are not enough.",
+                    subtitle: "Use screenshots only when Accessibility snapshots are not enough. Requires Screen Recording permission.",
                     isOn: $includeScreenshots
                 )
-                .onChange(of: includeScreenshots) { _, _ in
-                    syncCursorConfiguration()
-                }
 
-                SettingsToggleRow(
-                    "Allow physical mouse actions",
-                    subtitle: "Disabled by default. Prefer accessibility actions unless you explicitly need real pointer movement.",
-                    isOn: $allowPhysicalMouse
-                )
-                .onChange(of: allowPhysicalMouse) { _, _ in
-                    syncCursorConfiguration()
-                }
-
-                DisclosureGroup(isExpanded: $showAdvancedOptions) {
-                    VStack(alignment: .leading, spacing: 10) {
-                        settingRow("Screenshot mode") {
-                            Picker("", selection: $screenshotMode) {
-                                ForEach(ComputerUseScreenshotMode.allCases) { mode in
-                                    Text(mode.displayName).tag(mode.rawValue)
-                                }
-                            }
-                            .labelsHidden()
-                            .frame(width: 220)
-                        }
-                        Stepper("Max steps per request: \(maxSteps)", value: $maxSteps, in: 1...100)
-                            .onChange(of: maxSteps) { _, _ in
-                                syncCursorConfiguration()
-                            }
-                        Stepper("Command timeout: \(commandTimeoutSeconds)s", value: $commandTimeoutSeconds, in: 5...180, step: 5)
-                            .onChange(of: commandTimeoutSeconds) { _, _ in
-                                syncCursorConfiguration()
-                            }
-                        settingRow("Session name") {
-                            TextField("Optional Computer Use session name", text: $sessionName)
-                                .textFieldStyle(.roundedBorder)
-                                .onSubmit {
-                                    syncCursorConfiguration()
-                                }
-                        }
-                    }
-                    .padding(.top, 8)
-                } label: {
-                    Label("Advanced Options", systemImage: "slider.horizontal.3")
-                        .font(.callout.weight(.medium))
-                }
+                Stepper("Command timeout: \(commandTimeoutSeconds)s", value: $commandTimeoutSeconds, in: 5...180, step: 5)
             }
         }
     }
@@ -2620,16 +2570,10 @@ private struct ComputerUseSettingsPane: View {
         ComputerUseSettings(
             enabled: enabled,
             backend: ComputerUseBackendID(rawValue: backend) ?? ComputerUseSettings.defaults.backend,
-            agentDesktopPath: "",
             permissionPolicy: ComputerUsePermissionPolicy(rawValue: permissionPolicy)
                 ?? ComputerUseSettings.defaults.permissionPolicy,
-            maxSteps: maxSteps,
             commandTimeoutSeconds: commandTimeoutSeconds,
-            screenshotMode: ComputerUseScreenshotMode(rawValue: screenshotMode)
-                ?? ComputerUseSettings.defaults.screenshotMode,
-            includeScreenshots: includeScreenshots,
-            allowPhysicalMouse: allowPhysicalMouse,
-            sessionName: sessionName
+            includeScreenshots: includeScreenshots
         )
     }
 

@@ -22,14 +22,9 @@ final class ComputerUseIntegrationTests: XCTestCase {
         let settings = ComputerUseSettings(
             enabled: true,
             backend: .agentDesktop,
-            agentDesktopPath: "/opt/homebrew/bin/agent-desktop",
             permissionPolicy: .auto,
-            maxSteps: 42,
             commandTimeoutSeconds: 90,
-            screenshotMode: .screenshotsAllowed,
-            includeScreenshots: true,
-            allowPhysicalMouse: true,
-            sessionName: "project-a"
+            includeScreenshots: true
         )
 
         ComputerUseSettingsStore.save(settings)
@@ -37,30 +32,27 @@ final class ComputerUseIntegrationTests: XCTestCase {
         XCTAssertEqual(ComputerUseSettingsStore.load(), settings)
     }
 
+    /// The removed "ask" policy (never enforced by the helper) must decode as
+    /// auto so upgrading users keep working settings.
+    func testLegacyAskPolicyFallsBackToAuto() {
+        UserDefaults.standard.set("ask", forKey: ComputerUseSettingsKeys.permissionPolicy)
+        XCTAssertEqual(ComputerUseSettingsStore.load().permissionPolicy, .auto)
+    }
+
     func testAppliedComputerUseSettingsRoundTripSeparately() {
         let current = ComputerUseSettings(
             enabled: true,
             backend: .agentDesktop,
-            agentDesktopPath: "/tmp/current-agent-desktop",
-            permissionPolicy: .ask,
-            maxSteps: 12,
+            permissionPolicy: .auto,
             commandTimeoutSeconds: 30,
-            screenshotMode: .accessibilityFirst,
-            includeScreenshots: false,
-            allowPhysicalMouse: false,
-            sessionName: "current"
+            includeScreenshots: false
         )
         let applied = ComputerUseSettings(
             enabled: false,
             backend: .agentDesktop,
-            agentDesktopPath: "/tmp/applied-agent-desktop",
             permissionPolicy: .deny,
-            maxSteps: 4,
             commandTimeoutSeconds: 15,
-            screenshotMode: .screenshotsAllowed,
-            includeScreenshots: true,
-            allowPhysicalMouse: true,
-            sessionName: "applied"
+            includeScreenshots: true
         )
 
         ComputerUseSettingsStore.save(current)
@@ -76,14 +68,9 @@ final class ComputerUseIntegrationTests: XCTestCase {
         let settings = ComputerUseSettings(
             enabled: true,
             backend: .agentDesktop,
-            agentDesktopPath: "",
             permissionPolicy: .auto,
-            maxSteps: 10,
             commandTimeoutSeconds: 25,
-            screenshotMode: .accessibilityFirst,
-            includeScreenshots: true,
-            allowPhysicalMouse: false,
-            sessionName: "test-session"
+            includeScreenshots: true
         )
 
         let config = try XCTUnwrap(ComputerUseService.computerUseMCPConfig(
@@ -105,6 +92,32 @@ final class ComputerUseIntegrationTests: XCTestCase {
         XCTAssertTrue(env.contains { $0["name"] == "GROKBUILD_COMPUTER_USE_SCREENSHOTS" && $0["value"] == "true" })
     }
 
+    /// The app must send exactly the env the helper reads (main.swift):
+    /// AGENT_DESKTOP_PATH + POLICY + TIMEOUT + SCREENSHOTS. A key on either
+    /// side that the other does not know is a dead control or a dead read.
+    func testMCPConfigEnvMatchesHelperReadSet() throws {
+        let settings = ComputerUseSettings(
+            enabled: true,
+            backend: .agentDesktop,
+            permissionPolicy: .deny,
+            commandTimeoutSeconds: 45,
+            includeScreenshots: false
+        )
+        let config = try XCTUnwrap(ComputerUseService.computerUseMCPConfig(
+            settings: settings,
+            helperOverride: URL(fileURLWithPath: "/tmp/GrokBuildComputerUseMCP"),
+            agentDesktopOverride: URL(fileURLWithPath: "/tmp/agent-desktop")
+        ))
+        let env = try XCTUnwrap(config.jsonObject["env"] as? [[String: String]])
+        let keys = Set(env.compactMap { $0["name"] })
+        XCTAssertEqual(keys, [
+            "AGENT_DESKTOP_PATH",
+            "GROKBUILD_COMPUTER_USE_POLICY",
+            "GROKBUILD_COMPUTER_USE_TIMEOUT",
+            "GROKBUILD_COMPUTER_USE_SCREENSHOTS",
+        ])
+    }
+
     func testComputerUseMCPConfigDisabledReturnsNil() {
         let settings = ComputerUseSettings.defaults
 
@@ -112,22 +125,6 @@ final class ComputerUseIntegrationTests: XCTestCase {
             settings: settings,
             helperOverride: URL(fileURLWithPath: "/tmp/GrokBuildComputerUseMCP")
         ))
-    }
-
-    func testAgentDesktopDiscoveryUsesConfiguredExecutablePath() throws {
-        let executable = temporaryExecutableURL()
-        defer { try? FileManager.default.removeItem(at: executable.deletingLastPathComponent()) }
-        try FileManager.default.createDirectory(
-            at: executable.deletingLastPathComponent(),
-            withIntermediateDirectories: true
-        )
-        FileManager.default.createFile(atPath: executable.path, contents: Data("#!/bin/sh\n".utf8))
-        try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: executable.path)
-
-        var settings = ComputerUseSettings.defaults
-        settings.agentDesktopPath = executable.path
-
-        XCTAssertEqual(ComputerUseService.executableURL(settings: settings), executable)
     }
 
     func testPermissionDiagnosticsParseStructuredJSON() {
@@ -368,7 +365,6 @@ final class ComputerUseIntegrationTests: XCTestCase {
         var settings = ComputerUseSettings.defaults
         settings.permissionPolicy = .auto
         settings.includeScreenshots = true
-        settings.sessionName = "cursor"
 
         let output = try ComputerUseCursorInstaller.install(
             settings: settings,
@@ -394,7 +390,7 @@ final class ComputerUseIntegrationTests: XCTestCase {
         XCTAssertEqual(env["AGENT_DESKTOP_PATH"], status.agentDesktopPath)
         XCTAssertEqual(env["GROKBUILD_COMPUTER_USE_POLICY"], "auto")
         XCTAssertEqual(env["GROKBUILD_COMPUTER_USE_SCREENSHOTS"], "true")
-        XCTAssertEqual(env["GROKBUILD_COMPUTER_USE_SESSION"], "cursor")
+        XCTAssertNil(env["GROKBUILD_COMPUTER_USE_SESSION"], "removed control must not be exported")
     }
 
     func testCursorInstallerMergePreservesExistingMCPServers() throws {
@@ -483,8 +479,7 @@ final class ComputerUseIntegrationTests: XCTestCase {
     func testSaveAppliedCursorEnvironmentUpdatesAppliedPrefixOnly() {
         var current = ComputerUseSettings.defaults
         current.includeScreenshots = true
-        current.allowPhysicalMouse = true
-        current.maxSteps = 17
+        current.commandTimeoutSeconds = 45
         ComputerUseSettingsStore.save(current)
         ComputerUseSettingsStore.saveApplied(.defaults)
 
@@ -492,7 +487,7 @@ final class ComputerUseIntegrationTests: XCTestCase {
 
         XCTAssertEqual(ComputerUseSettingsStore.load().includeScreenshots, true)
         XCTAssertEqual(ComputerUseSettingsStore.loadApplied().includeScreenshots, true)
-        XCTAssertEqual(ComputerUseSettingsStore.loadApplied().maxSteps, 17)
+        XCTAssertEqual(ComputerUseSettingsStore.loadApplied().commandTimeoutSeconds, 45)
         XCTAssertEqual(ComputerUseSettingsStore.loadApplied().enabled, false)
     }
 
@@ -542,24 +537,14 @@ final class ComputerUseIntegrationTests: XCTestCase {
         [
             ComputerUseSettingsKeys.enabled,
             ComputerUseSettingsKeys.backend,
-            ComputerUseSettingsKeys.agentDesktopPath,
             ComputerUseSettingsKeys.permissionPolicy,
-            ComputerUseSettingsKeys.maxSteps,
             ComputerUseSettingsKeys.commandTimeoutSeconds,
-            ComputerUseSettingsKeys.screenshotMode,
             ComputerUseSettingsKeys.includeScreenshots,
-            ComputerUseSettingsKeys.allowPhysicalMouse,
-            ComputerUseSettingsKeys.sessionName,
             ComputerUseSettingsKeys.appliedEnabled,
             ComputerUseSettingsKeys.appliedBackend,
-            ComputerUseSettingsKeys.appliedAgentDesktopPath,
             ComputerUseSettingsKeys.appliedPermissionPolicy,
-            ComputerUseSettingsKeys.appliedMaxSteps,
             ComputerUseSettingsKeys.appliedCommandTimeoutSeconds,
-            ComputerUseSettingsKeys.appliedScreenshotMode,
-            ComputerUseSettingsKeys.appliedIncludeScreenshots,
-            ComputerUseSettingsKeys.appliedAllowPhysicalMouse,
-            ComputerUseSettingsKeys.appliedSessionName
+            ComputerUseSettingsKeys.appliedIncludeScreenshots
         ]
     }
 

@@ -194,10 +194,7 @@ enum ComputerUseCursorInstaller {
             "AGENT_DESKTOP_PATH": agentDesktopPath,
             "GROKBUILD_COMPUTER_USE_POLICY": settings.permissionPolicy.rawValue,
             "GROKBUILD_COMPUTER_USE_TIMEOUT": String(settings.commandTimeoutSeconds),
-            "GROKBUILD_COMPUTER_USE_MAX_STEPS": String(settings.maxSteps),
-            "GROKBUILD_COMPUTER_USE_SCREENSHOTS": settings.includeScreenshots ? "true" : "false",
-            "GROKBUILD_COMPUTER_USE_ALLOW_PHYSICAL_MOUSE": settings.allowPhysicalMouse ? "true" : "false",
-            "GROKBUILD_COMPUTER_USE_SESSION": ComputerUseService.normalizedSessionName(settings.sessionName)
+            "GROKBUILD_COMPUTER_USE_SCREENSHOTS": settings.includeScreenshots ? "true" : "false"
         ]
 
         let entry: [String: Any] = [
