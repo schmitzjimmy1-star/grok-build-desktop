@@ -2295,7 +2295,9 @@ private struct ComputerUseSettingsPane: View {
         .task {
             appliedSettings = ComputerUseSettingsStore.loadApplied()
             await refreshStatus()
-            syncCursorConfiguration(showErrorsOnly: true)
+            // Deliberately no Cursor config sync here: ~/.cursor/mcp.json is
+            // the user's file, and merely opening Settings must not rewrite
+            // it. Writes happen on explicit Install/Update/Apply only.
         }
     }
 

@@ -92,13 +92,28 @@ enum ComputerUseCursorInstaller {
     static func updateConfiguration(
         settings: ComputerUseSettings,
         installRoot: URL? = nil,
-        cursorMCPConfigURL: URL? = nil
+        cursorMCPConfigURL: URL? = nil,
+        helperOverride: URL? = nil,
+        agentDesktopOverride: URL? = nil
     ) throws -> String {
         let status = status(installRoot: installRoot, cursorMCPConfigURL: cursorMCPConfigURL)
         guard status.isInstalled,
               let helperPath = status.helperPath,
               let agentDesktopPath = status.agentDesktopPath else {
             throw installError("Computer Use is not installed for Cursor.")
+        }
+
+        // Refresh the installed copies too: they were snapshots from install
+        // time, so after a GrokBuild update Cursor silently kept running the
+        // old helper against the old agent-desktop, forever.
+        var refreshed = false
+        if let sourceHelper = helperOverride ?? ComputerUseService.helperURL() {
+            try copyExecutable(from: sourceHelper, to: URL(fileURLWithPath: helperPath))
+            refreshed = true
+        }
+        if let sourceAgentDesktop = agentDesktopOverride ?? ComputerUseService.executableURL(settings: settings) {
+            try copyExecutable(from: sourceAgentDesktop, to: URL(fileURLWithPath: agentDesktopPath))
+            refreshed = true
         }
 
         let entry = cursorMCPEntry(
@@ -109,7 +124,8 @@ enum ComputerUseCursorInstaller {
         let mcpURL = resolvedCursorMCPConfigURL(override: cursorMCPConfigURL)
         try mergeCursorMCPConfig(entry: entry, at: mcpURL)
 
-        return "Updated Cursor MCP configuration at \(mcpURL.path). Reload MCP servers in Cursor to apply the change."
+        let suffix = refreshed ? " and refreshed the installed binaries" : ""
+        return "Updated Cursor MCP configuration at \(mcpURL.path)\(suffix). Reload MCP servers in Cursor to apply the change."
     }
 
     static func install(

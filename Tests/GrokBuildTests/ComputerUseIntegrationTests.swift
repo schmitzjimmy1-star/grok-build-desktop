@@ -491,7 +491,10 @@ final class ComputerUseIntegrationTests: XCTestCase {
         XCTAssertEqual(ComputerUseSettingsStore.loadApplied().enabled, false)
     }
 
-    func testCursorInstallerUpdateConfigurationChangesEnvWithoutReinstallingBinaries() throws {
+    /// Update must refresh the installed binary copies: they are snapshots
+    /// from install time, and Cursor would otherwise keep running a stale
+    /// helper/agent-desktop forever after a GrokBuild update.
+    func testCursorInstallerUpdateConfigurationRefreshesEnvAndBinaries() throws {
         let root = temporaryInstallRootURL()
         let mcpURL = root.appendingPathComponent("mcp.json")
         defer { try? FileManager.default.removeItem(at: root) }
@@ -514,18 +517,22 @@ final class ComputerUseIntegrationTests: XCTestCase {
             agentDesktopOverride: agentDesktop
         )
 
-        let helperBefore = try Data(contentsOf: installRoot.appendingPathComponent("GrokBuildComputerUseMCP"))
+        // Simulate an app update: the source helper changes on disk.
+        try Data("#!/bin/sh\n# updated helper\n".utf8).write(to: helper)
         settings.includeScreenshots = true
         settings.permissionPolicy = .auto
         let output = try ComputerUseCursorInstaller.updateConfiguration(
             settings: settings,
             installRoot: installRoot,
-            cursorMCPConfigURL: mcpURL
+            cursorMCPConfigURL: mcpURL,
+            helperOverride: helper,
+            agentDesktopOverride: agentDesktop
         )
 
         XCTAssertTrue(output.contains("Updated Cursor MCP configuration"))
-        let helperAfter = try Data(contentsOf: installRoot.appendingPathComponent("GrokBuildComputerUseMCP"))
-        XCTAssertEqual(helperBefore, helperAfter)
+        XCTAssertTrue(output.contains("refreshed the installed binaries"))
+        let installedHelper = try Data(contentsOf: installRoot.appendingPathComponent("GrokBuildComputerUseMCP"))
+        XCTAssertEqual(installedHelper, try Data(contentsOf: helper))
 
         let entry = try XCTUnwrap(ComputerUseCursorInstaller.mcpEntry(in: mcpURL))
         let env = try XCTUnwrap(entry["env"] as? [String: String])
