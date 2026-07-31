@@ -1,4 +1,5 @@
 import Foundation
+import GrokBuildComputerUseCore
 
 struct ComputerUseCursorInstallStatus: Sendable, Equatable {
     var isInstalled: Bool
@@ -207,10 +208,10 @@ enum ComputerUseCursorInstaller {
         agentDesktopPath: String
     ) -> [String: Any] {
         let env: [String: String] = [
-            "AGENT_DESKTOP_PATH": agentDesktopPath,
-            "GROKBUILD_COMPUTER_USE_POLICY": settings.permissionPolicy.rawValue,
-            "GROKBUILD_COMPUTER_USE_TIMEOUT": String(settings.commandTimeoutSeconds),
-            "GROKBUILD_COMPUTER_USE_SCREENSHOTS": settings.includeScreenshots ? "true" : "false"
+            ComputerUseHelperEnvironment.agentDesktopPath: agentDesktopPath,
+            ComputerUseHelperEnvironment.policy: settings.permissionPolicy.rawValue,
+            ComputerUseHelperEnvironment.timeout: String(settings.commandTimeoutSeconds),
+            ComputerUseHelperEnvironment.screenshots: settings.includeScreenshots ? "true" : "false"
         ]
 
         let entry: [String: Any] = [

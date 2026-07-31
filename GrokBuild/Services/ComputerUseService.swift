@@ -1,6 +1,7 @@
 import AppKit
 import ApplicationServices
 import Foundation
+import GrokBuildComputerUseCore
 import Security
 
 struct ComputerUseBackendStatus: Sendable, Equatable {
@@ -139,16 +140,16 @@ enum ComputerUseService {
             return nil
         }
 
-        // Exactly the set the helper reads (see GrokBuildComputerUseMCP/main.swift);
-        // an env-parity test keeps the two in sync.
+        // Exactly the set the helper reads, via the shared contract constants;
+        // an env-parity test keeps app and helper in sync.
         var env: [String: String] = [
-            "GROKBUILD_COMPUTER_USE_POLICY": settings.permissionPolicy.rawValue,
-            "GROKBUILD_COMPUTER_USE_TIMEOUT": String(settings.commandTimeoutSeconds),
-            "GROKBUILD_COMPUTER_USE_SCREENSHOTS": settings.includeScreenshots ? "true" : "false"
+            ComputerUseHelperEnvironment.policy: settings.permissionPolicy.rawValue,
+            ComputerUseHelperEnvironment.timeout: String(settings.commandTimeoutSeconds),
+            ComputerUseHelperEnvironment.screenshots: settings.includeScreenshots ? "true" : "false"
         ]
 
         if let executable = agentDesktopOverride ?? executableURL(settings: settings) {
-            env["AGENT_DESKTOP_PATH"] = executable.path
+            env[ComputerUseHelperEnvironment.agentDesktopPath] = executable.path
         }
 
         return MCPServerConfig(
@@ -577,10 +578,10 @@ enum ComputerUseService {
         }
 
         var env = ProcessInfo.processInfo.environment
-        env["AGENT_DESKTOP_PATH"] = agentDesktop.path
-        env["GROKBUILD_COMPUTER_USE_POLICY"] = settings.permissionPolicy.rawValue
-        env["GROKBUILD_COMPUTER_USE_TIMEOUT"] = String(settings.commandTimeoutSeconds)
-        env["GROKBUILD_COMPUTER_USE_SCREENSHOTS"] = settings.includeScreenshots ? "true" : "false"
+        env[ComputerUseHelperEnvironment.agentDesktopPath] = agentDesktop.path
+        env[ComputerUseHelperEnvironment.policy] = settings.permissionPolicy.rawValue
+        env[ComputerUseHelperEnvironment.timeout] = String(settings.commandTimeoutSeconds)
+        env[ComputerUseHelperEnvironment.screenshots] = settings.includeScreenshots ? "true" : "false"
 
         do {
             let responses = try await runHelperRPC(

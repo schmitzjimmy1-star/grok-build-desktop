@@ -5,6 +5,21 @@ description: Guides GrokBuild desktop automation through Computer Use MCP tools.
 
 # GrokBuild Computer Use
 
+## Available Tools
+
+The complete surface (nothing else exists):
+
+- `computer_snapshot` — accessibility-tree snapshot with refs (`@e3`); supports `app`, `surface`, `skeleton`, `root`, `include_bounds`, `max_depth`.
+- `computer_click` — click a snapshot ref.
+- `computer_type` — type text into a snapshot ref.
+- `computer_press` — press a key or shortcut (`cmd+s`, `escape`, `return`). Also the way to scroll (arrow/page keys); there is no scroll tool.
+- `computer_get` — read a property (for example `value`) from a ref.
+- `computer_wait` — wait for time, element state, text, window, or menu.
+- `computer_screenshot` — capture the screen (only when enabled in GrokBuild settings; needs Screen Recording).
+- `computer_list_apps` — list running GUI applications.
+- `computer_list_windows` — list visible windows, optionally per app.
+- `computer_permissions` — report agent-desktop's macOS permission state.
+
 ## Default Choice
 
 Use Computer Use for native desktop UI, system dialogs, app menus, Finder, Safari, and workflows that are not reachable through Browser Control.
