@@ -119,6 +119,11 @@ final class ChatStore {
     // MARK: - Prompt queue (send while streaming)
     private(set) var promptQueue: [String] = []
 
+    /// Unsent composer text for this tab. ChatView is recreated on tab switch
+    /// (`.id(tabSessionID)` resets scroll identity), so the draft lives here to
+    /// survive switching away and back. In-memory only — not persisted.
+    var composerDraft: String = ""
+
     // MARK: - /btw aside panel
     private(set) var btwAsideText: String?
     private var pendingBtw = false

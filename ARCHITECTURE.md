@@ -260,6 +260,7 @@ One `ChatStore` per live session tab. Owns a `GrokProcess`.
 | `pendingPermissions` | Tool permission prompts |
 | `pendingExitPlan` / `pendingQuestions` | Plan / ask-user flows |
 | `fileAttachments` | Composer chips; hidden chips are excluded from the prompt |
+| `composerDraft` | Unsent composer text for this tab (in-memory; survives tab switch + LRU eviction) |
 | `authRequiredMessage` | Login banner text |
 | `grokSessionId` | `process.sessionId` — persisted for resume |
 
@@ -729,7 +730,7 @@ Minimum size **1100×720** and default logical canvas **1440×900** (`MainWindow
 
 `AppTheme.swift` owns the monochrome graphite palette, flat matte surfaces, compact 11/14/17 pt native SF type scale, restrained 4/6/8 pt radii, layout widths, and `grokGlassSurface` modifier. Decorative color, assistant avatars, and capsule treatments are removed; monospace is reserved for actual commands, code, and diagnostic logs. `ChatTranscriptLayout` attaches the current turn's Thinking disclosure to the streaming or most recent assistant message so it renders immediately above the answer rather than as a transcript footer; when the latest turn has no assistant answer (a failed turn removes its empty reply), the disclosure falls back to the transcript tail below the prompt so the trace is never lost or attached to an older answer. The composer model control is a native `Menu` with compact Model and Effort submenus rather than a custom all-options popover. The legacy modifier name remains to avoid pointless call-site churn; its implementation has no material or highlight gradient and only a minimal composer shadow. `AppDelegate` forces the dark appearance, transparent title bar, and screen-filling launch frame.
 
-`ContentView` keys `ChatView` by `ChatStore.tabSessionID`. Switching tabs therefore creates a fresh scroll/input view identity instead of carrying a long transcript's scroll offset into a new session and hiding the welcome state off-screen.
+`ContentView` keys `ChatView` by `ChatStore.tabSessionID`. Switching tabs therefore creates a fresh scroll/input view identity instead of carrying a long transcript's scroll offset into a new session and hiding the welcome state off-screen. The composer draft is exempt from that reset: `ChatView` mirrors its input into `ChatStore.composerDraft` (in-memory, per tab, not persisted) and restores it on appear, so switching tabs and back does not lose a half-written prompt.
 
 ```
 ┌─────────────────────────────────────────────────┐

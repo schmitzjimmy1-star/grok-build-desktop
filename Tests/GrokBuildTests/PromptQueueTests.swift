@@ -19,6 +19,16 @@ final class PromptQueueTests: XCTestCase {
         XCTAssertEqual(store.promptQueue, ["only"])
     }
 
+    /// The draft lives on ChatStore so it survives ChatView recreation on tab
+    /// switch, and it must also survive LRU process eviction (`shutdown()`).
+    func testComposerDraftSurvivesProcessShutdown() async {
+        let store = ChatStore(process: GrokProcess())
+        XCTAssertEqual(store.composerDraft, "")
+        store.composerDraft = "half-written prompt"
+        await store.shutdown()
+        XCTAssertEqual(store.composerDraft, "half-written prompt")
+    }
+
     func testSendQueuedPromptNowWhileStreamingKeepsQueueIntact() async {
         let store = ChatStore(process: GrokProcess())
         store.enqueuePrompt("queued-a")

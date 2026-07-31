@@ -353,6 +353,10 @@ struct ChatView: View {
         }
         .onAppear {
             workflowsEnabled = WorkflowsConfigStore.loadEnabled()
+            input = store.composerDraft
+        }
+        .onChange(of: input) { _, newValue in
+            store.composerDraft = newValue
         }
         .onReceive(NotificationCenter.default.publisher(for: .workflowsConfigChanged)) { _ in
             workflowsEnabled = WorkflowsConfigStore.loadEnabled()
