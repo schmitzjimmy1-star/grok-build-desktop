@@ -12,8 +12,24 @@ enum MainWindowLayout {
     static let composerMaxWidth: CGFloat = .infinity
 
     /// Launch as a proper primary workspace rather than a small floating utility.
-    static func screenFillingFrame(visibleFrame: CGRect) -> CGRect {
-        visibleFrame
+    /// Applied only when no saved window frame exists; a user-resized frame is
+    /// restored instead (see `AppDelegate.openMainWindow`).
+    ///
+    /// On displays smaller than `minimumSize` the frame is clamped up to the
+    /// minimum with its top edge pinned to the visible area, so the title bar
+    /// stays reachable even when the window must exceed the screen.
+    static func screenFillingFrame(
+        visibleFrame: CGRect,
+        minimumSize: CGSize = minimumSize
+    ) -> CGRect {
+        let width = max(visibleFrame.width, minimumSize.width)
+        let height = max(visibleFrame.height, minimumSize.height)
+        return CGRect(
+            x: visibleFrame.minX,
+            y: visibleFrame.maxY - height,
+            width: width,
+            height: height
+        )
     }
 }
 

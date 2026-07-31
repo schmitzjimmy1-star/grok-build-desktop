@@ -155,8 +155,12 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         )
         window.delegate = self
         window.contentViewController = hosting
+        // Restore the user's saved frame when one exists; fill the screen only
+        // on first launch. Restore must run before setFrameAutosaveName so the
+        // decision is explicit rather than relying on AppKit's implicit restore.
+        let restoredSavedFrame = window.setFrameUsingName("MainWindow")
         window.setFrameAutosaveName("MainWindow")
-        presentMainWindow(window, fillAvailableScreen: true)
+        presentMainWindow(window, fillAvailableScreen: !restoredSavedFrame)
     }
 
     private func presentMainWindow(_ window: NSWindow, fillAvailableScreen: Bool = false) {

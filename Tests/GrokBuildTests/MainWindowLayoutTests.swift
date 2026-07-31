@@ -25,6 +25,17 @@ final class MainWindowLayoutTests: XCTestCase {
         XCTAssertEqual(MainWindowLayout.screenFillingFrame(visibleFrame: visibleFrame), visibleFrame)
     }
 
+    /// Displays smaller than the window floor get a minimum-size frame with the
+    /// top edge pinned to the visible area, keeping the title bar reachable.
+    func testScreenFillingFrameClampsToMinimumOnSmallDisplays() {
+        let small = CGRect(x: 0, y: 38, width: 1024, height: 640)
+        let frame = MainWindowLayout.screenFillingFrame(visibleFrame: small)
+        XCTAssertEqual(frame.width, MainWindowLayout.minimumSize.width)
+        XCTAssertEqual(frame.height, MainWindowLayout.minimumSize.height)
+        XCTAssertEqual(frame.maxY, small.maxY)
+        XCTAssertEqual(frame.minX, small.minX)
+    }
+
     func testSidebarVisibilityRespectsPreferenceDuringChat() {
         XCTAssertTrue(SidebarVisibility.shouldShow(preference: true, settingsPresented: false))
         XCTAssertFalse(SidebarVisibility.shouldShow(preference: false, settingsPresented: false))
