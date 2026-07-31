@@ -577,6 +577,41 @@ final class ComputerUseIntegrationTests: XCTestCase {
         XCTAssertEqual(result.output.count, 262_144)
     }
 
+    /// The Test Computer Use button drives the helper over stdio JSON-RPC;
+    /// prove the RPC plumbing against a scripted fake helper.
+    func testRunHelperRPCCollectsResponsesFromScriptedHelper() async throws {
+        let directory = temporaryInstallRootURL()
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+
+        let fake = directory.appendingPathComponent("fake-helper")
+        let script = """
+        #!/bin/sh
+        read line
+        printf '%s\\n' '{"jsonrpc":"2.0","id":1,"result":{}}'
+        read line
+        printf '%s\\n' '{"jsonrpc":"2.0","id":2,"result":{"content":[{"type":"text","text":"fake-apps"}]}}'
+        """
+        FileManager.default.createFile(atPath: fake.path, contents: Data(script.utf8))
+        try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: fake.path)
+
+        let responses = try await ComputerUseService.runHelperRPC(
+            helper: fake,
+            environment: ProcessInfo.processInfo.environment,
+            requests: [
+                #"{"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}"#,
+                #"{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{}}"#,
+            ],
+            finalID: 2,
+            timeout: 10
+        )
+
+        XCTAssertNotNil(responses[1])
+        let result = try XCTUnwrap(responses[2]?["result"] as? [String: Any])
+        let content = try XCTUnwrap(result["content"] as? [[String: Any]])
+        XCTAssertEqual(content.first?["text"] as? String, "fake-apps")
+    }
+
     func testRunResultTimesOutAndTerminatesTheChild() async {
         let started = Date()
         do {

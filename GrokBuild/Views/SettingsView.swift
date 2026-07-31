@@ -2261,6 +2261,11 @@ private struct ComputerUseSettingsPane: View {
     @State private var backendStatus = ComputerUseBackendStatus.unavailable
     @State private var cursorInstallStatus = ComputerUseCursorInstallStatus.unavailable
     @State private var permissionStatus = ComputerUsePermissionStatus.unavailable
+    @State private var permissionProbe: AccessibilityTrustProbe?
+    @State private var grokBuildAXGranted = false
+    @State private var grokBuildSRGranted = false
+    @State private var isRunningEndToEndTest = false
+    @State private var endToEndResult: ComputerUseService.EndToEndTestResult?
     @State private var appliedSettings = ComputerUseSettingsStore.loadApplied()
     @State private var isChecking = false
     @State private var isRequestingPermissions = false
@@ -2339,8 +2344,37 @@ private struct ComputerUseSettingsPane: View {
                     Text("Built-in computer support is ready. Grant macOS permissions below, then allow computer control.")
                         .foregroundStyle(.secondary)
                 } else {
-                    Text("Built-in computer support is missing. Reinstall the latest GrokBuild release.")
+                    Text("This build has no agent-desktop. Install it with `npm install -g agent-desktop` and rebuild (`make run`), or use a notarized GrokBuild release, which bundles it.")
                         .foregroundStyle(.secondary)
+                        .textSelection(.enabled)
+                }
+
+                HStack(spacing: 10) {
+                    Button(isRunningEndToEndTest ? "Testing…" : "Test Computer Use") {
+                        Task { await runEndToEndTest() }
+                    }
+                    .disabled(!backendStatus.isInstalled || isRunningEndToEndTest)
+                    .help("Runs initialize + computer_list_apps through the real helper and agent-desktop — the same path grok uses.")
+
+                    if isRunningEndToEndTest {
+                        ProgressView()
+                            .controlSize(.small)
+                    }
+                }
+
+                if let endToEndResult {
+                    VStack(alignment: .leading, spacing: 6) {
+                        Label(endToEndResult.summary, systemImage: endToEndResult.success ? "checkmark.seal.fill" : "xmark.seal.fill")
+                            .font(.callout.weight(.semibold))
+                            .foregroundStyle(endToEndResult.success ? .green : .red)
+                        Text(endToEndResult.detail)
+                            .font(.system(.caption, design: .monospaced))
+                            .textSelection(.enabled)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding(10)
+                            .background(RoundedRectangle(cornerRadius: 8).fill(Color(nsColor: .textBackgroundColor)))
+                            .foregroundStyle(.secondary)
+                    }
                 }
 
                 DisclosureGroup(isExpanded: $showDiagnosticsLog) {
@@ -2383,20 +2417,45 @@ private struct ComputerUseSettingsPane: View {
                 permissionRow(
                     title: "Accessibility",
                     state: permissionStatus.accessibility,
-                    help: "Required for snapshots and UI actions."
+                    help: "Effective status for UI actions, resolved across the binaries below."
                 )
                 permissionRow(
                     title: "Screen Recording",
                     state: permissionStatus.screenRecording,
-                    help: "Required only when screenshot tools are enabled."
+                    help: "Required only when the screenshot tool is enabled."
                 )
 
-                if !ComputerUseService.usesBundledAgentDesktop(settings: currentSettings),
-                   let agentDesktopPath = ComputerUseService.executableURL(settings: currentSettings)?.path {
-                    Text("Also enable agent-desktop in Accessibility: \(agentDesktopPath)")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .textSelection(.enabled)
+                DisclosureGroup {
+                    VStack(alignment: .leading, spacing: 8) {
+                        permissionRow(
+                            title: "GrokBuild",
+                            state: grokBuildAXGranted ? "granted" : "denied",
+                            help: "This app's own Accessibility trust."
+                        )
+                        permissionRow(
+                            title: "MCP helper",
+                            state: permissionProbe.map { $0.helperGranted ? "granted" : "denied" } ?? "unknown",
+                            help: "GrokBuildComputerUseMCP; diagnostic only — it performs no UI actions itself."
+                        )
+                        permissionRow(
+                            title: "agent-desktop",
+                            state: permissionProbe.map { $0.agentDesktopGranted ? "granted" : "denied" } ?? "unknown",
+                            help: ComputerUseService.usesBundledAgentDesktop(settings: currentSettings)
+                                ? "The acting binary. Bundled copies share the app's signing identity, so one grant covers all three."
+                                : "The acting binary. External copies have their own identity — this grant is the one that matters."
+                        )
+                        if !ComputerUseService.usesBundledAgentDesktop(settings: currentSettings),
+                           let agentDesktopPath = ComputerUseService.executableURL(settings: currentSettings)?.path {
+                            Text("agent-desktop path: \(agentDesktopPath)")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                                .textSelection(.enabled)
+                        }
+                    }
+                    .padding(.top, 6)
+                } label: {
+                    Label("Per-binary Accessibility status", systemImage: "list.bullet.rectangle")
+                        .font(.callout.weight(.medium))
                 }
 
                 if let guidance = permissionStatus.guidance {
@@ -2681,10 +2740,20 @@ private struct ComputerUseSettingsPane: View {
         defer { isChecking = false }
         let settings = currentSettings
         async let status = ComputerUseService.status(settings: settings)
-        async let permissions = ComputerUseService.permissionStatus(settings: settings)
+        async let overview = ComputerUseService.permissionOverview(settings: settings)
         backendStatus = await status
-        permissionStatus = await permissions
+        let resolvedOverview = await overview
+        permissionStatus = resolvedOverview.resolved
+        permissionProbe = resolvedOverview.probe
+        grokBuildAXGranted = resolvedOverview.grokBuildAccessibilityGranted
+        grokBuildSRGranted = resolvedOverview.grokBuildScreenRecordingGranted
         cursorInstallStatus = ComputerUseCursorInstaller.status()
+    }
+
+    private func runEndToEndTest() async {
+        isRunningEndToEndTest = true
+        defer { isRunningEndToEndTest = false }
+        endToEndResult = await ComputerUseService.runEndToEndTest(settings: currentSettings)
     }
 
     private func installForCursor(showErrorsOnly: Bool = true) async {
@@ -2734,7 +2803,9 @@ private struct ComputerUseSettingsPane: View {
         let normalized = state.lowercased()
         let isGranted = normalized == "granted"
         let isNeutral = normalized == "unknown" || normalized == "not reported"
-        let color: Color = .secondary
+        // Permission state is exactly the place semantic color earns its keep:
+        // a denied row must not render in the same gray as a granted one.
+        let color: Color = isGranted ? .green : (isNeutral ? .secondary : .red)
         let icon = isGranted
             ? "checkmark.circle.fill"
             : (isNeutral ? "minus.circle" : "exclamationmark.triangle.fill")

@@ -232,10 +232,29 @@ enum ComputerUseService {
         )
     }
 
-    static func permissionStatus(settings: ComputerUseSettings = ComputerUseSettingsStore.load()) async -> ComputerUsePermissionStatus {
-        guard executableURL(settings: settings) != nil else { return .unavailable }
+    /// The resolved status plus the raw per-process signals it was derived
+    /// from, so the UI can show a truthful per-binary breakdown instead of a
+    /// single merged verdict.
+    struct PermissionOverview: Sendable {
+        var resolved: ComputerUsePermissionStatus
+        var probe: AccessibilityTrustProbe?
+        var grokBuildAccessibilityGranted: Bool
+        var grokBuildScreenRecordingGranted: Bool
+    }
 
+    static func permissionOverview(settings: ComputerUseSettings = ComputerUseSettingsStore.load()) async -> PermissionOverview {
         let grokBuildGranted = localAccessibilityGranted()
+        let screenGranted = localScreenRecordingGranted()
+
+        guard executableURL(settings: settings) != nil else {
+            return PermissionOverview(
+                resolved: .unavailable,
+                probe: nil,
+                grokBuildAccessibilityGranted: grokBuildGranted,
+                grokBuildScreenRecordingGranted: screenGranted
+            )
+        }
+
         let probe = await helperAccessibilityProbe(settings: settings)
         var cliStatus: ComputerUsePermissionStatus
 
@@ -257,12 +276,23 @@ enum ComputerUseService {
             cliStatus = .unavailable
         }
 
-        return resolvePermissionStatus(
+        let resolved = resolvePermissionStatus(
             cliStatus: cliStatus,
             grokBuildGranted: grokBuildGranted,
             probe: probe,
-            settings: settings
+            settings: settings,
+            grokBuildScreenRecordingGranted: screenGranted
         )
+        return PermissionOverview(
+            resolved: resolved,
+            probe: probe,
+            grokBuildAccessibilityGranted: grokBuildGranted,
+            grokBuildScreenRecordingGranted: screenGranted
+        )
+    }
+
+    static func permissionStatus(settings: ComputerUseSettings = ComputerUseSettingsStore.load()) async -> ComputerUsePermissionStatus {
+        await permissionOverview(settings: settings).resolved
     }
 
     static func localAccessibilityGranted() -> Bool {
@@ -516,6 +546,170 @@ enum ComputerUseService {
         }
 
         return lines.joined(separator: "\n")
+    }
+
+    // MARK: - End-to-end self test
+
+    struct EndToEndTestResult: Sendable, Equatable {
+        var success: Bool
+        var summary: String
+        var detail: String
+    }
+
+    /// Proves the whole chain the way grok uses it: spawn the helper over
+    /// stdio JSON-RPC with the exported env, `initialize`, then call
+    /// `computer_list_apps` through agent-desktop. Every green light in the
+    /// pane is inference; this is evidence.
+    static func runEndToEndTest(settings: ComputerUseSettings = ComputerUseSettingsStore.load()) async -> EndToEndTestResult {
+        guard let helper = helperURL() else {
+            return EndToEndTestResult(
+                success: false,
+                summary: "Helper missing",
+                detail: "GrokBuildComputerUseMCP was not found next to the app executable. Rebuild the app (make run)."
+            )
+        }
+        guard let agentDesktop = executableURL(settings: settings) else {
+            return EndToEndTestResult(
+                success: false,
+                summary: "agent-desktop missing",
+                detail: "Install it with `npm install -g agent-desktop`, then rebuild so packaging bundles it."
+            )
+        }
+
+        var env = ProcessInfo.processInfo.environment
+        env["AGENT_DESKTOP_PATH"] = agentDesktop.path
+        env["GROKBUILD_COMPUTER_USE_POLICY"] = settings.permissionPolicy.rawValue
+        env["GROKBUILD_COMPUTER_USE_TIMEOUT"] = String(settings.commandTimeoutSeconds)
+        env["GROKBUILD_COMPUTER_USE_SCREENSHOTS"] = settings.includeScreenshots ? "true" : "false"
+
+        do {
+            let responses = try await runHelperRPC(
+                helper: helper,
+                environment: env,
+                requests: [
+                    #"{"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}"#,
+                    #"{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"computer_list_apps","arguments":{}}}"#,
+                ],
+                finalID: 2,
+                timeout: 20
+            )
+            guard let final = responses[2] else {
+                return EndToEndTestResult(
+                    success: false,
+                    summary: "No response",
+                    detail: "The helper started but never answered computer_list_apps."
+                )
+            }
+            if let error = final["error"] as? [String: Any] {
+                return EndToEndTestResult(
+                    success: false,
+                    summary: "Tool call failed",
+                    detail: error["message"] as? String ?? "Unknown helper error."
+                )
+            }
+            let text = (((final["result"] as? [String: Any])?["content"] as? [[String: Any]])?
+                .first?["text"] as? String) ?? ""
+            let trimmed = text.count > 700 ? String(text.prefix(700)) + "…" : text
+            return EndToEndTestResult(
+                success: true,
+                summary: "Computer Use responded end to end",
+                detail: trimmed.isEmpty ? "computer_list_apps returned no text." : trimmed
+            )
+        } catch {
+            return EndToEndTestResult(success: false, summary: "Test failed", detail: error.localizedDescription)
+        }
+    }
+
+    /// Internal (not private) so the RPC plumbing stays under test against a
+    /// scripted fake helper.
+    static func runHelperRPC(
+        helper: URL,
+        environment: [String: String],
+        requests: [String],
+        finalID: Int,
+        timeout: TimeInterval
+    ) async throws -> [Int: [String: Any]] {
+        try await withCheckedThrowingContinuation { continuation in
+            let process = Process()
+            process.executableURL = helper
+            process.environment = environment
+
+            let stdinPipe = Pipe()
+            let stdoutPipe = Pipe()
+            let stderrPipe = Pipe()
+            process.standardInput = stdinPipe
+            process.standardOutput = stdoutPipe
+            process.standardError = stderrPipe
+
+            final class RPCBox: @unchecked Sendable {
+                let lock = NSLock()
+                var buffer = Data()
+                var responses: [Int: [String: Any]] = [:]
+                var didResume = false
+            }
+            let box = RPCBox()
+
+            @Sendable
+            func finish(_ result: Result<[Int: [String: Any]], Error>) {
+                box.lock.lock()
+                guard !box.didResume else {
+                    box.lock.unlock()
+                    return
+                }
+                box.didResume = true
+                box.lock.unlock()
+                stdoutPipe.fileHandleForReading.readabilityHandler = nil
+                try? stdinPipe.fileHandleForWriting.close()
+                if process.isRunning {
+                    process.terminate()
+                }
+                continuation.resume(with: result)
+            }
+
+            stdoutPipe.fileHandleForReading.readabilityHandler = { handle in
+                let chunk = handle.availableData
+                if chunk.isEmpty {
+                    handle.readabilityHandler = nil
+                    return
+                }
+                box.lock.lock()
+                let lines = AcpLineBuffer.drainLines(buffer: &box.buffer, appending: chunk)
+                for line in lines {
+                    guard let data = line.data(using: .utf8),
+                          let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                          let id = json["id"] as? Int else { continue }
+                    box.responses[id] = json
+                }
+                let snapshot = box.responses
+                box.lock.unlock()
+                if snapshot[finalID] != nil {
+                    finish(.success(snapshot))
+                }
+            }
+
+            do {
+                try process.run()
+            } catch {
+                finish(.failure(error))
+                return
+            }
+
+            let payload = requests.map { $0 + "\n" }.joined()
+            stdinPipe.fileHandleForWriting.write(Data(payload.utf8))
+
+            Task {
+                try? await Task.sleep(nanoseconds: UInt64(timeout * 1_000_000_000))
+                finish(.failure(NSError(
+                    domain: "ComputerUseService",
+                    code: 4,
+                    userInfo: [NSLocalizedDescriptionKey: "Computer Use test timed out after \(Int(timeout))s."]
+                )))
+                try? await Task.sleep(nanoseconds: 2_000_000_000)
+                if process.isRunning {
+                    kill(process.processIdentifier, SIGKILL)
+                }
+            }
+        }
     }
 
     static var appBundlePath: String {
