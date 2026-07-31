@@ -146,11 +146,13 @@ struct SetGoalSheet: View {
             HStack {
                 Spacer()
                 Button("Cancel") { dismiss() }
+                    .keyboardShortcut(.cancelAction)
                 Button("Set Goal") {
                     let budget = Int(budgetText.trimmingCharacters(in: .whitespacesAndNewlines))
                     onSubmit(objective, budget)
                     dismiss()
                 }
+                .keyboardShortcut(.defaultAction)
                 .buttonStyle(.borderedProminent)
                 .disabled(objective.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
             }

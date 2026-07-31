@@ -696,24 +696,34 @@ struct ChatView: View {
                         }
                         return .ignored
                     }
-                    .onKeyPress(.upArrow) {
+                    .onKeyPress(keys: [.upArrow]) { press in
+                        guard press.modifiers.isEmpty else { return .ignored }
                         if showSlashPopover, !slashMenuEntries.isEmpty {
                             moveSlashSelection(by: -1)
                             return .handled
                         }
-                        if let prev = store.previousHistory(from: input) {
-                            input = prev
+                        // History only when the caret has no line above it —
+                        // multi-line drafts keep native caret movement
+                        // (returning .handled unconditionally made arrows
+                        // dead inside long drafts).
+                        guard !input.contains("\n"),
+                              let prev = store.previousHistory(from: input) else {
+                            return .ignored
                         }
+                        input = prev
                         return .handled
                     }
-                    .onKeyPress(.downArrow) {
+                    .onKeyPress(keys: [.downArrow]) { press in
+                        guard press.modifiers.isEmpty else { return .ignored }
                         if showSlashPopover, !slashMenuEntries.isEmpty {
                             moveSlashSelection(by: 1)
                             return .handled
                         }
-                        if let next = store.nextHistory(from: input) {
-                            input = next
+                        guard !input.contains("\n"),
+                              let next = store.nextHistory(from: input) else {
+                            return .ignored
                         }
+                        input = next
                         return .handled
                     }
                 }
@@ -1158,12 +1168,14 @@ struct ChatView: View {
             HStack {
                 Spacer()
                 Button("Cancel") { showCreateSkill = false }
+                    .keyboardShortcut(.cancelAction)
                 Button("Create") {
                     let name = createSkillName.trimmingCharacters(in: .whitespacesAndNewlines)
                     guard !name.isEmpty else { return }
                     showCreateSkill = false
                     Task { _ = await store.send("/create-skill \(name)") }
                 }
+                .keyboardShortcut(.defaultAction)
                 .buttonStyle(.borderedProminent)
                 .disabled(createSkillName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
             }
@@ -1182,12 +1194,14 @@ struct ChatView: View {
             HStack {
                 Spacer()
                 Button("Cancel") { showImagine = false }
+                    .keyboardShortcut(.cancelAction)
                 Button("Send /imagine") {
                     let prompt = imaginePrompt.trimmingCharacters(in: .whitespacesAndNewlines)
                     guard !prompt.isEmpty else { return }
                     showImagine = false
                     Task { _ = await store.send("/imagine \(prompt)") }
                 }
+                .keyboardShortcut(.defaultAction)
                 .buttonStyle(.borderedProminent)
                 .disabled(imaginePrompt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
             }

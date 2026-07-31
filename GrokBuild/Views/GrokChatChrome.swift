@@ -171,44 +171,27 @@ struct ToolActivityGroup: View {
     }
 }
 
-struct WindowTrafficLights: View {
+/// Plain graphite close affordance for in-window panels. Sheets have no real
+/// traffic lights on macOS, so the previous one-live-two-dead fake lights
+/// read as a broken window and carried the app's only saturated red.
+struct PanelCloseButton: View {
     var onClose: () -> Void
 
-    @State private var isCloseHovered = false
-
-    private let closeColor = Color(red: 1.0, green: 0.37, blue: 0.34)
-    private let inactiveColor = Color(white: 0.38)
+    @State private var isHovered = false
 
     var body: some View {
-        HStack(spacing: 8) {
-            Button(action: onClose) {
-                ZStack {
-                    Circle()
-                        .fill(closeColor)
-                        .frame(width: 12, height: 12)
-                    if isCloseHovered {
-                        Image(systemName: "xmark")
-                            .font(.system(size: 7, weight: .heavy))
-                            .foregroundStyle(Color(red: 0.24, green: 0.16, blue: 0.14))
-                    }
-                }
-                .frame(width: 16, height: 16)
+        Button(action: onClose) {
+            Image(systemName: "xmark")
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundStyle(isHovered ? Color.primary : AppTheme.Palette.textMuted)
+                .frame(width: 22, height: 22)
+                .background(Circle().fill(isHovered ? AppTheme.Palette.surfaceHover : Color.clear))
                 .contentShape(Rectangle())
-            }
-            .buttonStyle(.plain)
-            .onHover { isCloseHovered = $0 }
-            .help("Close")
-
-            inactiveTrafficLight
-            inactiveTrafficLight
         }
-        .padding(.vertical, 2)
-    }
-
-    private var inactiveTrafficLight: some View {
-        Circle()
-            .fill(inactiveColor)
-            .frame(width: 12, height: 12)
-            .frame(width: 16, height: 16)
+        .buttonStyle(.plain)
+        .onHover { isHovered = $0 }
+        .help("Close")
+        .accessibilityLabel("Close")
+        .keyboardShortcut(.cancelAction)
     }
 }

@@ -26,7 +26,7 @@ struct MemoryBrowserPanel: View {
         VStack(spacing: 0) {
             if showsHeader {
                 HStack(alignment: .center, spacing: 12) {
-                    WindowTrafficLights(onClose: { dismiss() })
+                    PanelCloseButton(onClose: { dismiss() })
                         .keyboardShortcut(.cancelAction)
 
                     VStack(alignment: .leading, spacing: 2) {

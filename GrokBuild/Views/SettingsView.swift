@@ -1409,6 +1409,9 @@ private struct HooksSettingsPane: View {
         do {
             hooks = try await service.listHooks(cwd: workspace?.path)
         } catch {
+            // Clear so the empty/error state shows instead of a stale list
+            // with a red caption under it.
+            hooks = []
             errorMessage = error.localizedDescription
         }
         isLoading = false
@@ -1797,6 +1800,7 @@ private struct SkillsSettingsPane: View {
         do {
             skills = try await service.listSkills(cwd: workspace?.path)
         } catch {
+            skills = []
             errorMessage = error.localizedDescription
         }
         isLoading = false
@@ -2122,6 +2126,7 @@ private struct AgentsSettingsPane: View {
         do {
             agents = try await service.listAgents(cwd: workspace?.path)
         } catch {
+            agents = []
             errorMessage = error.localizedDescription
         }
         isLoading = false

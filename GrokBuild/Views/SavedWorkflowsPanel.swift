@@ -29,7 +29,7 @@ struct SavedWorkflowsPanel: View {
     var body: some View {
         VStack(spacing: 0) {
             HStack(alignment: .center, spacing: 12) {
-                WindowTrafficLights(onClose: { dismiss() })
+                PanelCloseButton(onClose: { dismiss() })
                     .keyboardShortcut(.cancelAction)
 
                 VStack(alignment: .leading, spacing: 2) {
