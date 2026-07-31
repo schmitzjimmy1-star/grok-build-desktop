@@ -60,6 +60,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMenuDele
             NSApp.applicationIconImage = appIcon
         }
 
+        LegacySettingsMigration.run()
         UpdateScheduler.start()
         DistributedNotificationCenter.default.addObserver(
             self,

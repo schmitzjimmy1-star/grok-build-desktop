@@ -367,6 +367,8 @@ enum GrokSettingsKeys {
     static let permissionMode = "grokbuild.permissionMode"
     static let sandboxProfile = "grokbuild.sandboxProfile"
     static let reasoningEffort = "grokbuild.reasoningEffort"
+    /// Legacy key superseded by `memoryEnabled`; read once by
+    /// `LegacySettingsMigration`, never written.
     static let noMemory = "grokbuild.noMemory"
     static let disableWebSearch = "grokbuild.disableWebSearch"
     static let noSubagents = "grokbuild.noSubagents"
@@ -651,5 +653,20 @@ final class GrokCLIService {
         } catch {
             return "grok CLI: not found"
         }
+    }
+}
+
+
+/// One-shot upgrades for renamed/superseded UserDefaults keys.
+enum LegacySettingsMigration {
+    /// `grokbuild.noMemory` predates the Memory pane's `memoryEnabled`.
+    /// Nothing read the old key anymore, so an upgrading user's explicit
+    /// memory choice was silently lost; honor it once, then clear it.
+    static func run(defaults: UserDefaults = .standard) {
+        if defaults.object(forKey: GrokSettingsKeys.memoryEnabled) == nil,
+           let legacyNoMemory = defaults.object(forKey: GrokSettingsKeys.noMemory) as? Bool {
+            defaults.set(!legacyNoMemory, forKey: GrokSettingsKeys.memoryEnabled)
+        }
+        defaults.removeObject(forKey: GrokSettingsKeys.noMemory)
     }
 }

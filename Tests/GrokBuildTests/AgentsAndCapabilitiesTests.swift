@@ -196,3 +196,23 @@ final class AgentsAndCapabilitiesTests: XCTestCase {
         XCTAssertFalse(updated.contains("model ="), "empty model must be omitted so the role inherits the session model")
     }
 }
+
+extension AgentsAndCapabilitiesTests {
+    func testLegacyNoMemoryKeyMigratesOnceIntoMemoryEnabled() {
+        let suite = "grokbuild.tests.migration.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suite)!
+        defer { defaults.removePersistentDomain(forName: suite) }
+
+        // Old install that explicitly enabled memory (noMemory == false).
+        defaults.set(false, forKey: GrokSettingsKeys.noMemory)
+        LegacySettingsMigration.run(defaults: defaults)
+        XCTAssertEqual(defaults.object(forKey: GrokSettingsKeys.memoryEnabled) as? Bool, true)
+        XCTAssertNil(defaults.object(forKey: GrokSettingsKeys.noMemory))
+
+        // A later explicit choice must never be overwritten.
+        defaults.set(false, forKey: GrokSettingsKeys.memoryEnabled)
+        defaults.set(false, forKey: GrokSettingsKeys.noMemory)
+        LegacySettingsMigration.run(defaults: defaults)
+        XCTAssertEqual(defaults.object(forKey: GrokSettingsKeys.memoryEnabled) as? Bool, false)
+    }
+}
