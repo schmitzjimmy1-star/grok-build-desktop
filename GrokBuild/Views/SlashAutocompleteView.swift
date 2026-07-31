@@ -106,9 +106,9 @@ struct SlashAutocompleteView: View {
         }
         .frame(width: 520)
         .frame(maxHeight: 360)
-        .background(Color(nsColor: .controlBackgroundColor), in: RoundedRectangle(cornerRadius: 10))
+        .background(Color(nsColor: .controlBackgroundColor), in: RoundedRectangle(cornerRadius: AppTheme.Radius.large))
         .overlay(
-            RoundedRectangle(cornerRadius: 10)
+            RoundedRectangle(cornerRadius: AppTheme.Radius.large)
                 .stroke(Color.primary.opacity(0.12), lineWidth: 1)
         )
         .shadow(color: .black.opacity(0.25), radius: 12, y: 4)

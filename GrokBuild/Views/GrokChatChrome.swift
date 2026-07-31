@@ -41,9 +41,9 @@ struct ThinkingBlock: View {
             Button(action: onToggle) {
                 HStack(spacing: 6) {
                     Image(systemName: isExpanded ? "chevron.down" : "chevron.right")
-                        .font(.system(size: 9, weight: .semibold))
+                        .font(AppTheme.Typography.badge)
                     Text(headerTitle)
-                        .font(.system(size: 11, weight: .medium))
+                        .font(AppTheme.Typography.label)
                         .foregroundStyle(.tertiary)
                 }
             }
@@ -51,7 +51,7 @@ struct ThinkingBlock: View {
 
             if isExpanded, !text.isEmpty {
                 Text(text)
-                    .font(.system(size: 12))
+                    .font(AppTheme.Typography.caption)
                     .lineSpacing(2)
                     .foregroundStyle(.tertiary)
                     .textSelection(.enabled)
@@ -182,7 +182,7 @@ struct PanelCloseButton: View {
     var body: some View {
         Button(action: onClose) {
             Image(systemName: "xmark")
-                .font(.system(size: 11, weight: .semibold))
+                .font(AppTheme.Typography.section)
                 .foregroundStyle(isHovered ? Color.primary : AppTheme.Palette.textMuted)
                 .frame(width: 22, height: 22)
                 .background(Circle().fill(isHovered ? AppTheme.Palette.surfaceHover : Color.clear))

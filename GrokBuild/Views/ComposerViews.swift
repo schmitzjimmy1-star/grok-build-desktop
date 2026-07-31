@@ -125,9 +125,9 @@ struct GoalBanner: View {
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 8)
-        .background(Color.accentColor.opacity(0.08), in: RoundedRectangle(cornerRadius: 8))
+        .background(Color.accentColor.opacity(0.08), in: RoundedRectangle(cornerRadius: AppTheme.Radius.large))
         .overlay(
-            RoundedRectangle(cornerRadius: 8)
+            RoundedRectangle(cornerRadius: AppTheme.Radius.large)
                 .stroke(Color.accentColor.opacity(0.2), lineWidth: 1)
         )
     }
@@ -194,9 +194,9 @@ struct BtwAsideBanner: View {
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 8)
-        .background(Color.orange.opacity(0.08), in: RoundedRectangle(cornerRadius: 8))
+        .background(Color.orange.opacity(0.08), in: RoundedRectangle(cornerRadius: AppTheme.Radius.large))
         .overlay(
-            RoundedRectangle(cornerRadius: 8)
+            RoundedRectangle(cornerRadius: AppTheme.Radius.large)
                 .stroke(Color.orange.opacity(0.2), lineWidth: 1)
         )
     }
@@ -244,9 +244,9 @@ struct PlanReviewCard: View {
             }
         }
         .padding(12)
-        .background(Color.blue.opacity(0.08), in: RoundedRectangle(cornerRadius: 10))
+        .background(Color.blue.opacity(0.08), in: RoundedRectangle(cornerRadius: AppTheme.Radius.large))
         .overlay(
-            RoundedRectangle(cornerRadius: 10)
+            RoundedRectangle(cornerRadius: AppTheme.Radius.large)
                 .stroke(Color.blue.opacity(0.35), lineWidth: 1)
         )
     }
@@ -306,9 +306,9 @@ struct QuestionCard: View {
             }
         }
         .padding(12)
-        .background(Color.green.opacity(0.08), in: RoundedRectangle(cornerRadius: 10))
+        .background(Color.green.opacity(0.08), in: RoundedRectangle(cornerRadius: AppTheme.Radius.large))
         .overlay(
-            RoundedRectangle(cornerRadius: 10)
+            RoundedRectangle(cornerRadius: AppTheme.Radius.large)
                 .stroke(Color.green.opacity(0.35), lineWidth: 1)
         )
         .onAppear {
@@ -371,7 +371,7 @@ private struct QuestionBlock: View {
                                 selection.contains(option.label)
                                     ? Color.accentColor.opacity(0.1)
                                     : Color.primary.opacity(0.04),
-                                in: RoundedRectangle(cornerRadius: 8)
+                                in: RoundedRectangle(cornerRadius: AppTheme.Radius.large)
                             )
                         }
                         .buttonStyle(.plain)

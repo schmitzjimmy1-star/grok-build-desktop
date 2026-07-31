@@ -376,7 +376,7 @@ struct PreviewPane: View {
                         .padding(.horizontal, 7)
                         .padding(.vertical, 3)
                         .background(
-                            RoundedRectangle(cornerRadius: 5)
+                            RoundedRectangle(cornerRadius: AppTheme.Radius.medium)
                                 .fill(Color.primary.opacity(0.12))
                         )
                         .foregroundStyle(.secondary)
@@ -387,7 +387,7 @@ struct PreviewPane: View {
             .padding(.vertical, 9)
             .frame(maxWidth: .infinity, alignment: .leading)
             .background(
-                RoundedRectangle(cornerRadius: 7)
+                RoundedRectangle(cornerRadius: AppTheme.Radius.medium)
                     .fill(isPrimary ? Color.primary.opacity(0.10) : Color.clear)
             )
             .contentShape(Rectangle())
@@ -407,7 +407,7 @@ struct PreviewPane: View {
             }
             .frame(height: usesDefaultChangedFilesHeight ? defaultHeight : effectiveChangedFilesListHeight)
 
-            RoundedRectangle(cornerRadius: 2)
+            RoundedRectangle(cornerRadius: AppTheme.Radius.small)
                 .fill(Color.secondary.opacity(0.35))
                 .frame(width: 38, height: 4)
                 .frame(maxWidth: .infinity)
@@ -461,7 +461,7 @@ struct PreviewPane: View {
             .padding(.vertical, 6)
             .frame(maxWidth: .infinity, alignment: .leading)
             .contentShape(Rectangle())
-            .background(isSelected ? Color.accentColor.opacity(0.12) : Color.clear, in: RoundedRectangle(cornerRadius: 7))
+            .background(isSelected ? Color.accentColor.opacity(0.12) : Color.clear, in: RoundedRectangle(cornerRadius: AppTheme.Radius.medium))
         }
         .buttonStyle(.plain)
     }
@@ -682,7 +682,7 @@ struct DiffView: View {
                         .background(item.background, in: Rectangle())
                 }
             }
-            .background(.black.opacity(0.22), in: RoundedRectangle(cornerRadius: 6))
+            .background(.black.opacity(0.22), in: RoundedRectangle(cornerRadius: AppTheme.Radius.medium))
         }
     }
 

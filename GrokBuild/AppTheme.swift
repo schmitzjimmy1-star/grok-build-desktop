@@ -16,15 +16,23 @@ enum AppTheme {
         static let glassBorderStrong = Color.white.opacity(0.15)
         static let accent = Color.white.opacity(0.92)
         static let accentSoft = Color.white.opacity(0.075)
-        static let status = Color.white.opacity(0.58)
         static let textMuted = Color.white.opacity(0.62)
+        /// One step below `textMuted` for supporting metadata.
+        static let textFaint = Color.white.opacity(0.42)
         static let shadow = Color.black.opacity(0.18)
     }
 
+    /// The app ships three card radii plus one for floating overlays.
+    /// Anything outside this set is drift — use the nearest token.
     enum Radius {
+        /// Chips, badges, inline markers.
         static let small: CGFloat = 4
+        /// Controls and compact rows.
         static let medium: CGFloat = 6
+        /// Cards, banners, panels — the default card treatment.
         static let large: CGFloat = 8
+        /// Floating modal cards that sit above the canvas.
+        static let overlay: CGFloat = 18
     }
 
     enum Layout {
@@ -36,11 +44,32 @@ enum AppTheme {
         static let settingsRuleEditorHeight: CGFloat = 96
     }
 
+    /// Text roles. `Font.system(size:)` applied to `Image(systemName:)` is
+    /// glyph sizing inside a fixed frame, not a member of this ladder —
+    /// those stay local to their view on purpose.
     enum Typography {
         static let body = Font.system(size: 14, weight: .regular, design: .default)
         static let composer = Font.system(size: 14, weight: .regular, design: .default)
         static let heading = Font.system(size: 17, weight: .semibold, design: .default)
         static let section = Font.system(size: 11, weight: .semibold, design: .default)
+        /// Pill and tab labels.
+        static let label = Font.system(size: 11, weight: .medium, design: .default)
+        static let caption = Font.system(size: 12, weight: .regular, design: .default)
+        static let captionStrong = Font.system(size: 12, weight: .semibold, design: .default)
+        /// Count badges rendered inside small circles.
+        static let badge = Font.system(size: 9, weight: .semibold, design: .default)
+        /// Inline code and command output.
+        static let code = Font.system(size: 13, weight: .regular, design: .monospaced)
+
+        /// Markdown heading ladder (H1 → H3+), deliberately tighter than the
+        /// system scale so transcript headings do not shout.
+        static func markdownHeading(level: Int) -> Font {
+            switch level {
+            case 1: return .system(size: 19, weight: .semibold)
+            case 2: return .system(size: 16, weight: .semibold)
+            default: return .system(size: 14, weight: .semibold)
+            }
+        }
     }
 }
 

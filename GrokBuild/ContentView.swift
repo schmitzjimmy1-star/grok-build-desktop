@@ -298,9 +298,9 @@ struct ContentView: View {
         }
         .padding(24)
         .frame(width: 300)
-        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 18))
+        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: AppTheme.Radius.overlay))
         .overlay {
-            RoundedRectangle(cornerRadius: 18)
+            RoundedRectangle(cornerRadius: AppTheme.Radius.overlay)
                 .stroke(Color.primary.opacity(0.08))
         }
         .shadow(color: .black.opacity(0.18), radius: 24, y: 12)

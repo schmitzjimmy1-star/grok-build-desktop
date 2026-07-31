@@ -437,7 +437,7 @@ private struct MarkdownTextView: View {
                 }
                 ScrollView(.horizontal, showsIndicators: false) {
                     Text(text)
-                        .font(.system(size: 13, weight: .regular, design: .monospaced))
+                        .font(AppTheme.Typography.code)
                         .lineSpacing(3)
                         .textSelection(.enabled)
                         .padding(12)
@@ -510,11 +510,7 @@ private struct MarkdownTextView: View {
     }
 
     private func headingFont(level: Int) -> Font {
-        switch level {
-        case 1: return .system(size: 19, weight: .semibold)
-        case 2: return .system(size: 16, weight: .semibold)
-        default: return .system(size: 14, weight: .semibold)
-        }
+        AppTheme.Typography.markdownHeading(level: level)
     }
 
     private func renderedInlineMarkdown(_ chunk: String) -> AttributedString {

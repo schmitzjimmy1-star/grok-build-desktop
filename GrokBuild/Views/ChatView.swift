@@ -1274,8 +1274,8 @@ struct ChatView: View {
                 .font(.body)
                 .frame(minWidth: 380, minHeight: 120)
                 .padding(6)
-                .background(RoundedRectangle(cornerRadius: 8).fill(Color(nsColor: .textBackgroundColor)))
-                .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color(nsColor: .separatorColor)))
+                .background(RoundedRectangle(cornerRadius: AppTheme.Radius.large).fill(Color(nsColor: .textBackgroundColor)))
+                .overlay(RoundedRectangle(cornerRadius: AppTheme.Radius.large).stroke(Color(nsColor: .separatorColor)))
             HStack {
                 Spacer()
                 Button("Cancel") { showRememberPrompt = false }
@@ -1824,7 +1824,7 @@ private struct ErrorBanner: View {
             Spacer()
         }
         .padding(10)
-        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 8))
+        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: AppTheme.Radius.large))
         .padding(.horizontal, 20)
         .padding(.top, 10)
     }
@@ -1861,7 +1861,7 @@ private struct ModelSwitchBanner: View {
             .accessibilityLabel("Dismiss")
         }
         .padding(10)
-        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 8))
+        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: AppTheme.Radius.large))
         .padding(.horizontal, 20)
         .padding(.top, 10)
     }
@@ -1924,9 +1924,9 @@ struct AuthBanner: View {
             }
         }
         .padding(16)
-        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 10))
+        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: AppTheme.Radius.large))
         .overlay(
-            RoundedRectangle(cornerRadius: 10)
+            RoundedRectangle(cornerRadius: AppTheme.Radius.large)
                 .stroke(Color.orange.opacity(0.3), lineWidth: 1)
         )
         .padding(.horizontal, 20)
@@ -2011,9 +2011,9 @@ struct PermissionCard: View {
             }
         }
         .padding(12)
-        .background(Color.orange.opacity(0.08), in: RoundedRectangle(cornerRadius: 10))
+        .background(Color.orange.opacity(0.08), in: RoundedRectangle(cornerRadius: AppTheme.Radius.large))
         .overlay(
-            RoundedRectangle(cornerRadius: 10)
+            RoundedRectangle(cornerRadius: AppTheme.Radius.large)
                 .stroke(Color.orange.opacity(0.35), lineWidth: 1)
         )
         .transition(.opacity)

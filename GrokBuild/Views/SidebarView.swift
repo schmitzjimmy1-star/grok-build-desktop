@@ -320,7 +320,7 @@ private struct SessionSidebarRow: View {
             HStack(spacing: 8) {
                 ZStack {
                     Circle()
-                        .fill(AppTheme.Palette.status)
+                        .fill(AppTheme.Palette.textMuted)
                         .frame(width: 6, height: 6)
                         .opacity(isSelected ? 1 : 0)
                 }

@@ -145,7 +145,7 @@ struct SettingsView: View {
                 ForEach(SettingsSection.allCases) { section in
                     VStack(alignment: .leading, spacing: 4) {
                         Text(section.title.uppercased())
-                            .font(.system(size: 9, weight: .semibold))
+                            .font(AppTheme.Typography.badge)
                             .tracking(0.7)
                             .foregroundStyle(.tertiary)
                             .padding(.horizontal, 10)
@@ -157,10 +157,10 @@ struct SettingsView: View {
                         } label: {
                             HStack(spacing: 9) {
                                 Image(systemName: tab.systemImage)
-                                    .font(.system(size: 11, weight: .medium))
+                                    .font(AppTheme.Typography.label)
                                     .frame(width: 16)
                                 Text(tab.title)
-                                    .font(.system(size: 12, weight: selectedTab == tab ? .semibold : .medium))
+                                    .font(selectedTab == tab ? AppTheme.Typography.captionStrong : AppTheme.Typography.caption)
                                 Spacer(minLength: 0)
                             }
                                 .lineLimit(1)
@@ -504,7 +504,7 @@ private struct BrowserSettingsPane: View {
                         .textSelection(.enabled)
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .padding(10)
-                        .background(RoundedRectangle(cornerRadius: 8).fill(Color(nsColor: .textBackgroundColor)))
+                        .background(RoundedRectangle(cornerRadius: AppTheme.Radius.large).fill(Color(nsColor: .textBackgroundColor)))
                         .foregroundStyle(.secondary)
                 }
 
@@ -521,7 +521,7 @@ private struct BrowserSettingsPane: View {
                         .textSelection(.enabled)
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .padding(10)
-                        .background(RoundedRectangle(cornerRadius: 8).fill(Color(nsColor: .textBackgroundColor)))
+                        .background(RoundedRectangle(cornerRadius: AppTheme.Radius.large).fill(Color(nsColor: .textBackgroundColor)))
                         .foregroundStyle(.secondary)
                         .padding(.top, 8)
                 } label: {
@@ -715,7 +715,7 @@ private struct BrowserSettingsPane: View {
                             .textSelection(.enabled)
                             .frame(maxWidth: .infinity, alignment: .leading)
                             .padding(10)
-                            .background(RoundedRectangle(cornerRadius: 8).fill(Color(nsColor: .textBackgroundColor)))
+                            .background(RoundedRectangle(cornerRadius: AppTheme.Radius.large).fill(Color(nsColor: .textBackgroundColor)))
 
                         if let externalBrowserOutput, !externalBrowserOutput.isEmpty {
                             Text(externalBrowserOutput)
@@ -723,7 +723,7 @@ private struct BrowserSettingsPane: View {
                                 .textSelection(.enabled)
                                 .frame(maxWidth: .infinity, alignment: .leading)
                                 .padding(10)
-                                .background(RoundedRectangle(cornerRadius: 8).fill(Color(nsColor: .textBackgroundColor)))
+                                .background(RoundedRectangle(cornerRadius: AppTheme.Radius.large).fill(Color(nsColor: .textBackgroundColor)))
                                 .foregroundStyle(.secondary)
                         }
 
@@ -1088,7 +1088,7 @@ private struct BrowserSettingsPane: View {
             }
         }
         .padding(10)
-        .background(RoundedRectangle(cornerRadius: 10).fill(Color(nsColor: .textBackgroundColor)))
+        .background(RoundedRectangle(cornerRadius: AppTheme.Radius.large).fill(Color(nsColor: .textBackgroundColor)))
     }
 }
 
@@ -1222,7 +1222,7 @@ private struct PluginsSettingsPane: View {
                     .font(.caption)
                     .foregroundStyle(.red)
                     .padding(8)
-                    .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 8))
+                    .background(.regularMaterial, in: RoundedRectangle(cornerRadius: AppTheme.Radius.large))
             }
         }
     }
@@ -2213,7 +2213,7 @@ private struct SubagentRoleEditor: View {
                 TextEditor(text: $instruction)
                     .font(.body)
                     .frame(minHeight: 140)
-                    .overlay(RoundedRectangle(cornerRadius: 6).stroke(Color.primary.opacity(0.15)))
+                    .overlay(RoundedRectangle(cornerRadius: AppTheme.Radius.medium).stroke(Color.primary.opacity(0.15)))
                 Text("Saved to ~/.grok/prompts/\(name.isEmpty ? "<name>" : name).md")
                     .font(.caption2).foregroundStyle(.tertiary)
             }
@@ -2379,7 +2379,7 @@ private struct ComputerUseSettingsPane: View {
                             .textSelection(.enabled)
                             .frame(maxWidth: .infinity, alignment: .leading)
                             .padding(10)
-                            .background(RoundedRectangle(cornerRadius: 8).fill(Color(nsColor: .textBackgroundColor)))
+                            .background(RoundedRectangle(cornerRadius: AppTheme.Radius.large).fill(Color(nsColor: .textBackgroundColor)))
                             .foregroundStyle(.secondary)
                     }
                 }
@@ -2397,7 +2397,7 @@ private struct ComputerUseSettingsPane: View {
                             .textSelection(.enabled)
                             .frame(maxWidth: .infinity, alignment: .leading)
                             .padding(10)
-                            .background(RoundedRectangle(cornerRadius: 8).fill(Color(nsColor: .textBackgroundColor)))
+                            .background(RoundedRectangle(cornerRadius: AppTheme.Radius.large).fill(Color(nsColor: .textBackgroundColor)))
                             .foregroundStyle(.secondary)
                     }
                     .padding(.top, 8)
@@ -2506,7 +2506,7 @@ private struct ComputerUseSettingsPane: View {
                         .textSelection(.enabled)
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .padding(10)
-                        .background(RoundedRectangle(cornerRadius: 8).fill(Color(nsColor: .textBackgroundColor)))
+                        .background(RoundedRectangle(cornerRadius: AppTheme.Radius.large).fill(Color(nsColor: .textBackgroundColor)))
                         .foregroundStyle(.secondary)
                 }
             }
@@ -2609,7 +2609,7 @@ private struct ComputerUseSettingsPane: View {
                         .textSelection(.enabled)
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .padding(10)
-                        .background(RoundedRectangle(cornerRadius: 8).fill(Color(nsColor: .textBackgroundColor)))
+                        .background(RoundedRectangle(cornerRadius: AppTheme.Radius.large).fill(Color(nsColor: .textBackgroundColor)))
                         .foregroundStyle(.secondary)
                 }
             }
@@ -2893,7 +2893,7 @@ private struct ComputerUseSettingsPane: View {
             }
         }
         .padding(10)
-        .background(RoundedRectangle(cornerRadius: 10).fill(Color(nsColor: .textBackgroundColor)))
+        .background(RoundedRectangle(cornerRadius: AppTheme.Radius.large).fill(Color(nsColor: .textBackgroundColor)))
     }
 
     private func computerSettingsCard<Content: View>(
@@ -3247,9 +3247,9 @@ private struct CustomModelsSettingsPane: View {
         }
         .padding(10)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(RoundedRectangle(cornerRadius: 10).fill(Color(nsColor: .textBackgroundColor)))
+        .background(RoundedRectangle(cornerRadius: AppTheme.Radius.large).fill(Color(nsColor: .textBackgroundColor)))
         .overlay(
-            RoundedRectangle(cornerRadius: 10)
+            RoundedRectangle(cornerRadius: AppTheme.Radius.large)
                 .stroke(installed ? AppTheme.Palette.glassBorderStrong : AppTheme.Palette.glassBorder)
         )
     }
@@ -4430,7 +4430,7 @@ private struct MCPSettingsPane: View {
                                 }
                             }
                             .padding(10)
-                            .background(.quaternary, in: RoundedRectangle(cornerRadius: 8))
+                            .background(.quaternary, in: RoundedRectangle(cornerRadius: AppTheme.Radius.large))
                         }
                     }
                 }
@@ -4693,8 +4693,8 @@ private struct PermissionsSettingsPane: View {
                 .frame(minHeight: AppTheme.Layout.settingsRuleEditorHeight)
                 .scrollContentBackground(.hidden)
                 .padding(8)
-                .background(RoundedRectangle(cornerRadius: 10).fill(Color(nsColor: .textBackgroundColor)))
-                .overlay(RoundedRectangle(cornerRadius: 10).stroke(AppTheme.Palette.glassBorder))
+                .background(RoundedRectangle(cornerRadius: AppTheme.Radius.large).fill(Color(nsColor: .textBackgroundColor)))
+                .overlay(RoundedRectangle(cornerRadius: AppTheme.Radius.large).stroke(AppTheme.Palette.glassBorder))
         }
         .frame(maxWidth: .infinity)
     }
@@ -4816,8 +4816,8 @@ private struct MemorySettingsPane: View {
                 .font(.body)
                 .frame(minWidth: 380, minHeight: 120)
                 .padding(6)
-                .background(RoundedRectangle(cornerRadius: 8).fill(Color(nsColor: .textBackgroundColor)))
-                .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color(nsColor: .separatorColor)))
+                .background(RoundedRectangle(cornerRadius: AppTheme.Radius.large).fill(Color(nsColor: .textBackgroundColor)))
+                .overlay(RoundedRectangle(cornerRadius: AppTheme.Radius.large).stroke(Color(nsColor: .separatorColor)))
             HStack {
                 Spacer()
                 Button("Cancel") { showRemember = false }
