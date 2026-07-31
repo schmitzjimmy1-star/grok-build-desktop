@@ -2379,7 +2379,7 @@ private struct ComputerUseSettingsPane: View {
     }
 
     private var permissionsCard: some View {
-        computerSettingsCard(title: "macOS Permissions", systemImage: permissionStatus.isReady ? "lock.open" : "lock.shield") {
+        computerSettingsCard(title: "macOS Permissions", systemImage: permissionStatus.isReady(includeScreenshots: includeScreenshots) ? "lock.open" : "lock.shield") {
             VStack(alignment: .leading, spacing: 12) {
                 Text("Accessibility is required for UI actions. Screen Recording is needed only for screenshots.")
                     .foregroundStyle(.secondary)
@@ -2639,7 +2639,8 @@ private struct ComputerUseSettingsPane: View {
 
     private var statusBadge: some View {
         let isEnabled = appliedSettings.enabled
-        let text = isEnabled ? (permissionStatus.isReady ? "Ready" : "Setup needed") : "Disabled"
+        let ready = permissionStatus.isReady(includeScreenshots: appliedSettings.includeScreenshots)
+        let text = isEnabled ? (ready ? "Ready" : "Setup needed") : "Disabled"
         return Text(text)
             .font(.caption.weight(.semibold))
             .foregroundStyle(.secondary)

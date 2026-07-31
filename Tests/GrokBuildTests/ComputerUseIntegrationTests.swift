@@ -137,7 +137,8 @@ final class ComputerUseIntegrationTests: XCTestCase {
 
         XCTAssertEqual(status.accessibility, "granted")
         XCTAssertEqual(status.screenRecording, "denied")
-        XCTAssertTrue(status.isReady)
+        XCTAssertTrue(status.isReady(includeScreenshots: false))
+        XCTAssertFalse(status.isReady(includeScreenshots: true))
     }
 
     func testPermissionDiagnosticsParseAgentDesktopEnvelope() {
@@ -147,7 +148,8 @@ final class ComputerUseIntegrationTests: XCTestCase {
 
         XCTAssertEqual(status.accessibility, "granted")
         XCTAssertEqual(status.screenRecording, "denied")
-        XCTAssertTrue(status.isReady)
+        XCTAssertTrue(status.isReady(includeScreenshots: false))
+        XCTAssertFalse(status.isReady(includeScreenshots: true))
     }
 
     func testPermissionDiagnosticsParseAgentDesktopV1GrantedFlag() {
@@ -157,7 +159,7 @@ final class ComputerUseIntegrationTests: XCTestCase {
 
         XCTAssertEqual(status.accessibility, "granted")
         XCTAssertEqual(status.screenRecording, "not reported")
-        XCTAssertTrue(status.isReady)
+        XCTAssertTrue(status.isReady(includeScreenshots: false))
     }
 
     func testPermissionDiagnosticsParseAgentDesktopV1DeniedFlag() {
@@ -167,7 +169,7 @@ final class ComputerUseIntegrationTests: XCTestCase {
 
         XCTAssertEqual(status.accessibility, "denied")
         XCTAssertEqual(status.screenRecording, "not reported")
-        XCTAssertFalse(status.isReady)
+        XCTAssertFalse(status.isReady(includeScreenshots: false))
         XCTAssertEqual(
             status.guidance,
             "Open System Settings → Privacy & Security → Accessibility and enable \(ComputerUseService.hostAppName)."
@@ -187,7 +189,11 @@ final class ComputerUseIntegrationTests: XCTestCase {
         )
     }
 
-    func testMergedPermissionStatusUsesLocalAccessibilityWhenGranted() {
+    /// With an EXTERNAL agent-desktop (no bundled copy in the test bundle),
+    /// GrokBuild's own Accessibility grant must NOT mask the actuator's
+    /// denial — the old OR-chain reported "Ready" here and the first real
+    /// click failed.
+    func testExternalAgentDesktopDenialIsNotMaskedByGrokBuildGrant() {
         let cliStatus = ComputerUsePermissionStatus(
             accessibility: "denied",
             screenRecording: "not reported",
@@ -195,15 +201,22 @@ final class ComputerUseIntegrationTests: XCTestCase {
             guidance: "Enable GrokBuild."
         )
 
-        let merged = ComputerUseService.mergedPermissionStatus(cliStatus, localAccessibilityGranted: true)
+        let resolved = ComputerUseService.resolvePermissionStatus(
+            cliStatus: cliStatus,
+            grokBuildGranted: true,
+            probe: nil,
+            grokBuildScreenRecordingGranted: false
+        )
 
-        XCTAssertEqual(merged.accessibility, "granted")
-        XCTAssertTrue(merged.isReady)
-        XCTAssertNil(merged.guidance)
-        XCTAssertTrue(merged.diagnostic.contains("GrokBuild Accessibility: granted"))
+        XCTAssertEqual(resolved.accessibility, "denied")
+        XCTAssertFalse(resolved.isReady(includeScreenshots: false))
+        XCTAssertNotNil(resolved.guidance)
+        XCTAssertTrue(resolved.diagnostic.contains("GrokBuild Accessibility: granted"))
     }
 
-    func testResolvePermissionStatusUsesHelperAccessibility() {
+    /// Helper trust is diagnostic only: the helper never touches AX APIs
+    /// itself, so its grant cannot make an external agent-desktop ready.
+    func testExternalAgentDesktopDenialIsNotMaskedByHelperGrant() {
         let cliStatus = ComputerUsePermissionStatus(
             accessibility: "denied",
             screenRecording: "not reported",
@@ -221,12 +234,34 @@ final class ComputerUseIntegrationTests: XCTestCase {
         let resolved = ComputerUseService.resolvePermissionStatus(
             cliStatus: cliStatus,
             grokBuildGranted: false,
-            probe: probe
+            probe: probe,
+            grokBuildScreenRecordingGranted: false
         )
 
-        XCTAssertEqual(resolved.accessibility, "granted")
-        XCTAssertTrue(resolved.isReady)
+        XCTAssertEqual(resolved.accessibility, "denied")
+        XCTAssertFalse(resolved.isReady(includeScreenshots: false))
         XCTAssertTrue(resolved.diagnostic.contains("Helper Accessibility: granted"))
+    }
+
+    /// Screenshots enabled + known Screen Recording denial blocks readiness
+    /// even when Accessibility is granted; unknown state does not block.
+    func testReadinessAccountsForScreenRecordingWhenScreenshotsEnabled() {
+        let denied = ComputerUsePermissionStatus(
+            accessibility: "granted",
+            screenRecording: "denied",
+            diagnostic: "",
+            guidance: nil
+        )
+        XCTAssertTrue(denied.isReady(includeScreenshots: false))
+        XCTAssertFalse(denied.isReady(includeScreenshots: true))
+
+        let unknown = ComputerUsePermissionStatus(
+            accessibility: "granted",
+            screenRecording: "not reported",
+            diagnostic: "",
+            guidance: nil
+        )
+        XCTAssertTrue(unknown.isReady(includeScreenshots: true))
     }
 
     func testResolvePermissionStatusUsesAgentDesktopAccessibility() {
@@ -247,11 +282,12 @@ final class ComputerUseIntegrationTests: XCTestCase {
         let resolved = ComputerUseService.resolvePermissionStatus(
             cliStatus: cliStatus,
             grokBuildGranted: false,
-            probe: probe
+            probe: probe,
+            grokBuildScreenRecordingGranted: false
         )
 
         XCTAssertEqual(resolved.accessibility, "granted")
-        XCTAssertTrue(resolved.isReady)
+        XCTAssertTrue(resolved.isReady(includeScreenshots: false))
     }
 
     func testParseAccessibilityTrustProbeReadsHelperJSON() {
@@ -264,7 +300,7 @@ final class ComputerUseIntegrationTests: XCTestCase {
         XCTAssertEqual(probe?.helperExecutablePath, "/tmp/helper")
     }
 
-    func testMergedPermissionStatusKeepsCLIDenialWhenLocalAccessibilityMissing() {
+    func testResolvedStatusKeepsCLIDenialWhenNothingIsGranted() {
         let cliStatus = ComputerUsePermissionStatus(
             accessibility: "denied",
             screenRecording: "not reported",
@@ -272,12 +308,17 @@ final class ComputerUseIntegrationTests: XCTestCase {
             guidance: "Enable GrokBuild."
         )
 
-        let merged = ComputerUseService.mergedPermissionStatus(cliStatus, localAccessibilityGranted: false)
+        let resolved = ComputerUseService.resolvePermissionStatus(
+            cliStatus: cliStatus,
+            grokBuildGranted: false,
+            probe: nil,
+            grokBuildScreenRecordingGranted: false
+        )
 
-        XCTAssertEqual(merged.accessibility, "denied")
-        XCTAssertFalse(merged.isReady)
-        XCTAssertNotNil(merged.guidance)
-        XCTAssertTrue(merged.guidance?.localizedCaseInsensitiveContains("accessibility") ?? false)
+        XCTAssertEqual(resolved.accessibility, "denied")
+        XCTAssertFalse(resolved.isReady(includeScreenshots: false))
+        XCTAssertNotNil(resolved.guidance)
+        XCTAssertTrue(resolved.guidance?.localizedCaseInsensitiveContains("accessibility") ?? false)
     }
 
     func testVersionParserUsesAgentDesktopDataVersion() {

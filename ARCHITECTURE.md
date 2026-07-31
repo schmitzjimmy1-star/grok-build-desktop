@@ -586,7 +586,7 @@ grok owns memory storage, indexing, search, and first-turn injection ([`13-memor
 
 **Tools:** `computer_snapshot`, `computer_click`, `computer_type`, `computer_screenshot`, etc.
 
-**Permissions:** macOS Accessibility; merged status from GrokBuild, helper, agent-desktop, CLI.
+**Permissions:** macOS Accessibility (+ Screen Recording when screenshots are enabled). Bundled agent-desktop shares the app's signing identity, so any of GrokBuild/helper/agent-desktop grants proves trust; an **external** agent-desktop is authoritative for itself — only its own grant counts, and GrokBuild's trust never masks a denied actuator. Screen Recording uses `CGPreflightScreenCaptureAccess` for the bundled copy; a known denial blocks readiness when screenshots are on.
 
 ### Custom models
 

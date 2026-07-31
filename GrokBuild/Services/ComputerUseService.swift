@@ -32,8 +32,14 @@ struct ComputerUsePermissionStatus: Sendable, Equatable {
         guidance: nil
     )
 
-    var isReady: Bool {
-        accessibility == "granted"
+    /// Ready to act. Accessibility must be granted; when screenshots are
+    /// enabled, a *known* Screen Recording denial also blocks readiness
+    /// (unknown/not-reported does not, to avoid hard-blocking older
+    /// agent-desktop versions that cannot report it).
+    func isReady(includeScreenshots: Bool) -> Bool {
+        guard accessibility == "granted" else { return false }
+        if includeScreenshots && screenRecording == "denied" { return false }
+        return true
     }
 }
 
@@ -181,7 +187,7 @@ enum ComputerUseService {
                 return .needsSetup
             }
             let permissions = await permissionStatus(settings: settings)
-            guard permissions.isReady else {
+            guard permissions.isReady(includeScreenshots: settings.includeScreenshots) else {
                 return .needsSetup
             }
         }
@@ -270,6 +276,13 @@ enum ComputerUseService {
         AXIsProcessTrusted()
     }
 
+    /// Screen Recording preflight for this process. Meaningful for the
+    /// bundled agent-desktop (same signing identity); an external copy has
+    /// its own TCC identity and must report for itself.
+    static func localScreenRecordingGranted() -> Bool {
+        CGPreflightScreenCaptureAccess()
+    }
+
     static var runningExecutablePath: String {
         Bundle.main.executableURL?.path ?? ProcessInfo.processInfo.arguments[0]
     }
@@ -330,17 +343,24 @@ enum ComputerUseService {
         cliStatus: ComputerUsePermissionStatus,
         grokBuildGranted: Bool,
         probe: AccessibilityTrustProbe?,
-        settings: ComputerUseSettings = ComputerUseSettingsStore.load()
+        settings: ComputerUseSettings = ComputerUseSettingsStore.load(),
+        grokBuildScreenRecordingGranted: Bool = localScreenRecordingGranted()
     ) -> ComputerUsePermissionStatus {
         let helperGranted = probe?.helperGranted ?? false
         let agentDesktopGranted = probe?.agentDesktopGranted ?? false
         let cliGranted = cliStatus.accessibility == "granted"
-        // Bundled agent-desktop is signed with the app bundle id; GrokBuild access is enough.
+        let bundled = usesBundledAgentDesktop(settings: settings)
+
         let granted: Bool
-        if usesBundledAgentDesktop(settings: settings) {
+        if bundled {
+            // All three binaries are signed with the app's bundle id, so any
+            // grant proves the shared TCC identity is trusted.
             granted = grokBuildGranted || helperGranted || agentDesktopGranted || cliGranted
         } else {
-            granted = agentDesktopGranted || grokBuildGranted || helperGranted || cliGranted
+            // An external agent-desktop has its own TCC identity. Only its
+            // own grant (probe or direct report) counts — GrokBuild's or the
+            // helper's trust must not mask a denied actuator.
+            granted = agentDesktopGranted || cliGranted
         }
 
         var resolved = cliStatus
@@ -350,6 +370,11 @@ enum ComputerUseService {
         } else {
             resolved.guidance = accessibilityGuidance(probe: probe, settings: settings)
         }
+        // Screen Recording: for the bundled copy this process's preflight is
+        // authoritative (same identity); an external copy keeps its own report.
+        if bundled && grokBuildScreenRecordingGranted {
+            resolved.screenRecording = "granted"
+        }
         resolved.diagnostic = permissionDiagnosticText(
             cliStatus: cliStatus,
             grokBuildGranted: grokBuildGranted,
@@ -357,17 +382,6 @@ enum ComputerUseService {
             settings: settings
         )
         return resolved
-    }
-
-    static func mergedPermissionStatus(
-        _ status: ComputerUsePermissionStatus,
-        localAccessibilityGranted: Bool
-    ) -> ComputerUsePermissionStatus {
-        resolvePermissionStatus(
-            cliStatus: status,
-            grokBuildGranted: localAccessibilityGranted,
-            probe: nil
-        )
     }
 
     static func accessibilityGuidance(
