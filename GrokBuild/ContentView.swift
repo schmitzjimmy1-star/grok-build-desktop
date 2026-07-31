@@ -1283,9 +1283,7 @@ extension Notification.Name {
     static let stopGenerationRequested = Notification.Name("stopGenerationRequested")
     static let focusInputRequested = Notification.Name("focusInputRequested")
     static let toggleSidebarRequested = Notification.Name("toggleSidebarRequested")
-    static let showMainWindowRequested = Notification.Name("showMainWindowRequested")
     static let newSessionRequested = Notification.Name("newSessionRequested")
-    static let grokStatusChanged = Notification.Name("grokStatusChanged")
     static let liveSessionMessagesChanged = Notification.Name("liveSessionMessagesChanged")
     static let liveSessionModelChanged = Notification.Name("liveSessionModelChanged")
     static let liveSessionAgentChanged = Notification.Name("liveSessionAgentChanged")
@@ -1295,10 +1293,8 @@ extension Notification.Name {
     static let grokBuildUpdateStateChanged = Notification.Name("grokBuildUpdateStateChanged")
     static let grokBuildUpdaterPhaseChanged = Notification.Name("grokBuildUpdaterPhaseChanged")
     static let grokBuildCLIUpdaterPhaseChanged = Notification.Name("grokBuildCLIUpdaterPhaseChanged")
-    static let grokBuildCLIUpdated = Notification.Name("grokBuildCLIUpdated")
     static let grokBuildRestartSessionsRequested = Notification.Name("grokBuildRestartSessionsRequested")
     static let grokBuildPrepareForShutdown = Notification.Name("grokBuildPrepareForShutdown")
-    static let retryConnectionRequested = Notification.Name("retryConnectionRequested")
     static let openSettingsRequested = Notification.Name("openSettingsRequested")
     static let workflowsConfigChanged = Notification.Name("workflowsConfigChanged")
 }
@@ -1336,10 +1332,10 @@ private struct ContentViewNotificationHandlers: ViewModifier {
             .onReceive(NotificationCenter.default.publisher(for: .newSessionRequested)) { _ in
                 onNewSession()
             }
-            .modifier(StatusMenuNotificationHandlers(
-                activeStore: activeStore,
-                openSettings: openSettings
-            ))
+            .onReceive(NotificationCenter.default.publisher(for: .openSettingsRequested)) { _ in
+                let tab: SettingsTab = UpdateScheduler.hasAnyActionableUpdate ? .app : .agents
+                openSettings(tab)
+            }
             .onChange(of: activeStore.grokSessionId) { _, _ in
                 onPersistSessionLayout(true)
             }
@@ -1401,23 +1397,6 @@ private struct ContentViewNotificationHandlers: ViewModifier {
             for session in liveSessions {
                 await session.store.retryConnection()
             }
-            NotificationCenter.default.post(name: .grokStatusChanged, object: nil)
         }
-    }
-}
-
-private struct StatusMenuNotificationHandlers: ViewModifier {
-    let activeStore: ChatStore
-    let openSettings: (SettingsTab) -> Void
-
-    func body(content: Content) -> some View {
-        content
-            .onReceive(NotificationCenter.default.publisher(for: .retryConnectionRequested)) { _ in
-                Task { await activeStore.retryConnection() }
-            }
-            .onReceive(NotificationCenter.default.publisher(for: .openSettingsRequested)) { _ in
-                let tab: SettingsTab = UpdateScheduler.hasAnyActionableUpdate ? .app : .agents
-                openSettings(tab)
-            }
     }
 }

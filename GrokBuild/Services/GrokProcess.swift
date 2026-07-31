@@ -13,19 +13,6 @@ enum GrokProcessState: Sendable, Equatable {
         return nil
     }
 
-    /// Status string for `.grokStatusChanged` (`error` / `busy` / `ready` / `idle`).
-    static func statusString(for state: GrokProcessState) -> String {
-        switch state {
-        case .failed:
-            return "error"
-        case .busy:
-            return "busy"
-        case .ready:
-            return "ready"
-        case .idle, .starting:
-            return "idle"
-        }
-    }
 }
 
 struct GrokLaunchOptions: Sendable {
@@ -483,13 +470,11 @@ final class GrokProcess: @unchecked Sendable {
                 try await createSession(workspace: workspace, mcpServers: options.mcpServers)
             }
             state = .ready
-            notifyStatus()
         } catch {
             let stderrDetails = startupStderrSnapshot()
             let suffix = stderrDetails.isEmpty ? "" : "\n\(stderrDetails)"
             state = .failed("ACP initialize failed: \(error.localizedDescription)\(suffix)")
             await cleanupProcess(setIdle: false)
-            notifyStatus()
         }
     }
 
@@ -529,7 +514,6 @@ final class GrokProcess: @unchecked Sendable {
             state = .idle
         }
         currentWorkspace = nil
-        notifyStatus()
     }
 
     // MARK: - Public API
@@ -538,7 +522,6 @@ final class GrokProcess: @unchecked Sendable {
     func send(_ text: String) async -> Bool {
         guard let sid = sessionId, state == .ready || state == .busy else { return false }
         state = .busy
-        notifyStatus()
 
         do {
             _ = try await sendRequest(method: "session/prompt", params: [
@@ -546,11 +529,9 @@ final class GrokProcess: @unchecked Sendable {
                 "prompt": [["type": "text", "text": text]]
             ])
             state = .ready
-            notifyStatus()
             return true
         } catch {
             state = .failed("Prompt error: \(error.localizedDescription)")
-            notifyStatus()
             return false
         }
     }
@@ -1123,14 +1104,6 @@ final class GrokProcess: @unchecked Sendable {
         return nil
     }
 
-    private func notifyStatus() {
-        let s = GrokProcessState.statusString(for: state)
-        let authenticated = !needsAuthentication
-        let userInfo: [String: Any] = ["status": s, "authenticated": authenticated]
-        DispatchQueue.main.async {
-            NotificationCenter.default.post(name: .grokStatusChanged, object: nil, userInfo: userInfo)
-        }
-    }
 }
 
 extension FileHandle {

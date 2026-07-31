@@ -69,12 +69,6 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMenuDele
         )
         NotificationCenter.default.addObserver(
             self,
-            selector: #selector(openMainWindowRequested),
-            name: .showMainWindowRequested,
-            object: nil
-        )
-        NotificationCenter.default.addObserver(
-            self,
             selector: #selector(updateMenuStateChanged),
             name: .grokBuildUpdateAvailable,
             object: nil
@@ -301,10 +295,6 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMenuDele
         NSApp.windowsMenu = windowMenu
 
         NSApp.mainMenu = mainMenu
-    }
-
-    @objc private func openMainWindowRequested() {
-        openMainWindow()
     }
 
     @objc private func handleExternalShowMainWindow(_ notification: Notification) {

@@ -169,15 +169,6 @@ final class ChatStore {
         sessionSelections = decoded
     }
 
-    private func postStatusUpdate(_ status: String) {
-        let authenticated = !process.needsAuthentication
-        NotificationCenter.default.post(
-            name: .grokStatusChanged,
-            object: nil,
-            userInfo: ["status": status, "authenticated": authenticated]
-        )
-    }
-
     // MARK: Context
 
     func setWorkspace(_ workspace: Workspace) async {
@@ -416,7 +407,6 @@ final class ChatStore {
         usedContextTokens = nil
         connectionState = .starting
         lastError = nil
-        postStatusUpdate("starting")
         startConnectionWatchdog()
         let settings = loadPermissionSettings()
         let savedSelection = resumeSessionID.flatMap { sessionSelections[$0] }
@@ -470,10 +460,8 @@ final class ChatStore {
         connectionState = process.state
         if case .failed(let message) = process.state {
             lastError = message
-            postStatusUpdate(statusName(for: connectionState))
             return
         }
-        postStatusUpdate(statusName(for: connectionState))
         availableModes = process.availableModes
         syncModelsFromProcess()
         if process.sessionLoadStartedFreshFallback {
@@ -510,7 +498,6 @@ final class ChatStore {
         guard connectionState == .starting else { return }
         lastError = process.state.errorMessage ?? "Timed out while connecting to grok."
         connectionState = .failed(lastError ?? "Timed out while connecting to grok.")
-        postStatusUpdate("error")
         await process.stop()
     }
 
@@ -830,7 +817,6 @@ final class ChatStore {
         pendingExitPlan = nil
         pendingQuestions.removeAll()
         connectionState = .busy
-        postStatusUpdate("busy")
 
         let payload = trimmed
         let assistantID = assistant.id
@@ -864,7 +850,6 @@ final class ChatStore {
         }
         if ok {
             connectionState = .ready
-            postStatusUpdate("ready")
             notifyMessagesChanged()
             drainPromptQueueIfNeeded()
             return
@@ -873,7 +858,6 @@ final class ChatStore {
         pendingShareURLCapture = false
         lastError = process.state.errorMessage ?? "Failed to send to grok."
         connectionState = process.state == .ready ? .ready : process.state
-        postStatusUpdate(statusName(for: connectionState))
         if let idx = messages.firstIndex(where: { $0.id == assistantID }),
            messages[idx].content.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             messages.remove(at: idx)
@@ -929,7 +913,6 @@ final class ChatStore {
         pendingQuestions.removeAll()
         process.interrupt()
         connectionState = .ready
-        postStatusUpdate("ready")
     }
 
     func shutdown() async {
@@ -939,7 +922,6 @@ final class ChatStore {
         streamingMessageID = nil
         await process.stop()
         connectionState = .idle
-        postStatusUpdate("idle")
     }
 
     func respondToExitPlan(_ request: ExitPlanRequest, verdict: ExitPlanRequest.PlanVerdict, comment: String = "") {
