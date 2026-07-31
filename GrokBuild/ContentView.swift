@@ -47,6 +47,8 @@ struct ContentView: View {
     @State private var showUpgradeBanner = false
     @State private var bannerAppVersion: String?
     @State private var bannerCLIVersion: String?
+    @AppStorage(SidebarVisibility.storageKey)
+    private var isSidebarVisible = SidebarVisibility.defaultVisible
 
     private var gitErrorAlertPresented: Binding<Bool> {
         Binding(
@@ -79,6 +81,7 @@ struct ContentView: View {
             }
 
             HSplitView {
+            if SidebarVisibility.shouldShow(preference: isSidebarVisible, settingsPresented: showSettings) {
             SidebarView(
                 workspaces: $workspaceStore.workspaces,
                 orderedWorkspaces: workspaceStore.orderedWorkspaces,
@@ -119,7 +122,8 @@ struct ContentView: View {
                 onOpenSettings: { openSettings(tab: .agents) },
                 isSettingsSelected: showSettings
             )
-            .frame(minWidth: 240, idealWidth: 260, maxWidth: 300)
+            .frame(minWidth: 220, idealWidth: 244, maxWidth: 280)
+            }
 
             if showSettings {
                 SettingsView(store: activeStore, selectedTab: $selectedSettingsTab) {
@@ -130,6 +134,9 @@ struct ContentView: View {
                 HSplitView {
                     ChatView(
                         store: activeStore,
+                        isSidebarVisible: isSidebarVisible,
+                        onToggleSidebar: { isSidebarVisible.toggle() },
+                        onOpenSettings: { openSettings(tab: .agents) },
                         reviewFileCount: activeReviewDiffs.count,
                         isReviewVisible: showPreview,
                         onToggleReview: {
@@ -158,6 +165,7 @@ struct ContentView: View {
                             }
                         }
                     )
+                    .id(activeStore.tabSessionID)
                     .frame(minWidth: 360, maxWidth: .infinity, maxHeight: .infinity)
 
                     if showPreview {
@@ -182,6 +190,8 @@ struct ContentView: View {
                 sessionRestoreOverlay
             }
         }
+        .background(AppTheme.Palette.canvas)
+        .tint(AppTheme.Palette.accent)
         .onAppear(perform: bootstrap)
         .onAppear { refreshUpgradeBannerState() }
         .onReceive(NotificationCenter.default.publisher(for: .grokBuildUpdateAvailable)) { _ in

@@ -1,4 +1,5 @@
 import XCTest
+import AppKit
 @testable import GrokBuild
 
 final class SettingsTabTests: XCTestCase {
@@ -18,7 +19,6 @@ final class SettingsTabTests: XCTestCase {
             [
                 "Agents",
                 "Models",
-                "Permissions",
                 "Memory",
                 "Workflows",
                 "Browser",
@@ -27,8 +27,9 @@ final class SettingsTabTests: XCTestCase {
                 "Skills",
                 "Plugins",
                 "Marketplace",
-                "Compatibility",
                 "Hooks",
+                "Compatibility",
+                "Permissions",
                 "App",
             ]
         )
@@ -37,6 +38,26 @@ final class SettingsTabTests: XCTestCase {
     func testAllTabsHaveSystemImages() {
         for tab in SettingsTab.allCases {
             XCTAssertFalse(tab.systemImage.isEmpty, "\(tab) missing systemImage")
+            XCTAssertNotNil(
+                NSImage(systemSymbolName: tab.systemImage, accessibilityDescription: nil),
+                "\(tab) uses unavailable SF Symbol \(tab.systemImage)"
+            )
+        }
+    }
+
+    func testSettingsSidebarGroupsEveryTabExactlyOnce() {
+        let groupedTabs = SettingsSection.allCases.flatMap(\.tabs)
+        XCTAssertEqual(groupedTabs.count, SettingsTab.allCases.count)
+        XCTAssertEqual(Set(groupedTabs), Set(SettingsTab.allCases))
+        XCTAssertEqual(groupedTabs, SettingsTab.allCases)
+        XCTAssertEqual(
+            SettingsSection.allCases.map(\.title),
+            ["Grok", "Tools", "Extensions", "Controls", "Application"]
+        )
+
+        for section in SettingsSection.allCases {
+            XCTAssertFalse(section.title.isEmpty)
+            XCTAssertFalse(section.tabs.isEmpty, "\(section) should contain at least one tab")
         }
     }
 
@@ -53,5 +74,11 @@ final class SettingsTabTests: XCTestCase {
         XCTAssertTrue(SettingsTabKeepAlive.shouldMount(.browser, selected: .models, loaded: loaded))
         XCTAssertTrue(SettingsTabKeepAlive.shouldMount(.models, selected: .models, loaded: loaded))
         XCTAssertFalse(SettingsTabKeepAlive.shouldMount(.hooks, selected: .models, loaded: loaded))
+    }
+
+    func testSettingsProportionsStayCompactAtFullScreenWidths() {
+        XCTAssertLessThanOrEqual(AppTheme.Layout.settingsContentMaxWidth, 760)
+        XCTAssertLessThanOrEqual(AppTheme.Layout.settingsControlWidth, 180)
+        XCTAssertLessThan(AppTheme.Layout.settingsRuleEditorHeight, 120)
     }
 }

@@ -47,7 +47,7 @@ if [ -d "$ROOT_DIR/GrokBuild/Resources/Skills" ]; then
 fi
 
 # Copy the Grok brand mark so GrokBrandIcon.mark() resolves it in the dev bundle
-# (menu bar icon + welcome state). Without this the app falls back to an SF Symbol.
+# (brand mark + welcome state). Without this the app falls back to an SF Symbol.
 ICONSET_DIR="$ROOT_DIR/GrokBuild/Resources/Assets.xcassets/MenuBarIcon.imageset"
 for icon in MenuBarIcon.png MenuBarIcon@2x.png MenuBarIcon@3x.png; do
     if [ -f "$ICONSET_DIR/$icon" ]; then

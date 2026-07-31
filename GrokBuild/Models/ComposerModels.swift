@@ -252,24 +252,24 @@ struct QuickStartPrompt: Identifiable, Hashable, Sendable {
 
     static let defaults: [QuickStartPrompt] = [
         QuickStartPrompt(
-            icon: "doc.text.magnifyingglass",
-            title: "Explain this project",
+            icon: "magnifyingglass",
+            title: "Explore and understand code",
             prompt: "Give me a high-level overview of this project: its purpose, structure, and how the main pieces fit together."
         ),
         QuickStartPrompt(
-            icon: "ladybug",
-            title: "Find & fix a bug",
-            prompt: "Help me track down a bug. Ask me what I'm seeing, then investigate the relevant code and propose a fix."
+            icon: "hammer",
+            title: "Build a new feature, app, or tool",
+            prompt: "Help me plan and build a new feature, app, or tool in this project."
         ),
         QuickStartPrompt(
-            icon: "checkmark.seal",
-            title: "Add tests",
-            prompt: "Add tests for the recent changes in this project, following the existing testing conventions."
-        ),
-        QuickStartPrompt(
-            icon: "arrow.triangle.branch",
-            title: "Review my changes",
+            icon: "arrow.triangle.2.circlepath",
+            title: "Review code and suggest changes",
             prompt: "Review my uncommitted changes for correctness, style, and potential issues."
+        ),
+        QuickStartPrompt(
+            icon: "ladybug",
+            title: "Fix issues and failures",
+            prompt: "Help me track down a bug or failure, investigate the relevant code, and propose a fix."
         ),
     ]
 }

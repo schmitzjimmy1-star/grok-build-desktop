@@ -114,18 +114,234 @@ enum MarkdownBlockParser {
     }
 }
 
+struct MarkdownTextBlock: Identifiable, Hashable {
+    enum Content: Hashable {
+        case paragraph(String)
+        case heading(level: Int, text: String)
+        case unorderedList([String])
+        case orderedList([String])
+        case quote(String)
+        case code(language: String?, text: String)
+        case table(headers: [String], rows: [[String]])
+        case divider
+    }
+
+    let id: Int
+    let content: Content
+}
+
+enum MarkdownTextBlockParser {
+    static func parse(_ text: String) -> [MarkdownTextBlock] {
+        let lines = text.components(separatedBy: .newlines)
+        var blocks: [MarkdownTextBlock] = []
+        var index = 0
+
+        func append(_ content: MarkdownTextBlock.Content) {
+            blocks.append(MarkdownTextBlock(id: blocks.count, content: content))
+        }
+
+        while index < lines.count {
+            let line = lines[index]
+            let trimmed = line.trimmingCharacters(in: .whitespaces)
+
+            if trimmed.isEmpty {
+                index += 1
+                continue
+            }
+
+            if trimmed.hasPrefix("```") {
+                let languageText = String(trimmed.dropFirst(3))
+                    .trimmingCharacters(in: .whitespacesAndNewlines)
+                let language = languageText.isEmpty ? nil : languageText
+                index += 1
+                var codeLines: [String] = []
+                while index < lines.count {
+                    let candidate = lines[index]
+                    if candidate.trimmingCharacters(in: .whitespaces).hasPrefix("```") {
+                        index += 1
+                        break
+                    }
+                    codeLines.append(candidate)
+                    index += 1
+                }
+                append(.code(language: language, text: codeLines.joined(separator: "\n")))
+                continue
+            }
+
+            if index + 1 < lines.count,
+               looksLikeTableRow(line),
+               looksLikeTableSeparator(lines[index + 1]) {
+                let headers = tableCells(in: line)
+                index += 2
+                var rows: [[String]] = []
+                while index < lines.count {
+                    let candidate = lines[index]
+                    guard looksLikeTableRow(candidate),
+                          !candidate.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+                        break
+                    }
+                    rows.append(tableCells(in: candidate))
+                    index += 1
+                }
+                append(.table(headers: headers, rows: rows))
+                continue
+            }
+
+            if let heading = heading(in: trimmed) {
+                append(.heading(level: heading.level, text: heading.text))
+                index += 1
+                continue
+            }
+
+            if trimmed.hasPrefix(">") {
+                var quoteLines: [String] = []
+                while index < lines.count {
+                    let candidate = lines[index].trimmingCharacters(in: .whitespaces)
+                    guard candidate.hasPrefix(">") else { break }
+                    quoteLines.append(
+                        String(candidate.dropFirst())
+                            .trimmingCharacters(in: .whitespaces)
+                    )
+                    index += 1
+                }
+                append(.quote(quoteLines.joined(separator: "\n")))
+                continue
+            }
+
+            if unorderedListItem(in: trimmed) != nil {
+                var items: [String] = []
+                while index < lines.count,
+                      let item = unorderedListItem(
+                        in: lines[index].trimmingCharacters(in: .whitespaces)
+                      ) {
+                    items.append(item)
+                    index += 1
+                }
+                append(.unorderedList(items))
+                continue
+            }
+
+            if orderedListItem(in: trimmed) != nil {
+                var items: [String] = []
+                while index < lines.count,
+                      let item = orderedListItem(
+                        in: lines[index].trimmingCharacters(in: .whitespaces)
+                      ) {
+                    items.append(item)
+                    index += 1
+                }
+                append(.orderedList(items))
+                continue
+            }
+
+            if isDivider(trimmed) {
+                append(.divider)
+                index += 1
+                continue
+            }
+
+            var paragraphLines: [String] = [line]
+            index += 1
+            while index < lines.count, !isBlockStart(lines, at: index) {
+                paragraphLines.append(lines[index])
+                index += 1
+            }
+            append(
+                .paragraph(
+                    paragraphLines
+                        .joined(separator: "\n")
+                        .trimmingCharacters(in: .whitespacesAndNewlines)
+                )
+            )
+        }
+
+        return blocks
+    }
+
+    private static func isBlockStart(_ lines: [String], at index: Int) -> Bool {
+        let trimmed = lines[index].trimmingCharacters(in: .whitespaces)
+        if trimmed.isEmpty
+            || trimmed.hasPrefix("```")
+            || trimmed.hasPrefix(">")
+            || heading(in: trimmed) != nil
+            || unorderedListItem(in: trimmed) != nil
+            || orderedListItem(in: trimmed) != nil
+            || isDivider(trimmed) {
+            return true
+        }
+        return index + 1 < lines.count
+            && looksLikeTableRow(lines[index])
+            && looksLikeTableSeparator(lines[index + 1])
+    }
+
+    private static func heading(in line: String) -> (level: Int, text: String)? {
+        let hashes = line.prefix { $0 == "#" }
+        guard (1...3).contains(hashes.count) else { return nil }
+        let remainder = line.dropFirst(hashes.count)
+        guard remainder.first == " " else { return nil }
+        return (
+            hashes.count,
+            String(remainder.dropFirst()).trimmingCharacters(in: .whitespaces)
+        )
+    }
+
+    private static func unorderedListItem(in line: String) -> String? {
+        for prefix in ["- ", "* ", "+ "] where line.hasPrefix(prefix) {
+            return String(line.dropFirst(prefix.count))
+        }
+        return nil
+    }
+
+    private static func orderedListItem(in line: String) -> String? {
+        guard let dot = line.firstIndex(of: ".") else { return nil }
+        let number = line[..<dot]
+        guard !number.isEmpty,
+              number.allSatisfy(\.isNumber) else { return nil }
+        let afterDot = line.index(after: dot)
+        guard afterDot < line.endIndex, line[afterDot] == " " else { return nil }
+        return String(line[line.index(after: afterDot)...])
+    }
+
+    private static func looksLikeTableRow(_ line: String) -> Bool {
+        tableCells(in: line).count >= 2
+    }
+
+    private static func looksLikeTableSeparator(_ line: String) -> Bool {
+        let cells = tableCells(in: line)
+        guard cells.count >= 2 else { return false }
+        return cells.allSatisfy { cell in
+            let stripped = cell
+                .replacingOccurrences(of: ":", with: "")
+                .trimmingCharacters(in: .whitespaces)
+            return stripped.count >= 3 && stripped.allSatisfy { $0 == "-" }
+        }
+    }
+
+    private static func tableCells(in line: String) -> [String] {
+        var value = line.trimmingCharacters(in: .whitespaces)
+        if value.hasPrefix("|") { value.removeFirst() }
+        if value.hasSuffix("|") { value.removeLast() }
+        guard value.contains("|") else { return [] }
+        return value
+            .split(separator: "|", omittingEmptySubsequences: false)
+            .map { $0.trimmingCharacters(in: .whitespaces) }
+    }
+
+    private static func isDivider(_ line: String) -> Bool {
+        let compact = line.replacingOccurrences(of: " ", with: "")
+        return compact.count >= 3 && compact.allSatisfy { $0 == "-" }
+    }
+}
+
 struct RichMessageView: View {
     let text: String
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
+        VStack(alignment: .leading, spacing: 12) {
             ForEach(MarkdownBlockParser.parse(text)) { block in
                 switch block {
                 case .text(let chunk):
-                    Text(renderedMarkdown(chunk))
-                        .textSelection(.enabled)
-                        .font(.body)
-                        .frame(maxWidth: .infinity, alignment: .leading)
+                    MarkdownTextView(text: chunk)
                 case .mermaid(let source):
                     SizedMermaidWebView(source: source)
                 case .latex(let expr, let display):
@@ -135,8 +351,157 @@ struct RichMessageView: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
     }
+}
 
-    private func renderedMarkdown(_ chunk: String) -> AttributedString {
+private struct MarkdownTextView: View {
+    let text: String
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            ForEach(MarkdownTextBlockParser.parse(text)) { block in
+                blockView(block.content)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    @ViewBuilder
+    private func blockView(_ block: MarkdownTextBlock.Content) -> some View {
+        switch block {
+        case .paragraph(let text):
+            Text(renderedInlineMarkdown(text))
+                .font(AppTheme.Typography.body)
+                .lineSpacing(4)
+                .textSelection(.enabled)
+                .frame(maxWidth: .infinity, alignment: .leading)
+
+        case .heading(let level, let text):
+            Text(renderedInlineMarkdown(text))
+                .font(headingFont(level: level))
+                .padding(.top, level == 1 ? 4 : 1)
+                .textSelection(.enabled)
+
+        case .unorderedList(let items):
+            VStack(alignment: .leading, spacing: 7) {
+                ForEach(Array(items.enumerated()), id: \.offset) { _, item in
+                    listRow(marker: "•", text: item)
+                }
+            }
+
+        case .orderedList(let items):
+            VStack(alignment: .leading, spacing: 7) {
+                ForEach(Array(items.enumerated()), id: \.offset) { index, item in
+                    listRow(marker: "\(index + 1).", text: item)
+                }
+            }
+
+        case .quote(let text):
+            HStack(alignment: .top, spacing: 12) {
+                Capsule()
+                    .fill(AppTheme.Palette.accent.opacity(0.52))
+                    .frame(width: 3)
+                Text(renderedInlineMarkdown(text))
+                    .font(AppTheme.Typography.body)
+                    .italic()
+                    .foregroundStyle(AppTheme.Palette.textMuted)
+                    .lineSpacing(4)
+                    .textSelection(.enabled)
+            }
+            .padding(.vertical, 3)
+
+        case .code(let language, let text):
+            VStack(alignment: .leading, spacing: 0) {
+                if let language {
+                    Text(language.uppercased())
+                        .font(.system(size: 10, weight: .semibold, design: .rounded))
+                        .foregroundStyle(AppTheme.Palette.textMuted)
+                        .padding(.horizontal, 12)
+                        .padding(.top, 10)
+                        .padding(.bottom, 5)
+                }
+                ScrollView(.horizontal, showsIndicators: false) {
+                    Text(text)
+                        .font(.system(size: 13, weight: .regular, design: .monospaced))
+                        .lineSpacing(3)
+                        .textSelection(.enabled)
+                        .padding(12)
+                }
+            }
+            .background(Color.black.opacity(0.26), in: RoundedRectangle(cornerRadius: AppTheme.Radius.small))
+            .overlay {
+                RoundedRectangle(cornerRadius: AppTheme.Radius.small)
+                    .stroke(AppTheme.Palette.glassBorder)
+            }
+
+        case .table(let headers, let rows):
+            markdownTable(headers: headers, rows: rows)
+
+        case .divider:
+            Divider()
+                .overlay(AppTheme.Palette.glassBorderStrong)
+                .padding(.vertical, 4)
+        }
+    }
+
+    private func listRow(marker: String, text: String) -> some View {
+        HStack(alignment: .firstTextBaseline, spacing: 10) {
+            Text(marker)
+                .font(.system(size: 13, weight: .semibold, design: .rounded))
+                .foregroundStyle(AppTheme.Palette.accent)
+                .frame(width: 22, alignment: .trailing)
+            Text(renderedInlineMarkdown(text))
+                .font(AppTheme.Typography.body)
+                .lineSpacing(3)
+                .textSelection(.enabled)
+                .frame(maxWidth: .infinity, alignment: .leading)
+        }
+    }
+
+    private func markdownTable(headers: [String], rows: [[String]]) -> some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            VStack(alignment: .leading, spacing: 0) {
+                tableRow(headers, emphasized: true)
+                ForEach(Array(rows.enumerated()), id: \.offset) { index, row in
+                    tableRow(row, emphasized: false)
+                        .background(index.isMultiple(of: 2) ? Color.white.opacity(0.025) : .clear)
+                }
+            }
+        }
+        .background(Color.black.opacity(0.16), in: RoundedRectangle(cornerRadius: AppTheme.Radius.small))
+        .overlay {
+            RoundedRectangle(cornerRadius: AppTheme.Radius.small)
+                .stroke(AppTheme.Palette.glassBorder)
+        }
+    }
+
+    private func tableRow(_ cells: [String], emphasized: Bool) -> some View {
+        HStack(spacing: 0) {
+            ForEach(Array(cells.enumerated()), id: \.offset) { _, cell in
+                Text(renderedInlineMarkdown(cell))
+                    .font(.system(size: 13, weight: emphasized ? .semibold : .regular))
+                    .foregroundStyle(emphasized ? Color.primary : AppTheme.Palette.textMuted)
+                    .frame(width: 172, alignment: .leading)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 9)
+                    .overlay(alignment: .trailing) {
+                        Rectangle()
+                            .fill(AppTheme.Palette.glassBorder)
+                            .frame(width: 1)
+                    }
+            }
+        }
+        .background(emphasized ? AppTheme.Palette.accentSoft : .clear)
+    }
+
+    private func headingFont(level: Int) -> Font {
+        switch level {
+        case 1: return .system(size: 19, weight: .semibold)
+        case 2: return .system(size: 16, weight: .semibold)
+        default: return .system(size: 14, weight: .semibold)
+        }
+    }
+
+    private func renderedInlineMarkdown(_ chunk: String) -> AttributedString {
         if let attr = try? AttributedString(
             markdown: chunk,
             options: AttributedString.MarkdownParsingOptions(

@@ -1,7 +1,7 @@
 import AppKit
 
 enum GrokBrandIcon {
-    /// Grok mark used in the menu bar and empty chat welcome state.
+    /// Grok mark used in the empty chat welcome state and app-icon fallback.
     static func mark() -> NSImage? {
         if let execDir = Bundle.main.executableURL?.deletingLastPathComponent() {
             for name in ["MenuBarIcon@2x.png", "MenuBarIcon.png", "MenuBarIcon@3x.png"] {

@@ -50,6 +50,6 @@ App requires `grok` on PATH or at `~/.grok/bin/grok`. User must run `grok login`
 
 - Process: `GrokProcess` + `ChatStore`
 - Workspaces: `WorkspaceStore` + `SessionLayoutStore`
-- Menu bar: `StatusBarController` + `AppDelegate`
+- Application menus and window lifecycle: `AppDelegate`
 - Full map: `ARCHITECTURE.md`
 - Do not commit unless the user asks.

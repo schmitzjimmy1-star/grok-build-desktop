@@ -10,35 +10,50 @@ struct MessageBubble: View {
         switch message.role {
         case .user:
             HStack {
-                Spacer(minLength: 48)
+                Spacer(minLength: 96)
                 Text(message.content)
                     .textSelection(.enabled)
-                    .font(.body)
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 8)
-                    .background(Color.accentColor.opacity(0.14), in: RoundedRectangle(cornerRadius: 12))
-                    .frame(maxWidth: 420, alignment: .trailing)
+                    .font(AppTheme.Typography.body)
+                    .lineSpacing(2)
+                    .padding(.horizontal, 13)
+                    .padding(.vertical, 9)
+                    .background(
+                        AppTheme.Palette.surface,
+                        in: RoundedRectangle(cornerRadius: AppTheme.Radius.medium, style: .continuous)
+                    )
+                    .overlay {
+                        RoundedRectangle(cornerRadius: AppTheme.Radius.medium, style: .continuous)
+                            .stroke(AppTheme.Palette.glassBorder, lineWidth: 1)
+                    }
+                    .frame(maxWidth: 500, alignment: .trailing)
             }
         case .assistant:
-            VStack(alignment: .leading, spacing: 0) {
-                if !message.content.isEmpty {
+            if !message.content.isEmpty {
+                VStack(alignment: .leading, spacing: 7) {
+                    Text("Grok")
+                        .font(AppTheme.Typography.section)
+                        .foregroundStyle(AppTheme.Palette.textMuted)
+
                     if isStreaming {
                         Text(message.content)
                             .textSelection(.enabled)
-                            .font(.body)
+                            .font(AppTheme.Typography.body)
+                            .lineSpacing(3)
                             .frame(maxWidth: .infinity, alignment: .leading)
                     } else {
                         RichMessageView(text: message.content)
                             .frame(maxWidth: .infinity, alignment: .leading)
                     }
                 }
+                .padding(.vertical, 8)
+                .accessibilityElement(children: .contain)
             }
         case .system:
             Text(message.content)
-                .font(.caption)
-                .foregroundStyle(.secondary)
+                .font(.caption.weight(.medium))
+                .foregroundStyle(AppTheme.Palette.textMuted)
                 .frame(maxWidth: .infinity, alignment: .center)
-                .padding(.vertical, 4)
+                .padding(.vertical, 6)
         }
     }
 }

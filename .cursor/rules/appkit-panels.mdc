@@ -1,10 +1,10 @@
 ---
-description: AppKit panels, menu bar, and About-style UI metrics
-globs: GrokBuild/{AboutPanel,AboutStyle,UpdatePanel,StatusBarController,AppDelegate}.swift
+description: AppKit panels, application menus, and About-style UI metrics
+globs: GrokBuild/{AboutPanel,AboutStyle,UpdatePanel,AppDelegate}.swift
 alwaysApply: false
 ---
 
-# AppKit panels & menu bar
+# AppKit panels & application menus
 
 ## Shared styling
 
@@ -18,18 +18,18 @@ Use `AboutStyle` for About and Update panels:
 
 Custom panel (not `orderFrontStandardAboutPanel`). Order: icon → name → Version → grok CLI line → description → centered link. Fetch CLI version async before presenting.
 
-## Status bar menu
+## Application menus
 
-- Header reflects auth: "Signed in to grok CLI" / "Sign in required — run grok login".
-- Green/red dot via `updateAuthIndicator(authenticated:)`.
-- Signed-out menu items: **Run `grok login` in Terminal…**, **Retry Connection** (posts `.retryConnectionRequested`).
+- `AppDelegate` owns the standard GrokBuild, Edit, Project, Session, and Window menus.
+- Do not add an `NSStatusItem`; commands belong in the application menu, toolbar, or Session controls.
 - **Settings…** (⌘,) posts `.openSettingsRequested`.
-- Check for Updates / Upgrade Available → `UpdatePanel.show` directly after check; do not block menu on CLI version checks.
+- **Check for Updates…** / **Updates Available…** opens `UpdatePanel` after the check.
+- DEBUG-only update simulations live under **GrokBuild → Simulate Updates**.
 
 ## Window restore
 
 `AppDelegate` — validate saved frames before applying; use `open` for `make run` launches.
 
-## After changing panels or menu bar
+## After changing panels or application menus
 
 Run `make test` if logic changed; update `ARCHITECTURE.md` (UI layout, in-app updates) and `README.md` for user-visible behavior. See `docs-and-tests.mdc`.

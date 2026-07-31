@@ -32,7 +32,7 @@
 
 ## What GrokBuild is
 
-GrokBuild is a **menu-bar macOS app** (SwiftUI + AppKit) that is a **UI shell over the `grok` CLI**. It spawns `grok agent stdio` per chat session and speaks **ACP (Agent Client Protocol)** JSON-RPC over stdin/stdout.
+GrokBuild is a **windowed macOS app** (SwiftUI + AppKit) that is a **UI shell over the `grok` CLI**. It spawns `grok agent stdio` per chat session and speaks **ACP (Agent Client Protocol)** JSON-RPC over stdin/stdout.
 
 | GrokBuild owns | `grok` CLI owns (do NOT reimplement in Swift) |
 |----------------|-----------------------------------------------|
@@ -66,13 +66,13 @@ grok-deck2/
 │   ├── main.swift                # NSApplication entry (NOT GrokBuildApp.swift)
 │   ├── AppDelegate.swift         # Single instance, main window, menus
 │   ├── MainWindowLayout.swift    # Main window min/default size + composer max width
-│   ├── StatusBarController.swift # Menu bar icon + actions
+│   ├── AppTheme.swift            # Neutral graphite palette, typography, radii, shared surface modifier
 │   ├── ContentView.swift         # Root view: multi-session orchestration
 │   ├── Views/                    # SwiftUI screens (SettingsView is large)
 │   ├── Services/                 # Business logic, CLI integration
 │   ├── Models/                   # Workspace, Message, Composer types
 │   ├── Resources/
-│   │   ├── Assets.xcassets/      # Menu bar icon, app icon
+│   │   ├── Assets.xcassets/      # Brand mark, app icon
 │   │   └── Skills/               # Bundled grok skills (copied at build)
 │   ├── AboutPanel.swift          # AppKit About panel
 │   └── UpdatePanel.swift         # AppKit Updates panel
@@ -97,8 +97,8 @@ grok-deck2/
 `main.swift` → `AppDelegate.applicationDidFinishLaunching`:
 
 1. **Single instance** — advisory `flock` on `~/Library/Application Support/GrokBuild/instance.pid`. Second launch posts `com.grokbuild.showMainWindow` and exits.
-2. **Activation policy** — `.regular` (Dock icon + menu bar item).
-3. **Status bar** — `StatusBarController()` (actions-first menu: open/new session, settings, updates, auth recovery when signed out, quit). At launch, `GrokAuthProbe` (`GrokCLIService.swift`) best-effort checks `~/.grok/auth.json` size (the grok CLI's own cached credentials — env API keys are deliberately not treated as signed in); runtime `.grokStatusChanged` from a live process remains authoritative and overrides this hint.
+2. **Activation policy** — `.regular` (Dock icon + standard application menus).
+3. **Application menu** — `AppDelegate.setupMainMenu()` owns About, Settings, update checks, Project, Session, and Window commands. GrokBuild does not create an `NSStatusItem`.
 4. **Update scheduler** — `UpdateScheduler.start()` (background checks).
 5. **Main window** — `openMainWindow()` hosts `ContentView` in `NSHostingController`.
 
@@ -108,18 +108,17 @@ grok-deck2/
 - **Reopen** (Dock click) → `applicationShouldHandleReopen` → show main window.
 - Frame autosave name: `"MainWindow"`.
 
-### Dual menus
+### Application menus
 
 | Menu | Location | Purpose |
 |------|----------|---------|
-| **App menu bar** (top of screen) | `AppDelegate.setupMainMenu()` | App (About, Settings ⌘,, Hide ⌘H, Quit), Edit, Project, Session, Window |
-| **Status item menu** | `StatusBarController` | Actions-first quick actions, settings, updates, auth recovery, quit |
+| **GrokBuild** | `AppDelegate.setupMainMenu()` | About, Settings ⌘,, update checks, Hide ⌘H, Quit |
+| **Edit** | `AppDelegate.setupMainMenu()` | Standard text editing commands |
+| **Project** | `AppDelegate.setupMainMenu()` | Add Project |
+| **Session** | `AppDelegate.setupMainMenu()` | New Session, Browse Sessions, Stop Generation, Focus Input |
+| **Window** | `AppDelegate.setupMainMenu()` | Minimize, Zoom |
 
-**Status item menu order:** auth header (+ **Run `grok login` in Terminal…** / **Retry Connection** when signed out) → **Open GrokBuild** → **New Session** → **Browse Sessions…** → **Add Project…** → **Settings…** (⌘,) → **Check for Updates…** / **Upgrade Available…** → **View Usage on grok.com…** → **About GrokBuild** → **Quit GrokBuild**. DEBUG builds add **Simulate Updates** after the updates item.
-
-Menu actions that need the main UI post notifications (e.g. `.newSessionRequested`, `.openSettingsRequested`, `.retryConnectionRequested`) that `ContentView` handles.
-
-**Status icon:** grok mark tints for light/dark menu bars; colored dot (green ready, blue busy/starting, red error) is not template-tinted. Accessibility value reflects status text (Ready / Working / Starting / Error / Idle).
+Commands that need SwiftUI post notifications (for example `.newSessionRequested` and `.openSettingsRequested`) that `ContentView` handles. DEBUG builds add **GrokBuild → Simulate Updates** after the update item.
 
 ---
 
@@ -178,7 +177,7 @@ flowchart TB
 3. Homebrew paths
 4. `PATH`
 
-User must run `grok login` for authenticated sessions. Auth failures surface in `ChatStore.authRequiredMessage` and menu bar indicator. **Launch hint:** `GrokAuthProbe` checks the grok CLI's cached credentials (non-empty `~/.grok/auth.json`) for the status menu header before any session starts — env API keys are not treated as signed in; once a `GrokProcess` runs, `.grokStatusChanged` `authenticated` wins.
+User must run `grok login` for authenticated sessions. Auth failures surface inside the active session through `ChatStore.authRequiredMessage`; no launch-time credential guess is shown in app chrome.
 
 ---
 
@@ -609,11 +608,11 @@ OpenAI-compatible provider URLs; not a replacement for grok-native models. Custo
 
 **File:** `Views/SettingsView.swift` (large — search `SettingsTab`, pane struct names).
 
-### Tabs (`SettingsTab`)
+### Navigation (`SettingsTab` + `SettingsSection`)
 
 Ordered config-first (session config → capabilities → grok ecosystem/inspection → app). `.agents` is the default landing tab (generic Settings gear + initial state; `.app` when an update is pending).
 
-The settings chrome uses a custom horizontal **scrollable** tab bar (`SettingsView.settingsTabBar`) instead of `TabView`’s compressing segmented control — full titles stay readable; the bar scrolls sideways in a narrow window and auto-scrolls the selected tab into view. Visited panes stay mounted in a `ZStack` (`SettingsTabKeepAlive`) so `@State` / `.task` are not reset when switching tabs.
+The settings chrome uses a persistent grouped **vertical sidebar** (`SettingsView.settingsSidebar`) rather than a horizontal tab strip. `SettingsSection` organizes the fourteen destinations into Intelligence, Tools, Extensions, Safety & System, and Application groups. Visited panes stay mounted in a `ZStack` (`SettingsTabKeepAlive`) so `@State` / `.task` are not reset when switching destinations.
 
 | Tab | Pane | Data source |
 |-----|------|-------------|
@@ -647,11 +646,13 @@ Permissions tab (`GrokSettingsKeys`) apply on next `restartProcess` (no separate
 
 Each settings pane puts its own "Refresh"/action buttons **inline in the pane header**, not in a `.toolbar { }` modifier — a window-level `.toolbar` item declared on one tab's view leaks into the shared title bar and can persist after switching to a tab that declares no toolbar of its own (observed and fixed on `PluginsSettingsPane`). Don't reintroduce `.toolbar` on settings pane views; use an inline header button instead.
 
+`SettingsToggleRow` is the shared switch primitive: label and help copy take the flexible column, while a small native switch stays on one trailing axis. Marketplace is deliberately stacked — compact source management above one full-width plugin list — because an `HSplitView` crushed plugin descriptions while leaving most of the Sources column empty. `AppTheme.Layout` owns the 760 pt content cap, 180 pt control width, and shallow permission-editor height.
+
 ---
 
 ## In-app updates
 
-Two parallel updaters — **GrokBuild app** (GitHub) and **grok CLI** (`grok update`). Same UI surfaces: menu bar, main-window banner, `UpdatePanel`.
+Two parallel updaters — **GrokBuild app** (GitHub) and **grok CLI** (`grok update`). UI surfaces: the standard GrokBuild application menu, main-window banner, Settings, and `UpdatePanel`.
 
 | Service | Role |
 |---------|------|
@@ -724,7 +725,11 @@ Menu **Simulate Updates** (`#if DEBUG` only — use `make run-debug`, not `make 
 
 ### Main window (`ContentView`)
 
-Minimum size **1100×720** and default **1200×800** (`MainWindowLayout` via `AppDelegate`) — sized so sidebar, composer, and status pills stay readable. Composer fills the chat column (`composerMaxWidth` = infinity) — no mid-width 780pt cap. Project status row scrolls horizontally; Browser Tools / Computer Use pills are icon-only when configured (full label only for setup-needed).
+Minimum size **1100×720** and default logical canvas **1440×900** (`MainWindowLayout` via `AppDelegate`). New main windows fill the current display's available frame, matching the usable canvas of a 13-inch Apple Silicon MacBook Air instead of opening as a floating utility. The titlebar and chat toolbar omit separator rules. The project sidebar stays compact (220–280 pt) when visible and can collapse into a full-width chat canvas; the leading chat-toolbar button restores it. `SidebarVisibility` owns the persisted chat preference, while Settings always suppresses the project sidebar and uses only its own compact navigation rail. The chat toolbar keeps only sidebar/new-session controls visible on the leading edge, with direct Settings access and one overflow menu on the trailing edge. The transcript centers in a 760 pt reading column, the matte composer is bounded at 820 pt, and every Settings pane uses the shared centered 760 pt detail column. The composer shows only primary actions by default; project/session status controls live behind **Show session controls**. Skills, workflows, research, and imagine commands share one menu instead of occupying permanent chip rows. The empty state uses a responsive four-card quick-start row within a 960 pt content width.
+
+`AppTheme.swift` owns the monochrome graphite palette, flat matte surfaces, compact 11/14/17 pt native SF type scale, restrained 4/6/8 pt radii, layout widths, and `grokGlassSurface` modifier. Decorative color, assistant avatars, and capsule treatments are removed; monospace is reserved for actual commands, code, and diagnostic logs. `ChatTranscriptLayout` attaches the current turn's Thinking disclosure to the streaming or most recent assistant message so it renders immediately above the answer rather than as a transcript footer. The composer model control is a native `Menu` with compact Model and Effort submenus rather than a custom all-options popover. The legacy modifier name remains to avoid pointless call-site churn; its implementation has no material or highlight gradient and only a minimal composer shadow. `AppDelegate` forces the dark appearance, transparent title bar, and screen-filling launch frame.
+
+`ContentView` keys `ChatView` by `ChatStore.tabSessionID`. Switching tabs therefore creates a fresh scroll/input view identity instead of carrying a long transcript's scroll offset into a new session and hiding the welcome state off-screen.
 
 ```
 ┌─────────────────────────────────────────────────┐
@@ -742,11 +747,12 @@ Minimum size **1100×720** and default **1200×800** (`MainWindowLayout` via `Ap
 
 | File | Role |
 |------|------|
-| `SidebarView.swift` | Project list, session list, pins, settings entry |
-| `ChatView.swift` | Composer, messages, model/effort popover, workflow chips, goal banner, feature pills, empty/welcome state (quick-start chips + no-project CTA) |
+| `AppTheme.swift` | Neutral graphite palette, typography, layout widths, radii, and reusable matte surface |
+| `SidebarView.swift` | Collapsible project/session navigation, pins, on-demand filter, settings entry |
+| `ChatView.swift` | Centered transcript, minimal matte composer, compact model/effort menu, consolidated command menu, collapsed session controls, goal banner, four-card empty state |
 | `ComposerViews.swift` | File chips, workflow chips, goal banner, plan/question cards |
 | `GrokChatChrome.swift` | Shared session chrome |
-| `RichMessageView.swift` / `MessageBubble.swift` | Markdown, thinking, tools, permissions. `RichMessageView` parses mermaid/LaTeX blocks; WKWebView embeds reload only when source changes, report a fixed height after load (avoids lazy-list layout loops), and inline `$…$` spans require math signals (not currency/`$PATH`). |
+| `RichMessageView.swift` / `MessageBubble.swift` | Compact avatar-free assistant messages, structured Markdown blocks (headings, lists, quotes, tables, code, dividers), thinking, tools, and permissions. Thinking is attached above its answer by `ChatTranscriptLayout`. Mermaid/LaTeX WKWebView embeds reload only when source changes, report a fixed height after load, and inline `$…$` spans require math signals (not currency/`$PATH`). |
 | `PreviewPane.swift` | Diff detection from assistant messages; apply/commit |
 | `SessionBrowserView.swift` | Resume historical grok sessions; per-row **delete** + **Clear Empty** bulk cleanup (`GrokCLIService.deleteSession` + `SessionNameStore.removeName`) |
 | `GitCheckoutSheet.swift` | Branch switch / worktree create |
@@ -772,22 +778,22 @@ Defined in `ContentView.swift` (`extension Notification.Name`).
 
 | Name | Posted when | Handler |
 |------|-------------|---------|
-| `.grokStatusChanged` | Process state/auth change | `StatusBarController` icon + title |
-| `.showMainWindowRequested` | Menu bar open | `AppDelegate.openMainWindow` |
+| `.grokStatusChanged` | Process state/auth change | Session stores keep visible connection/auth state current |
+| `.showMainWindowRequested` | App reopen request | `AppDelegate.openMainWindow` |
 | `.chooseWorkspaceRequested` | Add project | `ContentView` → picker sheet |
 | `.newSessionRequested` | Menu new session | `ContentView.startNewSessionForCurrentProject` |
 | `.sessionsRequested` | Browse sessions | Session browser sheet |
 | `.stopGenerationRequested` | Stop shortcut | `ChatStore.stop` |
 | `.focusInputRequested` | Focus composer | `ChatView` |
-| `.retryConnectionRequested` | Menu bar retry when signed out | `ContentView` → `activeStore.retryConnection()` |
-| `.openSettingsRequested` | Settings from App or status menu (⌘,) | `ContentView.openSettings` (`.app` tab when update pending, else `.agents`) |
+| `.retryConnectionRequested` | Session retry | `ContentView` → `activeStore.retryConnection()` |
+| `.openSettingsRequested` | Settings from the application menu or toolbar (⌘,) | `ContentView.openSettings` (`.app` tab when update pending, else `.agents`) |
 | `.workspaceAgentSettingsChanged` | Reasoning effort saved | Sync effort to sibling sessions in project |
 | `.liveSessionModelChanged` | Tab model changed in composer | `persistSessionLayout()` |
 | `.liveSessionAgentChanged` | Tab session agent changed via pill | `persistSessionLayout()` |
 | `.liveSessionMessagesChanged` | Messages updated | Sidebar title refresh |
 | `.subagentRolesChanged` | Custom subagent roles saved in Settings | `ChatView` refreshes `cachedCustomSubagentNames` in the agent pill |
 
-`GrokProcess.notifyStatus()` posts `.grokStatusChanged` **asynchronously on the main queue** so background CLI/IO threads never block waiting for the menu-bar observer (which is registered on `queue: .main`). `ChatStore.postStatusUpdate` runs on `@MainActor` and posts inline.
+`GrokProcess.notifyStatus()` posts `.grokStatusChanged` **asynchronously on the main queue** so background CLI/IO threads never block UI state updates. `ChatStore.postStatusUpdate` runs on `@MainActor` and posts inline.
 
 ### Updates
 
@@ -881,10 +887,10 @@ See `BUILDING.md` for signing, notarization, CI workflow.
 | **MCP injection** | `ChatStore.restartProcess` → `browserMCPConfig` / `computerUseMCPConfig` |
 | **Skill install** | `BrowserSkillInstaller`, `ComputerUseSkillInstaller` |
 | **Diff review / apply** | `PreviewPane`, `ChatStore` diff detection on `Message.hasDiff` |
-| **Menu bar / auth** | `StatusBarController`, `GrokAuthProbe`, `ChatStore.authRequiredMessage` |
+| **Application menus / auth UI** | `AppDelegate`, `ChatStore.authRequiredMessage`, `ChatView` |
 | **Main window / single instance** | `AppDelegate` |
 | **In-app updates** | `UpdateScheduler`, `UpdateChecker`, `AppUpdater`, `GrokCLIUpdater`, `UpdatePanel` |
-| **Simulate updates (dev)** | `UpdateDebugSimulator`, `#if DEBUG` menu in `StatusBarController` |
+| **Simulate updates (dev)** | `UpdateDebugSimulator`, `#if DEBUG` menu in `AppDelegate` |
 | **About / version** | `AppVersion.swift`, `AboutPanel` |
 | **Git branch/worktree** | `GitCheckoutSheet`, `GitService` |
 | **Release / notarize** | `scripts/release.sh`, `.github/workflows/release.yml`, `BUILDING.md` |
@@ -908,9 +914,9 @@ make test    # Tests/GrokBuildTests/
 | `QuickStartPromptTests.swift` | Empty-state quick-start prompt catalog (`QuickStartPrompt.defaults`) |
 | `UpdateCheckerTests.swift` | Version compare, GitHub asset selection, CLI JSON parse, notarized filter |
 | `GrokCLIUpdaterTests.swift` | Updater helpers / phase reset |
-| `StatusBarMenuTests.swift` | `GrokStatus` string mapping, auth menu copy, update menu title helpers |
-| `GrokAuthProbeTests.swift` | Launch-time auth probe: `~/.grok/auth.json` size check (present / empty / missing) |
-| `MarkdownBlockParserTests.swift` | Inline-math heuristic and mermaid/LaTeX block parsing in `RichMessageView` |
+| `AppMenuTests.swift` | Standard application-menu update title helpers |
+| `MarkdownBlockParserTests.swift` | Inline-math heuristic plus Markdown headings, lists, quotes, tables, fenced code, dividers, mermaid, and LaTeX block parsing |
+| `SettingsTabTests.swift` | Settings destination metadata, ordering, keep-alive behavior, and exact grouped-sidebar coverage |
 
 Prefer extending existing test files. Test pure logic without launching real `grok` when possible.
 

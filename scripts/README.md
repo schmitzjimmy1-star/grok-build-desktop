@@ -6,7 +6,7 @@ Command-line helpers for building, signing, releasing, and bundling GrokBuild. P
 
 | Script | Purpose |
 |--------|---------|
-| [`build-dev-app.sh`](build-dev-app.sh) | Assemble a lightweight **dev** app bundle at `.build/GrokBuild.app` from an existing SPM binary. Bundles skills, menu bar icons, browser MCP, install helper, and `agent-desktop`. Uses `com.grokbuild.app` so Accessibility settings match packaged builds. |
+| [`build-dev-app.sh`](build-dev-app.sh) | Assemble a lightweight **dev** app bundle at `.build/GrokBuild.app` from an existing SPM binary. Bundles skills, brand assets, browser MCP, install helper, and `agent-desktop`. Uses `com.grokbuild.app` so Accessibility settings match packaged builds. |
 | [`build-macos-app.sh`](build-macos-app.sh) | Build a **distributable** app under `dist/GrokBuild.app` (runs `swift build -c release`), bundle resources, optional DMG, optional codesign. Primary path for `make app` / `make dmg`. |
 
 **`build-dev-app.sh`**
@@ -25,7 +25,7 @@ make app
 make dmg
 ```
 
-Output: `dist/GrokBuild.app`, optionally `dist/GrokBuild-{tag}-macOS.dmg`. Copies menu bar icons from `GrokBuild/Resources/Assets.xcassets/MenuBarIcon.imageset/` (or legacy project-root PNGs).
+Output: `dist/GrokBuild.app`, optionally `dist/GrokBuild-{tag}-macOS.dmg`. Copies the Grok mark from `GrokBuild/Resources/Assets.xcassets/MenuBarIcon.imageset/` (or legacy project-root PNGs).
 
 ---
 

@@ -20,7 +20,7 @@ export SIGN_IDENTITY NOTARY_PROFILE RELEASE_TYPE
 # Usage:
 #   make build          # Build Release binary with SwiftPM
 #   make test           # Run unit tests
-#   make run            # Build + launch the menu bar app
+#   make run            # Build + launch the app
 #   make app            # Package .app into dist/
 #   make install        # Package .app and copy to /Applications/ (signs when SIGN_IDENTITY in .env)
 #   make dmg            # Package .app + DMG (auto-notarizes if NOTARY_PROFILE set)
@@ -49,7 +49,7 @@ help: ## Show this help
 	@echo "  $(YELLOW)make build$(NC)            Build release binary (SwiftPM)"
 	@echo "  $(YELLOW)make build-debug$(NC)      Build debug binary (Simulate Updates menu)"
 	@echo "  $(YELLOW)make test$(NC)             Run unit tests"
-	@echo "  $(YELLOW)make run$(NC)              Build release + launch the menu bar app"
+	@echo "  $(YELLOW)make run$(NC)              Build release + launch the app"
 	@echo "  $(YELLOW)make run-debug$(NC)        Build debug + launch (dev tools, Simulate Updates)"
 	@echo "  $(YELLOW)make app$(NC)              Package .app into dist/"
 	@echo "  $(YELLOW)make install$(NC)          Package .app and copy to /Applications/ (signs if SIGN_IDENTITY in .env)"
@@ -95,7 +95,7 @@ test: ## Run unit tests
 	@echo "$(GREEN)==> Running unit tests...$(NC)"
 	@swift test
 
-run: build ## Build release + launch the menu bar app
+run: build ## Build release + launch the app
 	@$(MAKE) run-app BUILD_CONFIG=release
 
 run-debug: build-debug ## Build debug + launch (includes Simulate Updates menu)
@@ -195,4 +195,3 @@ notarize: signed ## Notarize (builds + signs + notarizes). Set NOTARY_PROFILE=..
 release: ## Publish GitHub release (RELEASE_TYPE/SIGN_IDENTITY/NOTARY_PROFILE from .env)
 	@echo "==> Release: type=$(RELEASE_TYPE), sign=$$([ -n '$(SIGN_IDENTITY)' ] && echo yes || echo no), notary=$(NOTARY_PROFILE)"
 	@./scripts/release.sh
-

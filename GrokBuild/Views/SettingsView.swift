@@ -5,7 +5,6 @@ import UniformTypeIdentifiers
 enum SettingsTab: String, Hashable, CaseIterable, Identifiable {
     case agents
     case models
-    case permissions
     case memory
     case workflows
     case browser
@@ -14,8 +13,9 @@ enum SettingsTab: String, Hashable, CaseIterable, Identifiable {
     case skills
     case plugins
     case marketplace
-    case compatibility
     case hooks
+    case compatibility
+    case permissions
     case app
 
     var id: Self { self }
@@ -41,20 +41,55 @@ enum SettingsTab: String, Hashable, CaseIterable, Identifiable {
 
     var systemImage: String {
         switch self {
-        case .agents: return "person.2.badge.gearshape"
+        case .agents: return "person.2"
         case .models: return "cpu"
         case .permissions: return "lock.shield"
         case .memory: return "brain"
         case .workflows: return "arrow.triangle.branch"
         case .browser: return "globe"
-        case .computerUse: return "desktopcomputer"
-        case .mcpServers: return "point.3.connected.trianglepath.dotted"
-        case .skills: return "wand.and.stars"
+        case .computerUse: return "display"
+        case .mcpServers: return "network"
+        case .skills: return "hammer"
         case .plugins: return "shippingbox"
         case .marketplace: return "storefront"
-        case .compatibility: return "arrow.triangle.swap"
-        case .hooks: return "curlybraces"
-        case .app: return "arrow.triangle.2.circlepath"
+        case .compatibility: return "square.stack.3d.up"
+        case .hooks: return "link"
+        case .app: return "gearshape"
+        }
+    }
+}
+
+enum SettingsSection: String, CaseIterable, Identifiable {
+    case grok
+    case tools
+    case extensions
+    case controls
+    case application
+
+    var id: Self { self }
+
+    var title: String {
+        switch self {
+        case .grok: return "Grok"
+        case .tools: return "Tools"
+        case .extensions: return "Extensions"
+        case .controls: return "Controls"
+        case .application: return "Application"
+        }
+    }
+
+    var tabs: [SettingsTab] {
+        switch self {
+        case .grok:
+            return [.agents, .models, .memory]
+        case .tools:
+            return [.workflows, .browser, .computerUse]
+        case .extensions:
+            return [.mcpServers, .skills, .plugins, .marketplace, .hooks, .compatibility]
+        case .controls:
+            return [.permissions]
+        case .application:
+            return [.app]
         }
     }
 }
@@ -69,31 +104,33 @@ struct SettingsView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            HStack {
+            HStack(spacing: 12) {
                 Button {
                     onBackToChat()
                 } label: {
-                    Label("Back to Session", systemImage: "chevron.left")
+                    Label("Session", systemImage: "chevron.left")
                 }
-                .buttonStyle(.bordered)
+                .buttonStyle(.plain)
+                .foregroundStyle(.secondary)
 
                 Text("Settings")
-                    .font(.title2.weight(.semibold))
+                    .font(AppTheme.Typography.heading)
                 Spacer()
             }
-            .padding()
+            .padding(.horizontal, 18)
+            .padding(.vertical, 10)
+            .background(AppTheme.Palette.chrome)
 
-            Divider()
+            HStack(spacing: 0) {
+                settingsSidebar
 
-            settingsTabBar
-
-            Divider()
-
-            settingsContent
-                .padding()
-                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+                settingsContent
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+                    .background(AppTheme.Palette.canvas)
+            }
         }
         .frame(minWidth: 860, minHeight: 620)
+        .background(AppTheme.Palette.canvas)
         .onAppear {
             SettingsTabKeepAlive.recordVisit(selectedTab, loaded: &loadedTabs)
         }
@@ -102,47 +139,60 @@ struct SettingsView: View {
         }
     }
 
-    private var settingsTabBar: some View {
-        ScrollViewReader { proxy in
-            ScrollView(.horizontal, showsIndicators: true) {
-                HStack(spacing: 4) {
-                    ForEach(SettingsTab.allCases) { tab in
+    private var settingsSidebar: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 14) {
+                ForEach(SettingsSection.allCases) { section in
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text(section.title.uppercased())
+                            .font(.system(size: 9, weight: .semibold))
+                            .tracking(0.7)
+                            .foregroundStyle(.tertiary)
+                            .padding(.horizontal, 10)
+                            .padding(.bottom, 2)
+
+                        ForEach(section.tabs) { tab in
                         Button {
                             selectedTab = tab
                         } label: {
-                            Label(tab.title, systemImage: tab.systemImage)
-                                .labelStyle(.titleAndIcon)
+                            HStack(spacing: 9) {
+                                Image(systemName: tab.systemImage)
+                                    .font(.system(size: 11, weight: .medium))
+                                    .frame(width: 16)
+                                Text(tab.title)
+                                    .font(.system(size: 12, weight: selectedTab == tab ? .semibold : .medium))
+                                Spacer(minLength: 0)
+                            }
                                 .lineLimit(1)
-                                .fixedSize(horizontal: true, vertical: false)
                                 .padding(.horizontal, 10)
-                                .padding(.vertical, 6)
+                                .padding(.vertical, 7)
                                 .contentShape(Rectangle())
                         }
                         .buttonStyle(.plain)
                         .background(
-                            RoundedRectangle(cornerRadius: 6, style: .continuous)
-                                .fill(selectedTab == tab ? Color.accentColor.opacity(0.16) : Color.clear)
+                            RoundedRectangle(cornerRadius: AppTheme.Radius.small, style: .continuous)
+                                .fill(selectedTab == tab ? AppTheme.Palette.accentSoft : Color.clear)
                         )
-                        .foregroundStyle(selectedTab == tab ? Color.accentColor : Color.primary)
+                        .overlay {
+                            if selectedTab == tab {
+                                RoundedRectangle(cornerRadius: AppTheme.Radius.small, style: .continuous)
+                                    .stroke(AppTheme.Palette.glassBorder)
+                            }
+                        }
+                        .foregroundStyle(selectedTab == tab ? Color.primary : Color.secondary)
                         .accessibilityLabel(tab.title)
                         .accessibilityAddTraits(selectedTab == tab ? [.isSelected] : [])
-                        .id(tab)
+                        }
                     }
                 }
-                .padding(.horizontal, 12)
-                .padding(.vertical, 8)
             }
-            .accessibilityElement(children: .contain)
-            .accessibilityLabel("Settings tabs")
-            .onAppear {
-                proxy.scrollTo(selectedTab, anchor: .center)
-            }
-            .onChange(of: selectedTab) { _, tab in
-                withAnimation(.easeInOut(duration: 0.2)) {
-                    proxy.scrollTo(tab, anchor: .center)
-                }
-            }
+            .padding(.horizontal, 10)
+            .padding(.vertical, 12)
         }
+        .frame(width: AppTheme.Layout.settingsSidebarWidth)
+        .background(AppTheme.Palette.sidebar)
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("Settings navigation")
     }
 
     /// Keeps visited panes in the hierarchy (hidden when inactive) so state is not reset on tab change.
@@ -256,19 +306,17 @@ private struct SettingsPaneHeader: View {
     let title: String
     let subtitle: String
     let systemImage: String
-    let color: Color
 
     var body: some View {
         HStack(alignment: .top, spacing: 14) {
             Image(systemName: systemImage)
-                .font(.system(size: 28, weight: .semibold))
-                .foregroundStyle(color)
-                .frame(width: 44, height: 44)
-                .background(RoundedRectangle(cornerRadius: 12).fill(color.opacity(0.12)))
+                .font(.system(size: 20, weight: .medium))
+                .foregroundStyle(.secondary)
+                .frame(width: 28, height: 28)
 
             VStack(alignment: .leading, spacing: 4) {
                 Text(title)
-                    .font(.title3.weight(.semibold))
+                    .font(AppTheme.Typography.heading)
                 Text(subtitle)
                     .font(.callout)
                     .foregroundStyle(.secondary)
@@ -278,22 +326,66 @@ private struct SettingsPaneHeader: View {
     }
 }
 
-private func settingsPaneHeader(_ title: String, subtitle: String, systemImage: String, color: Color) -> SettingsPaneHeader {
-    SettingsPaneHeader(title: title, subtitle: subtitle, systemImage: systemImage, color: color)
+private func settingsPaneHeader(_ title: String, subtitle: String, systemImage: String) -> SettingsPaneHeader {
+    SettingsPaneHeader(title: title, subtitle: subtitle, systemImage: systemImage)
+}
+
+/// A full-width macOS settings row with a small, consistently aligned switch.
+///
+/// SwiftUI's default switch hugs the intrinsic width of its label, which made
+/// controls drift through the middle of otherwise identical cards. Giving the
+/// copy a flexible column keeps every switch on one quiet trailing axis.
+private struct SettingsToggleRow: View {
+    let title: String
+    let subtitle: String?
+    @Binding var isOn: Bool
+
+    init(_ title: String, subtitle: String? = nil, isOn: Binding<Bool>) {
+        self.title = title
+        self.subtitle = subtitle
+        _isOn = isOn
+    }
+
+    var body: some View {
+        Toggle(isOn: $isOn) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title)
+                    .font(.callout.weight(.medium))
+                if let subtitle, !subtitle.isEmpty {
+                    Text(subtitle)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .toggleStyle(.switch)
+        .controlSize(.small)
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
 }
 
 private extension View {
-    /// Matches the padded, max-width-760, top-left column layout used by the
-    /// Browser / Computer Use / Models panes, so list-based panes (Hooks,
-    /// Plugins, Marketplace, Skills, MCP Servers) share the same chrome.
+    /// Bounds and centers Settings content within the available detail area.
+    /// Keeping one readable column prevents full-screen windows from turning
+    /// every control into a stretched dashboard row.
+    func centeredSettingsColumn() -> some View {
+        self
+            .frame(maxWidth: AppTheme.Layout.settingsContentMaxWidth, alignment: .leading)
+            .padding(.horizontal, 24)
+            .padding(.vertical, 20)
+            .frame(maxWidth: .infinity, alignment: .top)
+    }
+
+    /// Gives list-based panes the same centered content column as the
+    /// scroll-based Browser / Computer Use / Models panes.
     func settingsPaneColumn() -> some View {
         self
             .scrollContentBackground(.hidden)
-            .frame(maxWidth: 760, alignment: .leading)
-            .padding(.horizontal, 24)
-            .padding(.vertical, 22)
-            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-            .background(Color(nsColor: .windowBackgroundColor))
+            .centeredSettingsColumn()
+            .frame(maxHeight: .infinity, alignment: .top)
+            .background(AppTheme.Palette.canvas)
     }
 }
 
@@ -317,6 +409,7 @@ private struct BrowserSettingsPane: View {
     @State private var installOutput: String?
     @State private var externalBrowserOutput: String?
     @State private var showBrowserSessionOptions = false
+    @State private var showQuickPresets = false
     @State private var showDiagnosticsLog = false
     @State private var showRuntimeUninstallConfirmation = false
     @State private var appliedSettings = BrowserSettingsStore.loadApplied()
@@ -331,12 +424,10 @@ private struct BrowserSettingsPane: View {
                 browserRuntimeCard
                 applyCard
             }
-            .frame(maxWidth: 760, alignment: .leading)
-            .padding(.horizontal, 24)
-            .padding(.vertical, 22)
+            .centeredSettingsColumn()
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-        .background(Color(nsColor: .windowBackgroundColor))
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+        .background(AppTheme.Palette.canvas)
         .task {
             normalizeExternalBrowserSelection()
             await refreshStatus()
@@ -353,49 +444,29 @@ private struct BrowserSettingsPane: View {
 
     private var header: some View {
         HStack(alignment: .top, spacing: 14) {
-            Image(systemName: "globe.badge.chevron.backward")
-                .font(.system(size: 28, weight: .semibold))
-                .foregroundStyle(.blue)
-                .frame(width: 44, height: 44)
-                .background(RoundedRectangle(cornerRadius: 12).fill(Color.blue.opacity(0.12)))
-
-            VStack(alignment: .leading, spacing: 4) {
-                Text("Browser Control")
-                    .font(.title3.weight(.semibold))
-                Text("Expose Chrome/Chromium browser tools to Grok sessions through the app-managed MCP bridge.")
-                    .font(.callout)
-                    .foregroundStyle(.secondary)
-            }
-            Spacer()
+            settingsPaneHeader(
+                "Browser Control",
+                subtitle: "Let Grok work in a managed browser or an existing Chromium app.",
+                systemImage: SettingsTab.browser.systemImage
+            )
             statusBadge
         }
     }
 
     private var browserToolsCard: some View {
-        settingsCard(title: "1. Enable Browser Tools", systemImage: "wrench.and.screwdriver") {
-            VStack(alignment: .leading, spacing: 14) {
-                Toggle(isOn: $enabled) {
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text("Enable browser tools for Grok sessions")
-                            .font(.headline)
-                        Text("When enabled, GrokBuild injects browser MCP tools into new and resumed Grok sessions.")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
-                }
-                .toggleStyle(.switch)
-
-                Divider()
-
-                Text("Install the agent-browser CLI (step 2), keep the runtime below on Managed Runtime and install it (step 3), then click Apply. GrokBuild will also install a small browser-control skill into your Grok skills folder.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+        settingsCard(title: "Browser Tools", systemImage: "globe") {
+            VStack(alignment: .leading, spacing: 12) {
+                SettingsToggleRow(
+                    "Allow browser control",
+                    subtitle: "Available in new and resumed sessions.",
+                    isOn: $enabled
+                )
             }
         }
     }
 
     private var statusCard: some View {
-        settingsCard(title: status.isReady ? "2. agent-browser Ready" : "2. Install agent-browser CLI", systemImage: status.isReady ? "checkmark.circle" : "arrow.down.circle", tint: installCardTint) {
+        settingsCard(title: "Browser Support", systemImage: status.isReady ? "checkmark.circle" : "arrow.down.circle") {
             VStack(alignment: .leading, spacing: 12) {
                 HStack(spacing: 10) {
                     Label(browserStatusTitle, systemImage: browserStatusIcon)
@@ -409,15 +480,15 @@ private struct BrowserSettingsPane: View {
                 }
 
                 if status.isReady {
-                    Text("The required local CLI is available. You can use its managed browser runtime, or optionally attach it to an existing Chrome instance below.")
+                    Text("Browser support is ready. Choose a managed browser or connect an existing Chromium app below.")
                         .foregroundStyle(.secondary)
 
                 } else if status.isInstalled {
-                    Text("The required local CLI is installed. If you want the recommended managed browser runtime, install it in the next section.")
+                    Text("Browser support is installed. Add the managed runtime below for the recommended setup.")
                         .foregroundStyle(.secondary)
 
                 } else {
-                    Text("GrokBuild needs the local `agent-browser` CLI to expose browser tools. The browser runtime itself is optional and chosen in the next section.")
+                    Text("Install browser support before enabling this feature.")
                         .foregroundStyle(.secondary)
 
                     VStack(alignment: .leading, spacing: 8) {
@@ -425,9 +496,6 @@ private struct BrowserSettingsPane: View {
                         installCommandRow(title: "npm", command: "npm install -g agent-browser")
                     }
 
-                    Text("GrokBuild never installs this silently. Use these commands only when you want to set up browser automation on this Mac.")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
                 }
 
                 if let installOutput, !installOutput.isEmpty {
@@ -464,16 +532,16 @@ private struct BrowserSettingsPane: View {
                 Button {
                     NSWorkspace.shared.open(URL(string: "https://agent-browser.dev")!)
                 } label: {
-                    Label("Open agent-browser Docs", systemImage: "safari")
+                    Label("Open Browser Setup Guide", systemImage: "questionmark.circle")
                 }
             }
         }
     }
 
     private var browserPresetsCard: some View {
-        settingsCard(title: "Quick Presets", systemImage: "wand.and.stars", tint: .purple) {
+        DisclosureGroup(isExpanded: $showQuickPresets) {
             VStack(alignment: .leading, spacing: 12) {
-                Text("One-click setups for common automation targets. Applies runtime, browser app, CDP URL, and session name — you still enable Browser Tools and Apply yourself.")
+                Text("Choose a starting configuration, then review and apply it.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
 
@@ -482,7 +550,20 @@ private struct BrowserSettingsPane: View {
                     if preset.id != BrowserPreset.allCases.last?.id { Divider() }
                 }
             }
+            .padding(.top, 10)
+        } label: {
+            Label("Presets", systemImage: "slider.horizontal.3")
+                .font(.headline)
         }
+        .padding(12)
+        .background(
+            RoundedRectangle(cornerRadius: AppTheme.Radius.medium, style: .continuous)
+                .fill(AppTheme.Palette.surface)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: AppTheme.Radius.medium, style: .continuous)
+                .stroke(AppTheme.Palette.glassBorder)
+        )
     }
 
     private func presetRow(_ preset: BrowserPreset) -> some View {
@@ -496,7 +577,6 @@ private struct BrowserSettingsPane: View {
                 }
                 .controlSize(.small)
                 .buttonStyle(.bordered)
-                .tint(.purple)
             }
             Text(preset.summary)
                 .font(.caption)
@@ -518,33 +598,27 @@ private struct BrowserSettingsPane: View {
     }
 
     private var browserRuntimeCard: some View {
-        settingsCard(title: "3. Choose Browser Runtime", systemImage: "globe") {
+        settingsCard(title: "Browser Runtime", systemImage: "globe") {
             VStack(alignment: .leading, spacing: 14) {
                 Text("Choose where browser automation runs. Most users should use the managed browser runtime.")
                     .foregroundStyle(.secondary)
 
                 browserRuntimeOption(
                     title: "Managed browser runtime",
-                    subtitle: "Recommended. `agent-browser install` sets up a separate automation Chrome/Chromium runtime, so your normal daily Chrome profile is not used.",
+                    subtitle: "Recommended. Uses a separate automation browser and leaves your normal profile alone.",
                     systemImage: "shippingbox.circle",
-                    color: .green,
                     isSelected: selectedRuntimeMode == .managed
                 ) {
                     VStack(alignment: .leading, spacing: 10) {
                         Label(managedRuntimeStatusText, systemImage: status.isReady ? "checkmark.circle.fill" : "circle.dashed")
                             .font(.callout.weight(.medium))
-                            .foregroundStyle(status.isReady ? .green : .secondary)
+                            .foregroundStyle(.secondary)
 
-                        Toggle(isOn: $showBrowserWindow) {
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text("Show browser window while agents work")
-                                    .font(.callout.weight(.medium))
-                                Text("Opens the managed automation browser visibly instead of keeping it headless. Apply and restart Grok after changing this.")
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
-                            }
-                        }
-                        .toggleStyle(.switch)
+                        SettingsToggleRow(
+                            "Show browser window while agents work",
+                            subtitle: "Opens the managed automation browser visibly instead of keeping it headless. Apply and restart Grok after changing this.",
+                            isOn: $showBrowserWindow
+                        )
 
                         HStack {
                             Button("Use Managed Runtime") {
@@ -575,7 +649,7 @@ private struct BrowserSettingsPane: View {
                         }
 
                         if !status.isInstalled {
-                            Text("Install the agent-browser CLI first before installing the managed browser runtime.")
+                            Text("Install browser support before adding the managed runtime.")
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
                         }
@@ -586,17 +660,16 @@ private struct BrowserSettingsPane: View {
                     title: "Existing Chromium browser",
                     subtitle: "Optional. Use any Chromium-based browser you start yourself with remote debugging enabled, such as Chrome, Chromium, Brave, Edge, or Arc.",
                     systemImage: "macwindow.badge.plus",
-                    color: .orange,
                     isSelected: selectedRuntimeMode == .external
                 ) {
                     VStack(alignment: .leading, spacing: 10) {
-                        Text("GrokBuild can start a separate automation profile for the selected Chromium browser, then point agent-browser at its CDP URL.")
+                        Text("GrokBuild can start a separate automation profile in the selected browser.")
                             .font(.caption)
                             .foregroundStyle(.secondary)
 
                         Label(externalBrowserStatusText, systemImage: externalStatus.isReachable ? "checkmark.circle.fill" : "circle.dashed")
                             .font(.callout.weight(.medium))
-                            .foregroundStyle(externalStatus.isReachable ? .green : .secondary)
+                            .foregroundStyle(.secondary)
 
                         settingRow("Browser app") {
                             Picker("", selection: $externalBrowserAppID) {
@@ -605,11 +678,11 @@ private struct BrowserSettingsPane: View {
                                 }
                             }
                             .labelsHidden()
-                            .frame(width: 220)
+                            .frame(width: AppTheme.Layout.settingsControlWidth)
                         }
 
                         if installedKnownExternalBrowsers.isEmpty {
-                            Text("No supported Chromium apps were found in `/Applications`. Choose a custom Chromium app if you have one elsewhere.")
+                            Text("No supported Chromium apps were found. Choose a custom app if one is installed elsewhere.")
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
                         }
@@ -626,16 +699,11 @@ private struct BrowserSettingsPane: View {
                             }
                         }
 
-                        Toggle(isOn: $autoStartExternalBrowser) {
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text("Start this browser automatically when Grok starts")
-                                    .font(.callout.weight(.medium))
-                                Text("Uses a separate GrokBuild profile, not your normal logged-in browser profile.")
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
-                            }
-                        }
-                        .toggleStyle(.switch)
+                        SettingsToggleRow(
+                            "Start this browser automatically when Grok starts",
+                            subtitle: "Uses a separate GrokBuild profile, not your normal logged-in browser profile.",
+                            isOn: $autoStartExternalBrowser
+                        )
 
                         settingRow("CDP URL") {
                             TextField("For the command below: http://127.0.0.1:9222", text: $cdpURL)
@@ -693,7 +761,7 @@ private struct BrowserSettingsPane: View {
 
                 DisclosureGroup(isExpanded: $showBrowserSessionOptions) {
                     VStack(alignment: .leading, spacing: 10) {
-                        Text("Optional for both managed runtime and existing Chromium browser. Use this only when you want agent-browser to keep a named browser session/state instead of using the default session.")
+                        Text("Use a named session only when you want browser state to persist separately.")
                             .font(.caption)
                             .foregroundStyle(.secondary)
 
@@ -704,7 +772,7 @@ private struct BrowserSettingsPane: View {
                     }
                     .padding(.top, 8)
                 } label: {
-                    Label("Advanced: Browser session state", systemImage: "slider.horizontal.3")
+                    Label("Session Storage", systemImage: "slider.horizontal.3")
                         .font(.callout.weight(.medium))
                 }
             }
@@ -716,12 +784,12 @@ private struct BrowserSettingsPane: View {
             VStack(alignment: .leading, spacing: 3) {
                 Text("Apply changes")
                     .font(.headline)
-                Text(hasPendingBrowserChanges ? "Restart the Grok connection so browser MCP tools are injected into the active session." : "Browser launch settings are already applied to the active configuration.")
+                Text(hasPendingBrowserChanges ? "Restarts the active Grok connection." : "Browser settings are current.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
             Spacer()
-            Button("Apply and Restart Grok") {
+            Button("Apply Changes") {
                 appliedSettings = currentSettings
                 BrowserSettingsStore.saveApplied(currentSettings)
                 onConfigurationChanged()
@@ -729,9 +797,15 @@ private struct BrowserSettingsPane: View {
             .buttonStyle(.borderedProminent)
             .disabled(!hasPendingBrowserChanges)
         }
-        .padding(16)
-        .background(RoundedRectangle(cornerRadius: 14).fill(applyTint.opacity(hasPendingBrowserChanges ? 0.08 : 0.04)))
-        .overlay(RoundedRectangle(cornerRadius: 14).stroke(applyTint.opacity(hasPendingBrowserChanges ? 0.18 : 0.10)))
+        .padding(14)
+        .background(
+            RoundedRectangle(cornerRadius: AppTheme.Radius.medium, style: .continuous)
+                .fill(hasPendingBrowserChanges ? AppTheme.Palette.surfaceHover : AppTheme.Palette.surface)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: AppTheme.Radius.medium, style: .continuous)
+                .stroke(hasPendingBrowserChanges ? AppTheme.Palette.glassBorderStrong : AppTheme.Palette.glassBorder)
+        )
     }
 
     @MainActor
@@ -808,15 +882,11 @@ private struct BrowserSettingsPane: View {
     }
 
     private var statusBadge: some View {
-        let color: Color = enabled ? browserStatusColor : .secondary
         let text = enabled ? (status.isReady ? "Ready" : "Setup needed") : "Disabled"
 
         return Text(text)
             .font(.caption.weight(.semibold))
-            .padding(.horizontal, 10)
-            .padding(.vertical, 5)
-            .background(Capsule().fill(color.opacity(0.14)))
-            .foregroundStyle(color)
+            .foregroundStyle(.secondary)
     }
 
     private var selectedExternalBrowserApp: ExternalBrowserAppID {
@@ -889,10 +959,6 @@ private struct BrowserSettingsPane: View {
         currentSettings != appliedSettings
     }
 
-    private var applyTint: Color {
-        hasPendingBrowserChanges ? .accentColor : .secondary
-    }
-
     private var browserStatusTitle: String {
         if status.isReady { return "agent-browser ready" }
         if status.isInstalled { return "agent-browser setup needed" }
@@ -906,13 +972,7 @@ private struct BrowserSettingsPane: View {
     }
 
     private var browserStatusColor: Color {
-        if status.isReady { return .green }
-        if status.isInstalled { return .orange }
-        return .red
-    }
-
-    private var installCardTint: Color {
-        status.isReady ? .green : (status.isInstalled ? .orange : .secondary)
+        .secondary
     }
 
     private func copyToPasteboard(_ text: String) {
@@ -923,26 +983,30 @@ private struct BrowserSettingsPane: View {
     private func settingsCard<Content: View>(
         title: String,
         systemImage: String,
-        tint: Color? = nil,
         @ViewBuilder content: () -> Content
     ) -> some View {
         VStack(alignment: .leading, spacing: 14) {
             Label(title, systemImage: systemImage)
                 .font(.headline)
-                .foregroundStyle(tint ?? .primary)
+                .foregroundStyle(.primary)
             content()
         }
-        .padding(16)
+        .padding(14)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(RoundedRectangle(cornerRadius: 14).fill(tint.map { $0.opacity(0.07) } ?? Color(nsColor: .controlBackgroundColor)))
-        .overlay(RoundedRectangle(cornerRadius: 14).stroke(tint.map { $0.opacity(0.22) } ?? Color(nsColor: .separatorColor).opacity(0.6)))
+        .background(
+            RoundedRectangle(cornerRadius: AppTheme.Radius.medium, style: .continuous)
+                .fill(AppTheme.Palette.surface)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: AppTheme.Radius.medium, style: .continuous)
+                .stroke(AppTheme.Palette.glassBorder)
+        )
     }
 
     private func browserRuntimeOption<Content: View>(
         title: String,
         subtitle: String,
         systemImage: String,
-        color: Color,
         isSelected: Bool,
         @ViewBuilder content: () -> Content
     ) -> some View {
@@ -950,7 +1014,7 @@ private struct BrowserSettingsPane: View {
             HStack(alignment: .top, spacing: 12) {
                 Image(systemName: isSelected ? "checkmark.circle.fill" : systemImage)
                     .font(.title3)
-                    .foregroundStyle(isSelected ? color : .secondary)
+                    .foregroundStyle(.secondary)
                     .frame(width: 24)
 
                 VStack(alignment: .leading, spacing: 3) {
@@ -963,18 +1027,21 @@ private struct BrowserSettingsPane: View {
                 Spacer()
                 Text(isSelected ? "Selected" : "Optional")
                     .font(.caption.weight(.semibold))
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 4)
-                    .background(Capsule().fill((isSelected ? color : Color.secondary).opacity(0.14)))
-                    .foregroundStyle(isSelected ? color : .secondary)
+                    .foregroundStyle(.secondary)
             }
 
             content()
                 .padding(.leading, 36)
         }
         .padding(12)
-        .background(RoundedRectangle(cornerRadius: 12).fill((isSelected ? color : Color.secondary).opacity(isSelected ? 0.08 : 0.05)))
-        .overlay(RoundedRectangle(cornerRadius: 12).stroke((isSelected ? color : Color.secondary).opacity(isSelected ? 0.24 : 0.12)))
+        .background(
+            RoundedRectangle(cornerRadius: AppTheme.Radius.medium, style: .continuous)
+                .fill(isSelected ? AppTheme.Palette.surfaceHover : AppTheme.Palette.glassTint)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: AppTheme.Radius.medium, style: .continuous)
+                .stroke(isSelected ? AppTheme.Palette.glassBorderStrong : AppTheme.Palette.glassBorder)
+        )
     }
 
     private func settingRow<Content: View>(
@@ -996,7 +1063,7 @@ private struct BrowserSettingsPane: View {
                 .foregroundStyle(.secondary)
                 .frame(width: 70, alignment: .leading)
             Text(value)
-                .font(.system(.caption, design: .monospaced))
+                .font(.caption)
                 .textSelection(.enabled)
             Spacer()
         }
@@ -1041,9 +1108,8 @@ private struct PluginsSettingsPane: View {
             HStack(alignment: .top) {
                 settingsPaneHeader(
                     "Plugins",
-                    subtitle: "Manage installed Grok plugins and manually add trusted plugin sources.",
-                    systemImage: "shippingbox",
-                    color: .indigo
+                    subtitle: "Manage installed plugins or add one from a trusted source.",
+                    systemImage: SettingsTab.plugins.systemImage
                 )
                 Button {
                     Task { await refresh() }
@@ -1055,6 +1121,8 @@ private struct PluginsSettingsPane: View {
             HStack {
                 TextField("GitHub repo, Git URL, or local path", text: $installSource)
                 Toggle("Trust", isOn: $trustInstall)
+                    .toggleStyle(.checkbox)
+                    .controlSize(.small)
                 Button("Install") {
                     Task { await installPlugin() }
                 }
@@ -1075,7 +1143,7 @@ private struct PluginsSettingsPane: View {
                             Spacer()
                             Text(plugin.isEnabled ? "Enabled" : "Disabled")
                                 .font(.caption.weight(.medium))
-                                .foregroundStyle(plugin.isEnabled ? .green : .secondary)
+                                .foregroundStyle(.secondary)
                         }
 
                         if !plugin.description.isEmpty {
@@ -1089,7 +1157,7 @@ private struct PluginsSettingsPane: View {
                                 .foregroundStyle(.tertiary)
                         }
 
-                        HStack {
+                        Menu {
                             Button(plugin.isEnabled ? "Disable" : "Enable") {
                                 Task { await setPlugin(plugin, enabled: !plugin.isEnabled) }
                             }
@@ -1102,16 +1170,25 @@ private struct PluginsSettingsPane: View {
                             Button("Uninstall", role: .destructive) {
                                 Task { await uninstallPlugin(plugin) }
                             }
+                        } label: {
+                            Image(systemName: "ellipsis")
+                                .frame(width: 20, height: 20)
                         }
-                        .buttonStyle(.bordered)
+                        .menuStyle(.borderlessButton)
                         .controlSize(.small)
+                        .fixedSize()
+                        .help("Plugin actions")
                     }
                     .padding(.vertical, 4)
                 }
             }
             .overlay {
                 if plugins.isEmpty && !isLoading {
-                    ContentUnavailableView("No Plugins", systemImage: "shippingbox", description: Text("Install a plugin manually or from Marketplace."))
+                    ContentUnavailableView(
+                        "No Plugins",
+                        systemImage: SettingsTab.plugins.systemImage,
+                        description: Text("Install a plugin here or from Marketplace.")
+                    )
                 }
             }
 
@@ -1249,9 +1326,8 @@ private struct HooksSettingsPane: View {
             HStack(alignment: .top) {
                 settingsPaneHeader(
                     "Hooks",
-                    subtitle: "Inspect automation hooks discovered from Grok, Cursor, Claude, projects, and plugins.",
-                    systemImage: "curlybraces",
-                    color: .mint
+                    subtitle: "Review the hooks available to this project.",
+                    systemImage: SettingsTab.hooks.systemImage
                 )
                 Button("Refresh") {
                     Task { await refresh() }
@@ -1269,7 +1345,7 @@ private struct HooksSettingsPane: View {
                                 .font(.headline)
                             if !hook.matcher.isEmpty {
                                 Text(hook.matcher)
-                                    .font(.caption.monospaced())
+                                    .font(.caption)
                                     .foregroundStyle(.secondary)
                             }
                             Spacer()
@@ -1283,7 +1359,7 @@ private struct HooksSettingsPane: View {
                             .foregroundStyle(.secondary)
 
                         Text(hook.target)
-                            .font(.caption.monospaced())
+                            .font(.caption)
                             .foregroundStyle(.tertiary)
                             .lineLimit(2)
                             .truncationMode(.middle)
@@ -1291,7 +1367,7 @@ private struct HooksSettingsPane: View {
                         if !hook.sourcePath.isEmpty {
                             HStack {
                                 Text(hook.sourcePath)
-                                    .font(.caption2.monospaced())
+                                    .font(.caption2)
                                     .foregroundStyle(.tertiary)
                                     .lineLimit(1)
                                     .truncationMode(.middle)
@@ -1320,7 +1396,7 @@ private struct HooksSettingsPane: View {
                     .textSelection(.enabled)
             }
 
-            Text("Hooks are discovered from Grok, Cursor, Claude, project, and plugin sources via `grok inspect --json`.")
+            Text("Sources refresh automatically from Grok, Cursor, Claude, plugins, and the current project.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
         }
@@ -1371,9 +1447,8 @@ private struct MarketplaceSettingsPane: View {
             HStack(alignment: .top) {
                 settingsPaneHeader(
                     "Marketplace",
-                    subtitle: "Browse available plugins and manage marketplace sources.",
-                    systemImage: "storefront",
-                    color: .orange
+                    subtitle: "Browse and install plugins from trusted sources.",
+                    systemImage: SettingsTab.marketplace.systemImage
                 )
                 Button("Refresh") {
                     Task { await refresh() }
@@ -1391,52 +1466,40 @@ private struct MarketplaceSettingsPane: View {
             TextField("Search available plugins", text: $availableFilter)
                 .textFieldStyle(.roundedBorder)
 
-            HSplitView {
-                List {
+            if !marketplaceSources.isEmpty {
+                marketplaceSourcesCard
+            }
+
+            ScrollView {
+                LazyVStack(alignment: .leading, spacing: 0) {
                     if !installedPlugins.isEmpty {
-                        Section("Installed") {
-                            ForEach(installedPlugins) { plugin in
-                                marketplacePluginRow(plugin, showInstall: false)
+                        marketplaceSectionHeader("Installed", count: installedPlugins.count)
+                        ForEach(Array(installedPlugins.enumerated()), id: \.element.id) { index, plugin in
+                            marketplacePluginRow(plugin, showInstall: false)
+                            if index < installedPlugins.count - 1 {
+                                Divider()
                             }
                         }
                     }
 
-                    Section("Available") {
-                        ForEach(filteredAvailablePlugins) { plugin in
-                            marketplacePluginRow(plugin, showInstall: true)
+                    marketplaceSectionHeader("Available", count: filteredAvailablePlugins.count)
+                        .padding(.top, installedPlugins.isEmpty ? 0 : 16)
+                    ForEach(Array(filteredAvailablePlugins.enumerated()), id: \.element.id) { index, plugin in
+                        marketplacePluginRow(plugin, showInstall: true)
+                        if index < filteredAvailablePlugins.count - 1 {
+                            Divider()
                         }
                     }
                 }
-                .overlay {
-                    if availablePlugins.isEmpty && installedPlugins.isEmpty && !isLoading {
-                        ContentUnavailableView("No Plugins", systemImage: "storefront", description: Text("Refresh marketplace sources or add a source above."))
-                    }
-                }
-
-                List {
-                    Section("Sources") {
-                        ForEach(marketplaceSources) { source in
-                            VStack(alignment: .leading, spacing: 4) {
-                                HStack {
-                                    VStack(alignment: .leading) {
-                                        Text(source.name)
-                                            .font(.headline)
-                                        Text(source.location)
-                                            .font(.caption)
-                                            .foregroundStyle(.secondary)
-                                            .lineLimit(1)
-                                            .truncationMode(.middle)
-                                    }
-                                    Spacer()
-                                    Button("Remove", role: .destructive) {
-                                        Task { await removeMarketplace(source) }
-                                    }
-                                    .controlSize(.small)
-                                }
-                            }
-                            .padding(.vertical, 3)
-                        }
-                    }
+                .padding(.horizontal, 4)
+            }
+            .overlay {
+                if availablePlugins.isEmpty && installedPlugins.isEmpty && !isLoading {
+                    ContentUnavailableView(
+                        "No Plugins",
+                        systemImage: SettingsTab.marketplace.systemImage,
+                        description: Text("Refresh the marketplace or add a trusted source.")
+                    )
                 }
             }
 
@@ -1449,6 +1512,51 @@ private struct MarketplaceSettingsPane: View {
             }
         }
         .task { await refresh() }
+    }
+
+    private var marketplaceSourcesCard: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            HStack {
+                Label("Sources", systemImage: "square.stack.3d.up")
+                    .font(.callout.weight(.semibold))
+                Spacer()
+                Text("\(marketplaceSources.count)")
+                    .font(.caption)
+                    .foregroundStyle(.tertiary)
+            }
+            .padding(.bottom, 8)
+
+            ForEach(Array(marketplaceSources.enumerated()), id: \.element.id) { index, source in
+                if index > 0 {
+                    Divider()
+                        .padding(.vertical, 7)
+                }
+
+                HStack(spacing: 12) {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(source.name)
+                            .font(.callout.weight(.medium))
+                        Text(source.location)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                            .truncationMode(.middle)
+                    }
+                    Spacer()
+                    Button(role: .destructive) {
+                        Task { await removeMarketplace(source) }
+                    } label: {
+                        Image(systemName: "minus.circle")
+                            .frame(width: 20, height: 20)
+                    }
+                    .buttonStyle(.plain)
+                    .controlSize(.small)
+                    .help("Remove source")
+                }
+            }
+        }
+        .padding(12)
+        .grokGlassSurface()
     }
 
     @ViewBuilder
@@ -1467,12 +1575,12 @@ private struct MarketplaceSettingsPane: View {
                     Button("Install") {
                         Task { await installAvailablePlugin(plugin) }
                     }
-                    .buttonStyle(.borderedProminent)
+                    .buttonStyle(.borderless)
                     .controlSize(.small)
                 } else {
                     Text(plugin.isEnabled ? "Enabled" : "Disabled")
                         .font(.caption.weight(.medium))
-                        .foregroundStyle(plugin.isEnabled ? .green : .secondary)
+                        .foregroundStyle(.secondary)
                 }
             }
 
@@ -1484,19 +1592,37 @@ private struct MarketplaceSettingsPane: View {
             }
 
             if !showInstall {
-                HStack {
+                Menu {
                     Button(plugin.isEnabled ? "Disable" : "Enable") {
                         Task { await setInstalledPlugin(plugin, enabled: !plugin.isEnabled) }
                     }
                     Button("Uninstall", role: .destructive) {
                         Task { await uninstallInstalledPlugin(plugin) }
                     }
+                } label: {
+                    Image(systemName: "ellipsis")
+                        .frame(width: 20, height: 20)
                 }
-                .buttonStyle(.bordered)
+                .menuStyle(.borderlessButton)
                 .controlSize(.small)
+                .fixedSize()
+                .help("Plugin actions")
             }
         }
-        .padding(.vertical, 4)
+        .padding(.vertical, 10)
+    }
+
+    private func marketplaceSectionHeader(_ title: String, count: Int) -> some View {
+        HStack {
+            Text(title)
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.secondary)
+            Spacer()
+            Text("\(count)")
+                .font(.caption)
+                .foregroundStyle(.tertiary)
+        }
+        .padding(.vertical, 8)
     }
 
     private func refresh() async {
@@ -1592,9 +1718,8 @@ private struct SkillsSettingsPane: View {
             HStack(alignment: .top) {
                 settingsPaneHeader(
                     "Skills",
-                    subtitle: "View user, project, compatibility, and plugin skills available to Grok.",
-                    systemImage: "wand.and.stars",
-                    color: .pink
+                    subtitle: "Review the skills available to Grok in this project.",
+                    systemImage: SettingsTab.skills.systemImage
                 )
                 Button("Refresh") {
                     Task { await refresh() }
@@ -1612,7 +1737,7 @@ private struct SkillsSettingsPane: View {
                                 .font(.headline)
                             if skill.userInvocable {
                                 Text("/\(skill.name)")
-                                    .font(.caption.monospaced())
+                                    .font(.caption)
                                     .foregroundStyle(.secondary)
                             }
                             Spacer()
@@ -1630,13 +1755,8 @@ private struct SkillsSettingsPane: View {
 
                         if !skill.sourcePath.isEmpty {
                             HStack {
-                                Text(skill.sourcePath)
-                                    .font(.caption2.monospaced())
-                                    .foregroundStyle(.tertiary)
-                                    .lineLimit(1)
-                                    .truncationMode(.middle)
                                 Spacer()
-                                Button("Open SKILL.md") {
+                                Button("Open source") {
                                     openPath(skill.sourcePath)
                                 }
                                 .controlSize(.small)
@@ -1648,7 +1768,11 @@ private struct SkillsSettingsPane: View {
             }
             .overlay {
                 if skills.isEmpty && !isLoading {
-                    ContentUnavailableView("No Skills", systemImage: "wand.and.stars", description: Text("Grok did not report any skills for this project."))
+                    ContentUnavailableView(
+                        "No Skills",
+                        systemImage: SettingsTab.skills.systemImage,
+                        description: Text("No skills are available for this project.")
+                    )
                 }
             }
 
@@ -1660,7 +1784,7 @@ private struct SkillsSettingsPane: View {
                     .textSelection(.enabled)
             }
 
-            Text("Skills are discovered from user, project, compatibility, and plugin locations via `grok inspect --json`.")
+            Text("Sources refresh automatically from this Mac and the current project.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
         }
@@ -1708,9 +1832,8 @@ private struct AgentsSettingsPane: View {
             HStack(alignment: .top) {
                 settingsPaneHeader(
                     "Agents",
-                    subtitle: "Pick the agent grok uses for new sessions and browse the agents discovered for this project.",
-                    systemImage: "person.2.badge.gearshape",
-                    color: .teal
+                    subtitle: "Choose the agent used for new sessions and manage reusable roles.",
+                    systemImage: SettingsTab.agents.systemImage
                 )
                 Button("Refresh") {
                     Task { await refresh() }
@@ -1754,7 +1877,7 @@ private struct AgentsSettingsPane: View {
                         }
                         if !agent.sourcePath.isEmpty {
                             Text(agent.sourcePath)
-                                .font(.caption2.monospaced())
+                                .font(.caption2)
                                 .foregroundStyle(.tertiary)
                                 .lineLimit(1)
                                 .truncationMode(.middle)
@@ -1774,16 +1897,10 @@ private struct AgentsSettingsPane: View {
             HStack(spacing: 6) {
                 Text("Discovered agents")
                     .font(.headline)
-                Text("(`grok inspect --json`)")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
                 if !agents.isEmpty {
-                    Text("\(agents.count)")
-                        .font(.caption2.weight(.semibold))
+                    Text("\(agents.count) available")
+                        .font(.caption)
                         .foregroundStyle(.secondary)
-                        .padding(.horizontal, 6)
-                        .padding(.vertical, 1)
-                        .background(Capsule().fill(Color.secondary.opacity(0.15)))
                 }
             }
         }
@@ -1818,14 +1935,14 @@ private struct AgentsSettingsPane: View {
                 .frame(width: 240)
             }
 
-            Text("Passed to `grok --agent` when a **new** session starts. **Default** uses grok's standard agent; pick a discovered agent by name to run it as the main agent instead. Each open session also has its **own** agent picker in the chat status bar — switch it there to override this default per session. Choosing a custom role here runs the whole session as that role; to spawn it as a parallel subagent, ask for it in chat.")
+            Text("Used for new sessions. You can override it per session from the composer. A custom role runs the whole session; ask in chat when you want Grok to delegate work to a subagent.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
 
             HStack {
                 Spacer()
-                Button("Save Default & Apply to Current") {
+                Button("Save Default") {
                     appliedAgent = selectedAgent
                     onConfigurationChanged()
                 }
@@ -1833,9 +1950,19 @@ private struct AgentsSettingsPane: View {
                 .disabled(!hasPendingChanges)
             }
         }
-        .padding(16)
-        .background(RoundedRectangle(cornerRadius: 14).fill(Color.teal.opacity(hasPendingChanges ? 0.08 : 0.04)))
-        .overlay(RoundedRectangle(cornerRadius: 14).stroke(Color.teal.opacity(hasPendingChanges ? 0.18 : 0.10)))
+        .padding(14)
+        .background(
+            RoundedRectangle(cornerRadius: AppTheme.Radius.medium, style: .continuous)
+                .fill(hasPendingChanges ? AppTheme.Palette.surfaceHover : AppTheme.Palette.surface)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: AppTheme.Radius.medium, style: .continuous)
+                .stroke(
+                    hasPendingChanges
+                        ? AppTheme.Palette.glassBorderStrong
+                        : AppTheme.Palette.glassBorder
+                )
+        )
     }
 
     private var customSubagentsSection: some View {
@@ -1853,23 +1980,16 @@ private struct AgentsSettingsPane: View {
                 .disabled(roles.count >= SubagentRoleStore.maxRoles)
             }
 
-            Text("Reusable subagent **roles** grok can spawn (`[subagents.roles.*]` in `~/.grok/config.toml`). Each has a name, an optional model (empty = inherit the session's model), and an instruction saved to `~/.grok/prompts/<name>.md`.")
+            Text("Reusable roles with their own instructions and an optional model.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
 
-            Label {
-                Text("**How to use:** just chat normally — the main agent delegates to a matching role on its own, or ask it by name (e.g. *“use the researcher subagent to map the auth flow”*). Each runs in parallel with its own context and reports back. Keep **Disable subagents** off in Permissions for delegation to work.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
-            } icon: {
-                Image(systemName: "sparkles")
-                    .foregroundStyle(.teal)
-            }
-            .padding(10)
-            .background(RoundedRectangle(cornerRadius: 10).fill(Color.teal.opacity(0.06)))
-            .overlay(RoundedRectangle(cornerRadius: 10).stroke(Color.teal.opacity(0.12)))
+            Text("Ask for a role by name, or let the main agent delegate automatically. Each role works independently and reports back.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+                .padding(.vertical, 2)
 
             if roles.isEmpty {
                 Text("No custom subagents yet.")
@@ -1883,8 +2003,8 @@ private struct AgentsSettingsPane: View {
                         if role.id != roles.last?.id { Divider() }
                     }
                 }
-                .background(RoundedRectangle(cornerRadius: 12).fill(Color.primary.opacity(0.03)))
-                .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color.primary.opacity(0.08)))
+                .background(RoundedRectangle(cornerRadius: AppTheme.Radius.medium).fill(Color.primary.opacity(0.03)))
+                .overlay(RoundedRectangle(cornerRadius: AppTheme.Radius.medium).stroke(Color.primary.opacity(0.08)))
             }
 
             if let roleError {
@@ -1914,9 +2034,6 @@ private struct AgentsSettingsPane: View {
                     Text(role.model.isEmpty ? "inherits model" : role.model)
                         .font(.caption2.weight(.medium))
                         .foregroundStyle(.secondary)
-                        .padding(.horizontal, 6)
-                        .padding(.vertical, 2)
-                        .background(Capsule().fill(Color.teal.opacity(0.12)))
                 }
                 if !role.description.isEmpty {
                     Text(role.description)
@@ -2089,11 +2206,11 @@ private struct SubagentRoleEditor: View {
             VStack(alignment: .leading, spacing: 4) {
                 Text("Instruction").font(.caption.weight(.medium)).foregroundStyle(.secondary)
                 TextEditor(text: $instruction)
-                    .font(.body.monospaced())
+                    .font(.body)
                     .frame(minHeight: 140)
                     .overlay(RoundedRectangle(cornerRadius: 6).stroke(Color.primary.opacity(0.15)))
                 Text("Saved to ~/.grok/prompts/\(name.isEmpty ? "<name>" : name).md")
-                    .font(.caption2.monospaced()).foregroundStyle(.tertiary)
+                    .font(.caption2).foregroundStyle(.tertiary)
             }
 
             if let validationError {
@@ -2170,12 +2287,10 @@ private struct ComputerUseSettingsPane: View {
                 cursorIntegrationCard
                 applyCard
             }
-            .frame(maxWidth: 760, alignment: .leading)
-            .padding(.horizontal, 24)
-            .padding(.vertical, 22)
+            .centeredSettingsColumn()
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-        .background(Color(nsColor: .windowBackgroundColor))
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+        .background(AppTheme.Palette.canvas)
         .task {
             appliedSettings = ComputerUseSettingsStore.loadApplied()
             await refreshStatus()
@@ -2185,59 +2300,33 @@ private struct ComputerUseSettingsPane: View {
 
     private var header: some View {
         HStack(alignment: .top, spacing: 14) {
-            Image(systemName: "desktopcomputer")
-                .font(.system(size: 28, weight: .semibold))
-                .foregroundStyle(.purple)
-                .frame(width: 44, height: 44)
-                .background(RoundedRectangle(cornerRadius: 12).fill(Color.purple.opacity(0.12)))
-
-            VStack(alignment: .leading, spacing: 4) {
-                Text("Computer Use")
-                    .font(.title3.weight(.semibold))
-                Text("Expose local macOS desktop-control tools to Grok sessions through the app-managed MCP helper and agent-desktop.")
-                    .font(.callout)
-                    .foregroundStyle(.secondary)
-            }
-            Spacer()
+            settingsPaneHeader(
+                "Computer Use",
+                subtitle: "Let Grok interact with native macOS apps using Accessibility.",
+                systemImage: SettingsTab.computerUse.systemImage
+            )
             statusBadge
         }
     }
 
     private var enableCard: some View {
-        computerSettingsCard(title: "1. Enable Computer Use", systemImage: "wrench.and.screwdriver") {
-            VStack(alignment: .leading, spacing: 14) {
-                Toggle(isOn: $enabled) {
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text("Enable Computer Use tools for Grok sessions")
-                            .font(.headline)
-                        Text("When enabled, GrokBuild injects `computer_*` MCP tools into new and resumed Grok sessions.")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
-                }
-                .toggleStyle(.switch)
+        computerSettingsCard(title: "Computer Use", systemImage: SettingsTab.computerUse.systemImage) {
+            VStack(alignment: .leading, spacing: 12) {
+                SettingsToggleRow(
+                    "Allow computer control",
+                    subtitle: "Available in new and resumed sessions.",
+                    isOn: $enabled
+                )
                 .onChange(of: enabled) { _, newValue in
                     guard newValue != appliedSettings.enabled else { return }
                     Task { await applyEnabledChange(to: newValue) }
                 }
-
-                Divider()
-
-                settingRow("Backend") {
-                    Text(ComputerUseBackendID(rawValue: backend)?.displayName ?? backend)
-                        .foregroundStyle(.secondary)
-                        .frame(width: 190, alignment: .leading)
-                }
-
-                Text("agent-desktop ships inside GrokBuild, so there's nothing to install. Grant Accessibility permission below, then click Apply after enabling tools. GrokBuild will also install a small Computer Use skill into your Grok skills folder.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
             }
         }
     }
 
     private var statusCard: some View {
-        computerSettingsCard(title: backendStatus.isInstalled ? "2. agent-desktop Ready" : "2. agent-desktop Unavailable", systemImage: backendStatus.isInstalled ? "checkmark.circle" : "exclamationmark.triangle", tint: installCardTint) {
+        computerSettingsCard(title: "Built-in Support", systemImage: backendStatus.isInstalled ? "checkmark.circle" : "exclamationmark.triangle") {
             VStack(alignment: .leading, spacing: 12) {
                 HStack(spacing: 10) {
                     Label(backendStatusTitle, systemImage: backendStatusIcon)
@@ -2251,29 +2340,30 @@ private struct ComputerUseSettingsPane: View {
                 }
 
                 if backendStatus.isInstalled {
-                    Text("agent-desktop ships inside GrokBuild and shares the app's permissions. Grant macOS permissions below, then enable and apply Computer Use.")
+                    Text("Built-in computer support is ready. Grant macOS permissions below, then allow computer control.")
                         .foregroundStyle(.secondary)
                 } else {
-                    Text("agent-desktop is bundled with GrokBuild, so this is unexpected. Reinstalling the app from the latest release should restore it.")
+                    Text("Built-in computer support is missing. Reinstall the latest GrokBuild release.")
                         .foregroundStyle(.secondary)
-                }
-
-                if let path = backendStatus.executablePath {
-                    infoLine("Path", path)
-                }
-                if let version = backendStatus.version, !version.isEmpty {
-                    infoLine("Version", version)
                 }
 
                 DisclosureGroup(isExpanded: $showDiagnosticsLog) {
-                    Text(backendStatus.diagnostic.isEmpty ? "No diagnostics yet." : backendStatus.diagnostic)
-                        .font(.system(.caption, design: .monospaced))
-                        .textSelection(.enabled)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding(10)
-                        .background(RoundedRectangle(cornerRadius: 8).fill(Color(nsColor: .textBackgroundColor)))
-                        .foregroundStyle(.secondary)
-                        .padding(.top, 8)
+                    VStack(alignment: .leading, spacing: 8) {
+                        if let path = backendStatus.executablePath {
+                            infoLine("Path", path)
+                        }
+                        if let version = backendStatus.version, !version.isEmpty {
+                            infoLine("Version", version)
+                        }
+                        Text(backendStatus.diagnostic.isEmpty ? "No diagnostics yet." : backendStatus.diagnostic)
+                            .font(.system(.caption, design: .monospaced))
+                            .textSelection(.enabled)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding(10)
+                            .background(RoundedRectangle(cornerRadius: 8).fill(Color(nsColor: .textBackgroundColor)))
+                            .foregroundStyle(.secondary)
+                    }
+                    .padding(.top, 8)
                 } label: {
                     Label(showDiagnosticsLog ? "Hide diagnostics log" : "Show diagnostics log", systemImage: "doc.text.magnifyingglass")
                         .font(.callout.weight(.medium))
@@ -2282,16 +2372,16 @@ private struct ComputerUseSettingsPane: View {
                 Button {
                     NSWorkspace.shared.open(URL(string: "https://github.com/lahfir/agent-desktop")!)
                 } label: {
-                    Label("Open agent-desktop Docs", systemImage: "safari")
+                    Label("Open Computer Use Setup Guide", systemImage: "questionmark.circle")
                 }
             }
         }
     }
 
     private var permissionsCard: some View {
-        computerSettingsCard(title: "3. macOS Permissions", systemImage: permissionStatus.isReady ? "lock.open.fill" : "lock.shield.fill", tint: permissionsTint) {
+        computerSettingsCard(title: "macOS Permissions", systemImage: permissionStatus.isReady ? "lock.open" : "lock.shield") {
             VStack(alignment: .leading, spacing: 12) {
-                Text("Computer Use cannot be enabled from the chat until required permissions are ready.")
+                Text("Accessibility is required for UI actions. Screen Recording is needed only for screenshots.")
                     .foregroundStyle(.secondary)
 
                 permissionRow(
@@ -2305,11 +2395,8 @@ private struct ComputerUseSettingsPane: View {
                     help: "Required only when screenshot tools are enabled."
                 )
 
-                if ComputerUseService.usesBundledAgentDesktop(settings: currentSettings) {
-                    Text("agent-desktop is bundled inside this app and uses the same Accessibility permission as GrokBuild.")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                } else if let agentDesktopPath = ComputerUseService.executableURL(settings: currentSettings)?.path {
+                if !ComputerUseService.usesBundledAgentDesktop(settings: currentSettings),
+                   let agentDesktopPath = ComputerUseService.executableURL(settings: currentSettings)?.path {
                     Text("Also enable agent-desktop in Accessibility: \(agentDesktopPath)")
                         .font(.caption)
                         .foregroundStyle(.secondary)
@@ -2319,7 +2406,7 @@ private struct ComputerUseSettingsPane: View {
                 if let guidance = permissionStatus.guidance {
                     Text(guidance)
                         .font(.callout)
-                        .foregroundStyle(.orange)
+                        .foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
 
                     HStack {
@@ -2365,9 +2452,9 @@ private struct ComputerUseSettingsPane: View {
     }
 
     private var safetyCard: some View {
-        computerSettingsCard(title: "4. Safety and Session Options", systemImage: "hand.raised.fill", tint: .blue) {
+        computerSettingsCard(title: "Safety and Session", systemImage: "hand.raised") {
             VStack(alignment: .leading, spacing: 14) {
-                Text("Keep desktop automation conservative. Grok still asks for permission for high-risk actions through the normal permission flow.")
+                Text("Grok asks before high-risk actions.")
                     .foregroundStyle(.secondary)
 
                 settingRow("Action policy") {
@@ -2384,30 +2471,20 @@ private struct ComputerUseSettingsPane: View {
                     }
                 }
 
-                Toggle(isOn: $includeScreenshots) {
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text("Allow screenshot tool")
-                            .font(.callout.weight(.medium))
-                        Text("Use screenshots only when Accessibility snapshots are not enough.")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
-                }
-                .toggleStyle(.switch)
+                SettingsToggleRow(
+                    "Allow screenshot tool",
+                    subtitle: "Use screenshots only when Accessibility snapshots are not enough.",
+                    isOn: $includeScreenshots
+                )
                 .onChange(of: includeScreenshots) { _, _ in
                     syncCursorConfiguration()
                 }
 
-                Toggle(isOn: $allowPhysicalMouse) {
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text("Allow physical mouse actions")
-                            .font(.callout.weight(.medium))
-                        Text("Disabled by default. Prefer accessibility actions unless you explicitly need real pointer movement.")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
-                }
-                .toggleStyle(.switch)
+                SettingsToggleRow(
+                    "Allow physical mouse actions",
+                    subtitle: "Disabled by default. Prefer accessibility actions unless you explicitly need real pointer movement.",
+                    isOn: $allowPhysicalMouse
+                )
                 .onChange(of: allowPhysicalMouse) { _, _ in
                     syncCursorConfiguration()
                 }
@@ -2441,7 +2518,7 @@ private struct ComputerUseSettingsPane: View {
                     }
                     .padding(.top, 8)
                 } label: {
-                    Label("Advanced: Computer Use session state", systemImage: "slider.horizontal.3")
+                    Label("Advanced Options", systemImage: "slider.horizontal.3")
                         .font(.callout.weight(.medium))
                 }
             }
@@ -2450,28 +2527,22 @@ private struct ComputerUseSettingsPane: View {
 
     private var cursorIntegrationCard: some View {
         computerSettingsCard(
-            title: cursorInstallStatus.isInstalled ? "5. Cursor Integration Ready" : "5. Install for Cursor",
-            systemImage: cursorInstallStatus.isInstalled ? "cursorarrow.rays" : "cursorarrow",
-            tint: cursorInstallStatus.isInstalled ? .green : .secondary
+            title: "Cursor Integration",
+            systemImage: "cursorarrow"
         ) {
             VStack(alignment: .leading, spacing: 14) {
-                Toggle(isOn: $cursorIntegrationEnabled) {
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text("Enable Computer Use in Cursor globally")
-                            .font(.headline)
-                        Text("Copies the MCP helper and agent-desktop into `~/.grokbuild/computer-use/` and adds `grokbuild-computer-use` to `~/.cursor/mcp.json`.")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
-                }
-                .toggleStyle(.switch)
+                SettingsToggleRow(
+                    "Use Computer Control in Cursor",
+                    subtitle: "Adds GrokBuild's computer tools to Cursor Agent across projects.",
+                    isOn: $cursorIntegrationEnabled
+                )
 
                 if cursorInstallStatus.isInstalled {
-                    Label("Cursor can use `computer_*` tools in any workspace after MCP reload.", systemImage: "checkmark.circle.fill")
+                    Label("Ready in Cursor after MCP reload.", systemImage: "checkmark.circle")
                         .font(.callout.weight(.medium))
-                        .foregroundStyle(.green)
+                        .foregroundStyle(.secondary)
                 } else {
-                    Text("Install once to expose the same desktop-control tools to Cursor Agent mode across all projects.")
+                    Text("Install once for Cursor Agent across projects.")
                         .foregroundStyle(.secondary)
                 }
 
@@ -2522,21 +2593,27 @@ private struct ComputerUseSettingsPane: View {
                 Text("Apply changes")
                     .font(.headline)
                 Text(hasPendingChanges
-                    ? "Restart the Grok connection so Computer Use MCP tools are injected into the active session."
-                    : "Computer Use settings are already applied to the active configuration.")
+                    ? "Restarts the active Grok connection."
+                    : "Computer Use settings are current.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
             Spacer()
-            Button("Apply and Restart Grok") {
+            Button("Apply Changes") {
                 apply()
             }
             .buttonStyle(.borderedProminent)
             .disabled(!hasPendingChanges)
         }
-        .padding(16)
-        .background(RoundedRectangle(cornerRadius: 14).fill(applyTint.opacity(hasPendingChanges ? 0.08 : 0.04)))
-        .overlay(RoundedRectangle(cornerRadius: 14).stroke(applyTint.opacity(hasPendingChanges ? 0.18 : 0.10)))
+        .padding(14)
+        .background(
+            RoundedRectangle(cornerRadius: AppTheme.Radius.medium, style: .continuous)
+                .fill(hasPendingChanges ? AppTheme.Palette.surfaceHover : AppTheme.Palette.surface)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: AppTheme.Radius.medium, style: .continuous)
+                .stroke(hasPendingChanges ? AppTheme.Palette.glassBorderStrong : AppTheme.Palette.glassBorder)
+        )
     }
 
     private var currentSettings: ComputerUseSettings {
@@ -2563,13 +2640,9 @@ private struct ComputerUseSettingsPane: View {
     private var statusBadge: some View {
         let isEnabled = appliedSettings.enabled
         let text = isEnabled ? (permissionStatus.isReady ? "Ready" : "Setup needed") : "Disabled"
-        let color: Color = isEnabled ? (permissionStatus.isReady ? .green : .orange) : .secondary
         return Text(text)
             .font(.caption.weight(.semibold))
-            .padding(.horizontal, 10)
-            .padding(.vertical, 5)
-            .background(Capsule().fill(color.opacity(0.14)))
-            .foregroundStyle(color)
+            .foregroundStyle(.secondary)
     }
 
     private var backendStatusTitle: String {
@@ -2584,19 +2657,7 @@ private struct ComputerUseSettingsPane: View {
     }
 
     private var backendStatusColor: Color {
-        backendStatus.isInstalled ? .green : .red
-    }
-
-    private var installCardTint: Color {
-        backendStatus.isInstalled ? .green : .secondary
-    }
-
-    private var permissionsTint: Color {
-        permissionStatus.isReady ? .green : .orange
-    }
-
-    private var applyTint: Color {
-        hasPendingChanges ? .accentColor : .secondary
+        .secondary
     }
 
     private var permissionDiagnosticsText: String {
@@ -2728,7 +2789,7 @@ private struct ComputerUseSettingsPane: View {
         let normalized = state.lowercased()
         let isGranted = normalized == "granted"
         let isNeutral = normalized == "unknown" || normalized == "not reported"
-        let color: Color = isGranted ? .green : (isNeutral ? .secondary : .orange)
+        let color: Color = .secondary
         let icon = isGranted
             ? "checkmark.circle.fill"
             : (isNeutral ? "minus.circle" : "exclamationmark.triangle.fill")
@@ -2771,7 +2832,7 @@ private struct ComputerUseSettingsPane: View {
                 .foregroundStyle(.secondary)
                 .frame(width: 70, alignment: .leading)
             Text(value)
-                .font(.system(.caption, design: .monospaced))
+                .font(.caption)
                 .textSelection(.enabled)
                 .lineLimit(2)
                 .truncationMode(.middle)
@@ -2802,19 +2863,24 @@ private struct ComputerUseSettingsPane: View {
     private func computerSettingsCard<Content: View>(
         title: String,
         systemImage: String,
-        tint: Color? = nil,
         @ViewBuilder content: () -> Content
     ) -> some View {
         VStack(alignment: .leading, spacing: 14) {
             Label(title, systemImage: systemImage)
                 .font(.headline)
-                .foregroundStyle(tint ?? .primary)
+                .foregroundStyle(.primary)
             content()
         }
-        .padding(16)
+        .padding(14)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(RoundedRectangle(cornerRadius: 14).fill(tint.map { $0.opacity(0.07) } ?? Color(nsColor: .controlBackgroundColor)))
-        .overlay(RoundedRectangle(cornerRadius: 14).stroke(tint.map { $0.opacity(0.22) } ?? Color(nsColor: .separatorColor).opacity(0.6)))
+        .background(
+            RoundedRectangle(cornerRadius: AppTheme.Radius.medium, style: .continuous)
+                .fill(AppTheme.Palette.surface)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: AppTheme.Radius.medium, style: .continuous)
+                .stroke(AppTheme.Palette.glassBorder)
+        )
     }
 }
 
@@ -2958,12 +3024,10 @@ private struct CustomModelsSettingsPane: View {
                 .animation(.easeInOut(duration: 0.2), value: showingProviderEditor)
                 .animation(.easeInOut(duration: 0.2), value: showingModelEditor)
                 .animation(.easeInOut(duration: 0.2), value: showingProviderTemplates)
-                .frame(maxWidth: 760, alignment: .leading)
-                .padding(.horizontal, 24)
-                .padding(.vertical, 22)
+                .centeredSettingsColumn()
             }
-            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-            .background(Color(nsColor: .windowBackgroundColor))
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+            .background(AppTheme.Palette.canvas)
             .onChange(of: scrollTarget) { _, target in
                 guard let target else { return }
                 // The editor/provider card this targets is only inserted into the
@@ -3017,28 +3081,17 @@ private struct CustomModelsSettingsPane: View {
     private let modelEditorAnchor = "model-editor"
 
     private var header: some View {
-        HStack(alignment: .top, spacing: 14) {
-            Image(systemName: "cpu")
-                .font(.system(size: 28, weight: .semibold))
-                .foregroundStyle(.purple)
-                .frame(width: 44, height: 44)
-                .background(RoundedRectangle(cornerRadius: 12).fill(Color.purple.opacity(0.12)))
-
-            VStack(alignment: .leading, spacing: 4) {
-                Text("Custom Models")
-                    .font(.title3.weight(.semibold))
-                Text("Install a provider (endpoint + API key) once, then add one or more OpenAI-compatible models per provider to ~/.grok/config.toml. Use them with /model <id> in chat.")
-                    .font(.callout)
-                    .foregroundStyle(.secondary)
-            }
-            Spacer()
-        }
+        settingsPaneHeader(
+            "Models",
+            subtitle: "Add OpenAI-compatible providers and choose the models available to Grok.",
+            systemImage: SettingsTab.models.systemImage
+        )
     }
 
     private var defaultModelCard: some View {
-        settingsCard(title: "Default Model", systemImage: "star", tint: .purple) {
+        settingsCard(title: "Default Model", systemImage: "checkmark.circle") {
             VStack(alignment: .leading, spacing: 12) {
-                Text("Writes `[models].default` in ~/.grok/config.toml and seeds the model for new session tabs in each project. Existing tabs keep their own per-tab model.")
+                Text("Used when you start a new session. Existing sessions keep their current model.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
 
@@ -3071,7 +3124,7 @@ private struct CustomModelsSettingsPane: View {
     }
 
     private var providerTemplatesCard: some View {
-        settingsCard(title: "1. Add Provider", systemImage: "square.grid.2x2", tint: .purple) {
+        settingsCard(title: "Add Provider", systemImage: "plus") {
             VStack(alignment: .leading, spacing: 12) {
                 Button {
                     withAnimation(.easeInOut(duration: 0.2)) {
@@ -3137,12 +3190,12 @@ private struct CustomModelsSettingsPane: View {
                 if installed {
                     Label("Installed", systemImage: "checkmark.circle.fill")
                         .font(.caption2.weight(.semibold))
-                        .foregroundStyle(.green)
+                        .foregroundStyle(.secondary)
                         .labelStyle(.titleAndIcon)
                 }
             }
             Text(template.baseURL)
-                .font(.system(.caption2, design: .monospaced))
+                .font(.caption2)
                 .foregroundStyle(.tertiary)
                 .lineLimit(1)
                 .truncationMode(.middle)
@@ -3154,7 +3207,6 @@ private struct CustomModelsSettingsPane: View {
             Button(installed ? "Configure" : "Install") { addProviderPreset(preset) }
                 .controlSize(.small)
                 .buttonStyle(.bordered)
-                .tint(installed ? .secondary : .purple)
                 .padding(.top, 2)
         }
         .padding(10)
@@ -3162,14 +3214,14 @@ private struct CustomModelsSettingsPane: View {
         .background(RoundedRectangle(cornerRadius: 10).fill(Color(nsColor: .textBackgroundColor)))
         .overlay(
             RoundedRectangle(cornerRadius: 10)
-                .stroke(installed ? Color.green.opacity(0.4) : Color(nsColor: .separatorColor).opacity(0.6))
+                .stroke(installed ? AppTheme.Palette.glassBorderStrong : AppTheme.Palette.glassBorder)
         )
     }
 
     // MARK: - Your providers (installed)
 
     private var yourProvidersCard: some View {
-        settingsCard(title: "2. Your Providers", systemImage: "server.rack", tint: .purple) {
+        settingsCard(title: "Providers", systemImage: "server.rack") {
             VStack(alignment: .leading, spacing: 12) {
                 if providers.isEmpty {
                     Text("No providers installed yet. Install one from a template above, or create a custom provider.")
@@ -3207,23 +3259,23 @@ private struct CustomModelsSettingsPane: View {
                         if fetched.isEmpty {
                             Text("0 available")
                                 .font(.caption2)
-                                .foregroundStyle(.orange)
+                                .foregroundStyle(.secondary)
                         } else {
                             Text("\(fetched.count) available")
                                 .font(.caption2)
-                                .foregroundStyle(.green)
+                                .foregroundStyle(.secondary)
                         }
                     }
                 }
                 Text(provider.baseURL)
-                    .font(.system(.caption2, design: .monospaced))
+                    .font(.caption2)
                     .foregroundStyle(.tertiary)
                     .lineLimit(1)
                     .truncationMode(.middle)
                 if fetchErrorProviderID == provider.id, let message = fetchErrorMessage {
                     Text(message)
                         .font(.caption2)
-                        .foregroundStyle(.orange)
+                        .foregroundStyle(.secondary)
                 }
             }
             Spacer()
@@ -3270,7 +3322,6 @@ private struct CustomModelsSettingsPane: View {
                         }
                         .controlSize(.small)
                         .buttonStyle(.borderedProminent)
-                        .tint(.purple)
                     } else {
                         Button {
                             fetchModels(for: provider)
@@ -3312,11 +3363,11 @@ private struct CustomModelsSettingsPane: View {
     @ViewBuilder
     private func providerKeyBadge(for provider: Provider) -> some View {
         if provider.hasInlineKey {
-            badge("Key saved", color: .green, systemImage: "key.fill")
+            badge("Key saved", systemImage: "key.fill")
         } else if provider.isLocalEndpoint {
-            badge("Local", color: .blue, systemImage: "desktopcomputer")
+            badge("Local", systemImage: "desktopcomputer")
         } else {
-            badge("No key", color: .orange, systemImage: "exclamationmark.triangle")
+            badge("No key", systemImage: "exclamationmark.triangle")
         }
     }
 
@@ -3333,19 +3384,19 @@ private struct CustomModelsSettingsPane: View {
     }
 
     private var providerEditorCard: some View {
-        settingsCard(title: providerEditorTitle, systemImage: "plus.square.on.square", tint: .purple) {
+        settingsCard(title: providerEditorTitle, systemImage: "plus.square.on.square") {
             VStack(alignment: .leading, spacing: 12) {
                 if providerDraftFromPreset && providerNeedsKey {
                     HStack(alignment: .top, spacing: 8) {
                         Image(systemName: "key.fill")
-                            .foregroundStyle(.orange)
+                            .foregroundStyle(.secondary)
                         Text("Enter your \(providerDraft.name) API key, then tap **Add Provider** to install it. Nothing is saved until you do.")
                             .font(.caption)
                             .foregroundStyle(.secondary)
                     }
                     .padding(8)
                     .frame(maxWidth: .infinity, alignment: .leading)
-                    .background(RoundedRectangle(cornerRadius: 8).fill(Color.orange.opacity(0.12)))
+                    .background(RoundedRectangle(cornerRadius: AppTheme.Radius.small).fill(AppTheme.Palette.glassTint))
                 }
 
                 settingRow("Provider id") {
@@ -3398,7 +3449,7 @@ private struct CustomModelsSettingsPane: View {
                     if let error = providerDraft.validationError, !providerDraft.id.isEmpty {
                         Text(error)
                             .font(.caption)
-                            .foregroundStyle(.orange)
+                            .foregroundStyle(.secondary)
                     }
                 }
             }
@@ -3446,7 +3497,7 @@ private struct CustomModelsSettingsPane: View {
                 if !fetched.isEmpty {
                     Text("\(fetched.count) model\(fetched.count == 1 ? "" : "s") available")
                         .font(.caption)
-                        .foregroundStyle(.green)
+                        .foregroundStyle(.secondary)
                 }
 
                 if let docsURL = ProviderPreset.matching(provider: providerDraft)?.catalogDocumentationURL {
@@ -3464,7 +3515,7 @@ private struct CustomModelsSettingsPane: View {
             if fetchErrorProviderID == draftKey, let message = fetchErrorMessage {
                 Text(message)
                     .font(.caption2)
-                    .foregroundStyle(.orange)
+                    .foregroundStyle(.secondary)
                     .textSelection(.enabled)
             }
 
@@ -3479,7 +3530,7 @@ private struct CustomModelsSettingsPane: View {
     // MARK: - Model list
 
     private var modelListCard: some View {
-        settingsCard(title: "3. Models", systemImage: "list.bullet.rectangle", tint: .purple) {
+        settingsCard(title: "Models", systemImage: "list.bullet.rectangle") {
             VStack(alignment: .leading, spacing: 12) {
                 Text("\(models.count)/\(CustomModelStore.maxModels) custom models")
                     .font(.caption)
@@ -3505,7 +3556,7 @@ private struct CustomModelsSettingsPane: View {
                 if let statusMessage {
                     Text(statusMessage)
                         .font(.caption)
-                        .foregroundStyle(.green)
+                        .foregroundStyle(.secondary)
                 }
                 if let errorMessage {
                     Text(errorMessage)
@@ -3523,10 +3574,10 @@ private struct CustomModelsSettingsPane: View {
                 Text(model.name.isEmpty ? model.id : model.name)
                     .font(.headline)
                 Text("/model \(model.id)  ·  \(model.model)")
-                    .font(.system(.caption, design: .monospaced))
+                    .font(.caption)
                     .foregroundStyle(.secondary)
                 Text(model.baseURL)
-                    .font(.system(.caption2, design: .monospaced))
+                    .font(.caption2)
                     .foregroundStyle(.tertiary)
                     .lineLimit(1)
                     .truncationMode(.middle)
@@ -3575,19 +3626,16 @@ private struct CustomModelsSettingsPane: View {
         return "\(tokens)"
     }
 
-    private func badge(_ text: String, color: Color, systemImage: String) -> some View {
+    private func badge(_ text: String, systemImage: String) -> some View {
         Label(text, systemImage: systemImage)
             .font(.caption2.weight(.semibold))
-            .padding(.horizontal, 6)
-            .padding(.vertical, 2)
-            .background(Capsule().fill(color.opacity(0.16)))
-            .foregroundStyle(color)
+            .foregroundStyle(.secondary)
     }
 
     // MARK: - Editor
 
     private var editorCard: some View {
-        settingsCard(title: isEditing ? "Edit Model" : "Add Model", systemImage: "plus.rectangle.on.rectangle", tint: .purple) {
+        settingsCard(title: isEditing ? "Edit Model" : "Add Model", systemImage: "plus.rectangle.on.rectangle") {
             VStack(alignment: .leading, spacing: 12) {
                 settingRow("Provider") {
                     Picker("", selection: providerSelection) {
@@ -3632,7 +3680,7 @@ private struct CustomModelsSettingsPane: View {
                             if fetchErrorProviderID == provider.id, let message = fetchErrorMessage {
                                 Text(message)
                                     .font(.caption2)
-                                    .foregroundStyle(.orange)
+                                    .foregroundStyle(.secondary)
                             }
                         }
                     }
@@ -3751,6 +3799,8 @@ private struct CustomModelsSettingsPane: View {
                         Toggle("Supports image input", isOn: $draft.supportsVision)
                         Toggle("Shows thinking blocks", isOn: $draft.supportsThinkingDisplay)
                     }
+                    .toggleStyle(.checkbox)
+                    .controlSize(.small)
                     .frame(maxWidth: 280, alignment: .leading)
                 }
 
@@ -3767,7 +3817,7 @@ private struct CustomModelsSettingsPane: View {
                     if let error = draftSaveBlockedReason, !draft.model.isEmpty || !draft.id.isEmpty {
                         Text(error)
                             .font(.caption)
-                            .foregroundStyle(.orange)
+                            .foregroundStyle(.secondary)
                     }
                 }
             }
@@ -4173,19 +4223,24 @@ private struct CustomModelsSettingsPane: View {
     private func settingsCard<Content: View>(
         title: String,
         systemImage: String,
-        tint: Color? = nil,
         @ViewBuilder content: () -> Content
     ) -> some View {
         VStack(alignment: .leading, spacing: 14) {
             Label(title, systemImage: systemImage)
                 .font(.headline)
-                .foregroundStyle(tint ?? .primary)
+                .foregroundStyle(.primary)
             content()
         }
-        .padding(16)
+        .padding(14)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(RoundedRectangle(cornerRadius: 14).fill(tint.map { $0.opacity(0.07) } ?? Color(nsColor: .controlBackgroundColor)))
-        .overlay(RoundedRectangle(cornerRadius: 14).stroke(tint.map { $0.opacity(0.22) } ?? Color(nsColor: .separatorColor).opacity(0.6)))
+        .background(
+            RoundedRectangle(cornerRadius: AppTheme.Radius.medium, style: .continuous)
+                .fill(AppTheme.Palette.surface)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: AppTheme.Radius.medium, style: .continuous)
+                .stroke(AppTheme.Palette.glassBorder)
+        )
     }
 
     private func settingRow<Content: View>(
@@ -4225,9 +4280,8 @@ private struct MCPSettingsPane: View {
             HStack(alignment: .top) {
                 settingsPaneHeader(
                     "MCP Servers",
-                    subtitle: "Configure external Model Context Protocol servers and run health checks.",
-                    systemImage: "point.3.connected.trianglepath.dotted",
-                    color: .teal
+                    subtitle: "Connect external tools and check their status.",
+                    systemImage: SettingsTab.mcpServers.systemImage
                 )
                 Button("Run Doctor") {
                     Task { await runDoctor() }
@@ -4273,14 +4327,14 @@ private struct MCPSettingsPane: View {
                                 .foregroundStyle(.secondary)
                             if !server.target.isEmpty {
                                 Text(server.target)
-                                    .font(.caption2.monospaced())
+                                    .font(.caption2)
                                     .foregroundStyle(.tertiary)
                                     .lineLimit(1)
                                     .truncationMode(.middle)
                             }
                         }
                         Spacer()
-                        Button("Doctor") {
+                        Button("Check") {
                             Task { await runDoctor(name: server.name) }
                         }
                         Button("Remove", role: .destructive) {
@@ -4292,13 +4346,17 @@ private struct MCPSettingsPane: View {
             }
             .overlay {
                 if servers.isEmpty && !isLoading {
-                    ContentUnavailableView("No User MCP Servers", systemImage: "point.3.connected.trianglepath.dotted", description: Text("Doctor can still show managed, Claude, Cursor, and project MCP servers."))
+                    ContentUnavailableView(
+                        "No MCP Servers",
+                        systemImage: SettingsTab.mcpServers.systemImage,
+                        description: Text("Add a server or refresh this list.")
+                    )
                 }
             }
 
             if let doctorReport {
                 Divider()
-                Text("Doctor: \(doctorReport.healthyCount) healthy, \(doctorReport.failingCount) failing")
+                Text("Check Results: \(doctorReport.healthyCount) healthy, \(doctorReport.failingCount) failing")
                     .font(.headline)
                 ScrollView {
                     LazyVStack(alignment: .leading, spacing: 10) {
@@ -4329,7 +4387,7 @@ private struct MCPSettingsPane: View {
                                             if !check.hint.isEmpty {
                                                 Text(check.hint)
                                                     .font(.caption)
-                                                    .foregroundStyle(.orange)
+                                                    .foregroundStyle(.secondary)
                                             }
                                         }
                                     }
@@ -4421,36 +4479,22 @@ private struct PermissionsSettingsPane: View {
                 permissionRulesCard
                 applyCard
             }
-            .frame(maxWidth: 820, alignment: .leading)
-            .padding(.horizontal, 24)
-            .padding(.vertical, 22)
+            .centeredSettingsColumn()
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-        .background(Color(nsColor: .windowBackgroundColor))
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+        .background(AppTheme.Palette.canvas)
     }
 
     private var header: some View {
         HStack(alignment: .top, spacing: 14) {
-            Image(systemName: "lock.shield")
-                .font(.system(size: 28, weight: .semibold))
-                .foregroundStyle(.purple)
-                .frame(width: 44, height: 44)
-                .background(RoundedRectangle(cornerRadius: 12).fill(Color.purple.opacity(0.12)))
-
-            VStack(alignment: .leading, spacing: 4) {
-                Text("Permissions")
-                    .font(.title3.weight(.semibold))
-                Text("Tune Grok launch flags, sandbox behavior, and explicit allow/deny rules for tool use.")
-                    .font(.callout)
-                    .foregroundStyle(.secondary)
-            }
-            Spacer()
+            settingsPaneHeader(
+                "Permissions",
+                subtitle: "Control how Grok asks for approval and accesses your project.",
+                systemImage: SettingsTab.permissions.systemImage
+            )
             Text(permissionModeLabel)
                 .font(.caption.weight(.semibold))
-                .padding(.horizontal, 10)
-                .padding(.vertical, 5)
-                .background(Capsule().fill(Color.purple.opacity(0.14)))
-                .foregroundStyle(.purple)
+                .foregroundStyle(.secondary)
         }
     }
 
@@ -4467,7 +4511,7 @@ private struct PermissionsSettingsPane: View {
                         Text("Plan").tag("plan")
                     }
                     .labelsHidden()
-                    .frame(width: 220)
+                    .frame(width: AppTheme.Layout.settingsControlWidth)
                 }
 
                 settingRow("Sandbox", description: "Limits file system and command access for Grok.") {
@@ -4479,7 +4523,7 @@ private struct PermissionsSettingsPane: View {
                         Text("Devbox").tag("devbox")
                     }
                     .labelsHidden()
-                    .frame(width: 220)
+                    .frame(width: AppTheme.Layout.settingsControlWidth)
                 }
 
                 settingRow("Default reasoning effort", description: "Reasoning budget for new projects. Each project keeps its own effort — change the current chat from the composer's model menu.") {
@@ -4489,7 +4533,7 @@ private struct PermissionsSettingsPane: View {
                         }
                     }
                     .labelsHidden()
-                    .frame(width: 220)
+                    .frame(width: AppTheme.Layout.settingsControlWidth)
                 }
             }
         }
@@ -4513,8 +4557,8 @@ private struct PermissionsSettingsPane: View {
                     .foregroundStyle(.secondary)
 
                 HStack(alignment: .top, spacing: 14) {
-                    ruleEditor(title: "Allow Rules", text: $allowRules, tint: .green)
-                    ruleEditor(title: "Deny Rules", text: $denyRules, tint: .red)
+                    ruleEditor(title: "Allow Rules", text: $allowRules)
+                    ruleEditor(title: "Deny Rules", text: $denyRules)
                 }
             }
         }
@@ -4525,19 +4569,25 @@ private struct PermissionsSettingsPane: View {
             VStack(alignment: .leading, spacing: 3) {
                 Text("Apply changes")
                     .font(.headline)
-                Text("Restart the Grok connection so permission flags and rules are used by the active session.")
+                Text("Restarts the active Grok connection.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
             Spacer()
-            Button("Apply and Restart Grok") {
+            Button("Apply Changes") {
                 onConfigurationChanged()
             }
             .buttonStyle(.borderedProminent)
         }
-        .padding(16)
-        .background(RoundedRectangle(cornerRadius: 14).fill(Color.purple.opacity(0.08)))
-        .overlay(RoundedRectangle(cornerRadius: 14).stroke(Color.purple.opacity(0.18)))
+        .padding(14)
+        .background(
+            RoundedRectangle(cornerRadius: AppTheme.Radius.medium, style: .continuous)
+                .fill(AppTheme.Palette.surface)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: AppTheme.Radius.medium, style: .continuous)
+                .stroke(AppTheme.Palette.glassBorder)
+        )
     }
 
     private var permissionModeLabel: String {
@@ -4561,10 +4611,16 @@ private struct PermissionsSettingsPane: View {
                 .font(.headline)
             content()
         }
-        .padding(16)
+        .padding(14)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(RoundedRectangle(cornerRadius: 14).fill(Color(nsColor: .controlBackgroundColor)))
-        .overlay(RoundedRectangle(cornerRadius: 14).stroke(Color(nsColor: .separatorColor).opacity(0.6)))
+        .background(
+            RoundedRectangle(cornerRadius: AppTheme.Radius.medium, style: .continuous)
+                .fill(AppTheme.Palette.surface)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: AppTheme.Radius.medium, style: .continuous)
+                .stroke(AppTheme.Palette.glassBorder)
+        )
     }
 
     private func settingRow<Content: View>(
@@ -4580,7 +4636,8 @@ private struct PermissionsSettingsPane: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
-            .frame(width: 330, alignment: .leading)
+            .frame(maxWidth: 360, alignment: .leading)
+            .layoutPriority(1)
 
             Spacer()
             content()
@@ -4588,34 +4645,20 @@ private struct PermissionsSettingsPane: View {
     }
 
     private func permissionToggle(_ title: String, subtitle: String, isOn: Binding<Bool>) -> some View {
-        Toggle(isOn: isOn) {
-            VStack(alignment: .leading, spacing: 2) {
-                Text(title)
-                    .font(.callout.weight(.medium))
-                Text(subtitle)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
-        }
-        .toggleStyle(.switch)
+        SettingsToggleRow(title, subtitle: subtitle, isOn: isOn)
     }
 
-    private func ruleEditor(title: String, text: Binding<String>, tint: Color) -> some View {
+    private func ruleEditor(title: String, text: Binding<String>) -> some View {
         VStack(alignment: .leading, spacing: 8) {
-            HStack {
-                Circle()
-                    .fill(tint)
-                    .frame(width: 8, height: 8)
-                Text(title)
-                    .font(.callout.weight(.medium))
-            }
+            Text(title)
+                .font(.callout.weight(.medium))
             TextEditor(text: text)
                 .font(.system(.body, design: .monospaced))
-                .frame(minHeight: 130)
+                .frame(minHeight: AppTheme.Layout.settingsRuleEditorHeight)
                 .scrollContentBackground(.hidden)
                 .padding(8)
                 .background(RoundedRectangle(cornerRadius: 10).fill(Color(nsColor: .textBackgroundColor)))
-                .overlay(RoundedRectangle(cornerRadius: 10).stroke(tint.opacity(0.25)))
+                .overlay(RoundedRectangle(cornerRadius: 10).stroke(AppTheme.Palette.glassBorder))
         }
         .frame(maxWidth: .infinity)
     }
@@ -4639,14 +4682,11 @@ private struct MemorySettingsPane: View {
                 header
                 enableCard
                 actionsCard
-                infoCard
             }
-            .frame(maxWidth: 760, alignment: .leading)
-            .padding(.horizontal, 24)
-            .padding(.vertical, 22)
+            .centeredSettingsColumn()
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-        .background(Color(nsColor: .windowBackgroundColor))
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+        .background(AppTheme.Palette.canvas)
         .sheet(isPresented: $showBrowser) {
             MemoryBrowserPanel()
         }
@@ -4657,51 +4697,34 @@ private struct MemorySettingsPane: View {
 
     private var header: some View {
         HStack(alignment: .top, spacing: 14) {
-            Image(systemName: "brain")
-                .font(.system(size: 28, weight: .semibold))
-                .foregroundStyle(.pink)
-                .frame(width: 44, height: 44)
-                .background(RoundedRectangle(cornerRadius: 12).fill(Color.pink.opacity(0.12)))
-
-            VStack(alignment: .leading, spacing: 4) {
-                Text("Memory")
-                    .font(.title3.weight(.semibold))
-                Text("Let Grok recall facts, decisions, and patterns across sessions. Experimental and off by default.")
-                    .font(.callout)
-                    .foregroundStyle(.secondary)
-            }
-            Spacer()
+            settingsPaneHeader(
+                "Memory",
+                subtitle: "Let Grok recall useful context across sessions.",
+                systemImage: SettingsTab.memory.systemImage
+            )
             Text(memoryEnabled ? "On" : "Off")
                 .font(.caption.weight(.semibold))
-                .padding(.horizontal, 10)
-                .padding(.vertical, 5)
-                .background(Capsule().fill((memoryEnabled ? Color.pink : Color.secondary).opacity(0.14)))
-                .foregroundStyle(memoryEnabled ? Color.pink : Color.secondary)
+                .foregroundStyle(.secondary)
         }
     }
 
     private var enableCard: some View {
         settingsCard(title: "Cross-Session Memory", systemImage: "brain.head.profile") {
             VStack(alignment: .leading, spacing: 12) {
-                Toggle(isOn: $memoryEnabled) {
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text("Enable memory (experimental)")
-                            .font(.callout.weight(.medium))
-                        Text("Launches new/restarted sessions with `--experimental-memory`; leaving it off passes `--no-memory`.")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
-                }
-                .toggleStyle(.switch)
+                SettingsToggleRow(
+                    "Use cross-session memory",
+                    subtitle: "Applies to new and restarted sessions.",
+                    isOn: $memoryEnabled
+                )
 
-                Text("Grok stores memory as Markdown under `\(MemoryStore.baseURL.path)` and searches it automatically on the first turn of a session. This is an app-scoped launch flag — it does not change your `~/.grok/config.toml`, so the grok TUI is unaffected.")
+                Text("Stored locally on this Mac.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
 
                 HStack {
                     Spacer()
-                    Button("Apply and Restart Grok") {
+                    Button("Apply Changes") {
                         appliedMemoryEnabled = memoryEnabled
                         onConfigurationChanged()
                     }
@@ -4738,22 +4761,7 @@ private struct MemorySettingsPane: View {
                         .textSelection(.enabled)
                 }
 
-                Text("**Remember** appends a note to your global `MEMORY.md`; Grok reindexes it on the next memory search. Enable memory first so it becomes searchable.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-        }
-    }
-
-    private var infoCard: some View {
-        settingsCard(title: "Flush & Consolidate", systemImage: "sparkles") {
-            VStack(alignment: .leading, spacing: 8) {
-                Text("Rich capture (`/flush`) and consolidation (`/dream`) are grok TUI commands and are not exposed to this app over the agent protocol. They still run **automatically**: Grok saves a session summary when a session ends, flushes important context before compaction, and periodically consolidates logs (Dream) once enough sessions accumulate.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
-                Text("To flush or consolidate on demand, run `/flush` or `/dream` in the grok TUI.")
+                Text("Remember saves a note that becomes searchable in future sessions.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
@@ -4809,10 +4817,16 @@ private struct MemorySettingsPane: View {
                 .font(.headline)
             content()
         }
-        .padding(16)
+        .padding(14)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(RoundedRectangle(cornerRadius: 14).fill(Color(nsColor: .controlBackgroundColor)))
-        .overlay(RoundedRectangle(cornerRadius: 14).stroke(Color(nsColor: .separatorColor).opacity(0.6)))
+        .background(
+            RoundedRectangle(cornerRadius: AppTheme.Radius.medium, style: .continuous)
+                .fill(AppTheme.Palette.surface)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: AppTheme.Radius.medium, style: .continuous)
+                .stroke(AppTheme.Palette.glassBorder)
+        )
     }
 }
 
@@ -4832,12 +4846,10 @@ private struct WorkflowsSettingsPane: View {
                 enableCard
                 infoCard
             }
-            .frame(maxWidth: 760, alignment: .leading)
-            .padding(.horizontal, 24)
-            .padding(.vertical, 22)
+            .centeredSettingsColumn()
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-        .background(Color(nsColor: .windowBackgroundColor))
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+        .background(AppTheme.Palette.canvas)
         .onReceive(NotificationCenter.default.publisher(for: .workflowsConfigChanged)) { _ in
             let enabled = WorkflowsConfigStore.loadEnabled()
             workflowsEnabled = enabled
@@ -4847,44 +4859,27 @@ private struct WorkflowsSettingsPane: View {
 
     private var header: some View {
         HStack(alignment: .top, spacing: 14) {
-            Image(systemName: "arrow.triangle.branch")
-                .font(.system(size: 28, weight: .semibold))
-                .foregroundStyle(.indigo)
-                .frame(width: 44, height: 44)
-                .background(RoundedRectangle(cornerRadius: 12).fill(Color.indigo.opacity(0.12)))
-
-            VStack(alignment: .leading, spacing: 4) {
-                Text("Workflows")
-                    .font(.title3.weight(.semibold))
-                Text("Rhai background workflows (`.grok/workflows/`) — distinct from skill slash commands in the composer.")
-                    .font(.callout)
-                    .foregroundStyle(.secondary)
-            }
-            Spacer()
+            settingsPaneHeader(
+                "Workflows",
+                subtitle: "Run project workflows in the background.",
+                systemImage: SettingsTab.workflows.systemImage
+            )
             Text(workflowsEnabled ? "On" : "Off")
                 .font(.caption.weight(.semibold))
-                .padding(.horizontal, 10)
-                .padding(.vertical, 5)
-                .background(Capsule().fill((workflowsEnabled ? Color.indigo : Color.secondary).opacity(0.14)))
-                .foregroundStyle(workflowsEnabled ? Color.indigo : Color.secondary)
+                .foregroundStyle(.secondary)
         }
     }
 
     private var enableCard: some View {
         settingsCard(title: "Background Workflows", systemImage: "gearshape.2") {
             VStack(alignment: .leading, spacing: 12) {
-                Toggle(isOn: $workflowsEnabled) {
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text("Enable workflows")
-                            .font(.callout.weight(.medium))
-                        Text("Writes `[workflows] enabled` in `~/.grok/config.toml`.")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
-                }
-                .toggleStyle(.switch)
+                SettingsToggleRow(
+                    "Enable workflows",
+                    subtitle: "Shared with Grok Build CLI sessions.",
+                    isOn: $workflowsEnabled
+                )
 
-                Text("This is a shared grok config flag — it also affects the grok TUI. Skill chips in the composer (`/design`, `/review`, …) are separate: they are user-invocable skills advertised by the CLI, not Rhai workflow scripts.")
+                Text("Skills remain available separately from the composer.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
@@ -4897,7 +4892,7 @@ private struct WorkflowsSettingsPane: View {
 
                 HStack {
                     Spacer()
-                    Button("Apply and Restart Grok") {
+                    Button("Apply Changes") {
                         do {
                             try WorkflowsConfigStore.setEnabled(workflowsEnabled)
                             appliedEnabled = workflowsEnabled
@@ -4917,7 +4912,7 @@ private struct WorkflowsSettingsPane: View {
     private var infoCard: some View {
         settingsCard(title: "Saved Workflows", systemImage: "doc.text") {
             VStack(alignment: .leading, spacing: 8) {
-                Text("Workflow scripts live under `.grok/workflows/` in each project. Use the **Workflows** pill in chat to pause/stop runs, browse saved scripts, or start deep research when advertised.")
+                Text("Project workflows appear in Session controls, where you can start, pause, or stop them.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
@@ -4939,10 +4934,16 @@ private struct WorkflowsSettingsPane: View {
                 .font(.headline)
             content()
         }
-        .padding(16)
+        .padding(14)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(RoundedRectangle(cornerRadius: 14).fill(Color(nsColor: .controlBackgroundColor)))
-        .overlay(RoundedRectangle(cornerRadius: 14).stroke(Color(nsColor: .separatorColor).opacity(0.6)))
+        .background(
+            RoundedRectangle(cornerRadius: AppTheme.Radius.medium, style: .continuous)
+                .fill(AppTheme.Palette.surface)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: AppTheme.Radius.medium, style: .continuous)
+                .stroke(AppTheme.Palette.glassBorder)
+        )
     }
 }
 
@@ -4968,31 +4969,22 @@ private struct CompatibilitySettingsPane: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 18) {
                 HStack(alignment: .top, spacing: 14) {
-                    Image(systemName: "arrow.triangle.swap")
-                        .font(.system(size: 28, weight: .semibold))
-                        .foregroundStyle(.teal)
-                        .frame(width: 44, height: 44)
-                        .background(RoundedRectangle(cornerRadius: 12).fill(Color.teal.opacity(0.12)))
-
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text("Compatibility")
-                            .font(.title3.weight(.semibold))
-                        Text("Import skills, hooks, and MCP servers from other agent tools via `~/.grok/config.toml`.")
-                            .font(.callout)
-                            .foregroundStyle(.secondary)
-                    }
-                    Spacer()
+                    settingsPaneHeader(
+                        "Compatibility",
+                        subtitle: "Use compatible skills, hooks, and servers from other coding agents.",
+                        systemImage: SettingsTab.compatibility.systemImage
+                    )
                     Button("Refresh") {
                         Task { await loadExternalCompat() }
                     }
                     .controlSize(.small)
                 }
 
-                settingsCard(title: "Compat Layers", systemImage: "square.stack.3d.up") {
+                settingsCard(title: "Import From", systemImage: SettingsTab.compatibility.systemImage) {
                     VStack(alignment: .leading, spacing: 12) {
-                        compatToggle("Cursor", binding: $cursorEnabled, flavor: .cursor)
-                        compatToggle("Claude Code", binding: $claudeEnabled, flavor: .claude)
-                        compatToggle("Codex", binding: $codexEnabled, flavor: .codex)
+                        compatToggle("Cursor", binding: $cursorEnabled)
+                        compatToggle("Claude Code", binding: $claudeEnabled)
+                        compatToggle("Codex", binding: $codexEnabled)
 
                         if let statusMessage {
                             Text(statusMessage)
@@ -5002,7 +4994,7 @@ private struct CompatibilitySettingsPane: View {
 
                         HStack {
                             Spacer()
-                            Button("Apply and Restart Grok") {
+                            Button("Apply Changes") {
                                 applyCompat()
                             }
                             .buttonStyle(.borderedProminent)
@@ -5012,7 +5004,7 @@ private struct CompatibilitySettingsPane: View {
                 }
 
                 if !externalCompat.isEmpty {
-                    settingsCard(title: "Detected via grok inspect", systemImage: "magnifyingglass") {
+                    settingsCard(title: "Detected Sources", systemImage: "magnifyingglass") {
                         VStack(alignment: .leading, spacing: 8) {
                             ForEach(externalCompat) { item in
                                 HStack {
@@ -5032,26 +5024,19 @@ private struct CompatibilitySettingsPane: View {
                     ProgressView()
                 }
             }
-            .frame(maxWidth: 760, alignment: .leading)
-            .padding(.horizontal, 24)
-            .padding(.vertical, 22)
+            .centeredSettingsColumn()
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-        .background(Color(nsColor: .windowBackgroundColor))
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+        .background(AppTheme.Palette.canvas)
         .task { await loadExternalCompat() }
     }
 
-    private func compatToggle(_ title: String, binding: Binding<Bool>, flavor: CompatFlavor) -> some View {
-        Toggle(isOn: binding) {
-            VStack(alignment: .leading, spacing: 2) {
-                Text(title)
-                    .font(.callout.weight(.medium))
-                Text("[compat.\(flavor.tomlKey)] in config.toml")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
-        }
-        .toggleStyle(.switch)
+    private func compatToggle(_ title: String, binding: Binding<Bool>) -> some View {
+        SettingsToggleRow(
+            title,
+            subtitle: "Use compatible \(title) extensions in GrokBuild.",
+            isOn: binding
+        )
     }
 
     private func applyCompat() {
@@ -5085,10 +5070,16 @@ private struct CompatibilitySettingsPane: View {
                 .font(.headline)
             content()
         }
-        .padding(16)
+        .padding(14)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(RoundedRectangle(cornerRadius: 14).fill(Color(nsColor: .controlBackgroundColor)))
-        .overlay(RoundedRectangle(cornerRadius: 14).stroke(Color(nsColor: .separatorColor).opacity(0.6)))
+        .background(
+            RoundedRectangle(cornerRadius: AppTheme.Radius.medium, style: .continuous)
+                .fill(AppTheme.Palette.surface)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: AppTheme.Radius.medium, style: .continuous)
+                .stroke(AppTheme.Palette.glassBorder)
+        )
     }
 }
 
@@ -5105,15 +5096,14 @@ private struct AppUpdatesSettingsPane: View {
             VStack(alignment: .leading, spacing: 18) {
                 SettingsPaneHeader(
                     title: "App Updates",
-                    subtitle: "GrokBuild checks GitHub releases for signed builds and can install updates in one click.",
-                    systemImage: "arrow.triangle.2.circlepath",
-                    color: .blue
+                    subtitle: "Keep GrokBuild and the Grok CLI current.",
+                    systemImage: SettingsTab.app.systemImage
                 )
 
                 updatesCard(title: "Installed Version", systemImage: "info.circle") {
                     VStack(alignment: .leading, spacing: 8) {
                         Text(AppVersion.display)
-                            .font(.body.monospaced())
+                            .font(.body)
                         if let lastCheck = UpdateSettingsStore.lastCheckDate {
                             Text("Last checked \(lastCheck.formatted(date: .abbreviated, time: .shortened))")
                                 .font(.caption)
@@ -5128,16 +5118,11 @@ private struct AppUpdatesSettingsPane: View {
                 }
 
                 updatesCard(title: "Automatic Checks", systemImage: "clock.arrow.circlepath") {
-                    Toggle(isOn: autoCheckBinding) {
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text("Automatically check for updates")
-                                .font(.callout.weight(.medium))
-                            Text("Checks on launch and about once per day while GrokBuild is running.")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                        }
-                    }
-                    .toggleStyle(.switch)
+                    SettingsToggleRow(
+                        "Automatically check for updates",
+                        subtitle: "Checks on launch and about once per day while GrokBuild is running.",
+                        isOn: autoCheckBinding
+                    )
                 }
 
                 updatesCard(title: "grok CLI", systemImage: "terminal") {
@@ -5146,7 +5131,7 @@ private struct AppUpdatesSettingsPane: View {
                             switch cli.state {
                             case .upToDate(let info), .updateAvailable(let info):
                                 Text("Installed: \(info.current)")
-                                    .font(.body.monospaced())
+                                    .font(.body)
                                 Text("Latest: \(info.latest)")
                                     .font(.caption)
                                     .foregroundStyle(.secondary)
@@ -5174,33 +5159,36 @@ private struct AppUpdatesSettingsPane: View {
                            let latest = UpdateScheduler.cachedCLIStatus?.latestVersion {
                             Text("grok CLI \(latest) is ready to update.")
                                 .font(.callout.weight(.semibold))
-                                .foregroundStyle(.blue)
+                                .foregroundStyle(.primary)
                         }
                     }
                     .frame(maxWidth: .infinity, alignment: .leading)
                 }
 
-                updatesCard(title: "Manual Check", systemImage: "arrow.down.circle") {
+                updatesCard(title: "Check Now", systemImage: "arrow.down.circle") {
                     VStack(alignment: .leading, spacing: 10) {
-                        Text("When updates are available, use the main-window banner or Check for Updates… in the menu bar, then click Updates Available to review GrokBuild and grok CLI versions.")
+                        Text("Check for app and CLI updates.")
                             .font(.callout)
                             .foregroundStyle(.secondary)
+                        Button("Check for Updates…") {
+                            Task { @MainActor in
+                                await UpdateUI.presentUpdatePanel(refresh: true)
+                            }
+                        }
                         if UpdateScheduler.hasActionableAppUpdate,
                            let release = UpdateScheduler.cachedAppRelease {
                             Text("GrokBuild \(release.latestVersion) is ready to install.")
                                 .font(.callout.weight(.semibold))
-                                .foregroundStyle(.blue)
+                                .foregroundStyle(.primary)
                         }
                     }
                     .frame(maxWidth: .infinity, alignment: .leading)
                 }
             }
-            .frame(maxWidth: 820, alignment: .leading)
-            .padding(.horizontal, 24)
-            .padding(.vertical, 22)
+            .centeredSettingsColumn()
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-        .background(Color(nsColor: .windowBackgroundColor))
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+        .background(AppTheme.Palette.canvas)
     }
 
     private func updatesCard<Content: View>(
@@ -5213,9 +5201,15 @@ private struct AppUpdatesSettingsPane: View {
                 .font(.headline)
             content()
         }
-        .padding(16)
+        .padding(14)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(RoundedRectangle(cornerRadius: 14).fill(Color(nsColor: .controlBackgroundColor)))
-        .overlay(RoundedRectangle(cornerRadius: 14).stroke(Color(nsColor: .separatorColor).opacity(0.6)))
+        .background(
+            RoundedRectangle(cornerRadius: AppTheme.Radius.medium, style: .continuous)
+                .fill(AppTheme.Palette.surface)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: AppTheme.Radius.medium, style: .continuous)
+                .stroke(AppTheme.Palette.glassBorder)
+        )
     }
 }

@@ -37,6 +37,7 @@ struct SidebarView: View {
     var isSettingsSelected: Bool = false
 
     @State private var filter = ""
+    @State private var isFilterVisible = false
     @State private var renamingSessionID: UUID?
     @State private var renameText = ""
 
@@ -73,16 +74,50 @@ struct SidebarView: View {
         VStack(spacing: 0) {
             HStack(spacing: 8) {
                 Button(action: onAddWorkspace) {
-                    Label("Add Project", systemImage: "plus")
+                    Label("New Project", systemImage: "plus")
                         .labelStyle(.titleAndIcon)
+                        .font(.callout.weight(.medium))
                 }
-                .buttonStyle(.bordered)
+                .buttonStyle(.plain)
                 .controlSize(.small)
+                .foregroundStyle(.primary)
                 Spacer()
+                Button {
+                    withAnimation(.easeInOut(duration: 0.16)) {
+                        isFilterVisible.toggle()
+                        if !isFilterVisible {
+                            filter = ""
+                        }
+                    }
+                } label: {
+                    Image(systemName: isFilterVisible ? "xmark" : "magnifyingglass")
+                        .frame(width: 20, height: 20)
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(isFilterVisible ? Color.primary : Color.secondary)
+                .help(isFilterVisible ? "Hide project filter" : "Filter projects")
             }
             .padding(.horizontal, 10)
             .padding(.top, 8)
             .padding(.bottom, 6)
+
+            if isFilterVisible {
+                TextField("Filter projects", text: $filter)
+                    .textFieldStyle(.plain)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 7)
+                    .background(
+                        AppTheme.Palette.glassTint,
+                        in: RoundedRectangle(cornerRadius: AppTheme.Radius.small, style: .continuous)
+                    )
+                    .overlay {
+                        RoundedRectangle(cornerRadius: AppTheme.Radius.small, style: .continuous)
+                            .stroke(AppTheme.Palette.glassBorder, lineWidth: 1)
+                    }
+                    .padding(.horizontal, 10)
+                    .padding(.bottom, 6)
+                    .transition(.move(edge: .top).combined(with: .opacity))
+            }
 
             List {
                 Section {
@@ -171,7 +206,8 @@ struct SidebarView: View {
                 }
             }
             .listStyle(.sidebar)
-            .searchable(text: $filter, prompt: "Filter projects")
+            .scrollContentBackground(.hidden)
+            .background(AppTheme.Palette.sidebar)
 
             Divider()
 
@@ -181,13 +217,17 @@ struct SidebarView: View {
                     .padding(.horizontal, 14)
                     .padding(.vertical, 10)
                     .contentShape(Rectangle())
-                    .background(isSettingsSelected ? Color.primary.opacity(0.10) : Color.clear, in: RoundedRectangle(cornerRadius: 8))
+                    .background(
+                        isSettingsSelected ? AppTheme.Palette.accentSoft : Color.clear,
+                        in: RoundedRectangle(cornerRadius: AppTheme.Radius.small)
+                    )
             }
             .buttonStyle(.plain)
-            .foregroundStyle(.secondary)
+            .foregroundStyle(isSettingsSelected ? AppTheme.Palette.accent : Color.secondary)
             .padding(.horizontal, 8)
             .padding(.vertical, 8)
         }
+        .background(AppTheme.Palette.sidebar)
         .navigationTitle("GrokBuild")
         .alert("Rename Session", isPresented: renameAlertPresented) {
             TextField("Session name", text: $renameText)
@@ -341,7 +381,7 @@ private struct SessionSidebarRow: View {
             HStack(spacing: 8) {
                 ZStack {
                     Circle()
-                        .fill(Color.blue)
+                        .fill(AppTheme.Palette.status)
                         .frame(width: 6, height: 6)
                         .opacity(isSelected ? 1 : 0)
                 }
@@ -357,8 +397,8 @@ private struct SessionSidebarRow: View {
             .padding(.vertical, 5)
             .contentShape(Rectangle())
             .background(
-                isSelected ? Color.primary.opacity(0.10) : Color.clear,
-                in: RoundedRectangle(cornerRadius: 8)
+                isSelected ? AppTheme.Palette.accentSoft : Color.clear,
+                in: RoundedRectangle(cornerRadius: AppTheme.Radius.small)
             )
         }
         .buttonStyle(.plain)
@@ -376,7 +416,7 @@ private struct WorkspaceRow: View {
     var body: some View {
         HStack(spacing: 10) {
             Image(systemName: isPinned ? "pin.fill" : "folder")
-                .foregroundStyle(isPinned ? .orange : .secondary)
+                .foregroundStyle(isPinned || isSelected ? Color.primary : .secondary)
             VStack(alignment: .leading, spacing: 1) {
                 HStack(spacing: 6) {
                     Text(workspace.displayName)
@@ -397,7 +437,7 @@ private struct WorkspaceRow: View {
                     }
                 }
                 Text(workspace.path.path)
-                    .font(.caption2.monospaced())
+                    .font(.caption2)
                     .foregroundStyle(isSelected ? .secondary : .tertiary)
                     .lineLimit(1)
                     .truncationMode(.middle)
@@ -408,8 +448,8 @@ private struct WorkspaceRow: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .contentShape(Rectangle())
         .background(
-            isSelected ? Color.primary.opacity(0.10) : Color.clear,
-            in: RoundedRectangle(cornerRadius: 8)
+            isSelected ? AppTheme.Palette.accentSoft : Color.clear,
+            in: RoundedRectangle(cornerRadius: AppTheme.Radius.small)
         )
     }
 }

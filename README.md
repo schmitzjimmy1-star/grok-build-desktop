@@ -4,7 +4,7 @@ GrokBuild Desktop App is a native SwiftUI macOS shell for the [`grok`](https://g
 
 You can also install GrokBuild just to manage custom OpenAI-compatible models in **Settings → Models** (writes `~/.grok/config.toml`; no project or session needed), then use them in the grok TUI.
 
-![GrokBuild Desktop App showing the project sidebar, session UI, composer, and status bar menu](docs/images/grokbuild-app.png)
+![GrokBuild Desktop App showing the project sidebar, session UI, and composer](docs/images/grokbuild-app.png)
 
 ## Requirements
 
@@ -47,41 +47,44 @@ Release assets are versioned, e.g. `GrokBuild-v0.1.10.app.zip` and `GrokBuild-v0
 
 ### Sessions
 
-- Streaming agent sessions for `grok agent stdio` with Markdown, thinking blocks, live tool cards, permission prompts, plan/question cards, and diff review.
+- Streaming agent sessions for `grok agent stdio` with Markdown, compact thinking disclosures placed above their assistant answers, live tool cards, permission prompts, plan/question cards, and diff review.
 - Multi-tab sessions with lazy restore, resumable grok sessions, a session browser, and transcript recovery from grok's on-disk `chat_history.jsonl` when possible.
-- Composer controls for model, mode, context usage, voice dictation, file attachments, slash-command autocomplete, **skill chips** (`/design`, `/review`, …), **research/workflow chips** (`/deep-research`, `/create-workflow`), **imagine chips**, `/goal` with optional budget, prompt queue while streaming, and session dashboard.
-- Guided empty state with quick-start prompts; use **Clear** on an Empty session to remove it from the tab strip.
+- Monochrome graphite visual system with a compact native SF type scale, centered reading column, flat matte surfaces, restrained corner radii, and no decorative avatars or status pills.
+- Minimal composer controls for model, mode, context usage, voice dictation, attachments, and a single **Skills and workflows** menu for skill, research, workflow, and imagine commands. Secondary session controls stay collapsed until requested.
+- Spacious Codex-style empty state with four monochrome quick-start cards; use **Clear** on an Empty session to remove it from the tab strip.
 
 ### Project Workflow
 
-- Persistent project sidebar with pinned projects, recent sessions, session rename/close, and one-click **Add Project** onboarding.
-- Per-tab **model** selection and per-project **reasoning effort**.
+- Collapsible project sidebar with pinned projects, recent sessions, session rename/close, one-click **New Project** onboarding, and an on-demand project filter. The chat toolbar keeps a sidebar toggle visible in the full-width canvas, moves secondary actions into one menu, and opens Settings directly.
+- Full-width Settings workspace with one compact internal navigation rail and a centered 760 pt content column; opening Settings never brings the project sidebar back or stacks two sidebars together. Switches use one small trailing control column, permission editors stay shallow and neutral, and Marketplace sources stack above the full-width plugin list instead of squeezing it into a split view. Technical monospace typography is reserved for actual commands and diagnostic logs.
+- Per-tab **model** selection and per-project **reasoning effort** through one compact native menu with Model and Effort submenus.
 - Git branch/worktree management from the session status row.
 - `Open in` menu for Finder, Cursor, VS Code, Terminal, iTerm, and Zed.
 - **Custom models (standalone)** — OpenAI-compatible providers and models in **Settings → Models**, written to `~/.grok/config.toml`. Usable on its own (no project/session); models are then available in the grok CLI/TUI and in GrokBuild sessions.
 
 ### Agent Capabilities
 
-- **Main agents** — browse agents discovered by `grok inspect --json`, choose the default agent for new sessions, or override the active tab from the agent pill. These choices pass through as `grok --agent` and restart the affected session.
+- **Main agents** — browse agents discovered by `grok inspect --json`, choose the default agent for new sessions, or override the active tab from Session controls. These choices pass through as `grok --agent` and restart the affected session.
 - **Custom subagents (roles)** — create reusable roles with a name, optional model, and instruction. GrokBuild Desktop App writes them to `[subagents.roles.*]` in `~/.grok/config.toml` and stores instructions in `~/.grok/prompts/<name>.md`.
 - **Using subagents** — keep the main agent as Default and prompt normally; grok delegates to matching subagents automatically, or you can ask for one by name (for example, *"use the researcher subagent to map the auth flow"*). **Run as custom role** in the agent picker runs the whole session as that role instead of spawning a child subagent. To block spawning child subagents, use **Settings → Permissions**.
 - Inspect hooks, plugins, marketplace sources (install/enable/disable), compatibility layers (Cursor/Claude/Codex), skills, MCP servers, and session permissions from Settings.
 
 ### Optional Automation
 
-Enable Browser and Computer Use from **Settings → Browser** / **Settings → Computer Use**, then **Apply and Restart**, or use the matching status-bar pills when a session is active.
+Enable Browser and Computer Use from **Settings → Browser** / **Settings → Computer Use**, then **Apply and Restart**, or use the matching items in Session controls when a session is active.
 
 - **Browser control** — let Grok drive a real Chromium browser via `browser_*` MCP tools backed by [`agent-browser`](https://agent-browser.dev). Use a managed automation profile or attach to Chrome, Brave, Edge, Arc, or another Chromium browser over CDP.
 - **Computer Use** — let Grok drive native macOS UI via `computer_*` MCP tools backed by [`agent-desktop`](https://github.com/lahfir/agent-desktop), with action policy, step limits, timeouts, and optional Cursor MCP integration.
-- **Memory** — experimental and off by default. Enable from Settings, browse `~/.grok/memory/`, and add "Remember" notes from the session status bar. Slash commands like `/flush` and `/dream` remain TUI-only.
-- **Background tasks** — scheduled `/loop` tasks plus background shells, monitors, and subagents mirrored in the Tasks pill. Schedules only fire while GrokBuild Desktop App is open and that session process is alive (inactive tabs may be stopped by LRU eviction).
-- **Rhai workflows** — enable in Settings → Workflows (`[workflows] enabled` in config.toml, shared with the grok TUI). The Workflows pill lists runs, saved `.grok/workflows/` scripts, and deep research. This is separate from skill chips in the composer.
+- **Memory** — experimental and off by default. Enable it from Settings, browse saved memories, and add "Remember" notes from Session controls.
+- **Background tasks** — scheduled `/loop` tasks plus background shells, monitors, and subagents mirrored under Session controls. Schedules only fire while GrokBuild Desktop App is open and that session process is alive (inactive tabs may be stopped by LRU eviction).
+- **Rhai workflows** — enable in Settings → Workflows (`[workflows] enabled` in config.toml, shared with the grok TUI). Session controls list runs, saved `.grok/workflows/` scripts, and deep research. This is separate from the Skills and workflows menu in the composer.
 - **Session tools** — fork session (new tab with `--fork-session`), share link (`/share` + clipboard), `/btw` aside panel, create-skill sheet, and multi-session dashboard grouped by status.
 - **Documents and spreadsheets** — use grok's document skills (`xlsx`, `docx`, `pptx`) to create, read, edit, and reformat Office files from paths in your workspace. Spreadsheet skills may need [LibreOffice](https://www.libreoffice.org/) installed for some conversions.
 
 ### App Experience
 
-- Menu bar item plus main window with status-dot icon, quick actions, settings, update checks, and sign-in recovery.
+- A normal windowed Mac app with standard application menus, native SF Symbols, and no redundant status-item applet.
+- Grouped vertical Settings navigation keeps all configuration areas readable without a fourteen-tab horizontal traffic jam.
 - In-app update panels for both GrokBuild Desktop App and the `grok` CLI. App updates are offered only for signed and notarized releases.
 - Dark-mode-first SwiftUI design with accessibility labels for interactive status controls.
 
@@ -161,7 +164,7 @@ Signing requires a **Developer ID Application** certificate, and notarization re
 | [AGENTS.md](AGENTS.md) | Agent/copilot entry point |
 | [BUILDING.md](BUILDING.md) | Build, sign, notarize, release CI |
 
-Debug builds (`make run-debug`) include a menu-bar **Simulate Updates** submenu for testing the update UI without publishing releases. It is compiled out of release builds (`make run`, `make app`, GitHub releases).
+Debug builds (`make run-debug`) include **GrokBuild → Simulate Updates** for testing the update UI without publishing releases. It is compiled out of release builds (`make run`, `make app`, GitHub releases).
 
 ## License
 

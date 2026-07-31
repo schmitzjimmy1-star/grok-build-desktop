@@ -123,28 +123,28 @@ struct ThinkingBlock: View {
     var onToggle: () -> Void
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
+        VStack(alignment: .leading, spacing: 5) {
             Button(action: onToggle) {
                 HStack(spacing: 6) {
                     Image(systemName: isExpanded ? "chevron.down" : "chevron.right")
-                        .font(.caption2.weight(.semibold))
+                        .font(.system(size: 9, weight: .semibold))
                     Text(headerTitle)
-                        .font(.caption.weight(.medium))
-                        .foregroundStyle(.secondary)
+                        .font(.system(size: 11, weight: .medium))
+                        .foregroundStyle(.tertiary)
                 }
             }
             .buttonStyle(.plain)
 
             if isExpanded, !text.isEmpty {
                 Text(text)
-                    .font(.caption)
-                    .italic()
-                    .foregroundStyle(.secondary)
+                    .font(.system(size: 12))
+                    .lineSpacing(2)
+                    .foregroundStyle(.tertiary)
                     .textSelection(.enabled)
                     .frame(maxWidth: .infinity, alignment: .leading)
             }
         }
-        .padding(.vertical, 4)
+        .padding(.bottom, 3)
     }
 
     private var headerTitle: String {

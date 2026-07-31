@@ -54,7 +54,7 @@ Then select the `GrokBuild` scheme.
 
 ### Testing update UI locally
 
-Debug builds (`make run-debug`) include a menu-bar **Simulate Updates** submenu (`#if DEBUG` — absent from release/`make run`/`make app` binaries). Use it to exercise the banner and update panel without publishing GitHub releases. Simulated app install relaunches GrokBuild (no binary swap); simulated CLI updates never run `grok update`.
+Debug builds (`make run-debug`) include **GrokBuild → Simulate Updates** (`#if DEBUG` — absent from release/`make run`/`make app` binaries). Use it to exercise the banner and update panel without publishing GitHub releases. Simulated app install relaunches GrokBuild (no binary swap); simulated CLI updates never run `grok update`.
 
 To test real update flows:
 - **CLI:** `grok update --version <older>` then **Check for Updates…** → click **Updates Available** on the banner → **Update grok CLI**
@@ -74,7 +74,7 @@ Output:
 GitHub release assets use versioned names, e.g. `GrokBuild-v0.1.10.app.zip` and `GrokBuild-v0.1.10-macOS.dmg`.
 
 The build script (`scripts/build-macos-app.sh`) also:
-- Copies menu bar icon assets into `Contents/Resources/`
+- Copies Grok brand-mark assets into `Contents/Resources/`
 - Bundles `Resources/Skills/` into the app
 - Copies `scripts/grokbuild-install-update.sh` → `Contents/Resources/grokbuild-install-update` (in-app upgrade helper)
 - Bundles `agent-desktop` into `Contents/MacOS/` when present on the build machine (CI installs it via npm)
@@ -316,21 +316,21 @@ The tag is derived from `VERSION` (e.g. `0.1.4` → `v0.1.4`). If a release for 
 
 | Target | Output |
 |--------|--------|
-| `GrokBuild` | Main menu-bar app |
+| `GrokBuild` | Main windowed macOS app |
 | `GrokBuildComputerUseMCP` | Stdio MCP bridge → `agent-desktop` (bundled/copied at app build) |
 | `GrokBuildTests` | Unit tests |
 
 Platform: macOS 26+ (`Package.swift`).
 
-## Icon
+## Brand mark
 
-The menu bar icon lives in the asset catalog:
+The Grok mark lives in the asset catalog. The imageset keeps its legacy filename for packaging compatibility:
 
 - `GrokBuild/Resources/Assets.xcassets/MenuBarIcon.imageset/MenuBarIcon.png`
 - `GrokBuild/Resources/Assets.xcassets/MenuBarIcon.imageset/MenuBarIcon@2x.png` (recommended)
 - `...@3x.png` (also supported)
 
-The build script copies these into `Contents/Resources/`. No need to duplicate PNGs at the project root.
+The build script copies these into `Contents/Resources/` for the welcome state and app-icon fallback. No need to duplicate PNGs at the project root.
 
 ## Related docs
 

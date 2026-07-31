@@ -35,7 +35,7 @@ struct SavedWorkflowsPanel: View {
                 VStack(alignment: .leading, spacing: 2) {
                     Text("Saved Workflows")
                         .font(.title2.weight(.semibold))
-                    Text("Project `.grok/workflows/` and `~/.grok/workflows/`")
+                    Text("Project and personal workflow scripts")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
@@ -185,7 +185,7 @@ struct DeepResearchSheet: View {
                     .keyboardShortcut(.cancelAction)
             }
 
-            Text("Fans research questions out to parallel investigators and returns a cited report. Progress appears in the Workflows pill.")
+            Text("Fans research questions out to parallel investigators and returns a cited report. Progress appears in Session controls.")
                 .font(.callout)
                 .foregroundStyle(.secondary)
 

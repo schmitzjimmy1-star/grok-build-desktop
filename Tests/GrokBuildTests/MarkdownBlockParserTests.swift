@@ -46,6 +46,66 @@ final class MarkdownBlockParserTests: XCTestCase {
         XCTAssertTrue(MarkdownBlockParser.looksLikeInlineMath("x=y"))
     }
 
+    func testTextBlocksParseHeadingsTablesListsAndCode() {
+        let markdown = """
+        ## Browser access
+
+        | Tool | Status |
+        | --- | --- |
+        | Chrome | Ready |
+        | Safari | Off |
+
+        - Keep the toolbar quiet
+        - Show errors when actionable
+
+        ```swift
+        let glass = true
+        ```
+        """
+
+        let blocks = MarkdownTextBlockParser.parse(markdown).map(\.content)
+        XCTAssertEqual(
+            blocks,
+            [
+                .heading(level: 2, text: "Browser access"),
+                .table(
+                    headers: ["Tool", "Status"],
+                    rows: [
+                        ["Chrome", "Ready"],
+                        ["Safari", "Off"],
+                    ]
+                ),
+                .unorderedList([
+                    "Keep the toolbar quiet",
+                    "Show errors when actionable",
+                ]),
+                .code(language: "swift", text: "let glass = true"),
+            ]
+        )
+    }
+
+    func testTextBlocksParseQuotesOrderedListsAndDividers() {
+        let markdown = """
+        > Calm interfaces are allowed.
+        > Even in developer tools.
+
+        1. Read
+        2. Build
+        3. Verify
+
+        ---
+        """
+
+        XCTAssertEqual(
+            MarkdownTextBlockParser.parse(markdown).map(\.content),
+            [
+                .quote("Calm interfaces are allowed.\nEven in developer tools."),
+                .orderedList(["Read", "Build", "Verify"]),
+                .divider,
+            ]
+        )
+    }
+
     private func assertInlineLatex(in blocks: [MarkdownBlock], expected: String) {
         let latexBlocks = blocks.compactMap { block -> (String, Bool)? in
             if case .latex(let expr, let display) = block { return (expr, display) }

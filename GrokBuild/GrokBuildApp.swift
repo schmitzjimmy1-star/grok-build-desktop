@@ -15,7 +15,7 @@ struct GrokBuildApp: App {
                 )
         }
         .windowStyle(.hiddenTitleBar)
-        .windowToolbarStyle(.unified)
+        .windowToolbarStyle(.unifiedCompact)
         .defaultSize(
             width: MainWindowLayout.defaultSize.width,
             height: MainWindowLayout.defaultSize.height

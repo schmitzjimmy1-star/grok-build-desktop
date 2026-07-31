@@ -11,8 +11,30 @@ enum ProjectOpenTarget {
     case zed
 }
 
+enum ChatTranscriptLayout {
+    /// Thinking belongs to the assistant response for the active turn. During
+    /// streaming that response has an explicit id; after completion it is the
+    /// most recent assistant message.
+    static func thinkingMessageID(
+        messages: [Message],
+        streamingMessageID: UUID?
+    ) -> UUID? {
+        streamingMessageID
+            ?? messages.last(where: { $0.role == .assistant })?.id
+    }
+}
+
+enum ComposerModelMenuLayout {
+    static func effortDisplayName(storedValue: String) -> String {
+        ReasoningEffortLevel(storedValue: storedValue).displayName
+    }
+}
+
 struct ChatView: View {
     @Bindable var store: ChatStore
+    var isSidebarVisible: Bool = true
+    var onToggleSidebar: () -> Void = {}
+    var onOpenSettings: () -> Void = {}
     var reviewFileCount: Int = 0
     var isReviewVisible: Bool = false
     var onToggleReview: () -> Void = {}
@@ -42,7 +64,7 @@ struct ChatView: View {
     @State private var thinkingScrollTask: Task<Void, Never>?
     @State private var voiceInput = VoiceInputService()
     @State private var pendingReasoningEffortChange: String?
-    @State private var isModelSelectorOpen = false
+    @State private var showSessionControls = false
     @FocusState private var inputFocused: Bool
     @AppStorage(BrowserSettingsKeys.appliedEnabled) private var browserToolsEnabled = BrowserSettings.defaults.enabled
     @AppStorage(ComputerUseSettingsKeys.appliedEnabled) private var computerUseEnabled = ComputerUseSettings.defaults.enabled
@@ -93,6 +115,16 @@ struct ChatView: View {
         !slashMenuEntries.isEmpty && inputFocused
     }
 
+    private var thinkingMessageID: UUID? {
+        guard !store.thinkingText.isEmpty || store.thinkingDuration != nil else {
+            return nil
+        }
+        return ChatTranscriptLayout.thinkingMessageID(
+            messages: store.messages,
+            streamingMessageID: store.streamingMessageID
+        )
+    }
+
     var body: some View {
         VStack(spacing: 0) {
             topBar
@@ -127,7 +159,7 @@ struct ChatView: View {
 
             ScrollViewReader { proxy in
                 ScrollView {
-                    LazyVStack(alignment: .leading, spacing: 14) {
+                    LazyVStack(alignment: .leading, spacing: 22) {
                         if store.messages.isEmpty {
                             if store.currentWorkspace == nil {
                                 noProjectState
@@ -141,6 +173,17 @@ struct ChatView: View {
                         }
 
                         ForEach(store.messages) { msg in
+                            if thinkingMessageID == msg.id {
+                                ThinkingBlock(
+                                    text: store.thinkingText,
+                                    duration: store.thinkingDuration,
+                                    isExpanded: store.isThinkingExpanded,
+                                    isLive: store.isStreaming && store.thinkingDuration == nil
+                                ) {
+                                    store.toggleThinkingExpanded()
+                                }
+                            }
+
                             MessageBubble(
                                 message: msg,
                                 isStreaming: store.isStreaming && msg.id == store.streamingMessageID
@@ -151,17 +194,6 @@ struct ChatView: View {
                         if store.isGrokking {
                             GrokkingIndicator(startedAt: store.turnStartedAt)
                                 .padding(.leading, 2)
-                        }
-
-                        if !store.thinkingText.isEmpty || store.thinkingDuration != nil {
-                            ThinkingBlock(
-                                text: store.thinkingText,
-                                duration: store.thinkingDuration,
-                                isExpanded: store.isThinkingExpanded,
-                                isLive: store.isStreaming && store.thinkingDuration == nil
-                            ) {
-                                store.toggleThinkingExpanded()
-                            }
                         }
 
                         if !store.liveToolCalls.isEmpty {
@@ -193,10 +225,12 @@ struct ChatView: View {
                             }
                         }
                     }
-                    .padding(.horizontal, 16)
-                    .padding(.vertical, 14)
+                    .frame(maxWidth: AppTheme.Layout.conversationMaxWidth)
+                    .frame(maxWidth: .infinity, alignment: .center)
+                    .padding(.horizontal, 26)
+                    .padding(.vertical, 24)
                 }
-                .background(Color(nsColor: .textBackgroundColor))
+                .background(AppTheme.Palette.canvas)
                 .onChange(of: store.messages.count) { _, _ in
                     scrollToBottom(proxy: proxy)
                 }
@@ -316,6 +350,13 @@ struct ChatView: View {
 
     private var topBar: some View {
         HStack(spacing: 8) {
+            Button(action: onToggleSidebar) {
+                Image(systemName: "sidebar.left")
+            }
+            .buttonStyle(.plain)
+            .help(isSidebarVisible ? "Hide sidebar" : "Show sidebar")
+            .accessibilityLabel(isSidebarVisible ? "Hide sidebar" : "Show sidebar")
+
             Button(action: onNewSession) {
                 Image(systemName: "square.and.pencil")
             }
@@ -323,81 +364,85 @@ struct ChatView: View {
             .disabled(store.currentWorkspace == nil)
             .help("New session")
 
-            Button(action: onBrowseSessions) {
-                Image(systemName: "clock")
-            }
-            .buttonStyle(.plain)
-            .help("Browse sessions")
-
-            Button(action: onOpenDashboard) {
-                Image(systemName: "square.grid.2x2")
-            }
-            .buttonStyle(.plain)
-            .help("Session dashboard")
+            Spacer()
 
             Menu {
+                Button("Browse sessions", systemImage: "clock") {
+                    onBrowseSessions()
+                }
+                Button("Session dashboard", systemImage: "square.grid.2x2") {
+                    onOpenDashboard()
+                }
+
+                if store.currentWorkspace != nil {
+                    Divider()
+                }
                 if store.isResumedSessionTab || store.grokSessionId != nil {
-                    Button("Fork session") {
+                    Button("Fork session", systemImage: "arrow.triangle.branch") {
                         onForkSession()
                     }
                 }
                 if store.hasShareCommand {
-                    Button("Share session") {
+                    Button("Share session", systemImage: "square.and.arrow.up") {
                         Task { _ = await store.shareSession() }
                     }
                     .disabled(store.isStreaming)
                 }
                 if store.hasGoalCommand {
-                    Button("Set goal…") {
+                    Button("Set goal…", systemImage: "target") {
                         showSetGoal = true
                     }
                     .disabled(store.isStreaming)
                 }
                 if store.hasCreateSkillCommand {
-                    Button("Create skill…") {
+                    Button("Create skill…", systemImage: "hammer") {
                         createSkillName = ""
                         showCreateSkill = true
                     }
                     .disabled(store.isStreaming)
                 }
-            } label: {
-                Image(systemName: "ellipsis.circle")
-            }
-            .menuStyle(.borderlessButton)
-            .disabled(store.currentWorkspace == nil)
-            .help("Session actions")
 
-            Spacer()
-
-            Menu {
-                openInButton(title: "Finder", target: .finder, appURL: finderURL, fallbackSystemImage: "finder")
-                if let app = installedApp(bundleIdentifiers: ["com.todesktop.230313mzl4w4u92", "com.cursor.Cursor"], appNames: ["Cursor"]) {
-                    openInButton(title: "Cursor", target: .cursor, appURL: app, fallbackSystemImage: "cursorarrow")
-                }
-                if let app = installedApp(bundleIdentifiers: ["com.microsoft.VSCode", "com.microsoft.VSCodeInsiders"], appNames: ["Visual Studio Code", "Visual Studio Code - Insiders"]) {
-                    openInButton(title: "VS Code", target: .vsCode, appURL: app, fallbackSystemImage: "chevron.left.forwardslash.chevron.right")
-                }
-                Divider()
-                if let app = installedApp(bundleIdentifiers: ["com.apple.Terminal"], appNames: ["Terminal"]) {
-                    openInButton(title: "Terminal", target: .terminal, appURL: app, fallbackSystemImage: "terminal")
-                }
-                if let app = installedApp(bundleIdentifiers: ["com.googlecode.iterm2"], appNames: ["iTerm", "iTerm2"]) {
-                    openInButton(title: "iTerm", target: .iTerm, appURL: app, fallbackSystemImage: "terminal.fill")
-                }
-                if let app = installedApp(bundleIdentifiers: ["dev.zed.Zed", "dev.zed.Zed-Preview", "com.zed.Zed"], appNames: ["Zed", "Zed Preview"]) {
+                if store.currentWorkspace != nil {
                     Divider()
-                    openInButton(title: "Zed", target: .zed, appURL: app, fallbackSystemImage: "square.and.pencil")
+
+                    Menu("Open project in", systemImage: "arrow.up.forward.app") {
+                        openInButton(title: "Finder", target: .finder, appURL: finderURL, fallbackSystemImage: "finder")
+                        if let app = installedApp(bundleIdentifiers: ["com.todesktop.230313mzl4w4u92", "com.cursor.Cursor"], appNames: ["Cursor"]) {
+                            openInButton(title: "Cursor", target: .cursor, appURL: app, fallbackSystemImage: "cursorarrow")
+                        }
+                        if let app = installedApp(bundleIdentifiers: ["com.microsoft.VSCode", "com.microsoft.VSCodeInsiders"], appNames: ["Visual Studio Code", "Visual Studio Code - Insiders"]) {
+                            openInButton(title: "VS Code", target: .vsCode, appURL: app, fallbackSystemImage: "chevron.left.forwardslash.chevron.right")
+                        }
+                        Divider()
+                        if let app = installedApp(bundleIdentifiers: ["com.apple.Terminal"], appNames: ["Terminal"]) {
+                            openInButton(title: "Terminal", target: .terminal, appURL: app, fallbackSystemImage: "terminal")
+                        }
+                        if let app = installedApp(bundleIdentifiers: ["com.googlecode.iterm2"], appNames: ["iTerm", "iTerm2"]) {
+                            openInButton(title: "iTerm", target: .iTerm, appURL: app, fallbackSystemImage: "terminal.fill")
+                        }
+                        if let app = installedApp(bundleIdentifiers: ["dev.zed.Zed", "dev.zed.Zed-Preview", "com.zed.Zed"], appNames: ["Zed", "Zed Preview"]) {
+                            Divider()
+                            openInButton(title: "Zed", target: .zed, appURL: app, fallbackSystemImage: "square.and.pencil")
+                        }
+                    }
                 }
             } label: {
-                Image(systemName: "arrow.up.forward.app")
+                Image(systemName: "ellipsis")
             }
             .menuStyle(.borderlessButton)
-            .disabled(store.currentWorkspace == nil)
-            .help("Open project in")
+            .help("More actions")
+            .accessibilityLabel("More actions")
+
+            Button(action: onOpenSettings) {
+                Image(systemName: "gearshape")
+            }
+            .buttonStyle(.plain)
+            .help("Settings")
+            .accessibilityLabel("Open Settings")
         }
         .padding(.horizontal, 12)
-        .padding(.vertical, 8)
-        .background(.bar)
+        .padding(.vertical, 7)
+        .background(AppTheme.Palette.canvas)
     }
 
     private var finderURL: URL {
@@ -467,27 +512,20 @@ struct ChatView: View {
     }
 
     private var welcomeState: some View {
-        VStack(spacing: 22) {
-            VStack(spacing: 10) {
+        VStack(spacing: 28) {
+            VStack(spacing: 16) {
                 brandMark
-                Text("How can I help?")
-                    .font(.title2.weight(.semibold))
-                HStack(spacing: 6) {
-                    Circle()
-                        .fill(connectionStatusColor)
-                        .frame(width: 6, height: 6)
-                    Text(connectionSubtitle)
-                        .font(.callout)
-                        .foregroundStyle(.secondary)
-                }
+                Text("What should we work on in \(store.currentWorkspace?.displayName ?? "this project")?")
+                    .font(.system(size: 30, weight: .regular))
+                    .multilineTextAlignment(.center)
             }
 
             LazyVGrid(
-                columns: [
-                    GridItem(.flexible(), spacing: 10),
-                    GridItem(.flexible(), spacing: 10),
-                ],
-                spacing: 10
+                columns: Array(
+                    repeating: GridItem(.flexible(), spacing: 12),
+                    count: 4
+                ),
+                spacing: 12
             ) {
                 ForEach(QuickStartPrompt.defaults) { item in
                     QuickStartChip(item: item) {
@@ -501,10 +539,10 @@ struct ChatView: View {
                 .font(.caption2)
                 .foregroundStyle(.tertiary)
         }
-        .frame(maxWidth: 520)
+        .frame(maxWidth: 960)
         .frame(maxWidth: .infinity)
-        .padding(.vertical, 52)
-        .padding(.horizontal, 24)
+        .padding(.vertical, 64)
+        .padding(.horizontal, 32)
     }
 
     private var noProjectState: some View {
@@ -567,6 +605,32 @@ struct ChatView: View {
             + ImagineSlashCommands.filter(store.availableSlashCommands)
     }
 
+    private var composerCommandMenu: some View {
+        Menu {
+            ForEach(composerChips) { command in
+                Button {
+                    Task { await handleComposerChip(command) }
+                } label: {
+                    Label(
+                        command.name.replacingOccurrences(of: "-", with: " ").capitalized,
+                        systemImage: "hammer"
+                    )
+                }
+                .disabled(store.isStreaming || store.currentWorkspace == nil)
+            }
+        } label: {
+            Image(systemName: "hammer")
+                .font(.system(size: 13, weight: .medium))
+                .foregroundStyle(.secondary)
+                .frame(width: 22, height: 22)
+        }
+        .menuStyle(.button)
+        .buttonStyle(.plain)
+        .disabled(composerChips.isEmpty)
+        .accessibilityLabel("Skills and workflows")
+        .help("Skills and workflows")
+    }
+
     private var composer: some View {
         VStack(alignment: .leading, spacing: 8) {
             if !store.fileAttachments.isEmpty {
@@ -577,20 +641,11 @@ struct ChatView: View {
                 )
             }
 
-            if !composerChips.isEmpty {
-                WorkflowChipBar(
-                    commands: composerChips,
-                    isDisabled: store.isStreaming || store.currentWorkspace == nil
-                ) { command in
-                    Task { await handleComposerChip(command) }
-                }
-            }
-
             if !store.promptQueue.isEmpty {
                 promptQueueBar
             }
 
-            VStack(alignment: .leading, spacing: 16) {
+            VStack(alignment: .leading, spacing: 10) {
                 VStack(alignment: .leading, spacing: 6) {
                     if showSlashPopover {
                         SlashAutocompleteView(
@@ -610,8 +665,10 @@ struct ChatView: View {
 
                     TextField("Plan, Build, / for skills", text: $input, axis: .vertical)
                     .textFieldStyle(.plain)
+                    .font(AppTheme.Typography.composer)
+                    .lineSpacing(4)
                     .focused($inputFocused)
-                    .lineLimit(2, reservesSpace: true)
+                    .lineLimit(1...6)
                     .submitLabel(.send)
                     .onSubmit {
                         if showSlashPopover {
@@ -662,9 +719,11 @@ struct ChatView: View {
                     }
                 }
 
-                HStack(spacing: 6) {
+                HStack(spacing: 9) {
                 modeSelector
                 modelSelector
+
+                composerCommandMenu
 
                 ContextUsageIndicator(
                     label: store.currentModelContextLabel,
@@ -690,23 +749,59 @@ struct ChatView: View {
                 sessionActionButton
             }
             }
-            .padding(.horizontal, 12)
+            .padding(.horizontal, 11)
             .padding(.vertical, 10)
-            .frame(maxWidth: MainWindowLayout.composerMaxWidth, alignment: .leading)
-            .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 10))
-            .overlay {
-                RoundedRectangle(cornerRadius: 10)
-                    .stroke(isFileDropTargeted ? Color.accentColor : Color.primary.opacity(0.08), lineWidth: isFileDropTargeted ? 1.5 : 1)
-            }
+            .frame(maxWidth: AppTheme.Layout.composerMaxWidth, alignment: .leading)
+            .grokGlassSurface(
+                cornerRadius: AppTheme.Radius.medium,
+                emphasized: isFileDropTargeted,
+                shadowed: false
+            )
             .onDrop(of: [UTType.fileURL.identifier], isTargeted: $isFileDropTargeted) { providers in
                 handleFileDrop(providers)
             }
-            .frame(maxWidth: .infinity, alignment: .leading)
+            .frame(maxWidth: .infinity, alignment: .center)
 
-            projectStatusRow
+            sessionControlsDisclosure
         }
-        .padding(12)
-        .background(.bar)
+        .padding(.horizontal, 20)
+        .padding(.vertical, 12)
+    }
+
+    private var sessionControlsDisclosure: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Button {
+                withAnimation(.easeInOut(duration: 0.18)) {
+                    showSessionControls.toggle()
+                }
+            } label: {
+                HStack(spacing: 7) {
+                    Circle()
+                        .fill(connectionStatusColor)
+                        .frame(width: 6, height: 6)
+                    Text(store.currentWorkspace?.displayName ?? "No project selected")
+                        .lineLimit(1)
+                    Spacer()
+                    Text(showSessionControls ? "Hide session controls" : "Session controls")
+                        .foregroundStyle(.tertiary)
+                    Image(systemName: showSessionControls ? "chevron.down" : "chevron.right")
+                        .font(.system(size: 8, weight: .semibold))
+                        .foregroundStyle(.tertiary)
+                }
+                .font(.caption.weight(.medium))
+                .foregroundStyle(.secondary)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel(showSessionControls ? "Hide session controls" : "Show session controls")
+
+            if showSessionControls {
+                projectStatusRow
+                    .transition(.opacity.combined(with: .move(edge: .top)))
+            }
+        }
+        .frame(maxWidth: AppTheme.Layout.composerMaxWidth)
+        .frame(maxWidth: .infinity, alignment: .center)
     }
 
     private var projectStatusRow: some View {
@@ -751,7 +846,6 @@ struct ChatView: View {
         let effective = store.effectiveAgentSelection
         let title = store.effectiveAgentDisplayName
         let overriding = store.hasExplicitAgent
-        let tint: Color = overriding ? .teal : .secondary
 
         return Menu {
             Section("This session's agent") {
@@ -802,10 +896,9 @@ struct ChatView: View {
         } label: {
             Label(title, systemImage: "person.2.badge.gearshape")
                 .font(.caption2.weight(.semibold))
-                .padding(.horizontal, 8)
-                .padding(.vertical, 3)
-                .background(Capsule().fill(tint.opacity(overriding ? 0.14 : 0.10)))
-                .foregroundStyle(tint)
+                .padding(.horizontal, 2)
+                .padding(.vertical, 2)
+                .foregroundStyle(.secondary)
         }
         .menuStyle(.borderlessButton)
         .fixedSize()
@@ -825,7 +918,6 @@ struct ChatView: View {
     private var workflowsStatusPill: some View {
         let runs = store.workflowRuns
         let count = runs.count
-        let tint: Color = count > 0 ? .indigo : .secondary
         let title = count > 0 ? "Workflows (\(count))" : "Workflows"
 
         return Menu {
@@ -900,10 +992,9 @@ struct ChatView: View {
         } label: {
             Label(title, systemImage: count > 0 ? "arrow.triangle.branch" : "arrow.triangle.branch")
                 .font(.caption2.weight(.semibold))
-                .padding(.horizontal, 8)
-                .padding(.vertical, 3)
-                .background(Capsule().fill(tint.opacity(count > 0 ? 0.14 : 0.10)))
-                .foregroundStyle(tint)
+                .padding(.horizontal, 2)
+                .padding(.vertical, 2)
+                .foregroundStyle(.secondary)
         }
         .menuStyle(.borderlessButton)
         .fixedSize()
@@ -937,7 +1028,6 @@ struct ChatView: View {
         let subagents = activities.filter { $0.kind == .subagent }
         let count = activities.count
         let available = store.hasLoopCommand
-        let tint: Color = count > 0 ? .accentColor : .secondary
         let title = count > 0 ? "Tasks (\(count))" : "Tasks"
 
         return Menu {
@@ -989,10 +1079,9 @@ struct ChatView: View {
         } label: {
             Label(title, systemImage: count > 0 ? "clock.badge.checkmark" : "clock")
                 .font(.caption2.weight(.semibold))
-                .padding(.horizontal, 8)
-                .padding(.vertical, 3)
-                .background(Capsule().fill(tint.opacity(count > 0 ? 0.14 : 0.10)))
-                .foregroundStyle(tint)
+                .padding(.horizontal, 2)
+                .padding(.vertical, 2)
+                .foregroundStyle(.secondary)
         }
         .menuStyle(.borderlessButton)
         .fixedSize()
@@ -1142,10 +1231,9 @@ struct ChatView: View {
         } label: {
             Label("Memory", systemImage: "brain.head.profile")
                 .font(.caption2.weight(.semibold))
-                .padding(.horizontal, 8)
-                .padding(.vertical, 3)
-                .background(Capsule().fill(Color.pink.opacity(0.14)))
-                .foregroundStyle(Color.pink)
+                .padding(.horizontal, 2)
+                .padding(.vertical, 2)
+                .foregroundStyle(.secondary)
         }
         .menuStyle(.borderlessButton)
         .fixedSize()
@@ -1194,9 +1282,6 @@ struct ChatView: View {
         let needsSetup = browserToolsEnabled && !isConfigured
         let title = needsSetup ? "Browser Setup Needed" : "Browser Tools"
         let icon = browserToolsEnabled && isConfigured ? "globe.badge.chevron.backward" : "globe"
-        // Enabled → white (primary); disabled → greyed out; needs-setup keeps the orange warning.
-        let tint: Color = needsSetup ? .orange : (browserToolsEnabled ? .primary : .secondary)
-
         return Menu {
             if browserToolsEnabled || isConfigured {
                 Button(browserToolsEnabled ? "Turn Browser Tools Off" : "Turn Browser Tools On") {
@@ -1242,10 +1327,9 @@ struct ChatView: View {
                 }
             }
             .font(.caption2.weight(.semibold))
-            .padding(.horizontal, needsSetup ? 8 : 7)
-            .padding(.vertical, 3)
-            .background(Capsule().fill(browserToolsEnabled ? tint.opacity(0.14) : Color.secondary.opacity(0.10)))
-            .foregroundStyle(tint)
+            .padding(.horizontal, 2)
+            .padding(.vertical, 2)
+            .foregroundStyle(needsSetup ? Color.primary : Color.secondary)
         }
         .menuStyle(.borderlessButton)
         .fixedSize()
@@ -1268,9 +1352,6 @@ struct ChatView: View {
         let needsSetup = computerUseEnabled && !isConfigured
         let title = needsSetup ? "Computer Use Setup Needed" : "Computer Use"
         let icon = computerUseEnabled && isConfigured ? "desktopcomputer.badge.checkmark" : "desktopcomputer"
-        // Enabled → white (primary); disabled → greyed out; needs-setup keeps the orange warning.
-        let tint: Color = needsSetup ? .orange : (computerUseEnabled ? .primary : .secondary)
-
         return Menu {
             if computerUseEnabled || isConfigured {
                 Button(computerUseEnabled ? "Turn Computer Use Off" : "Turn Computer Use On") {
@@ -1303,10 +1384,9 @@ struct ChatView: View {
                 }
             }
             .font(.caption2.weight(.semibold))
-            .padding(.horizontal, needsSetup ? 8 : 7)
-            .padding(.vertical, 3)
-            .background(Capsule().fill(computerUseEnabled ? tint.opacity(0.14) : Color.secondary.opacity(0.10)))
-            .foregroundStyle(tint)
+            .padding(.horizontal, 2)
+            .padding(.vertical, 2)
+            .foregroundStyle(needsSetup ? Color.primary : Color.secondary)
         }
         .menuStyle(.borderlessButton)
         .fixedSize()
@@ -1368,7 +1448,6 @@ struct ChatView: View {
             }
             .buttonStyle(.bordered)
             .controlSize(.small)
-            .tint(isReviewVisible ? .accentColor : .secondary)
             .help(isReviewVisible ? "Hide changed files" : "Show changed files")
         }
     }
@@ -1397,9 +1476,9 @@ struct ChatView: View {
                     .font(.system(size: 8, weight: .semibold))
                     .foregroundStyle(.tertiary)
             }
-            .padding(.horizontal, 8)
-            .padding(.vertical, 3)
-            .background(Color.primary.opacity(0.06), in: Capsule())
+            .padding(.horizontal, 3)
+            .padding(.vertical, 2)
+            .foregroundStyle(.secondary)
         }
         .menuStyle(.button)
         .buttonStyle(.plain)
@@ -1436,8 +1515,49 @@ struct ChatView: View {
     }
 
     private var modelSelector: some View {
-        Button {
-            isModelSelectorOpen.toggle()
+        Menu {
+            Menu {
+                ForEach(store.availableModels, id: \.self) { modelId in
+                    Toggle(
+                        store.modelDisplayName(modelId),
+                        isOn: Binding(
+                            get: { store.currentModel == modelId },
+                            set: { selected in
+                                if selected {
+                                    store.setModel(modelId)
+                                }
+                            }
+                        )
+                    )
+                    .accessibilityIdentifier("grok-model-option-\(modelId)")
+                }
+            } label: {
+                Text("Model · \(modelSelectorLabel)")
+            }
+
+            if store.currentModelSupportsReasoningEffort {
+                Menu {
+                    ForEach(ReasoningEffortLevel.menuCases) { level in
+                        Toggle(
+                            level.displayName,
+                            isOn: Binding(
+                                get: { store.currentReasoningEffort == level.rawValue },
+                                set: { selected in
+                                    if selected {
+                                        requestReasoningEffortChange(to: level.rawValue)
+                                    }
+                                }
+                            )
+                        )
+                        .disabled(store.isStreaming || store.currentWorkspace == nil)
+                        .accessibilityIdentifier("grok-effort-option-\(level.rawValue)")
+                    }
+                } label: {
+                    Text("Effort · \(currentReasoningEffortLabel)")
+                }
+            } else if store.isCurrentModelCustom {
+                Text("Reasoning effort unavailable")
+            }
         } label: {
             HStack(spacing: 4) {
                 Text(modelSelectorLabel)
@@ -1448,100 +1568,24 @@ struct ChatView: View {
                     .font(.system(size: 8, weight: .semibold))
                     .foregroundStyle(.tertiary)
             }
-            .padding(.horizontal, 8)
-            .padding(.vertical, 3)
-            .background(Color.primary.opacity(0.06), in: Capsule())
+            .padding(.horizontal, 3)
+            .padding(.vertical, 2)
+            .foregroundStyle(.secondary)
         }
+        .menuStyle(.button)
         .buttonStyle(.plain)
-        .popover(isPresented: $isModelSelectorOpen, arrowEdge: .bottom) {
-            modelSelectorPopoverContent
-        }
         .accessibilityLabel("Model and reasoning effort")
         .accessibilityValue(modelSelectorLabel)
         .accessibilityIdentifier("grok-model-effort-selector")
         .help(modelSelectorHelp)
     }
 
-    private var modelSelectorPopoverContent: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            Text("Model")
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(.secondary)
-                .padding(.horizontal, 12)
-                .padding(.top, 10)
-                .padding(.bottom, 4)
-
-            ForEach(store.availableModels, id: \.self) { modelId in
-                Button {
-                    store.setModel(modelId)
-                    isModelSelectorOpen = false
-                } label: {
-                    modelMenuRow(
-                        title: store.modelDisplayName(modelId),
-                        subtitle: store.modelCapabilityHint(for: modelId),
-                        isSelected: store.currentModel == modelId
-                    )
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                }
-                .buttonStyle(.plain)
-                .padding(.horizontal, 12)
-                .padding(.vertical, 6)
-                .accessibilityIdentifier("grok-model-option-\(modelId)")
-            }
-
-            if store.currentModelSupportsReasoningEffort {
-                Divider()
-                    .padding(.vertical, 6)
-
-                Text("Reasoning effort")
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(.secondary)
-                    .padding(.horizontal, 12)
-                    .padding(.bottom, 2)
-
-                Text("Saved for this project. Set the default for new projects in Settings → Permissions.")
-                    .font(.caption2)
-                    .foregroundStyle(.tertiary)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .padding(.horizontal, 12)
-                    .padding(.bottom, 4)
-
-                ForEach(ReasoningEffortLevel.menuCases) { level in
-                    Button {
-                        requestReasoningEffortChange(to: level.rawValue)
-                        isModelSelectorOpen = false
-                    } label: {
-                        modelMenuRow(
-                            title: level.displayName,
-                            subtitle: nil,
-                            isSelected: store.currentReasoningEffort == level.rawValue
-                        )
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                    }
-                    .buttonStyle(.plain)
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 6)
-                    .disabled(store.isStreaming || store.currentWorkspace == nil)
-                    .accessibilityIdentifier("grok-effort-option-\(level.rawValue)")
-                }
-            } else if store.isCurrentModelCustom {
-                Divider()
-                    .padding(.vertical, 6)
-
-                Text("Reasoning effort is off for this custom model. Enable it in Settings → Models if the provider supports it.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .padding(.horizontal, 12)
-                    .padding(.bottom, 4)
-            }
-        }
-        .frame(minWidth: 240)
-        .padding(.bottom, 8)
-    }
-
     private var modelSelectorLabel: String {
         store.modelDisplayName(store.currentModel)
+    }
+
+    private var currentReasoningEffortLabel: String {
+        ComposerModelMenuLayout.effortDisplayName(storedValue: store.currentReasoningEffort)
     }
 
     private var modelSelectorHelp: String {
@@ -1552,25 +1596,6 @@ struct ChatView: View {
             return "Model selector; reasoning effort is off for this custom model"
         }
         return "Model and reasoning effort"
-    }
-
-    private func modelMenuRow(title: String, subtitle: String?, isSelected: Bool) -> some View {
-        HStack(alignment: .firstTextBaseline, spacing: 8) {
-            VStack(alignment: .leading, spacing: 2) {
-                Text(title)
-                if let subtitle {
-                    Text(subtitle)
-                        .font(.caption2)
-                        .foregroundStyle(.secondary)
-                        .lineLimit(2)
-                }
-            }
-            Spacer(minLength: 12)
-            if isSelected {
-                Image(systemName: "checkmark")
-                    .font(.caption.bold())
-            }
-        }
     }
 
     private func requestReasoningEffortChange(to effort: String) {
@@ -1700,27 +1725,26 @@ private struct QuickStartChip: View {
 
     var body: some View {
         Button(action: onSelect) {
-            HStack(spacing: 10) {
+            VStack(alignment: .leading, spacing: 14) {
                 Image(systemName: item.icon)
-                    .font(.callout)
-                    .foregroundStyle(.tint)
-                    .frame(width: 20)
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundStyle(.secondary)
+                    .frame(width: 22, height: 22)
                 Text(item.title)
-                    .font(.callout.weight(.medium))
+                    .font(.system(size: 14, weight: .medium))
                     .foregroundStyle(.primary)
-                    .lineLimit(1)
-                Spacer(minLength: 0)
+                    .lineLimit(2)
+                    .multilineTextAlignment(.leading)
             }
-            .padding(.horizontal, 12)
-            .padding(.vertical, 10)
-            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(14)
+            .frame(maxWidth: .infinity, minHeight: 104, alignment: .topLeading)
             .background(
-                Color.primary.opacity(isHovered ? 0.09 : 0.05),
-                in: RoundedRectangle(cornerRadius: 10)
+                isHovered ? AppTheme.Palette.surfaceHover : AppTheme.Palette.canvas,
+                in: RoundedRectangle(cornerRadius: AppTheme.Radius.medium)
             )
             .overlay(
-                RoundedRectangle(cornerRadius: 10)
-                    .stroke(Color.primary.opacity(isHovered ? 0.16 : 0.08))
+                RoundedRectangle(cornerRadius: AppTheme.Radius.medium)
+                    .stroke(isHovered ? AppTheme.Palette.glassBorderStrong : AppTheme.Palette.glassBorder)
             )
             .contentShape(Rectangle())
         }
@@ -1729,6 +1753,7 @@ private struct QuickStartChip: View {
         .help(item.prompt)
         .animation(.easeOut(duration: 0.12), value: isHovered)
     }
+
 }
 
 // MARK: - Context Usage
@@ -1737,14 +1762,6 @@ private struct ContextUsageIndicator: View {
     let label: String
     let fraction: Double
 
-    private var ringColor: Color {
-        switch fraction {
-        case 0.85...: return .red
-        case 0.65...: return .orange
-        default: return .green
-        }
-    }
-
     var body: some View {
         HStack(spacing: 6) {
             ZStack {
@@ -1752,7 +1769,7 @@ private struct ContextUsageIndicator: View {
                     .stroke(Color.primary.opacity(0.15), lineWidth: 2)
                 Circle()
                     .trim(from: 0, to: max(0.04, fraction))
-                    .stroke(ringColor, style: StrokeStyle(lineWidth: 2, lineCap: .round))
+                    .stroke(Color.secondary, style: StrokeStyle(lineWidth: 2, lineCap: .round))
                     .rotationEffect(.degrees(-90))
             }
             .frame(width: 14, height: 14)
@@ -1762,9 +1779,8 @@ private struct ContextUsageIndicator: View {
                 .foregroundStyle(.secondary)
                 .monospacedDigit()
         }
-        .padding(.horizontal, 8)
-        .padding(.vertical, 3)
-        .background(Color.primary.opacity(0.06), in: Capsule())
+        .padding(.horizontal, 3)
+        .padding(.vertical, 2)
     }
 }
 
