@@ -354,6 +354,10 @@ selectSession / send / close
 
 Sidebar shows max `SessionLayoutStore.maxSidebarSessions` (10) per project; older sessions in **Browse Sessions**.
 
+### Session titles
+
+Sidebar/dashboard titles come from `cachedSessionTitles`, refreshed by `refreshSessionTitles()` whenever `sessionListRevision` bumps. `ContentView.body` must not call `computeSessionTitle` directly — it reads `store.messages`, which would subscribe the whole root view to every streamed chunk. Event paths that need a fresh title in the same event turn as a revision bump (fork, `persistSessionLayout`) call `computeSessionTitle(for:)`.
+
 ### Active store routing
 
 | Selection | Chat UI binds to |
@@ -792,7 +796,7 @@ Defined in `ContentView.swift` (`extension Notification.Name`).
 | `.workspaceAgentSettingsChanged` | Reasoning effort saved | Sync effort to sibling sessions in project |
 | `.liveSessionModelChanged` | Tab model changed in composer | `persistSessionLayout()` |
 | `.liveSessionAgentChanged` | Tab session agent changed via pill | `persistSessionLayout()` |
-| `.liveSessionMessagesChanged` | Messages updated | Sidebar title refresh |
+| `.liveSessionMessagesChanged` | Messages updated (prompt boundaries: send / turn complete / failure) | Bumps `sessionListRevision` → sidebar title cache refresh; saves that session's transcript; diff auto-selection for the active session |
 | `.subagentRolesChanged` | Custom subagent roles saved in Settings | `ChatView` refreshes `cachedCustomSubagentNames` in the agent pill |
 
 `GrokProcess.notifyStatus()` posts `.grokStatusChanged` **asynchronously on the main queue** so background CLI/IO threads never block UI state updates. `ChatStore.postStatusUpdate` runs on `@MainActor` and posts inline.

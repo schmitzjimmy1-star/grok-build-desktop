@@ -42,6 +42,7 @@ struct ContentView: View {
     @State private var totalSessionsToRestore = 0
     @State private var restoreStatusText = "Restoring sessions..."
     @State private var sessionListRevision = 0
+    @State private var cachedSessionTitles: [UUID: String] = [:]
     @State private var sessionLayout = SessionLayoutStore.loadSessions()
     @State private var isUpgradeBannerDismissed = false
     @State private var showUpgradeBanner = false
@@ -194,6 +195,10 @@ struct ContentView: View {
         .tint(AppTheme.Palette.accent)
         .onAppear(perform: bootstrap)
         .onAppear { refreshUpgradeBannerState() }
+        .onAppear { refreshSessionTitles() }
+        .onChange(of: sessionListRevision) { _, _ in
+            refreshSessionTitles()
+        }
         .onReceive(NotificationCenter.default.publisher(for: .grokBuildUpdateAvailable)) { _ in
             isUpgradeBannerDismissed = false
             refreshUpgradeBannerState()
@@ -375,7 +380,7 @@ struct ContentView: View {
         purgeEmptySessions(in: source.workspace.id)
         let id = UUID()
         let store = ChatStore()
-        let title = "Fork of \(sessionTitle(for: source))"
+        let title = "Fork of \(computeSessionTitle(for: source))"
         liveSessions.append(
             LiveSession(id: id, store: store, workspace: source.workspace, title: title, grokSessionID: nil)
         )
@@ -452,7 +457,24 @@ struct ContentView: View {
         )
     }
 
+    /// Cached title for use inside `body`. Reading `store.messages` (which
+    /// `computeSessionTitle` does) from body subscribes ContentView to every
+    /// streamed chunk of every session; the cache confines that read to
+    /// `refreshSessionTitles()`, which runs on `sessionListRevision` bumps —
+    /// the boundaries where titles can actually change.
     private func sessionTitle(for session: LiveSession) -> String {
+        cachedSessionTitles[session.id] ?? session.title
+    }
+
+    private func refreshSessionTitles() {
+        cachedSessionTitles = Dictionary(
+            uniqueKeysWithValues: liveSessions.map { ($0.id, computeSessionTitle(for: $0)) }
+        )
+    }
+
+    /// Fresh computation for event paths (fork, layout persist) that may run
+    /// in the same event turn as a revision bump, before the cache refreshes.
+    private func computeSessionTitle(for session: LiveSession) -> String {
         let liveKey = session.id.uuidString
         if let custom = SessionNameStore.name(for: liveKey) {
             return custom
@@ -651,7 +673,7 @@ struct ContentView: View {
                     id: session.id,
                     workspaceID: session.workspace.id,
                     grokSessionID: grokSessionID,
-                    title: sessionTitle(for: session),
+                    title: computeSessionTitle(for: session),
                     model: session.store.currentModel,
                     agent: session.store.persistedAgentSelection,
                     lastAccessed: existing?.lastAccessed ?? Date()

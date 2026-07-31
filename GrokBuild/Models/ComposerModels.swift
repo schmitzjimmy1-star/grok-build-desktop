@@ -419,13 +419,9 @@ enum SessionTitle {
 
     static func auto(from messages: [Message]) -> String? {
         guard let raw = messages.first(where: { $0.role == .user })?.content else { return nil }
-        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else { return nil }
-
-        let collapsed = trimmed
-            .replacingOccurrences(of: "\n", with: " ")
-            .replacingOccurrences(of: "\\s+", with: " ", options: .regularExpression)
-        let parts = collapsed.split(separator: " ")
+        // One pass collapses runs of any whitespace (spaces, newlines, tabs)
+        // without compiling an ICU regex per call.
+        let parts = raw.split(whereSeparator: \.isWhitespace)
         guard !parts.isEmpty else { return nil }
 
         let preview = parts.prefix(maxWords).joined(separator: " ")
