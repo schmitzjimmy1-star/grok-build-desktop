@@ -45,4 +45,18 @@ final class MainWindowLayoutTests: XCTestCase {
         XCTAssertFalse(SidebarVisibility.shouldShow(preference: false, settingsPresented: true))
         XCTAssertFalse(SidebarVisibility.shouldShow(preference: true, settingsPresented: true))
     }
+
+    /// The View menu reads the preference outside SwiftUI: a missing key must
+    /// mean the default (visible), not UserDefaults' bool fallback of false.
+    func testSidebarCurrentPreferenceMatchesAppStorageSemantics() {
+        let suite = "grokbuild.tests.sidebar.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suite)!
+        defer { defaults.removePersistentDomain(forName: suite) }
+
+        XCTAssertEqual(SidebarVisibility.currentPreference(defaults: defaults), SidebarVisibility.defaultVisible)
+        defaults.set(false, forKey: SidebarVisibility.storageKey)
+        XCTAssertFalse(SidebarVisibility.currentPreference(defaults: defaults))
+        defaults.set(true, forKey: SidebarVisibility.storageKey)
+        XCTAssertTrue(SidebarVisibility.currentPreference(defaults: defaults))
+    }
 }

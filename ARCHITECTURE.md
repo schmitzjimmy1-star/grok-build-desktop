@@ -112,8 +112,9 @@ grok-deck2/
 
 | Menu | Location | Purpose |
 |------|----------|---------|
-| **GrokBuild** | `AppDelegate.setupMainMenu()` | About, Settings ⌘,, update checks, Hide ⌘H, Quit |
+| **GrokBuild** | `AppDelegate.setupMainMenu()` | About, Settings ⌘,, update checks (re-entrancy guarded), View Usage on grok.com, Hide ⌘H, Quit |
 | **Edit** | `AppDelegate.setupMainMenu()` | Standard text editing commands |
+| **View** | `AppDelegate.setupMainMenu()` | Show/Hide Sidebar ⌃⌘S (posts `.toggleSidebarRequested`; title tracks `SidebarVisibility.currentPreference()`) |
 | **Project** | `AppDelegate.setupMainMenu()` | Add Project |
 | **Session** | `AppDelegate.setupMainMenu()` | New Session, Browse Sessions, Stop Generation, Focus Input |
 | **Window** | `AppDelegate.setupMainMenu()` | Minimize, Zoom |

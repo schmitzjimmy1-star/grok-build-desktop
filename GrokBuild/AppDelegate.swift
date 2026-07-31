@@ -2,8 +2,12 @@ import AppKit
 import SwiftUI
 import Darwin   // POSIX: open, O_EXCL, close, write, kill, getpid
 
-class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
+class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMenuDelegate {
     private weak var updateCheckItem: NSMenuItem?
+    private weak var sidebarToggleItem: NSMenuItem?
+    /// Guards against concurrent update checks: the menu item's disable alone
+    /// is not enough because menu tracking re-fires the action.
+    private var isCheckingForUpdates = false
     private var lockFd: Int32 = -1   // fd that holds the flock for the lifetime of the process
 
     func applicationDidFinishLaunching(_ notification: Notification) {
@@ -203,6 +207,9 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         let mainMenu = NSMenu()
 
         let appMenu = NSMenu()
+        // Manual enablement so the update item can stay disabled while a check
+        // runs; every other item in this menu is always valid.
+        appMenu.autoenablesItems = false
         let appItem = NSMenuItem()
         appItem.submenu = appMenu
         mainMenu.addItem(appItem)
@@ -221,6 +228,10 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         appMenu.addItem(makeSimulateUpdatesMenuItem())
 #endif
         appMenu.addItem(.separator())
+        let viewUsage = NSMenuItem(title: AppMenuCopy.viewUsageTitle, action: #selector(openUsagePage), keyEquivalent: "")
+        viewUsage.target = self
+        appMenu.addItem(viewUsage)
+        appMenu.addItem(.separator())
         appMenu.addItem(NSMenuItem(title: "Hide GrokBuild", action: #selector(NSApplication.hide(_:)), keyEquivalent: "h"))
         appMenu.addItem(.separator())
         appMenu.addItem(NSMenuItem(title: "Quit GrokBuild", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q"))
@@ -238,6 +249,21 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         editMenu.addItem(NSMenuItem(title: "Copy", action: #selector(NSText.copy(_:)), keyEquivalent: "c"))
         editMenu.addItem(NSMenuItem(title: "Paste", action: #selector(NSText.paste(_:)), keyEquivalent: "v"))
         editMenu.addItem(NSMenuItem(title: "Select All", action: #selector(NSText.selectAll(_:)), keyEquivalent: "a"))
+
+        let viewMenu = NSMenu(title: "View")
+        viewMenu.delegate = self
+        let viewItem = NSMenuItem()
+        viewItem.submenu = viewMenu
+        mainMenu.addItem(viewItem)
+        let toggleSidebar = NSMenuItem(
+            title: AppMenuCopy.sidebarMenuTitle(isVisible: SidebarVisibility.currentPreference()),
+            action: #selector(toggleSidebarFromMenu),
+            keyEquivalent: "s"
+        )
+        toggleSidebar.keyEquivalentModifierMask = [.command, .control]
+        toggleSidebar.target = self
+        viewMenu.addItem(toggleSidebar)
+        sidebarToggleItem = toggleSidebar
 
         let projectMenu = NSMenu(title: "Project")
         let projectItem = NSMenuItem()
@@ -319,15 +345,18 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     }
 
     @objc private func checkForUpdates() {
+        guard !isCheckingForUpdates else { return }
+        isCheckingForUpdates = true
         updateCheckItem?.isEnabled = false
         updateCheckItem?.title = "Checking for Updates…"
 
         Task { @MainActor [weak self] in
             await UpdateScheduler.checkNow()
-            self?.refreshUpdateMenuItem()
             await UpdateUI.presentUpdatePanel(refresh: false) { [weak self] in
                 self?.refreshUpdateMenuItem()
             }
+            self?.isCheckingForUpdates = false
+            self?.refreshUpdateMenuItem()
         }
     }
 
@@ -339,10 +368,32 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
 
     @MainActor
     private func refreshUpdateMenuItem() {
+        // Keep the "Checking…" state intact while a check is in flight, even
+        // when background update notifications arrive mid-check.
+        guard !isCheckingForUpdates else {
+            updateCheckItem?.isEnabled = false
+            return
+        }
         updateCheckItem?.title = AppMenuCopy.updateMenuTitle(
             hasActionableUpdate: UpdateScheduler.hasAnyActionableUpdate
         )
         updateCheckItem?.isEnabled = true
+    }
+
+    @objc private func openUsagePage() {
+        if let url = URL(string: "https://grok.com/?_s=usage") {
+            NSWorkspace.shared.open(url)
+        }
+    }
+
+    @objc private func toggleSidebarFromMenu() {
+        openMainWindow()
+        NotificationCenter.default.post(name: .toggleSidebarRequested, object: nil)
+    }
+
+    func menuWillOpen(_ menu: NSMenu) {
+        guard let item = sidebarToggleItem, item.menu === menu else { return }
+        item.title = AppMenuCopy.sidebarMenuTitle(isVisible: SidebarVisibility.currentPreference())
     }
 
 #if DEBUG
@@ -410,7 +461,13 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
 }
 
 enum AppMenuCopy {
+    static let viewUsageTitle = "View Usage on grok.com…"
+
     static func updateMenuTitle(hasActionableUpdate: Bool) -> String {
         hasActionableUpdate ? "Updates Available…" : "Check for Updates…"
+    }
+
+    static func sidebarMenuTitle(isVisible: Bool) -> String {
+        isVisible ? "Hide Sidebar" : "Show Sidebar"
     }
 }

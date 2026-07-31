@@ -201,6 +201,9 @@ struct ContentView: View {
         .onReceive(NotificationCenter.default.publisher(for: .grokBuildUpdateStateChanged)) { _ in
             refreshUpgradeBannerState()
         }
+        .onReceive(NotificationCenter.default.publisher(for: .toggleSidebarRequested)) { _ in
+            isSidebarVisible.toggle()
+        }
         .sheet(isPresented: $showPicker) {
             WorkspacePicker(initialDirectory: currentWorkspace?.path) { url in
                 addWorkspace(url: url)
@@ -1277,6 +1280,7 @@ extension Notification.Name {
     static let sessionsRequested = Notification.Name("sessionsRequested")
     static let stopGenerationRequested = Notification.Name("stopGenerationRequested")
     static let focusInputRequested = Notification.Name("focusInputRequested")
+    static let toggleSidebarRequested = Notification.Name("toggleSidebarRequested")
     static let showMainWindowRequested = Notification.Name("showMainWindowRequested")
     static let newSessionRequested = Notification.Name("newSessionRequested")
     static let grokStatusChanged = Notification.Name("grokStatusChanged")

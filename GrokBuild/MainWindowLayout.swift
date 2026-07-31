@@ -1,4 +1,5 @@
 import CoreGraphics
+import Foundation
 
 /// Shared main-window size policy for SwiftUI `WindowGroup` and AppKit reopen path.
 enum MainWindowLayout {
@@ -41,5 +42,12 @@ enum SidebarVisibility {
     /// stacking a second sidebar beside the project sidebar.
     static func shouldShow(preference: Bool, settingsPresented: Bool) -> Bool {
         preference && !settingsPresented
+    }
+
+    /// The persisted preference as ContentView's `@AppStorage` sees it: a
+    /// missing key means the default, not `false`. Used by the View menu.
+    static func currentPreference(defaults: UserDefaults = .standard) -> Bool {
+        guard defaults.object(forKey: storageKey) != nil else { return defaultVisible }
+        return defaults.bool(forKey: storageKey)
     }
 }

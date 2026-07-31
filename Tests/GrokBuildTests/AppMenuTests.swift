@@ -12,4 +12,15 @@ final class AppMenuTests: XCTestCase {
             "Updates Available…"
         )
     }
+
+    func testSidebarMenuTitleFlipsWithVisibility() {
+        XCTAssertEqual(AppMenuCopy.sidebarMenuTitle(isVisible: true), "Hide Sidebar")
+        XCTAssertEqual(AppMenuCopy.sidebarMenuTitle(isVisible: false), "Show Sidebar")
+    }
+
+    /// Rehomed from the removed status-bar menu; the usage page must keep an
+    /// entry point in the standard application menu.
+    func testViewUsageMenuCopy() {
+        XCTAssertEqual(AppMenuCopy.viewUsageTitle, "View Usage on grok.com…")
+    }
 }
