@@ -1396,8 +1396,17 @@ final class ChatStore {
         messages.append(Message(role: .system, content: text))
     }
 
+    /// Status notes repeat verbatim — reloading configuration several times
+    /// used to stack identical "Reloaded Grok configuration." lines down the
+    /// transcript. Collapse a note that just repeats the trailing one.
     private func appendSystemNote(_ text: String) {
+        guard !ChatStore.isDuplicateTrailingNote(text, in: messages) else { return }
         appendSystem(text)
+    }
+
+    nonisolated static func isDuplicateTrailingNote(_ text: String, in messages: [Message]) -> Bool {
+        guard let last = messages.last else { return false }
+        return last.role == .system && last.content == text
     }
 
     private func filteredPersistedMessages(_ saved: [Message]) -> [Message] {

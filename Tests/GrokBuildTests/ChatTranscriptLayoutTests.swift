@@ -96,3 +96,20 @@ final class ChatTranscriptLayoutTests: XCTestCase {
         )
     }
 }
+
+extension ChatTranscriptLayoutTests {
+    /// Repeated settings applies produced a wall of identical system notes.
+    func testDuplicateTrailingSystemNoteIsCollapsed() {
+        let note = "Reloaded Grok configuration."
+        XCTAssertFalse(ChatStore.isDuplicateTrailingNote(note, in: []))
+
+        let afterNote = [Message(role: .system, content: note)]
+        XCTAssertTrue(ChatStore.isDuplicateTrailingNote(note, in: afterNote))
+        XCTAssertFalse(ChatStore.isDuplicateTrailingNote("A different note.", in: afterNote))
+
+        // A note that repeats an EARLIER one still appears when something
+        // happened in between — only consecutive repeats collapse.
+        let interrupted = afterNote + [Message(role: .assistant, content: "Answer")]
+        XCTAssertFalse(ChatStore.isDuplicateTrailingNote(note, in: interrupted))
+    }
+}
