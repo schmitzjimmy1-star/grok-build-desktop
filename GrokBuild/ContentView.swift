@@ -1331,9 +1331,6 @@ private struct ContentViewNotificationHandlers: ViewModifier {
             .onChange(of: selectedWorkspaceID) { _, newID in
                 onWorkspaceChange(newID)
             }
-            .onChange(of: activeStore.messages) { _, _ in
-                onAutoSelectLatestDiff()
-            }
             .onReceive(NotificationCenter.default.publisher(for: .newSessionRequested)) { _ in
                 onNewSession()
             }
@@ -1366,9 +1363,17 @@ private struct ContentViewNotificationHandlers: ViewModifier {
 
     private func handleLiveSessionMessagesChanged(_ note: Notification) {
         sessionListRevision &+= 1
-        if let store = note.object as? ChatStore,
+        let notifyingStore = note.object as? ChatStore
+        if let store = notifyingStore,
            let session = liveSessions.first(where: { $0.store === store }) {
             SessionMessageStore.save(store.messages, for: session.id)
+        }
+        // Diff detection runs at prompt boundaries (send / turn complete /
+        // failure), not per streamed chunk: a mid-stream diff is incomplete
+        // anyway, and the per-chunk transcript rescan was the app's clearest
+        // quadratic cost. This notification is those boundaries.
+        if notifyingStore == nil || notifyingStore === activeStore {
+            onAutoSelectLatestDiff()
         }
         onPersistSessionLayout(false)
     }

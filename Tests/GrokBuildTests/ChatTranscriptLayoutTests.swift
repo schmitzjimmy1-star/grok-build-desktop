@@ -71,6 +71,16 @@ final class ChatTranscriptLayoutTests: XCTestCase {
         )
     }
 
+    /// Diff auto-selection runs at prompt boundaries and relies on this
+    /// predicate; guard the fence and git markers it matches.
+    func testHasDiffMatchesDiffMarkersInAssistantMessagesOnly() {
+        XCTAssertTrue(Message(role: .assistant, content: "diff --git a/x b/x").hasDiff)
+        XCTAssertTrue(Message(role: .assistant, content: "```diff\n+x\n```").hasDiff)
+        XCTAssertTrue(Message(role: .assistant, content: "```patch\n+x\n```").hasDiff)
+        XCTAssertFalse(Message(role: .assistant, content: "no changes here").hasDiff)
+        XCTAssertFalse(Message(role: .user, content: "diff --git a/x b/x").hasDiff)
+    }
+
     func testCompactModelMenuUsesHumanReadableEffortNames() {
         XCTAssertEqual(
             ComposerModelMenuLayout.effortDisplayName(storedValue: ""),
