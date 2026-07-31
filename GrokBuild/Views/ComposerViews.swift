@@ -55,55 +55,6 @@ private struct FileChipView: View {
 
 // MARK: - Workflow chips
 
-struct WorkflowChipBar: View {
-    let commands: [SlashCommand]
-    var isDisabled: Bool = false
-    var onSelect: (SlashCommand) -> Void
-
-    var body: some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 6) {
-                ForEach(commands) { command in
-                    WorkflowChip(command: command, isDisabled: isDisabled) {
-                        onSelect(command)
-                    }
-                }
-            }
-        }
-    }
-}
-
-private struct WorkflowChip: View {
-    let command: SlashCommand
-    var isDisabled: Bool
-    var onSelect: () -> Void
-
-    @State private var isHovered = false
-
-    var body: some View {
-        Button(action: onSelect) {
-            Text(displayName)
-                .font(.caption.weight(.medium))
-                .lineLimit(1)
-                .padding(.horizontal, 10)
-                .padding(.vertical, 5)
-                .background(
-                    Color.primary.opacity(isHovered && !isDisabled ? 0.10 : 0.06),
-                    in: Capsule()
-                )
-        }
-        .buttonStyle(.plain)
-        .disabled(isDisabled)
-        .opacity(isDisabled ? 0.45 : 1)
-        .onHover { isHovered = $0 }
-        .help(command.description.isEmpty ? SkillSlashCommands.slashText(for: command) : command.description)
-    }
-
-    private var displayName: String {
-        command.name.replacingOccurrences(of: "-", with: " ")
-    }
-}
-
 // MARK: - Goal banner
 
 struct GoalBanner: View {

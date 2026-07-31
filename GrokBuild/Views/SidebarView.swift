@@ -34,7 +34,6 @@ struct SidebarView: View {
     var onCreateWorktree: (Workspace) -> Void = { _ in }
     var onSessionDisclosureChanged: () -> Void = {}
     var onOpenSettings: () -> Void
-    var isSettingsSelected: Bool = false
 
     @State private var filter = ""
     @State private var isFilterVisible = false
@@ -218,12 +217,12 @@ struct SidebarView: View {
                     .padding(.vertical, 10)
                     .contentShape(Rectangle())
                     .background(
-                        isSettingsSelected ? AppTheme.Palette.accentSoft : Color.clear,
+                        Color.clear,
                         in: RoundedRectangle(cornerRadius: AppTheme.Radius.small)
                     )
             }
             .buttonStyle(.plain)
-            .foregroundStyle(isSettingsSelected ? AppTheme.Palette.accent : Color.secondary)
+            .foregroundStyle(Color.secondary)
             .padding(.horizontal, 8)
             .padding(.vertical, 8)
         }
@@ -308,66 +307,6 @@ struct SidebarView: View {
         Button("Remove Project", role: .destructive) {
             onRemoveWorkspace(ws)
         }
-    }
-
-    private var finderURL: URL {
-        URL(fileURLWithPath: "/System/Library/CoreServices/Finder.app")
-    }
-
-    @ViewBuilder
-    private func openProjectButton(
-        title: String,
-        appURL: URL,
-        projectURL: URL,
-        fallbackSystemImage: String,
-        action: (() -> Void)? = nil
-    ) -> some View {
-        Button {
-            if let action {
-                action()
-            } else {
-                open(projectURL, with: appURL)
-            }
-        } label: {
-            Label {
-                Text(title)
-            } icon: {
-                appIcon(for: appURL, fallbackSystemImage: fallbackSystemImage)
-            }
-        }
-    }
-
-    private func appIcon(for appURL: URL, fallbackSystemImage: String) -> Image {
-        if FileManager.default.fileExists(atPath: appURL.path) {
-            let icon = NSWorkspace.shared.icon(forFile: appURL.path)
-            icon.size = NSSize(width: 16, height: 16)
-            return Image(nsImage: icon)
-        }
-        return Image(systemName: fallbackSystemImage)
-    }
-
-    private func installedApp(bundleIdentifiers: [String], appNames: [String]) -> URL? {
-        for bundleIdentifier in bundleIdentifiers {
-            if let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: bundleIdentifier) {
-                return url
-            }
-        }
-
-        for appName in appNames {
-            for directory in ["/Applications", "\(NSHomeDirectory())/Applications"] {
-                let candidate = URL(fileURLWithPath: directory).appendingPathComponent("\(appName).app")
-                if FileManager.default.fileExists(atPath: candidate.path) {
-                    return candidate
-                }
-            }
-        }
-
-        return nil
-    }
-
-    private func open(_ url: URL, with applicationURL: URL) {
-        let configuration = NSWorkspace.OpenConfiguration()
-        NSWorkspace.shared.open([url], withApplicationAt: applicationURL, configuration: configuration)
     }
 }
 

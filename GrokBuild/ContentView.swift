@@ -120,8 +120,7 @@ struct ContentView: View {
                 onSwitchBranch: { gitCheckoutRequest = GitCheckoutRequest(project: $0) },
                 onCreateWorktree: { gitCheckoutRequest = GitCheckoutRequest(project: $0, focusCreateWorktree: true) },
                 onSessionDisclosureChanged: { persistSessionLayout() },
-                onOpenSettings: { openSettings(tab: .agents) },
-                isSettingsSelected: showSettings
+                onOpenSettings: { openSettings(tab: .agents) }
             )
             .frame(minWidth: 220, idealWidth: 244, maxWidth: 280)
             }
@@ -991,31 +990,12 @@ struct ContentView: View {
     }
 
     private func openProject(_ url: URL, bundleIdentifiers: [String], appNames: [String]) {
-        guard let appURL = installedApp(bundleIdentifiers: bundleIdentifiers, appNames: appNames) else {
+        guard let appURL = InstalledAppFinder.installedApp(bundleIdentifiers: bundleIdentifiers, appNames: appNames) else {
             NSWorkspace.shared.open(url)
             return
         }
         let configuration = NSWorkspace.OpenConfiguration()
         NSWorkspace.shared.open([url], withApplicationAt: appURL, configuration: configuration)
-    }
-
-    private func installedApp(bundleIdentifiers: [String], appNames: [String]) -> URL? {
-        for bundleIdentifier in bundleIdentifiers {
-            if let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: bundleIdentifier) {
-                return url
-            }
-        }
-
-        for appName in appNames {
-            for directory in ["/Applications", "\(NSHomeDirectory())/Applications"] {
-                let candidate = URL(fileURLWithPath: directory).appendingPathComponent("\(appName).app")
-                if FileManager.default.fileExists(atPath: candidate.path) {
-                    return candidate
-                }
-            }
-        }
-
-        return nil
     }
 
     private func handleWorkspaceChange(_ newID: Workspace.ID?) {

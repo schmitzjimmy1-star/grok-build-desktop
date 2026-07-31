@@ -16,10 +16,6 @@ final class MainWindowLayoutTests: XCTestCase {
         XCTAssertEqual(MainWindowLayout.defaultSize.height, 900)
     }
 
-    func testComposerUsesFullChatColumnWidth() {
-        XCTAssertEqual(MainWindowLayout.composerMaxWidth, .infinity)
-    }
-
     func testScreenFillingFrameUsesTheAvailableDisplayFrame() {
         let visibleFrame = CGRect(x: 0, y: 48, width: 1440, height: 812)
         XCTAssertEqual(MainWindowLayout.screenFillingFrame(visibleFrame: visibleFrame), visibleFrame)

@@ -437,21 +437,21 @@ struct ChatView: View {
                     Divider()
 
                     Menu("Open project in", systemImage: "arrow.up.forward.app") {
-                        openInButton(title: "Finder", target: .finder, appURL: finderURL, fallbackSystemImage: "finder")
-                        if let app = installedApp(bundleIdentifiers: ["com.todesktop.230313mzl4w4u92", "com.cursor.Cursor"], appNames: ["Cursor"]) {
+                        openInButton(title: "Finder", target: .finder, appURL: InstalledAppFinder.finderURL, fallbackSystemImage: "finder")
+                        if let app = InstalledAppFinder.installedApp(bundleIdentifiers: ["com.todesktop.230313mzl4w4u92", "com.cursor.Cursor"], appNames: ["Cursor"]) {
                             openInButton(title: "Cursor", target: .cursor, appURL: app, fallbackSystemImage: "cursorarrow")
                         }
-                        if let app = installedApp(bundleIdentifiers: ["com.microsoft.VSCode", "com.microsoft.VSCodeInsiders"], appNames: ["Visual Studio Code", "Visual Studio Code - Insiders"]) {
+                        if let app = InstalledAppFinder.installedApp(bundleIdentifiers: ["com.microsoft.VSCode", "com.microsoft.VSCodeInsiders"], appNames: ["Visual Studio Code", "Visual Studio Code - Insiders"]) {
                             openInButton(title: "VS Code", target: .vsCode, appURL: app, fallbackSystemImage: "chevron.left.forwardslash.chevron.right")
                         }
                         Divider()
-                        if let app = installedApp(bundleIdentifiers: ["com.apple.Terminal"], appNames: ["Terminal"]) {
+                        if let app = InstalledAppFinder.installedApp(bundleIdentifiers: ["com.apple.Terminal"], appNames: ["Terminal"]) {
                             openInButton(title: "Terminal", target: .terminal, appURL: app, fallbackSystemImage: "terminal")
                         }
-                        if let app = installedApp(bundleIdentifiers: ["com.googlecode.iterm2"], appNames: ["iTerm", "iTerm2"]) {
+                        if let app = InstalledAppFinder.installedApp(bundleIdentifiers: ["com.googlecode.iterm2"], appNames: ["iTerm", "iTerm2"]) {
                             openInButton(title: "iTerm", target: .iTerm, appURL: app, fallbackSystemImage: "terminal.fill")
                         }
-                        if let app = installedApp(bundleIdentifiers: ["dev.zed.Zed", "dev.zed.Zed-Preview", "com.zed.Zed"], appNames: ["Zed", "Zed Preview"]) {
+                        if let app = InstalledAppFinder.installedApp(bundleIdentifiers: ["dev.zed.Zed", "dev.zed.Zed-Preview", "com.zed.Zed"], appNames: ["Zed", "Zed Preview"]) {
                             Divider()
                             openInButton(title: "Zed", target: .zed, appURL: app, fallbackSystemImage: "square.and.pencil")
                         }
@@ -476,10 +476,6 @@ struct ChatView: View {
         .background(AppTheme.Palette.canvas)
     }
 
-    private var finderURL: URL {
-        URL(fileURLWithPath: "/System/Library/CoreServices/Finder.app")
-    }
-
     private func openInButton(
         title: String,
         target: ProjectOpenTarget,
@@ -492,37 +488,9 @@ struct ChatView: View {
             Label {
                 Text(title)
             } icon: {
-                appIcon(for: appURL, fallbackSystemImage: fallbackSystemImage)
+                InstalledAppFinder.appIcon(for: appURL, fallbackSystemImage: fallbackSystemImage)
             }
         }
-    }
-
-    private func appIcon(for appURL: URL, fallbackSystemImage: String) -> Image {
-        if FileManager.default.fileExists(atPath: appURL.path) {
-            let icon = NSWorkspace.shared.icon(forFile: appURL.path)
-            icon.size = NSSize(width: 16, height: 16)
-            return Image(nsImage: icon)
-        }
-        return Image(systemName: fallbackSystemImage)
-    }
-
-    private func installedApp(bundleIdentifiers: [String], appNames: [String]) -> URL? {
-        for bundleIdentifier in bundleIdentifiers {
-            if let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: bundleIdentifier) {
-                return url
-            }
-        }
-
-        for appName in appNames {
-            for directory in ["/Applications", "\(NSHomeDirectory())/Applications"] {
-                let candidate = URL(fileURLWithPath: directory).appendingPathComponent("\(appName).app")
-                if FileManager.default.fileExists(atPath: candidate.path) {
-                    return candidate
-                }
-            }
-        }
-
-        return nil
     }
 
     private var brandMark: some View {
@@ -2051,37 +2019,6 @@ struct PermissionCard: View {
         } catch {
             // Silent fallback
             print("Failed to open native diff: \(error)")
-        }
-    }
-}
-
-// Simple inline diff lines for polish in permission card (reuses idea from DiffView)
-struct DiffLinesView: View {
-    let content: String
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            ForEach(Array(content.components(separatedBy: .newlines).enumerated()), id: \.offset) { _, line in
-                let (text, color, bg) = diffStyle(for: line)
-                Text(text)
-                    .font(.system(size: 10, design: .monospaced))
-                    .foregroundStyle(color)
-                    .padding(.horizontal, 4)
-                    .background(bg, in: Rectangle())
-            }
-        }
-        .background(.black.opacity(0.15), in: RoundedRectangle(cornerRadius: 4))
-    }
-
-    private func diffStyle(for line: String) -> (String, Color, Color) {
-        if line.hasPrefix("+") && !line.hasPrefix("+++") {
-            return (line, .green, .green.opacity(0.15))
-        } else if line.hasPrefix("-") && !line.hasPrefix("---") {
-            return (line, .red, .red.opacity(0.15))
-        } else if line.hasPrefix("@@") {
-            return (line, .blue, .blue.opacity(0.1))
-        } else {
-            return (line, .primary, .clear)
         }
     }
 }

@@ -1109,24 +1109,6 @@ final class ChatStore {
         customModelsByID[id]?.supportsReasoningEffort ?? true
     }
 
-    func modelCapabilityHint(for id: String) -> String? {
-        guard let model = customModelsByID[id] else { return nil }
-        var pieces = ["Custom model"]
-        if let tokens = model.contextTokens {
-            pieces.append("\(Self.compactTokenCount(tokens)) context")
-        } else {
-            pieces.append("context unknown")
-        }
-        pieces.append(model.supportsReasoningEffort ? "reasoning effort on" : "reasoning effort off")
-        if model.supportsVision {
-            pieces.append("vision")
-        }
-        if model.supportsThinkingDisplay {
-            pieces.append("thinking")
-        }
-        return pieces.joined(separator: " · ")
-    }
-
     var currentModelContextLabel: String {
         guard let limit = modelContextTokens[currentModel] else { return "—/—" }
         let used = usedContextTokens ?? 0
@@ -1426,11 +1408,6 @@ final class ChatStore {
         if !clean.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || !messages[idx].content.isEmpty {
             messages[idx].content += clean
         }
-    }
-
-    // Legacy fallback (still works with old string stream if needed)
-    private func handleChunk(_ raw: String) {
-        appendAssistantText(raw)
     }
 
     private func appendSystem(_ text: String) {

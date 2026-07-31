@@ -9,9 +9,6 @@ enum MainWindowLayout {
     /// AppDelegate clamps this to the current screen's available frame.
     static let defaultSize = CGSize(width: 1440, height: 900)
 
-    /// Composer fills the chat column (no artificial mid-width cap).
-    static let composerMaxWidth: CGFloat = .infinity
-
     /// Launch as a proper primary workspace rather than a small floating utility.
     /// Applied only when no saved window frame exists; a user-resized frame is
     /// restored instead (see `AppDelegate.openMainWindow`).
