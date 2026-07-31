@@ -46,7 +46,7 @@ struct AccessibilityTrustProbe: Sendable, Equatable {
 }
 
 enum ComputerUseService {
-    private struct CommandResult: Sendable {
+    struct CommandResult: Sendable {
         var output: String
         var exitCode: Int32
     }
@@ -694,7 +694,8 @@ enum ComputerUseService {
         return result.output
     }
 
-    private static func runResult(
+    /// Internal (not private) so the pipe-drain behavior stays under test.
+    static func runResult(
         _ command: [String],
         timeout: TimeInterval,
         environment: [String: String]? = nil
@@ -718,8 +719,31 @@ enum ComputerUseService {
             final class ResumeBox: @unchecked Sendable {
                 let lock = NSLock()
                 var didResume = false
+                var stdoutData = Data()
+                var stderrData = Data()
             }
             let box = ResumeBox()
+
+            // Drain while the child runs — output beyond the ~64 KiB pipe
+            // buffer would otherwise block the child in write(2) until the
+            // timeout (same bug as the helper's runAgentDesktop had).
+            let drainGroup = DispatchGroup()
+            drainGroup.enter()
+            DispatchQueue.global(qos: .utility).async {
+                let data = stdout.fileHandleForReading.readDataToEndOfFile()
+                box.lock.lock()
+                box.stdoutData = data
+                box.lock.unlock()
+                drainGroup.leave()
+            }
+            drainGroup.enter()
+            DispatchQueue.global(qos: .utility).async {
+                let data = stderr.fileHandleForReading.readDataToEndOfFile()
+                box.lock.lock()
+                box.stderrData = data
+                box.lock.unlock()
+                drainGroup.leave()
+            }
 
             @Sendable
             func finish(_ result: Result<CommandResult, Error>) {
@@ -734,8 +758,11 @@ enum ComputerUseService {
             }
 
             process.terminationHandler = { process in
-                let out = String(decoding: stdout.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self)
-                let err = String(decoding: stderr.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self)
+                _ = drainGroup.wait(timeout: .now() + 5)
+                box.lock.lock()
+                let out = String(decoding: box.stdoutData, as: UTF8.self)
+                let err = String(decoding: box.stderrData, as: UTF8.self)
+                box.lock.unlock()
                 finish(.success(CommandResult(output: out.isEmpty ? err : out, exitCode: process.terminationStatus)))
             }
 
@@ -748,13 +775,18 @@ enum ComputerUseService {
 
             Task {
                 try? await Task.sleep(nanoseconds: UInt64(timeout * 1_000_000_000))
+                guard process.isRunning else { return }
+                process.terminate()
+                // Resume the caller with the timeout right away; the
+                // dedupe box makes the (later) terminationHandler a no-op.
+                finish(.failure(NSError(
+                    domain: "ComputerUseService",
+                    code: 3,
+                    userInfo: [NSLocalizedDescriptionKey: "agent-desktop command timed out."]
+                )))
+                try? await Task.sleep(nanoseconds: 2_000_000_000)
                 if process.isRunning {
-                    process.terminate()
-                    finish(.failure(NSError(
-                        domain: "ComputerUseService",
-                        code: 3,
-                        userInfo: [NSLocalizedDescriptionKey: "agent-desktop command timed out."]
-                    )))
+                    kill(process.processIdentifier, SIGKILL)
                 }
             }
         }

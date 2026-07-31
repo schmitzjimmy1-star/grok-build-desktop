@@ -537,6 +537,31 @@ final class ComputerUseIntegrationTests: XCTestCase {
             .appendingPathComponent("agent-desktop")
     }
 
+    // MARK: - Process runner (pipe drain + timeout)
+
+    /// 256 KiB of child output deadlocked the old runner: nothing read the
+    /// pipe until exit, so the child blocked in write(2) at ~64 KiB and the
+    /// call surfaced as a bogus timeout. The runner must drain while running.
+    func testRunResultDrainsOutputLargerThanPipeBuffer() async throws {
+        let result = try await ComputerUseService.runResult(
+            ["/bin/sh", "-c", "/usr/bin/head -c 262144 /dev/zero | /usr/bin/tr '\\0' 'a'"],
+            timeout: 10
+        )
+        XCTAssertEqual(result.exitCode, 0)
+        XCTAssertEqual(result.output.count, 262_144)
+    }
+
+    func testRunResultTimesOutAndTerminatesTheChild() async {
+        let started = Date()
+        do {
+            _ = try await ComputerUseService.runResult(["/bin/sleep", "30"], timeout: 1)
+            XCTFail("Expected a timeout")
+        } catch {
+            XCTAssertTrue(error.localizedDescription.contains("timed out"))
+        }
+        XCTAssertLessThan(Date().timeIntervalSince(started), 8)
+    }
+
     private func temporarySkillsRootURL() -> URL {
         FileManager.default.temporaryDirectory
             .appendingPathComponent("GrokBuildTests")

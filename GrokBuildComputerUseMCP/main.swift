@@ -376,6 +376,27 @@ func runAgentDesktop(_ args: [String]) throws -> String {
     process.standardOutput = stdout
     process.standardError = stderr
 
+    // Drain both pipes WHILE the child runs. Accessibility snapshots of dense
+    // apps exceed the ~64 KiB pipe buffer; with nobody reading until exit,
+    // agent-desktop blocked in write(2) forever and every large snapshot
+    // surfaced as a bogus "timed out" error.
+    final class OutputBox: @unchecked Sendable {
+        var data = Data()
+    }
+    let outBox = OutputBox()
+    let errBox = OutputBox()
+    let drainGroup = DispatchGroup()
+    drainGroup.enter()
+    DispatchQueue.global(qos: .userInitiated).async {
+        outBox.data = stdout.fileHandleForReading.readDataToEndOfFile()
+        drainGroup.leave()
+    }
+    drainGroup.enter()
+    DispatchQueue.global(qos: .userInitiated).async {
+        errBox.data = stderr.fileHandleForReading.readDataToEndOfFile()
+        drainGroup.leave()
+    }
+
     do {
         try process.run()
     } catch {
@@ -388,11 +409,24 @@ func runAgentDesktop(_ args: [String]) throws -> String {
     }
     if process.isRunning {
         process.terminate()
+        // SIGTERM can be ignored; escalate so no agent-desktop orphan
+        // survives a timeout.
+        let killDeadline = Date().addingTimeInterval(2)
+        while process.isRunning && Date() < killDeadline {
+            Thread.sleep(forTimeInterval: 0.05)
+        }
+        if process.isRunning {
+            kill(process.processIdentifier, SIGKILL)
+        }
+        process.waitUntilExit()
+        _ = drainGroup.wait(timeout: .now() + 2)
         throw HelperError.timeout
     }
+    process.waitUntilExit()
+    _ = drainGroup.wait(timeout: .now() + 5)
 
-    let output = String(decoding: stdout.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self)
-    let error = String(decoding: stderr.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self)
+    let output = String(decoding: outBox.data, as: UTF8.self)
+    let error = String(decoding: errBox.data, as: UTF8.self)
     let text = output.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? error : output
 
     if process.terminationStatus != 0 {
