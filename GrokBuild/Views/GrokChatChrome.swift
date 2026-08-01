@@ -1,31 +1,17 @@
 import SwiftUI
 
 struct GrokkingIndicator: View {
-    /// When the current turn started; used to show elapsed time and a "warming up" hint.
+    /// Retained for call-site compatibility and future non-animated diagnostics.
     var startedAt: Date?
 
     var body: some View {
-        TimelineView(.periodic(from: .now, by: 0.45)) { context in
-            let phase = Int(context.date.timeIntervalSince1970 / 0.45) % 3
-            let elapsed = startedAt.map { max(0, context.date.timeIntervalSince($0)) }
-            HStack(spacing: 4) {
-                Text("Grokking")
-                Text(String(repeating: ".", count: phase + 1))
-                    .frame(width: 16, alignment: .leading)
-                if let elapsed, elapsed >= 3 {
-                    Text("· \(Int(elapsed))s")
-                        .monospacedDigit()
-                        .foregroundStyle(.tertiary)
-                    // Local models can take a while to load on first use.
-                    if elapsed >= 8 {
-                        Text("· warming up the model may take a moment")
-                            .foregroundStyle(.tertiary)
-                    }
-                }
-            }
+        // A TimelineView here used to tick inside the transcript's LazyVStack every
+        // 450 ms. When a provider stayed silent, each tick forced another full layout;
+        // on a long transcript SwiftUI never caught up and pinned a core at 100%.
+        Text("Agent working…")
             .font(.subheadline)
             .foregroundStyle(.secondary)
-        }
+            .accessibilityLabel("Build agent is working")
     }
 }
 
@@ -72,34 +58,98 @@ struct ThinkingBlock: View {
 }
 
 struct ToolCallRow: View {
-    let title: String
-    let kind: String
+    let tool: ChatStore.LiveToolCall
+    @State private var isExpanded = false
 
     var body: some View {
+        VStack(alignment: .leading, spacing: 5) {
+            if tool.detail == nil {
+                rowLabel
+            } else {
+                Button {
+                    withAnimation(.easeOut(duration: 0.14)) { isExpanded.toggle() }
+                } label: {
+                    rowLabel
+                }
+                .buttonStyle(.plain)
+                .help(isExpanded ? "Hide tool details" : "Show tool details")
+            }
+
+            if isExpanded, let detail = tool.detail {
+                Text(detail)
+                    .font(.system(.caption2, design: .monospaced))
+                    .foregroundStyle(tool.isFailed ? Color.red : Color.secondary)
+                    .textSelection(.enabled)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(.leading, 22)
+                    .padding(.trailing, 4)
+                    .accessibilityLabel("Tool details: \(detail)")
+            }
+        }
+        .padding(.vertical, 2)
+    }
+
+    private var rowLabel: some View {
         HStack(spacing: 8) {
             Image(systemName: iconName)
                 .font(.caption)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(tool.isFailed ? Color.red : Color.secondary)
                 .frame(width: 14)
-            Text(title)
+            Text(tool.title)
                 .font(.system(.caption, design: .monospaced))
-                .foregroundStyle(.secondary)
+                .foregroundStyle(tool.isFailed ? Color.primary : Color.secondary)
                 .lineLimit(1)
             Spacer()
-            Text(kind)
-                .font(.caption2)
-                .foregroundStyle(.tertiary)
+            if let statusLabel {
+                Label(statusLabel, systemImage: statusIconName)
+                    .labelStyle(.titleAndIcon)
+                    .font(.caption2.weight(.semibold))
+                    .foregroundStyle(statusColor)
+            } else {
+                Text(tool.kind)
+                    .font(.caption2)
+                    .foregroundStyle(.tertiary)
+            }
+            if tool.detail != nil {
+                Image(systemName: isExpanded ? "chevron.up" : "chevron.down")
+                    .font(.system(size: 8, weight: .semibold))
+                    .foregroundStyle(.tertiary)
+            }
         }
-        .padding(.vertical, 3)
+        .frame(maxWidth: .infinity, minHeight: ComposerControlMetrics.minimumHitTarget, alignment: .leading)
+        .contentShape(Rectangle())
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("\(tool.title), \(statusLabel ?? tool.kind)")
     }
 
     private var iconName: String {
-        let k = kind.lowercased()
+        let k = tool.kind.lowercased()
         if k.contains("browser") { return "globe" }
         if k.contains("read") { return "doc.text" }
         if k.contains("edit") || k.contains("write") { return "pencil" }
         if k.contains("exec") || k.contains("run") || k.contains("terminal") { return "terminal" }
         return "wrench"
+    }
+
+    private var statusLabel: String? {
+        guard let status = tool.status?.lowercased() else { return nil }
+        if tool.isFailed { return "Failed" }
+        if tool.isComplete { return "Done" }
+        if status == "in_progress" || status == "running" { return "Running" }
+        if status == "pending" { return "Pending" }
+        return status.replacingOccurrences(of: "_", with: " ").capitalized
+    }
+
+    private var statusIconName: String {
+        if tool.isFailed { return "exclamationmark.triangle.fill" }
+        if tool.isComplete { return "checkmark.circle.fill" }
+        return "circle.dotted"
+    }
+
+    private var statusColor: Color {
+        if tool.isFailed { return .red }
+        if tool.isComplete { return .green }
+        return .secondary
     }
 }
 
@@ -133,6 +183,7 @@ struct ToolActivityGroup: View {
                         .font(.caption2.monospacedDigit())
                         .foregroundStyle(.tertiary)
                 }
+                .frame(minHeight: ComposerControlMetrics.minimumHitTarget)
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
@@ -140,7 +191,7 @@ struct ToolActivityGroup: View {
             if isExpanded {
                 VStack(alignment: .leading, spacing: 0) {
                     ForEach(tools) { tool in
-                        ToolCallRow(title: tool.title, kind: tool.kind)
+                        ToolCallRow(tool: tool)
                     }
                 }
                 .padding(.leading, 20)
@@ -150,6 +201,10 @@ struct ToolActivityGroup: View {
     }
 
     private var summaryTitle: String {
+        let failures = tools.filter(\.isFailed).count
+        if failures > 0 {
+            return "Tool activity · \(failures) failed"
+        }
         if tools.count == 1, let tool = tools.first {
             return tool.title
         }

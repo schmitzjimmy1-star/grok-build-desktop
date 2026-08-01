@@ -2,6 +2,11 @@ import SwiftUI
 import AppKit
 
 struct ContentView: View {
+    private enum AppRoute: Equatable {
+        case session
+        case settings
+    }
+
     fileprivate struct LiveSession: Identifiable {
         let id: UUID
         let store: ChatStore
@@ -26,7 +31,7 @@ struct ContentView: View {
     @State private var selectedWorkspaceID: Workspace.ID?
 
     @State private var showPicker = false
-    @State private var showSettings = false
+    @State private var route: AppRoute = .session
     @State private var selectedSettingsTab: SettingsTab = .agents
     @State private var showSessions = false
     @State private var showSessionDashboard = false
@@ -82,7 +87,7 @@ struct ContentView: View {
             }
 
             HSplitView {
-            if SidebarVisibility.shouldShow(preference: isSidebarVisible, settingsPresented: showSettings) {
+            if SidebarVisibility.shouldShow(preference: isSidebarVisible, settingsPresented: route == .settings) {
             SidebarView(
                 workspaces: $workspaceStore.workspaces,
                 orderedWorkspaces: workspaceStore.orderedWorkspaces,
@@ -95,7 +100,7 @@ struct ContentView: View {
                 hiddenSessionWorkspaceIDs: $sessionLayout.hiddenSessionWorkspaceIDs,
                 onAddWorkspace: { showPicker = true },
                 onSelectWorkspace: { ws in
-                    showSettings = false
+                    route = .session
                     selectProject(ws)
                 },
                 onSelectSession: { selectSession($0) },
@@ -120,15 +125,18 @@ struct ContentView: View {
                 onSwitchBranch: { gitCheckoutRequest = GitCheckoutRequest(project: $0) },
                 onCreateWorktree: { gitCheckoutRequest = GitCheckoutRequest(project: $0, focusCreateWorktree: true) },
                 onSessionDisclosureChanged: { persistSessionLayout() },
-                onOpenSettings: { openSettings(tab: .agents) }
+                onOpenSettings: { openSettings(tab: selectedSettingsTab) }
             )
             .frame(minWidth: 220, idealWidth: 244, maxWidth: 280)
             }
 
-            if showSettings {
-                SettingsView(store: activeStore, selectedTab: $selectedSettingsTab) {
-                    showSettings = false
-                }
+            if route == .settings {
+                SettingsView(
+                    store: activeStore,
+                    selectedTab: $selectedSettingsTab,
+                    onBackToChat: { route = .session },
+                    onConfigurationChanged: handleConfigurationChange
+                )
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
                 HSplitView {
@@ -136,7 +144,7 @@ struct ContentView: View {
                         store: activeStore,
                         isSidebarVisible: isSidebarVisible,
                         onToggleSidebar: { isSidebarVisible.toggle() },
-                        onOpenSettings: { openSettings(tab: .agents) },
+                        onOpenSettings: { openSettings(tab: selectedSettingsTab) },
                         reviewFileCount: activeReviewDiffs.count,
                         isReviewVisible: showPreview,
                         onToggleReview: {
@@ -267,7 +275,7 @@ struct ContentView: View {
             onAutoSelectLatestDiff: autoSelectLatestDiffMessage,
             onNewSession: startNewSessionForCurrentProject,
             onPersistSessionLayout: { persistSessionLayout(saveMessages: $0) },
-            openSettings: openSettings
+            openSettings: { tab in openSettings(tab: tab ?? selectedSettingsTab) }
         ))
     }
 
@@ -331,7 +339,16 @@ struct ContentView: View {
 
     private func openSettings(tab: SettingsTab) {
         selectedSettingsTab = tab
-        showSettings = true
+        route = .settings
+    }
+
+    private func handleConfigurationChange(_ change: ConfigurationChange) {
+        let stores = liveSessions.map(\.store) + [placeholderStore]
+        Task {
+            for store in stores {
+                await store.applyConfigurationChange(change)
+            }
+        }
     }
 
     private var dashboardEntries: [SessionDashboardEntry] {
@@ -400,7 +417,7 @@ struct ContentView: View {
     private func toggleBrowserToolsFromChat() {
         var settings = BrowserSettingsStore.load()
         guard AgentBrowserService.browserToolsConfigurationIssue(settings: settings) == nil else {
-            showSettings = true
+            openSettings(tab: .browser)
             return
         }
 
@@ -437,7 +454,7 @@ struct ContentView: View {
                 await activeStore.reloadConfiguration()
             }
             if case .needsSetup = result {
-                showSettings = true
+                openSettings(tab: .computerUse)
             }
         }
     }
@@ -520,7 +537,7 @@ struct ContentView: View {
         persistSessionLayout()
         SessionMessageStore.remove(for: id)
         Task {
-            await store.shutdown()
+            await store.shutdownPermanently()
         }
     }
 
@@ -593,11 +610,14 @@ struct ContentView: View {
         for workspace in workspaceStore.workspaces {
             let visibleIDs = visibleSessionIDs(for: workspace.id)
             for session in liveSessions where visibleIDs.contains(session.id) {
+                let savedRecord = sessionLayout.records.first { $0.id == session.id }
                 result.append(
                     SidebarSession(
                         id: session.id,
                         workspaceID: session.workspace.id,
                         title: sessionTitle(for: session),
+                        modelName: session.store.modelDisplayName(session.store.currentModel),
+                        lastAccessed: savedRecord?.lastAccessed,
                         isRunning: session.store.connectionState == .busy
                             || session.store.connectionState == .starting
                             || session.store.isStreaming
@@ -664,7 +684,7 @@ struct ContentView: View {
         for session in liveSessions {
             // Prefer the live process id, but fall back to the known/saved id so lazily-restored
             // (not-yet-started) and LRU-evicted sessions are still persisted and resumable.
-            let grokSessionID = session.store.grokSessionId ?? session.grokSessionID
+            let grokSessionID = session.store.durableGrokSessionID ?? session.grokSessionID
             guard sessionHasContent(session) else { continue }
             let existing = sessionLayout.records.first { $0.id == session.id }
             records.append(
@@ -771,18 +791,31 @@ struct ContentView: View {
             restoreStatusText = "Restoring \(workspace.displayName)"
 
             let store = ChatStore()
+            let savedMessages = SessionMessageStore.messages(for: record.id)
+            let recoveredLegacyGrokID = record.grokSessionID == nil
+                ? GrokSessionTranscriptImporter.uniqueSessionIDMatchingTranscript(
+                    workspacePath: workspace.path,
+                    localMessages: savedMessages
+                )
+                : nil
+            let durableGrokID = record.grokSessionID ?? recoveredLegacyGrokID
             let title = await restoredTitle(
                 for: record,
                 workspace: workspace,
                 cache: &titleCacheByWorkspace,
                 cli: cli
             )
-            store.prepare(workspace: workspace, savedGrokSessionID: record.grokSessionID)
+            store.prepare(workspace: workspace, savedGrokSessionID: durableGrokID)
             let legacyModel = record.model ?? SessionLayoutStore.agentSettings(for: workspace.id).model
-            store.bindTabSession(record.id, savedModel: legacyModel, savedAgent: record.agent)
+            store.bindTabSession(
+                record.id,
+                savedModel: legacyModel,
+                savedAgent: record.agent,
+                savedGrokSessionID: durableGrokID
+            )
             store.restorePersistedMessages(
                 for: record.id,
-                grokSessionID: record.grokSessionID,
+                grokSessionID: durableGrokID,
                 workspace: workspace
             )
             liveSessions.append(
@@ -791,7 +824,7 @@ struct ContentView: View {
                     store: store,
                     workspace: workspace,
                     title: title,
-                    grokSessionID: record.grokSessionID
+                    grokSessionID: durableGrokID
                 )
             )
             restoredSessionCount += 1
@@ -938,8 +971,10 @@ struct ContentView: View {
 
     private func applyDiffs(from message: Message) {
         guard let ws = activeStore.currentWorkspace else { return }
-        _ = activeStore.applyDiffs(from: message, workspace: ws)
-        Task { await refreshProjectChangedFiles() }
+        Task {
+            _ = await activeStore.applyDiffs(from: message, workspace: ws)
+            await refreshProjectChangedFiles()
+        }
     }
 
     private func applySingle(_ diff: ChatStore.DetectedDiff) {
@@ -947,8 +982,10 @@ struct ContentView: View {
 
         // Apply only one diff by temporarily synthesizing a message with just that diff
         let single = Message(role: .assistant, content: "```diff\n\(diff.raw)\n```")
-        _ = activeStore.applyDiffs(from: single, workspace: ws)
-        Task { await refreshProjectChangedFiles() }
+        Task {
+            _ = await activeStore.applyDiffs(from: single, workspace: ws)
+            await refreshProjectChangedFiles()
+        }
     }
 
     private func openCurrentProject(in target: ProjectOpenTarget) {
@@ -1001,7 +1038,7 @@ struct ContentView: View {
     private func handleWorkspaceChange(_ newID: Workspace.ID?) {
         if let id = newID,
            let ws = workspaceStore.workspaces.first(where: { $0.id == id }) {
-            showSettings = false
+            route = .session
             if activeSession?.workspace.id == id { return }
             selectProject(ws)
         }
@@ -1028,13 +1065,25 @@ struct ContentView: View {
                 workspace: session.workspace
             )
         } else {
-            session.store.mergePersistedMessages(SessionMessageStore.messages(for: id))
+            session.store.reconcilePersistedMessages(
+                for: id,
+                grokSessionID: session.grokSessionID,
+                workspace: session.workspace
+            )
         }
         purgeEmptySessions(in: session.workspace.id, keeping: id)
         let savedRecord = sessionLayout.records.first(where: { $0.id == id })
         let savedModel = savedRecord?.model
             ?? SessionLayoutStore.agentSettings(for: session.workspace.id).model
-        session.store.bindTabSession(id, savedModel: savedModel, savedAgent: savedRecord?.agent)
+        // Selection can happen while the restored tab's lazy process is still starting.
+        // Rebind the saved backend id together with the visible transcript/model so an
+        // immediate send cannot create a default-model replacement session.
+        session.store.bindTabSession(
+            id,
+            savedModel: savedModel,
+            savedAgent: savedRecord?.agent,
+            savedGrokSessionID: session.grokSessionID
+        )
         session.store.syncWorkspaceReasoningEffortFromStorage()
         session.store.syncTabModelToLiveProcessIfNeeded()
         selectedSessionID = id
@@ -1080,6 +1129,15 @@ struct ContentView: View {
         )
         if let idx = liveSessions.firstIndex(where: { $0.id == id }) {
             liveSessions[idx].grokSessionID = session.store.grokSessionId ?? liveSessions[idx].grokSessionID
+            // Some provider session-load paths settle after the prepared transcript was
+            // shown and can leave the in-memory store empty. The persisted tab transcript
+            // remains authoritative for this bounded recovery; never overwrite a non-empty
+            // store after the live process starts.
+            liveSessions[idx].store.recoverPersistedMessagesAfterStartIfEmpty(
+                for: id,
+                grokSessionID: liveSessions[idx].grokSessionID,
+                workspace: liveSessions[idx].workspace
+            )
         }
         persistSessionLayout()
     }
@@ -1295,6 +1353,7 @@ extension Notification.Name {
     static let grokBuildCLIUpdaterPhaseChanged = Notification.Name("grokBuildCLIUpdaterPhaseChanged")
     static let grokBuildRestartSessionsRequested = Notification.Name("grokBuildRestartSessionsRequested")
     static let grokBuildPrepareForShutdown = Notification.Name("grokBuildPrepareForShutdown")
+    static let grokBuildShutdownComplete = Notification.Name("grokBuildShutdownComplete")
     static let openSettingsRequested = Notification.Name("openSettingsRequested")
     static let workflowsConfigChanged = Notification.Name("workflowsConfigChanged")
 }
@@ -1310,7 +1369,8 @@ private struct ContentViewNotificationHandlers: ViewModifier {
     let onAutoSelectLatestDiff: () -> Void
     let onNewSession: () -> Void
     let onPersistSessionLayout: (Bool) -> Void
-    let openSettings: (SettingsTab) -> Void
+    /// nil = keep the remembered tab; a value forces that tab.
+    let openSettings: (SettingsTab?) -> Void
 
     func body(content: Content) -> some View {
         content
@@ -1333,10 +1393,16 @@ private struct ContentViewNotificationHandlers: ViewModifier {
                 onNewSession()
             }
             .onReceive(NotificationCenter.default.publisher(for: .openSettingsRequested)) { _ in
-                let tab: SettingsTab = UpdateScheduler.hasAnyActionableUpdate ? .app : .agents
-                openSettings(tab)
+                // An actionable update routes to the App tab; otherwise honor the
+                // remembered tab instead of clobbering it back to Agents on every ⌘,.
+                openSettings(UpdateScheduler.hasAnyActionableUpdate ? .app : nil)
             }
-            .onChange(of: activeStore.grokSessionId) { _, _ in
+            .onChange(of: activeStore.grokSessionId) { _, newSessionID in
+                // `GrokProcess.shutdown()` clears its live id. The quit handler has already
+                // persisted the valid receipt; never overwrite it with teardown's transient nil.
+                guard SessionIdentityPersistencePolicy.shouldPersistChangedSessionID(newSessionID) else {
+                    return
+                }
                 onPersistSessionLayout(true)
             }
             .onReceive(NotificationCenter.default.publisher(for: .liveSessionMessagesChanged)) { note in
@@ -1387,8 +1453,10 @@ private struct ContentViewNotificationHandlers: ViewModifier {
         onPersistSessionLayout(true)
         Task {
             for session in liveSessions {
-                await session.store.shutdown()
+                await session.store.shutdownPermanently()
             }
+            // AppDelegate holds termination open (bounded) until this arrives.
+            NotificationCenter.default.post(name: .grokBuildShutdownComplete, object: nil)
         }
     }
 

@@ -52,7 +52,7 @@ func handle(_ request: [String: Any]) {
         case "initialize":
             respond(id: id, result: [
                 "protocolVersion": params["protocolVersion"] as? String ?? "2024-11-05",
-                "serverInfo": ["name": "grokbuild-computer-use", "version": "0.1.0"],
+                "serverInfo": ["name": "grokbuild-computer-use", "version": "0.1.1"],
                 "capabilities": ["tools": [:]]
             ])
         case "notifications/initialized":
@@ -76,7 +76,7 @@ func handle(_ request: [String: Any]) {
 func callTool(name: String?, args: [String: Any]) throws -> [String: Any] {
     switch name {
     case "computer_snapshot":
-        return textResult(try runAgentDesktop(buildSnapshotArgs(args)))
+        return textResult(try runAgentDesktop(buildAnchoredSnapshotArgs(args)))
     case "computer_screenshot":
         guard includeScreenshots else {
             throw HelperError.policyDenied("Screenshots are disabled in GrokBuild Computer Use settings.")
@@ -91,6 +91,9 @@ func callTool(name: String?, args: [String: Any]) throws -> [String: Any] {
     case "computer_press":
         try enforceActionPolicy("press", policy: permissionPolicy)
         return textResult(try runAgentDesktop(buildPressArgs(args)))
+    case "computer_close_app":
+        try enforceActionPolicy("close-app", policy: permissionPolicy)
+        return textResult(try runAgentDesktop(buildCloseAppArgs(args)))
     case "computer_get":
         return textResult(try runAgentDesktop(buildGetArgs(args)))
     case "computer_wait":
@@ -104,6 +107,20 @@ func callTool(name: String?, args: [String: Any]) throws -> [String: Any] {
     default:
         throw HelperError.invalidArguments("Unknown Computer Use tool: \(name ?? "(nil)")")
     }
+}
+
+func buildAnchoredSnapshotArgs(_ args: [String: Any]) throws -> [String] {
+    var resolved = args
+    let hasWindowID = (args["window_id"] as? String)?
+        .trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false
+    if !hasWindowID,
+       let app = args["app"] as? String,
+       !app.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+       let windows = try? runAgentDesktop(buildListWindowsArgs(["app": app])),
+       let windowID = ComputerWindowSelector.preferredWindowID(fromJSON: windows, appName: app) {
+        resolved["window_id"] = windowID
+    }
+    return try buildSnapshotArgs(resolved)
 }
 
 func runAgentDesktop(_ args: [String]) throws -> String {

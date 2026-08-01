@@ -10,10 +10,9 @@ enum WorkflowsConfigStore {
         let text: String
         if let contents {
             text = contents
-        } else if let loaded = try? String(contentsOf: configURL, encoding: .utf8) {
-            text = loaded
         } else {
-            return true
+            text = GrokConfigRepository.shared.read()
+            if text.isEmpty { return true }
         }
         return parseEnabled(from: text) ?? true
     }
@@ -23,13 +22,9 @@ enum WorkflowsConfigStore {
     }
 
     static func setEnabled(_ enabled: Bool) throws {
-        let existing = (try? String(contentsOf: configURL, encoding: .utf8)) ?? ""
-        let updated = rewrite(existing, enabled: enabled)
-        try FileManager.default.createDirectory(
-            at: configURL.deletingLastPathComponent(),
-            withIntermediateDirectories: true
-        )
-        try updated.write(to: configURL, atomically: true, encoding: .utf8)
+        try GrokConfigRepository.shared.update { existing in
+            rewrite(existing, enabled: enabled)
+        }
         NotificationCenter.default.post(name: .workflowsConfigChanged, object: nil)
     }
 

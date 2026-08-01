@@ -1,6 +1,6 @@
 import Foundation
 
-struct SlashCommand: Identifiable, Hashable, Sendable {
+struct SlashCommand: Identifiable, Hashable, Codable, Sendable {
     var id: String { name }
     let name: String
     let description: String
@@ -21,6 +21,27 @@ struct SlashCommand: Identifiable, Hashable, Sendable {
         let path = (dict["_meta"] as? [String: Any])?["path"] as? String ?? ""
         let isSkill = path.hasSuffix("SKILL.md") || path.contains("/skills/")
         return SlashCommand(name: name, description: description, inputHint: hint, isSkill: isSkill)
+    }
+}
+
+/// Last known command inventory shared by lazy fresh tabs. A new tab deliberately does
+/// not spawn grok until its first prompt, but its hammer menu should not become a dead
+/// control while command discovery is unavailable.
+enum GrokCommandCatalog {
+    private static let cacheKey = "grokbuild.slashCommands.v1"
+
+    static func cached(defaults: UserDefaults = .standard) -> [SlashCommand] {
+        guard let data = defaults.data(forKey: cacheKey),
+              let commands = try? JSONDecoder().decode([SlashCommand].self, from: data) else {
+            return []
+        }
+        return commands
+    }
+
+    static func record(_ commands: [SlashCommand], defaults: UserDefaults = .standard) {
+        guard !commands.isEmpty,
+              let data = try? JSONEncoder().encode(commands) else { return }
+        defaults.set(data, forKey: cacheKey)
     }
 }
 
@@ -253,23 +274,23 @@ struct QuickStartPrompt: Identifiable, Hashable, Sendable {
     static let defaults: [QuickStartPrompt] = [
         QuickStartPrompt(
             icon: "magnifyingglass",
-            title: "Explore and understand code",
-            prompt: "Give me a high-level overview of this project: its purpose, structure, and how the main pieces fit together."
+            title: "Map project architecture",
+            prompt: "Inspect this project and map its purpose, structure, entry points, data flow, build system, tests, and current working-tree state."
         ),
         QuickStartPrompt(
             icon: "hammer",
-            title: "Build a new feature, app, or tool",
-            prompt: "Help me plan and build a new feature, app, or tool in this project."
+            title: "Implement a scoped change",
+            prompt: "Plan and implement a scoped change in this project, verify it with the relevant build and tests, and summarize the exact files changed."
         ),
         QuickStartPrompt(
             icon: "arrow.triangle.2.circlepath",
-            title: "Review code and suggest changes",
-            prompt: "Review my uncommitted changes for correctness, style, and potential issues."
+            title: "Review the working tree",
+            prompt: "Review the uncommitted working tree for correctness, regressions, test gaps, accidental files, and release risk without changing anything."
         ),
         QuickStartPrompt(
             icon: "ladybug",
-            title: "Fix issues and failures",
-            prompt: "Help me track down a bug or failure, investigate the relevant code, and propose a fix."
+            title: "Diagnose build or test failures",
+            prompt: "Reproduce the current build or test failure, trace the root cause, implement the smallest safe repair, and rerun the affected verification."
         ),
     ]
 }

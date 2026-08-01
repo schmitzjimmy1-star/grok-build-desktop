@@ -1,5 +1,6 @@
 import XCTest
 @testable import GrokBuild
+@testable import GrokBuildComputerUseCore
 
 final class ComputerUseIntegrationTests: XCTestCase {
     private var savedValues: [String: Any?] = [:]
@@ -617,6 +618,60 @@ final class ComputerUseIntegrationTests: XCTestCase {
         let result = try XCTUnwrap(responses[2]?["result"] as? [String: Any])
         let content = try XCTUnwrap(result["content"] as? [[String: Any]])
         XCTAssertEqual(content.first?["text"] as? String, "fake-apps")
+    }
+
+    func testRealHelperAnchorsSnapshotAndMapsExplicitCloseAppForce() async throws {
+        let repositoryRoot = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        let helper = repositoryRoot.appendingPathComponent(".build/debug/GrokBuildComputerUseMCP")
+        XCTAssertTrue(FileManager.default.isExecutableFile(atPath: helper.path))
+
+        let directory = temporaryInstallRootURL()
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let logURL = directory.appendingPathComponent("agent-argv.log")
+        let fakeAgent = directory.appendingPathComponent("agent-desktop")
+        let script = """
+        #!/bin/sh
+        printf '%s\\n' "$*" >> '\(logURL.path)'
+        if [ "$1" = "list-windows" ]; then
+          printf '%s\\n' '{"ok":true,"data":{"windows":[{"id":"w-hidden","title":"Calculator","visible":false,"bounds":{"width":1440,"height":30}},{"id":"w-helper","title":"Window","visible":true,"bounds":{"width":66,"height":20}},{"id":"w-main","title":"Calculator","visible":true,"bounds":{"width":230,"height":408}}]}}'
+        else
+          printf '%s\\n' '{"ok":true,"data":{"requested":true}}'
+        fi
+        """
+        try script.write(to: fakeAgent, atomically: true, encoding: .utf8)
+        try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: fakeAgent.path)
+
+        var environment = ProcessInfo.processInfo.environment
+        environment[ComputerUseHelperEnvironment.agentDesktopPath] = fakeAgent.path
+        environment[ComputerUseHelperEnvironment.policy] = "auto"
+        environment[ComputerUseHelperEnvironment.timeout] = "10"
+        environment[ComputerUseHelperEnvironment.screenshots] = "false"
+        let responses = try await ComputerUseService.runHelperRPC(
+            helper: helper,
+            environment: environment,
+            requests: [
+                #"{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2024-11-05"}}"#,
+                #"{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"computer_snapshot","arguments":{"app":"Calculator"}}}"#,
+                #"{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"computer_close_app","arguments":{"app":"Calculator","force":true}}}"#,
+            ],
+            finalID: 3,
+            timeout: 10
+        )
+
+        XCTAssertNotNil(responses[2]?["result"])
+        XCTAssertNotNil(responses[3]?["result"])
+        XCTAssertEqual(
+            try String(contentsOf: logURL, encoding: .utf8).split(whereSeparator: \.isNewline).map(String.init),
+            [
+                "list-windows --app Calculator",
+                "snapshot --app Calculator --window-id w-main --compact",
+                "close-app Calculator --force",
+            ]
+        )
     }
 
     func testRunResultTimesOutAndTerminatesTheChild() async {

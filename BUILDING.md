@@ -130,7 +130,12 @@ Or run the script directly:
 ### What the signing step does
 - Builds with `swift build -c release`
 - Assembles a proper `.app` bundle structure
-- Runs `codesign --force --deep --options runtime`
+- Signs each nested executable (`GrokBuild`, `GrokBuildComputerUseMCP`, `agent-desktop`)
+  with the shared identifier `com.grokbuild.app`, hardened runtime, and a secure
+  timestamp (`agent-desktop` additionally gets JIT/unsigned-executable-memory
+  entitlements for its embedded JavaScript runtime), then signs the outer bundle with
+  `--options runtime` — deliberately **without** `--deep`, which would re-sign the
+  helpers with filename-derived identifiers and break the shared Accessibility grant
 
 ### Notes on entitlements
 The current bundle uses a minimal entitlement for unsigned executable memory (needed by some Swift runtime features). For full notarization you may want to review and expand the entitlements.
@@ -317,6 +322,7 @@ The tag is derived from `VERSION` (e.g. `0.1.4` → `v0.1.4`). If a release for 
 | Target | Output |
 |--------|--------|
 | `GrokBuild` | Main windowed macOS app |
+| `GrokBuildComputerUseCore` | Shared Computer Use contract library (app + helper + tests) |
 | `GrokBuildComputerUseMCP` | Stdio MCP bridge → `agent-desktop` (bundled/copied at app build) |
 | `GrokBuildTests` | Unit tests |
 

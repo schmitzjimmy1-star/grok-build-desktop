@@ -32,7 +32,7 @@ struct MessageBubble: View {
         case .assistant:
             if !message.content.isEmpty {
                 VStack(alignment: .leading, spacing: 7) {
-                    Text("Grok")
+                    Text("Build agent")
                         .font(AppTheme.Typography.section)
                         .foregroundStyle(AppTheme.Palette.textMuted)
 

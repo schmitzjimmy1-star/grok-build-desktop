@@ -17,6 +17,12 @@ alwaysApply: false
 
 Run `make test` and update `ARCHITECTURE.md`, `README.md` (if user-visible), and this rule or `grokbuild-grok-cli` skill when integration contracts change.
 
+## Turn, permission, and reload boundaries
+
+- `turn_completed` must cross `AcpEvent.turnCompleted`; `ChatStore` flushes/reconciles, then acknowledges it. Never resume prompt completion from the parser side channel.
+- Permission UI and automatic responses use `GrokProcess.launchReceipt`, not mutable `@AppStorage`. GrokBuild answers ACP only; it never executes an approved edit/tool client-side.
+- Runtime reloads resume `ChatStore.durableGrokSessionID`. A stale load reconciles the old exact history file before persisting an explicit recovery fork.
+
 ## CLI location
 
 `GrokCLIService.locateGrokCLI()` and `GrokProcess` share the same search paths (`~/.grok/bin/grok`, Homebrew, `PATH`, `GROK_CLI_PATH`).

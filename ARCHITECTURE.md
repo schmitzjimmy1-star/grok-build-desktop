@@ -32,7 +32,7 @@
 
 ## What GrokBuild is
 
-GrokBuild is a **windowed macOS app** (SwiftUI + AppKit) that is a **UI shell over the `grok` CLI**. It spawns `grok agent stdio` per chat session and speaks **ACP (Agent Client Protocol)** JSON-RPC over stdin/stdout.
+GrokBuild is a **windowed macOS project workbench** (SwiftUI + AppKit) over the `grok` CLI. It spawns `grok agent stdio` per build session and speaks **ACP (Agent Client Protocol)** JSON-RPC over stdin/stdout. The transcript is an auditable record of project work; the product model is not a standalone chatbot.
 
 | GrokBuild owns | `grok` CLI owns (do NOT reimplement in Swift) |
 |----------------|-----------------------------------------------|
@@ -61,7 +61,7 @@ GrokBuild is a **windowed macOS app** (SwiftUI + AppKit) that is a **UI shell ov
 ## Repository layout
 
 ```
-grok-deck2/
+grok-build-desktop/
 ├── GrokBuild/                    # Main app target (SwiftUI + AppKit)
 │   ├── main.swift                # NSApplication entry
 │   ├── AppDelegate.swift         # Single instance, main window, menus
@@ -139,6 +139,13 @@ flowchart TB
         WS[WorkspaceStore]
         CS[ChatStore per session]
         SL[SessionLayoutStore]
+        MV[CustomModelsSettingsViewModel]
+    end
+
+    subgraph Config["Configuration + credentials"]
+        GR[GrokConfigRepository]
+        KC[macOS Keychain]
+        TOML[~/.grok/config.toml]
     end
 
     subgraph Process["Process layer"]
@@ -154,6 +161,10 @@ flowchart TB
     CV --> CS
     CV --> SL
     CHV --> CS
+    STV --> MV
+    MV --> KC
+    MV --> GR
+    GR --> TOML
     CS --> GP
     GP --> CLI
     STV --> GCS
@@ -208,6 +219,8 @@ grok [--no-memory] [--permission-mode X] [--sandbox X] [--allow RULE] … \
 
 Built from `GrokLaunchOptions` in `ChatStore.restartProcess`. Working directory = **workspace path**.
 
+Permission launch arguments are centralized in `GrokPermissionLaunchArguments`. Ask omits a flag, Always approve emits `--always-approve`, and advanced modes emit their exact `--permission-mode` value. `GrokPermissionMode` owns the user-facing names and explanations; legacy `bypassPermissions` values normalize to Always approve. `dontAsk` is displayed as **Deny unapproved (CI)** because the CLI silently denies tools without an explicit allow rule in that mode. Every live process exposes a credential-free `GrokLaunchReceipt`; permission cards use that launched receipt rather than mutable Settings state. If the CLI still emits a request, `PermissionRequestPolicy` auto-selects an actual allow option under Always approve/YOLO, auto-selects rejection under Deny unapproved, and leaves Ask/Auto requests interactive. GrokBuild only answers ACP—the CLI remains the executor, so sandbox, hooks, and deny rules cannot be bypassed by a client-side file write.
+
 ### ACP lifecycle
 
 1. `start(workspace:options:)` — spawn process, `initializeACP()` (JSON-RPC handshake).
@@ -215,6 +228,10 @@ Built from `GrokLaunchOptions` in `ChatStore.restartProcess`. Working directory 
 3. MCP servers from `MCPServerConfig` passed in `session/new` (browser, computer use when enabled).
 4. `send(_:)` — prompt during `.ready`/`.busy`.
 5. `stop()` — tear down process (LRU cap, settings reload, app shutdown).
+
+The initialize handshake advertises ACP client terminal support. Grok-owned shell calls are served by `ACPClientTerminalManager` (`terminal/create`, `terminal/output`, `terminal/wait_for_exit`, `terminal/kill`, and `terminal/release`): commands run in the approved working directory with an explicit environment, stdout/stderr are combined into a bounded UTF-8 buffer, exit state is retained until release, and all outstanding terminals are released during process cleanup. Current grok builds sometimes put a complete shell command in ACP's `command` field with an empty `args` array; when that string is not an executable path, the manager preserves it as one exact `/bin/zsh -lc` argument instead of re-tokenizing it.
+
+`session/prompt` can resolve before grok's final `_x.ai/session/update` `turn_completed` notification. `GrokProcess` now yields `.turnCompleted` through the same `AcpEvent` queue as chunks and waits until `ChatStore` calls `GrokProcess.acknowledgeTurnCompleted()`. `TurnSettlementCoordinator` finalizes exactly once only after both the RPC result and queue-barrier consumption; a turn generation rejects stale Stop/restart completions. `ChatStore` flushes buffered text and reconciles the exact backend history receipt before acknowledging. A closed-turn assistant target survives until the next prompt/Stop/restart for contract-breaking late chunks, while an already-reconciled authoritative backend final suppresses a duplicate late ACP copy. The bounded grace timeout emits the same queue event for older CLIs; it never clears the message from a side channel.
 
 ### ACP events (`AcpEvent`)
 
@@ -241,6 +258,8 @@ Consumed by `ChatStore.consumeOutput()`:
 ### Model switching
 
 `session/set_model` RPC. Failures set `modelSwitchError` / `modelSwitchNeedsNewSession` on both `GrokProcess` and `ChatStore`.
+
+Before ACP is connected, `GrokModelCatalog` supplies fresh-session choices from `grok models`, caches successful discovery briefly, and falls back only to `grok-4.5` (500K context). ACP remains authoritative once connected. Settings uses the same catalog, so new chats and the default-model picker do not depend on stale hardcoded model IDs.
 
 ---
 
@@ -339,7 +358,7 @@ ContentView.LiveSession {
 
 **Lazy restore at launch:** `restorePersistedSessions()` rebuilds `LiveSession` shells (titles, grok ids, disk transcripts) but only **starts the selected session's process**. Others resume on first `selectSession` via `ensureSessionStarted`. Launch selection uses `SessionRestorePolicy`: prefer the saved `selectedSessionID` when it has a **restorable transcript** (in-memory or `SessionMessageStore` user/assistant rows — stale-fallback system notes alone do not count); otherwise pick the MRU tab in that workspace with a transcript, then fall back to grok-id-only tabs. `recentSessionOrder` is rebuilt from saved `lastAccessed` timestamps at launch. Resumed sessions with no local transcript yet skip the project welcome screen (`ChatStore.isResumedSessionTab`). Stale grok session ids fall back to `session/new` with a system note (`GrokSessionLoadError`); wording reflects whether a local transcript was preserved.
 
-**Transcript auto-repair:** When a tab's `SessionMessageStore` transcript is empty (or has no user/assistant rows) but the tab still has a `grokSessionID`, `SessionTranscriptRecovery` reads grok's on-disk `~/.grok/sessions/{encoded-cwd}/{grokSessionID}/chat_history.jsonl` via `GrokSessionTranscriptImporter` and persists imported user/assistant text. `encodeWorkspacePath` matches grok's layout: `%2FUsers%2F…%2Fproject` with **no** trailing `%2F`. Runs during `restorePersistedSessions` / `selectSession` (`ChatStore.restorePersistedMessages(for:grokSessionID:workspace:)`). Skips synthetic `<system-reminder>`-only rows and non-text session-update types. Stale-fallback-only tabs are not treated as restorable transcripts.
+**Transcript reconciliation:** Empty, partial, and already-populated tabs with a `grokSessionID` reconcile against exactly one known `~/.grok/sessions/{encoded-cwd}/{grokSessionID}/chat_history.jsonl` at restore and successful turn completion. `GrokSessionTranscriptImporter` excludes `synthetic_reason` user rows, reasoning/tool output, and assistant tool-call preambles, retaining the terminal non-tool synthesis. `SessionTranscriptReconciler` aligns normalized user prompts occurrence-by-occurrence, preserves local UUIDs, extends prefix answers in place, preserves divergent/newer local text, appends a missing parent synthesis or authoritative suffix once, and is idempotent across repeated restore. `SessionMessageStore` also refuses an equal-count partial save that would shorten a completed assistant. `encodeWorkspacePath` matches grok's layout: `%2FUsers%2F…%2Fproject` with **no** trailing `%2F`. No directory polling or whole-session scanning is involved.
 
 **Eviction:** `enforceConnectionCap()` stops processes for sessions beyond MRU cap (keeps selected + busy sessions).
 
@@ -424,7 +443,9 @@ Do **not** commit exported plist files from repo root (`.gitignore`).
 | `grokbuild.browser.applied.*` | | **Applied** settings used at process start |
 | `grokbuild.computerUse.*` | `ComputerUseSettingsStore` | Draft computer use settings |
 | `grokbuild.computerUse.applied.*` | | **Applied** settings used at process start |
-| `grokbuild.customModelProviders` | `ProviderStore` | Reusable custom model providers (UserDefaults) |
+| `grokbuild.customModelProviders` | `ProviderStore` | Reusable custom model metadata only (UserDefaults; credentials are excluded) |
+| `grokbuild.customModelMetadata.v1` | `CustomModelMetadataStore` | Per-model GrokBuild capability hints and stable provider link; no credential. Legacy context values remain only as a fallback until projected to native `context_window`. |
+| `grokbuild.legacyDisabledMCPServersBackup.v1` | `GrokConfigLegacyMigration` | One-time non-secret backup of the obsolete `[plugins].disabled_mcp_servers` stanza removed from Grok's TOML |
 | `grokbuild.updates.autoCheckEnabled` | `UpdateSettingsStore` | Background update checks |
 | `grokbuild.updates.dismissedVersion` | | Skipped GrokBuild version |
 | `grokbuild.updates.dismissedCLIVersion` | | Skipped grok CLI version |
@@ -434,7 +455,8 @@ Do **not** commit exported plist files from repo root (`.gitignore`).
 
 | Path | Purpose |
 |------|---------|
-| `~/.grok/config.toml` | Custom model tables plus `[models].default`; GrokBuild-owned `grokbuild_*` model metadata keys; custom subagent roles (`[subagents.roles.*]`) |
+| `~/.grok/config.toml` | Grok-schema-owned configuration only: custom model tables plus `[models].default`, supported compatibility cells, and custom subagent roles (`[subagents.roles.*]`). Every GrokBuild mutation goes through `GrokConfigRepository`, atomically replaces the file, preserves unrelated content, and enforces `0600`. GrokBuild UI metadata never goes here. |
+| macOS Keychain service `com.grokbuild.provider-credential` | Provider credentials keyed by stable provider ID. The CLI-required per-model copy is projected into the owner-only TOML file. |
 | `~/.grok/prompts/<name>.md` | Instruction bodies for custom subagent roles (referenced by `prompt_file`) |
 | `~/.grok/skills/` | Installed skills (bundled skills copied by installers) |
 | `~/.grokbuild/computer-use/` | Cursor MCP helper binaries |
@@ -554,7 +576,7 @@ When advertised: session menu **Create skill…** sheet → `/create-skill`; `Im
 
 | Piece | Location |
 |-------|----------|
-| Config | `CompatConfigStore` — `[compat.cursor|claude|codex] enabled` in config.toml |
+| Config | `CompatConfigStore` — one UI switch expands to Grok's supported per-capability cells. Cursor/Claude manage `skills`, `rules`, `agents`, `mcps`, `hooks`, and `sessions`; Codex manages `sessions` only. Missing cells retain Grok's documented default-on behavior. |
 | Discovery | `GrokCLIService.listExternalCompat()` from `grok inspect --json` |
 | UI | `SettingsView` → `.compatibility` (`CompatibilitySettingsPane`) |
 
@@ -586,7 +608,7 @@ grok owns memory storage, indexing, search, and first-turn injection ([`13-memor
 | Skill | `Resources/Skills/grokbuild-computer-use/` |
 | Cursor bridge | `ComputerUseCursorInstaller` — copies helper, merges `~/.cursor/mcp.json` |
 
-**Tools (complete surface):** `computer_snapshot`, `computer_screenshot` (gated on the screenshots setting), `computer_click`, `computer_type`, `computer_press` (also how scrolling happens — there is no scroll tool), `computer_get`, `computer_wait`, `computer_list_apps`, `computer_list_windows`, `computer_permissions`. Env contract: `AGENT_DESKTOP_PATH`, `GROKBUILD_COMPUTER_USE_POLICY` (`auto`/`deny`; only deny enforces), `GROKBUILD_COMPUTER_USE_TIMEOUT`, `GROKBUILD_COMPUTER_USE_SCREENSHOTS` — pinned by an env-parity test.
+**Tools (complete surface):** `computer_snapshot`, `computer_screenshot` (gated on the screenshots setting), `computer_click`, `computer_type`, `computer_press` (also how scrolling happens — there is no scroll tool), `computer_close_app`, `computer_get`, `computer_wait`, `computer_list_apps`, `computer_list_windows`, `computer_permissions`. `computer_close_app` maps to agent-desktop's native graceful `close-app`; optional `force: true` is an explicit app-targeted termination path that may discard unsaved work. Force is not exposed on generic key presses. App snapshots without a supplied `window_id` first rank list-windows candidates by visible/positive size, focus, area, title quality, and stable ID so hidden menu/helper surfaces cannot outrank the main standard window. Env contract: `AGENT_DESKTOP_PATH`, `GROKBUILD_COMPUTER_USE_POLICY` (`auto`/`deny`; only deny enforces), `GROKBUILD_COMPUTER_USE_TIMEOUT`, `GROKBUILD_COMPUTER_USE_SCREENSHOTS` — pinned by an env-parity test.
 
 **Permissions:** macOS Accessibility (+ Screen Recording when screenshots are enabled). Bundled agent-desktop shares the app's signing identity, so any of GrokBuild/helper/agent-desktop grants proves trust; an **external** agent-desktop is authoritative for itself — only its own grant counts, and GrokBuild's trust never masks a denied actuator. Screen Recording uses `CGPreflightScreenCaptureAccess` for the bundled copy; a known denial blocks readiness when screenshots are on.
 
@@ -594,17 +616,19 @@ grok owns memory storage, indexing, search, and first-turn injection ([`13-memor
 
 | Piece | Location |
 |-------|----------|
-| Settings | `SettingsView` → `.models`; `CustomModelStore`, `CustomModelSettings` |
-| Persistence | Providers in UserDefaults; model entries written to **`~/.grok/config.toml`** |
-| Metadata | GrokBuild-owned TOML keys (`grokbuild_context_tokens`, `grokbuild_supports_*`) drive UI hints only |
-| Chat | Merged into `ChatStore.availableModels` via `mergeCustomModels()` |
-| Cline Pass | Same **Fetch models** button as other providers (required before Add model); live list from `https://api.cline.bot/api/v1/ai/cline/recommended-models` (`clinePass` array, no API key) via `ProviderModelFetcher.fetchClinePassRecommended`. Picker lists models **alphabetically** by slug-derived display name. No hardcoded model table |
+| Settings | `SettingsView` → `.models`; persistent pane state in `CustomModelsSettingsViewModel` |
+| Persistence | Provider metadata in UserDefaults; credentials in macOS Keychain; model entries written atomically to owner-only **`~/.grok/config.toml`** by `GrokConfigRepository` |
+| Validation | `ProviderModelFetcher` with typed auth schemes and results; **Test connection** fetches the catalog, detects configured-model absence separately from authentication, and exposes redacted diagnostics |
+| Native model fields | `CustomModelStore` reads/writes Grok's `api_backend` (`chat_completions`, `responses`, or `messages`) and `context_window`, while preserving other CLI-owned model fields it does not edit |
+| UI metadata | `CustomModelMetadataStore` keeps reasoning, vision, thinking-display, and provider-link hints in non-secret UserDefaults keyed by model ID; old context metadata is only a migration fallback |
+| Chat | Merged into every live `ChatStore.availableModels` via typed `ConfigurationChange`; default-only changes affect future sessions, affected idle sessions reload, affected streaming sessions queue, and unaffected sessions stay up |
+| Cline Pass | Same **Test connection** action as other providers (required before Add model); live list from `https://api.cline.bot/api/v1/ai/cline/recommended-models` (`clinePass` array, no API key) via `ProviderModelFetcher.fetchClinePassRecommended`. Picker lists models **alphabetically** by slug-derived display name. No hardcoded model table |
 
-OpenAI-compatible provider URLs; not a replacement for grok-native models. Custom model metadata is a UI fallback: ACP-reported model names/context limits stay authoritative when the CLI provides them. Reasoning-effort support is **opt-out** — `grokbuild_supports_reasoning_effort` defaults to `true` for new models and for existing config.toml entries missing the key, so the effort control keeps showing until the user disables it. Models explicitly marked as not supporting reasoning effort do not receive `--reasoning-effort` at launch, and the composer hides the effort picker for them.
+OpenAI-compatible provider URLs; not a replacement for grok-native models. Official presets may save only model IDs returned by their catalog. Custom/local providers can save an unverified ID only through the explicit advanced toggle. Provider credentials migrate transactionally from legacy UserDefaults/model copies: existing Keychain, then saved provider, then one matching model; conflicting matching model keys stop migration rather than guessing. No project `.env` is loaded. GrokBuild defaults new OpenAI-preset models to Grok's native Responses backend; other presets default to Chat Completions, and the model editor exposes all three supported protocols. Custom capability metadata is a UI fallback: ACP-reported model names/context limits stay authoritative when the CLI provides them. Reasoning-effort support is **opt-out** and defaults to `true` until the user disables it in the sidecar. Models explicitly marked as not supporting reasoning effort do not receive `--reasoning-effort` at launch, and the composer hides the effort picker for them. Provider catalog success proves key, endpoint, and account model visibility; it does not prove the Grok CLI's chosen completion endpoint/tool combination is compatible.
 
-### Bundled desktop skill
+Opening Models must not synchronously query Keychain on the SwiftUI main actor. `SettingsBackgroundLoader` runs `ProviderStore.loadResult()` and `CustomModelStore.load()` on a detached task, then the pane applies the loaded snapshot on the main actor. This keeps navigation and clicks responsive even when Security.framework credential migration is slow.
 
-`Resources/Skills/grokbuild-desktop/` — hints for agents working on GrokBuild itself (copied at build, not auto-installed).
+`GrokConfigLegacyMigration` runs before the first window opens. It imports old `grokbuild_*` model hints into the sidecar, projects legacy context size to native `context_window`, selects native `api_backend = "responses"` for the known OpenAI `gpt-5.6-terra` route, removes the unknown fields, converts obsolete blanket compatibility `enabled` values into the [documented Grok capability cells](https://github.com/xai-org/grok-build/blob/main/crates/codegen/xai-grok-pager/docs/user-guide/05-configuration.md), and removes the ignored `[plugins].disabled_mcp_servers` key after retaining a non-secret backup. The pass is idempotent, preserves model keys/MCPs/unrelated sections, and enforces `0600`.
 
 ### MCP config shape
 
@@ -648,9 +672,9 @@ The settings chrome uses a persistent grouped **vertical sidebar** (`SettingsVie
 
 **Live Grok sessions read applied settings only** in `ChatStore.restartProcess` → `BrowserSettingsStore.loadApplied()` / `ComputerUseSettingsStore.loadApplied()`.
 
-Changing settings that affect MCP → call `ChatStore.reloadConfiguration()` (restarts process).
+Changing settings that affect MCP → call `ChatStore.reloadConfiguration()`. Idle reload captures and resumes `ChatStore.durableGrokSessionID`; streaming reload queues and coalesces with model-runtime changes into one post-turn restart. Layout persistence prefers the same durable store receipt over transient process state. If `session/load` legitimately fails stale, the old backend transcript is reconciled before the new ID becomes usable and one explicit old-ID → new-ID recovery-fork note is persisted.
 
-Permissions tab (`GrokSettingsKeys`) apply on next `restartProcess` (no separate applied copy).
+Permissions tab (`GrokSettingsKeys`) applies on next `restartProcess` (no separate applied copy). Interactive choices are Ask, Auto, and Always approve; Accept edits, Deny unapproved (CI), and Plan are grouped as advanced modes. The app must not describe `dontAsk` as a prompt-free full-capability mode.
 
 Each settings pane puts its own "Refresh"/action buttons **inline in the pane header**, not in a `.toolbar { }` modifier — a window-level `.toolbar` item declared on one tab's view leaks into the shared title bar and can persist after switching to a tab that declares no toolbar of its own (observed and fixed on `PluginsSettingsPane`). Don't reintroduce `.toolbar` on settings pane views; use an inline header button instead.
 
@@ -733,11 +757,11 @@ Menu **Simulate Updates** (`#if DEBUG` only — use `make run-debug`, not `make 
 
 ### Main window (`ContentView`)
 
-Minimum size **1100×720** and default logical canvas **1440×900** (`MainWindowLayout` via `AppDelegate`). On first launch (no saved frame) new main windows fill the current display's available frame, matching the usable canvas of a 13-inch Apple Silicon MacBook Air instead of opening as a floating utility; on later launches the user's saved window frame is restored via the `"MainWindow"` autosave. Displays smaller than the minimum get a minimum-size frame with the title bar pinned on-screen. The titlebar and chat toolbar omit separator rules. The project sidebar stays compact (220–280 pt) when visible and can collapse into a full-width chat canvas; the leading chat-toolbar button restores it. `SidebarVisibility` owns the persisted chat preference, while Settings always suppresses the project sidebar and uses only its own compact navigation rail. The chat toolbar keeps only sidebar/new-session controls visible on the leading edge, with direct Settings access and one overflow menu on the trailing edge. The transcript centers in a 760 pt reading column, the matte composer is bounded at 820 pt, and every Settings pane uses the shared centered 760 pt detail column. The composer shows only primary actions by default; project/session status controls live behind **Show session controls**. Skills, workflows, research, and imagine commands share one menu instead of occupying permanent chip rows. The empty state uses a responsive four-card quick-start row inside the 760 pt transcript column.
+Minimum size **1100×720** and default logical canvas **1440×900** (`MainWindowLayout` via `AppDelegate`). On first launch (no saved frame) new main windows fill the current display's available frame, matching the usable canvas of a 13-inch Apple Silicon MacBook Air instead of opening as a floating utility; on later launches the user's saved window frame is restored via the `"MainWindow"` autosave. Displays smaller than the minimum get a minimum-size frame with the title bar pinned on-screen. The titlebar and chat toolbar omit separator rules. The project sidebar stays compact (220–280 pt) when visible and can collapse into a full-width work canvas; the leading toolbar button restores it. `SidebarVisibility` owns the persisted session preference, while Settings always suppresses the project sidebar and uses only its own compact navigation rail. The toolbar keeps sidebar/new-session controls visible on the leading edge, with direct Settings access and one overflow menu on the trailing edge. The transcript centers in a 760 pt reading column, the matte composer is bounded at 820 pt, and every Settings pane uses the shared centered 760 pt detail column. Project/session controls are visible by default because project, branch, agent, automation, workflow, task, and memory state are primary workbench context. Skills, workflows, research, and imagine commands share one menu instead of occupying permanent chip rows. The empty state is titled **Build Workspace** and its four cards map architecture, implement a scoped change, review the working tree, and diagnose build/test failures.
 
-`AppTheme.swift` owns the monochrome graphite palette, flat matte surfaces, compact 11/14/17 pt native SF type scale, restrained 4/6/8 pt radii, layout widths, and `grokGlassSurface` modifier. Decorative color, assistant avatars, and capsule treatments are removed; monospace is reserved for actual commands, code, and diagnostic logs. `ChatTranscriptLayout` attaches the current turn's Thinking disclosure to the streaming or most recent assistant message so it renders immediately above the answer rather than as a transcript footer; when the latest turn has no assistant answer (a failed turn removes its empty reply), the disclosure falls back to the transcript tail below the prompt so the trace is never lost or attached to an older answer. The composer model control is a native `Menu` with compact Model and Effort submenus rather than a custom all-options popover. The legacy modifier name remains to avoid pointless call-site churn; its implementation has no material or highlight gradient and only a minimal composer shadow. `AppDelegate` forces the dark appearance, transparent title bar, and screen-filling launch frame.
+`AppTheme.swift` owns the monochrome graphite palette, flat matte surfaces, compact 11/14/17 pt native SF type scale, restrained 4/6/8 pt radii, layout widths, `GrokChromeButtonStyle`, and the `grokGlassSurface` modifier. Main/Settings toolbar controls and every composer action use at least 36×36 hit targets with content shapes plus hover, pressed, focus, disabled, and busy-compatible states. `ContentView.AppRoute` is the single main/settings route; Settings reopens its last tab, contextual links select a requested tab, and Session or Escape returns to the same active session. Decorative color, assistant avatars, and capsule treatments are removed; assistant output is labeled **Build agent**, and monospace is reserved for actual commands, code, and diagnostic logs. `ChatTranscriptLayout` attaches the current turn's Thinking disclosure and live Tool activity immediately before the streaming or most recent assistant message, so a web page or tool receipt cannot mount below the answer and hijack bottom-follow; when the latest turn has no assistant answer (a failed turn removes its empty reply), the disclosures fall back to the transcript tail below the prompt so the trace is never lost or attached to an older answer. ACP text is passed through `StreamingTextBuffer`, which coalesces tiny chunks and paces unusually large web-answer bursts over adaptive 20 ms frames before finalizing the turn. The transcript follows a dedicated bottom anchor during streaming and repeats instant scroll passes through the next ~800 ms of layout settlement; this covers one-shot final chunks and delayed rich-text/WebKit sizing that would otherwise put the answer below the composer after the first pre-layout scroll. Stop and the **Agent working…** status use static symbols/text: a periodic indicator inside the transcript's `LazyVStack` can continuously invalidate a long session while a provider is silent and pin a CPU core. The composer model control is one native `Menu` with model choices directly visible and a compact Effort submenu; stable accessibility identifiers keep it distinct from the neighboring mode menu. Fresh lazy tabs seed the hammer menu from `GrokCommandCatalog`; an empty catalog still opens a `/`-browse action, so the control is never a dead button before the first process launch. Tool rows use the same 36-point target, show running/done/failed state, and expose selectable expandable failure receipts. The legacy modifier name remains to avoid pointless call-site churn; its implementation has no material or highlight gradient and only a minimal composer shadow. `AppDelegate` forces the dark appearance, transparent title bar, and screen-filling launch frame.
 
-`ContentView` keys `ChatView` by `ChatStore.tabSessionID`. Switching tabs therefore creates a fresh scroll/input view identity instead of carrying a long transcript's scroll offset into a new session and hiding the welcome state off-screen. The composer draft is exempt from that reset: `ChatView` mirrors its input into `ChatStore.composerDraft` (in-memory, per tab, not persisted) and restores it on appear, so switching tabs and back does not lose a half-written prompt.
+`ContentView` keys `ChatView` by `ChatStore.tabSessionID`. Switching tabs therefore creates a fresh scroll/input view identity instead of carrying a long transcript's scroll offset into a new session and hiding the welcome state off-screen. The composer draft is exempt from that reset: `ChatView` mirrors its input into `ChatStore.composerDraft` (in-memory, per tab, not persisted) and restores it on appear, so switching tabs and back does not lose a half-written prompt. `ComposerSubmissionPolicy` clears the draft only after `ChatStore.send` accepts it and only if the user has not changed the text while startup was resolving; a failed lazy resume or typing race cannot erase work. Starting-state copy distinguishes **Starting agent…** from **Resuming session…**.
 
 ```
 ┌─────────────────────────────────────────────────┐
@@ -756,11 +780,11 @@ Minimum size **1100×720** and default logical canvas **1440×900** (`MainWindow
 | File | Role |
 |------|------|
 | `AppTheme.swift` | Neutral graphite palette, typography, layout widths, radii, and reusable matte surface |
-| `SidebarView.swift` | Collapsible project/session navigation, pins, on-demand filter, settings entry |
-| `ChatView.swift` | Centered transcript, minimal matte composer, compact model/effort menu, consolidated command menu, collapsed session controls, goal banner, four-card empty state |
+| `SidebarView.swift` | Collapsible project/session navigation, pins, on-demand filter, model/running/last-used metadata, hover/context rename and close actions, settings entry |
+| `ChatView.swift` | Centered work transcript, matte composer, compact model/effort menu, consolidated command menu, visible workbench status controls, goal banner, build-oriented four-card empty state |
 | `ComposerViews.swift` | File chips, workflow chips, goal banner, plan/question cards |
 | `GrokChatChrome.swift` | Shared session chrome |
-| `RichMessageView.swift` / `MessageBubble.swift` | Compact avatar-free assistant messages, structured Markdown blocks (headings, lists, quotes, tables, code, dividers), thinking, tools, and permissions. Thinking is attached above its answer by `ChatTranscriptLayout`. Mermaid/LaTeX WKWebView embeds reload only when source changes, report a fixed height after load, and inline `$…$` spans require math signals (not currency/`$PATH`). |
+| `RichMessageView.swift` / `MessageBubble.swift` | Compact avatar-free build-agent results, structured Markdown blocks (headings, lists, quotes, one- or multi-column tables, code, dividers), thinking, tools, and permissions. Thinking is attached above its answer by `ChatTranscriptLayout`. Native Markdown links receive accent/underline treatment and distinct accessibility link elements. Mermaid/display-LaTeX (`$$…$$` and `\\[…\\]`) WKWebView embeds reload only when source changes, report a fixed height after load, use dark-mode KaTeX colors, and expose one spoken equation/diagram label instead of HTML fragments. Tables expose a summary plus header/cell labels. Inline `$…$`/`\\(…\\)` math is normalized to readable native text inside its original paragraph or table cell, so formulas cannot split Markdown tables; dollar spans still require math signals (not currency/`$PATH`). |
 | `PreviewPane.swift` | Diff detection from assistant messages; apply/commit |
 | `SessionBrowserView.swift` | Resume historical grok sessions; per-row **delete** + **Clear Empty** bulk cleanup (`GrokCLIService.deleteSession` + `SessionNameStore.removeName`) |
 | `GitCheckoutSheet.swift` | Branch switch / worktree create |
@@ -884,7 +908,7 @@ See `BUILDING.md` for signing, notarization, CI workflow.
 | **Compat** | `CompatConfigStore`, `CompatibilitySettingsPane`, `listExternalCompat` |
 | **Memory (cross-session)** | `MemoryStore.swift`, `MemoryBrowserPanel.swift`, settings `.memory`, `GrokMemoryFlag`, `ChatView.memoryStatusPill`, `ChatStore.remember`/`isMemoryEnabled` |
 | **Computer Use** | `ComputerUseService`, `GrokBuildComputerUseMCP/main.swift`, `.computerUse` |
-| **Custom models** | `CustomModelStore`, `~/.grok/config.toml` |
+| **Custom models** | `CustomModelsSettingsViewModel`, `ProviderStore`, `KeychainProviderCredentialStore`, `CustomModelStore`, `GrokConfigRepository`, `~/.grok/config.toml` |
 | **Settings tab** | `SettingsView` — search pane struct by tab |
 | **MCP injection** | `ChatStore.restartProcess` → `browserMCPConfig` / `computerUseMCPConfig` |
 | **Skill install** | `BrowserSkillInstaller`, `ComputerUseSkillInstaller` |
@@ -907,9 +931,9 @@ make test    # Tests/GrokBuildTests/
 
 | File | Covers |
 |------|--------|
-| `SessionPersistenceTests.swift` | Layout/workspace persistence, per-tab model + per-tab session agent (record round-trip, default-follow vs explicit override) |
+| `SessionPersistenceTests.swift` | Layout/workspace persistence, per-tab model + agent, and truthful sidebar metadata including the unpersisted **New session** state |
 | `BrowserIntegrationTests.swift` | Browser MCP config, skill install, settings round-trip, external browser launch args, presets |
-| `AgentsAndCapabilitiesTests.swift` | `GrokAgentProfiles` launch-arg mapping + built-in options/display names, `GrokAgentInfo` parsing, `SubagentRole` validation/suggested-name + `SubagentRoleStore` TOML parse/rewrite (instruction round-trip, relative prompt files, preserve unrelated content/unmanaged role fields, inherit-model omission) |
+| `AgentsAndCapabilitiesTests.swift` | Agent-profile mapping/discovery, permission-mode labels and exact launch arguments, and custom subagent role validation/TOML rewrite |
 | `ScheduledTaskTests.swift` | Scheduler tool detection + `ScheduledTaskTracker` (list authoritative, create prompt-correlation, delete, casing tolerance) |
 | `MemoryStoreTests.swift` | `MemoryStore` enumeration/grouping (global/workspace/session, newest-first), session-only delete guard, note appending; `GrokMemoryFlag` mapping + memory-enabled default in `AgentsAndCapabilitiesTests` |
 | `ComputerUseIntegrationTests.swift` | Settings round-trips, MCP config shape, permission resolution truthfulness, process runner (pipe drain + timeout), helper RPC plumbing, Cursor installer refresh |
@@ -918,9 +942,11 @@ make test    # Tests/GrokBuildTests/
 | `UpdateCheckerTests.swift` | Version compare, GitHub asset selection, CLI JSON parse, notarized filter |
 | `GrokCLIUpdaterTests.swift` | Updater helpers / phase reset |
 | `AppMenuTests.swift` | Standard application-menu update title helpers |
-| `MarkdownBlockParserTests.swift` | Inline-math heuristic plus Markdown headings, lists, quotes, tables, fenced code, dividers, mermaid, and LaTeX block parsing |
-| `ChatTranscriptLayoutTests.swift` | Thinking attachment/tail-fallback placement, hasDiff markers, model-menu effort names |
+| `MarkdownBlockParserTests.swift` | Inline-math normalization/table preservation; Markdown blocks; display-LaTeX delimiters; native link parsing/styling; spoken equation and table accessibility labels |
+| `ChatTranscriptLayoutTests.swift` | Thinking placement, post-layout auto-scroll, diff markers, model-menu effort names, starting/resuming copy, and draft-retention policy |
 | `AcpLineBufferTests.swift` | Byte-wise ACP line framing incl. UTF-8 codepoints split across pipe reads |
+| `ACPClientContractTests.swift` | Terminal lifecycle, bounded UTF-8 output, command compatibility, tool failure parsing, model fallback, composer targets, static progress, off-main settings work, restored-view bottom-follow, updater freshness, and workbench-not-chatbot source contracts |
+| `OpenRouterOAuthTests.swift` | PKCE/authorization/exchange parsing plus real loopback capture and a cancellation-safe timeout |
 | `SettingsTabTests.swift` | Settings destination metadata, ordering, keep-alive behavior, and exact grouped-sidebar coverage |
 
 Prefer extending existing test files. Test pure logic without launching real `grok` when possible.
@@ -952,3 +978,38 @@ Prefer extending existing test files. Test pure logic without launching real `gr
 | `.cursor/rules/` | Architecture, SwiftUI, CLI integration, AppKit panels |
 | `.cursor/skills/grokbuild-*` | Dev workflow, release, CLI checks |
 | `GrokBuild/Resources/Skills/grokbuild-desktop/SKILL.md` | Hints for agents editing GrokBuild |
+
+---
+
+## 2026-07-31 UI stress-hardening invariants
+
+The installed-app stress pass established three lifecycle rules that are now architectural contracts rather than incidental view behavior:
+
+1. **A populated restored tab owns a durable backend session receipt.** `ChatStore.bindTabSession` reasserts the saved backend ID, and `restartProcess` resolves an omitted resume request back to that receipt when the transcript already contains user messages. The process may start fresh only for an explicitly new/forked session or a handled stale-backend recovery.
+2. **Process teardown cannot erase session identity.** `GrokProcess.shutdown()` clears transient live state, but `SessionIdentityPersistencePolicy` prevents that `nil` from overwriting a previously persisted non-empty `SavedSessionRecord.grokSessionID`. A shutdown callback is not a user-visible conversation mutation.
+3. **Bottom-follow covers both content growth and view reconstruction.** Streaming/final chunks schedule bounded post-layout retries, and `ChatView.onAppear` schedules the same settled scroll because Settings navigation and tab restoration recreate the view around an already-populated transcript.
+
+The kept-alive Settings App pane also observes `.grokBuildUpdateStateChanged`; it must recompute its CLI receipt after an updater run instead of continuing to display the version captured when the pane first appeared.
+
+The follow-up workbench pass adds five contracts:
+
+4. **GrokBuild is presented as a project workbench.** Session controls are visible by default, the empty state is a Build Workspace with build/review actions, and assistant output uses the neutral Build agent label.
+5. **Permission names must match CLI semantics.** Ask, Auto, and Always approve are interactive choices. `dontAsk` is Deny unapproved (CI); Always approve alone emits `--always-approve`. Never silently widen a stored deny-by-default preference.
+6. **Draft clearing is transactional.** Clear only after an accepted send and only when the draft still matches what was submitted. Lazy-resume failure and concurrent typing preserve the current draft.
+7. **Rich output exposes semantic artifacts.** Links are separate accessibility children; equations and diagrams hide WebKit fragments behind one spoken label; tables expose summaries, headers, and cells.
+8. **Absent activity is not ancient activity.** New local tabs have no last-accessed date until persisted and announce New session; never use `Date.distantPast` as display data.
+
+Final verification for the combined slice and hostile-stress repairs: `make test` ran **409 tests with 0 failures**; final signed `dist` and installed main executables match at SHA-256 `48ca90bd7beaa31b8a2a82fab048fb95d49503a30a6f1893be64c13475e863c8`; the CLI update receipt is `/Users/jimmyschmitz/.grok/bin/grok`, `grok 0.2.118 (1e1687c1cf6a) [stable]`. The intentionally retained rollback checkpoints are `/Users/jimmyschmitz/.Trash/GrokBuild-pre-stress-error-repair-20260731-223704.app`, `/Users/jimmyschmitz/.Trash/GrokBuild-pre-final-persistence-20260731-230355.app`, and `/Users/jimmyschmitz/.Trash/GrokBuild-pre-final-repair-20260731-233408.app`; fourteen superseded intermediate bundles were permanently retired during closeout cleanup. Deep/strict signing passed for the app and native helpers, Team ID is `DD2GCQJVB4`, dist/install parity passed, and quarantine is absent. Live Computer Use acceptance covered the Build Workspace, visible project/session controls, branch/worktree sheet, discovered agents, workflow controls, session dashboard/browser, sidebar metadata/actions, native source-link semantics, permission truth, MCP servers, skills, plugins, and the repaired native close contract.
+
+### Final hostile feature-acceptance findings
+
+The repaired installed executable was stressed through a disposable Swift package and local web target using Grok 4.5, GPT 5.6 Terra, OpenRouter DeepSeek V4 Flash 0731, and Kimi K3; the disposable package finished with 2 tests and 0 failures. Agentic terminal/edit/test/diff, attachments, deterministic browser interaction, rich Markdown/code/math rendering, final-synthesis restoration, model selection, Stop recovery, permission-mode transitions, configuration reload, and Computer Use perception/clicking/close all worked in the signed installed app. Final Settings state is Always approve, Sandbox Default, web enabled, subagents enabled, Browser Tools Ready, and Computer Use Ready with Accessibility granted. Screen Recording remains intentionally disabled because accessibility snapshots were sufficient. Settings → App showed CLI Installed/Latest 0.2.118.
+
+The hostile pass adds four more architectural contracts:
+
+9. **Turn completion is an acknowledged transcript barrier.** `GrokProcess` routes `turn_completed` into the ordered ACP event stream; `ChatStore` joins the prompt response and completion event before clearing the streaming target. A bounded exact-session backend-tail reconciliation runs at completion and restore, uses role/turn/occurrence identity rather than local UUID equality, and is idempotent.
+10. **The live process receipt owns permission truth.** Every launch/restart records a credential-free `GrokLaunchReceipt`. Always approve auto-selects an ACP allow option unless an explicit deny or sandbox result already blocked the action; Ask waits; Deny unapproved rejects without an affirmative card. Permission UI describes that effective receipt rather than a possibly newer Settings selection.
+11. **Configuration reload preserves durable identity or discloses a lossless fork.** Reload captures the backend ID before teardown, coalesces queued changes, and preserves model/agent. A transient `nil` cannot erase the receipt. Stale-backend fallback imports prior history and emits one explicit fork note. Lazy post-start recovery may rehydrate only an empty in-memory store from a non-empty durable local transcript; it never replaces newer live messages.
+12. **Computer Use close is a first-class safe action.** `computer_close_app` maps to `agent-desktop close-app`, exposes an explicit optional `force` boolean, defaults to graceful close, and documents the elevated path. Snapshot targeting rejects hidden, zero-size, and helper windows before ranking the main visible standard window.
+
+Installed restoration proves the repaired boundaries: `SUBAGENT-STRESS-OK-0731`, `GPT-BROWSER-REPAIR-OK-0731`, `GPT-RELOAD-IDENTITY-OK-0731`, `OPENROUTER-DEEPSEEK-RICH-OK-0731`, `DEEPSEEK-RELOAD-IDENTITY-OK-0731`, and `KIMI-CLOSE-REPAIR-OK-0731` all rendered from the exact installed bundle after relaunch without duplicate assistant messages. The final window is idle on the Kimi close receipt above the composer.

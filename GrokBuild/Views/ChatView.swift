@@ -2,6 +2,10 @@ import SwiftUI
 import AppKit
 import UniformTypeIdentifiers
 
+enum ComposerControlMetrics {
+    static let minimumHitTarget: CGFloat = 36
+}
+
 enum ProjectOpenTarget {
     case finder
     case cursor
@@ -12,6 +16,17 @@ enum ProjectOpenTarget {
 }
 
 enum ChatTranscriptLayout {
+    static func activeAssistantMessageID(
+        messages: [Message],
+        streamingMessageID: UUID?
+    ) -> UUID? {
+        if let streamingMessageID { return streamingMessageID }
+        guard let lastTurnMessage = messages.last(where: { $0.role == .assistant || $0.role == .user }) else {
+            return nil
+        }
+        return lastTurnMessage.role == .assistant ? lastTurnMessage.id : nil
+    }
+
     /// Thinking belongs to the assistant response for the active turn. During
     /// streaming that response has an explicit id; after completion it is the
     /// most recent assistant message — but only when that message is the
@@ -23,17 +38,58 @@ enum ChatTranscriptLayout {
         messages: [Message],
         streamingMessageID: UUID?
     ) -> UUID? {
-        if let streamingMessageID { return streamingMessageID }
-        guard let lastTurnMessage = messages.last(where: { $0.role == .assistant || $0.role == .user }) else {
-            return nil
-        }
-        return lastTurnMessage.role == .assistant ? lastTurnMessage.id : nil
+        activeAssistantMessageID(
+            messages: messages,
+            streamingMessageID: streamingMessageID
+        )
     }
+}
+
+enum ChatAutoScrollPolicy {
+    /// Follow-up passes after the first scroll. GPT/DeepSeek and rich Markdown can
+    /// deliver one large final chunk whose SwiftUI/WebKit height settles after the
+    /// stream event; a single pre-layout scroll then leaves the answer below the fold.
+    /// These gaps yield immediately, then cover the next ~800 ms of layout settling.
+    static let layoutSettleGapsMilliseconds = [0, 120, 240, 440]
 }
 
 enum ComposerModelMenuLayout {
     static func effortDisplayName(storedValue: String) -> String {
         ReasoningEffortLevel(storedValue: storedValue).displayName
+    }
+}
+
+enum ComposerSubmissionPolicy {
+    /// Clear only the exact draft GrokBuild handed to the agent and only after the
+    /// session accepted it. If lazy resume is still starting — or the user typed
+    /// more while send awaited readiness — the editor remains authoritative.
+    static func draftAfterSubmission(
+        currentDraft: String,
+        submittedDraft: String,
+        accepted: Bool
+    ) -> String {
+        accepted && currentDraft == submittedDraft ? "" : currentDraft
+    }
+}
+
+enum ConnectionStatusPresentation {
+    static func subtitle(
+        state: GrokProcessState,
+        isResumedSession: Bool,
+        hasWorkspace: Bool
+    ) -> String {
+        switch state {
+        case .starting:
+            return isResumedSession ? "Resuming session…" : "Starting agent…"
+        case .ready:
+            return "Connected"
+        case .busy:
+            return "Working…"
+        case .failed:
+            return "Connection error"
+        case .idle:
+            return hasWorkspace ? "Ready" : "Idle"
+        }
     }
 }
 
@@ -68,10 +124,15 @@ struct ChatView: View {
     @State private var slashSkillsExpanded = false
     @State private var slashCommandsExpanded = false
     @State private var toolActivityExpanded = false
-    @State private var thinkingScrollTask: Task<Void, Never>?
+    @State private var autoScrollTask: Task<Void, Never>?
+    @State private var lastAutoScroll: Date = .distantPast
     @State private var voiceInput = VoiceInputService()
     @State private var pendingReasoningEffortChange: String?
-    @State private var showSessionControls = false
+    // GrokBuild is a project workbench, not a generic chat window. Keep branch,
+    // agent, tools, workflows, and background-task state visible by default.
+    @State private var showSessionControls = true
+    @State private var toolPillStatus = ToolPillStatus()
+    @State private var branchLabel = "No branch"
     @FocusState private var inputFocused: Bool
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @AppStorage(BrowserSettingsKeys.appliedEnabled) private var browserToolsEnabled = BrowserSettings.defaults.enabled
@@ -145,6 +206,18 @@ struct ChatView: View {
         hasThinkingContent && thinkingMessageID == nil
     }
 
+    private var toolActivityMessageID: UUID? {
+        guard !store.liveToolCalls.isEmpty else { return nil }
+        return ChatTranscriptLayout.activeAssistantMessageID(
+            messages: store.messages,
+            streamingMessageID: store.streamingMessageID
+        )
+    }
+
+    private var showToolActivityAtTail: Bool {
+        !store.liveToolCalls.isEmpty && toolActivityMessageID == nil
+    }
+
     private var thinkingBlock: some View {
         ThinkingBlock(
             text: store.thinkingText,
@@ -170,6 +243,12 @@ struct ChatView: View {
 
             if let error = store.lastError {
                 ErrorBanner(message: error)
+            }
+
+            if let stalledSince = store.turnStalledSince {
+                TurnStalledBanner(since: stalledSince) {
+                    store.stop()
+                }
             }
 
             if let switchError = store.modelSwitchError {
@@ -208,6 +287,10 @@ struct ChatView: View {
                                 thinkingBlock
                             }
 
+                            if toolActivityMessageID == msg.id {
+                                toolActivityBlock
+                            }
+
                             MessageBubble(
                                 message: msg,
                                 isStreaming: store.isStreaming && msg.id == store.streamingMessageID
@@ -224,13 +307,8 @@ struct ChatView: View {
                                 .padding(.leading, 2)
                         }
 
-                        if !store.liveToolCalls.isEmpty {
-                            ToolActivityGroup(
-                                tools: store.liveToolCalls,
-                                isExpanded: toolActivityExpanded
-                            ) {
-                                toolActivityExpanded.toggle()
-                            }
+                        if showToolActivityAtTail {
+                            toolActivityBlock
                         }
 
                         if let plan = store.pendingExitPlan {
@@ -248,10 +326,22 @@ struct ChatView: View {
                         }
 
                         ForEach(store.pendingPermissions) { perm in
-                            PermissionCard(permission: perm) { optionId in
+                            PermissionCard(
+                                permission: perm,
+                                effectivePermissionMode: store.effectivePermissionMode
+                            ) { optionId in
                                 store.respondToPermission(perm, with: optionId)
                             }
                         }
+
+                        // A fixed 1pt element at the true bottom. Scrolling to a
+                        // dedicated anchor is reliable in a LazyVStack; scrolling to the
+                        // last message's id is not when that message is tall and was
+                        // just streamed in — which is why long answers stranded below
+                        // the fold.
+                        Color.clear
+                            .frame(height: 1)
+                            .id(Self.bottomAnchorID)
                     }
                     .frame(maxWidth: AppTheme.Layout.conversationMaxWidth)
                     .frame(maxWidth: .infinity, alignment: .center)
@@ -259,19 +349,35 @@ struct ChatView: View {
                     .padding(.vertical, 24)
                 }
                 .background(AppTheme.Palette.canvas)
+                .onAppear {
+                    // Settings navigation and tab restoration recreate ChatView, so
+                    // populated transcripts must reopen at the latest answer.
+                    scheduleSettledAutoScroll(proxy: proxy)
+                }
                 .onChange(of: store.messages.count) { _, _ in
-                    scrollToBottom(proxy: proxy)
+                    scheduleSettledAutoScroll(proxy: proxy)
                 }
                 .onChange(of: store.isGrokking) { _, _ in
-                    scrollToBottom(proxy: proxy)
+                    scheduleSettledAutoScroll(proxy: proxy)
                 }
-                .onChange(of: store.thinkingText) { _, _ in
-                    thinkingScrollTask?.cancel()
-                    thinkingScrollTask = Task {
-                        try? await Task.sleep(for: .milliseconds(200))
-                        guard !Task.isCancelled else { return }
-                        scrollToBottom(proxy: proxy)
+                .onChange(of: store.isStreaming) { _, isStreaming in
+                    if !isStreaming {
+                        // The final provider event can precede the last rich-text layout.
+                        scheduleSettledAutoScroll(proxy: proxy)
                     }
+                }
+                // Follows every streamed chunk — thinking AND answer. A streaming answer
+                // grows the existing message's content (no count/isGrokking change), so
+                // without this the answer streams below the fold behind the thinking chip.
+                // Throttled to ~12/sec so it follows live, with a trailing scroll so the
+                // final token always lands the true bottom in view.
+                .onChange(of: store.streamRevision) { _, _ in
+                    let now = Date()
+                    if now.timeIntervalSince(lastAutoScroll) > 0.08 {
+                        lastAutoScroll = now
+                        scrollToBottom(proxy: proxy, instant: true)
+                    }
+                    scheduleSettledAutoScroll(proxy: proxy)
                 }
             }
 
@@ -291,8 +397,11 @@ struct ChatView: View {
         }
         .onAppear { inputFocused = true }
         .onDisappear {
-            thinkingScrollTask?.cancel()
-            thinkingScrollTask = nil
+            autoScrollTask?.cancel()
+            autoScrollTask = nil
+        }
+        .onChange(of: store.liveToolCalls.isEmpty) { _, isEmpty in
+            if isEmpty { toolActivityExpanded = false }
         }
         .confirmationDialog(
             "Change reasoning effort?",
@@ -368,7 +477,7 @@ struct ChatView: View {
         }
         .onChange(of: store.isStreaming) { wasStreaming, isStreamingNow in
             if wasStreaming && !isStreamingNow {
-                AccessibilityNotification.Announcement("Grok finished responding").post()
+                AccessibilityNotification.Announcement("Build agent finished").post()
             }
         }
         .onChange(of: store.connectionState) { _, newState in
@@ -390,14 +499,14 @@ struct ChatView: View {
             Button(action: onToggleSidebar) {
                 Image(systemName: "sidebar.left")
             }
-            .buttonStyle(.plain)
+            .buttonStyle(GrokChromeButtonStyle())
             .help(isSidebarVisible ? "Hide sidebar" : "Show sidebar")
             .accessibilityLabel(isSidebarVisible ? "Hide sidebar" : "Show sidebar")
 
             Button(action: onNewSession) {
                 Image(systemName: "square.and.pencil")
             }
-            .buttonStyle(.plain)
+            .buttonStyle(GrokChromeButtonStyle())
             .disabled(store.currentWorkspace == nil)
             .help("New session")
 
@@ -473,7 +582,7 @@ struct ChatView: View {
             Button(action: onOpenSettings) {
                 Image(systemName: "gearshape")
             }
-            .buttonStyle(.plain)
+            .buttonStyle(GrokChromeButtonStyle())
             .help("Settings")
             .accessibilityLabel("Open Settings")
         }
@@ -520,8 +629,12 @@ struct ChatView: View {
         VStack(spacing: 28) {
             VStack(spacing: 16) {
                 brandMark
-                Text("What should we work on in \(store.currentWorkspace?.displayName ?? "this project")?")
+                Text("\(store.currentWorkspace?.displayName ?? "Project") Build Workspace")
                     .font(.system(size: 30, weight: .regular))
+                    .multilineTextAlignment(.center)
+                Text("Inspect code, plan changes, run tools, and review the working tree.")
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
                     .multilineTextAlignment(.center)
             }
 
@@ -586,22 +699,40 @@ struct ChatView: View {
     }
 
     private var connectionSubtitle: String {
-        switch store.connectionState {
-        case .starting: return "Starting…"
-        case .ready: return "Connected"
-        case .busy: return "Working…"
-        case .failed: return "Connection error"
-        case .idle: return store.currentWorkspace == nil ? "Idle" : "Ready"
+        ConnectionStatusPresentation.subtitle(
+            state: store.connectionState,
+            isResumedSession: store.isResumedSessionTab,
+            hasWorkspace: store.currentWorkspace != nil
+        )
+    }
+
+    static let bottomAnchorID = "transcript-bottom-anchor"
+
+    private func scrollToBottom(proxy: ScrollViewProxy, instant: Bool = false) {
+        guard !store.messages.isEmpty else { return }
+        // Instant while streaming (animating every ~80ms would stutter); a gentle ease
+        // for one-off jumps like a finished turn or a newly-added message.
+        if instant || reduceMotion || store.isStreaming {
+            proxy.scrollTo(Self.bottomAnchorID, anchor: .bottom)
+        } else {
+            withAnimation(.easeOut(duration: 0.15)) {
+                proxy.scrollTo(Self.bottomAnchorID, anchor: .bottom)
+            }
         }
     }
 
-    private func scrollToBottom(proxy: ScrollViewProxy) {
-        guard let last = store.messages.last else { return }
-        if reduceMotion {
-            proxy.scrollTo(last.id, anchor: .bottom)
-        } else {
-            withAnimation(.easeOut(duration: 0.15)) {
-                proxy.scrollTo(last.id, anchor: .bottom)
+    private func scheduleSettledAutoScroll(proxy: ScrollViewProxy) {
+        autoScrollTask?.cancel()
+        autoScrollTask = Task { @MainActor in
+            for gap in ChatAutoScrollPolicy.layoutSettleGapsMilliseconds {
+                if gap > 0 {
+                    try? await Task.sleep(for: .milliseconds(gap))
+                } else {
+                    await Task.yield()
+                }
+                guard !Task.isCancelled else { return }
+                lastAutoScroll = Date()
+                scrollToBottom(proxy: proxy, instant: true)
             }
         }
     }
@@ -615,28 +746,53 @@ struct ChatView: View {
 
     private var composerCommandMenu: some View {
         Menu {
-            ForEach(composerChips) { command in
+            if composerChips.isEmpty {
                 Button {
-                    Task { await handleComposerChip(command) }
+                    input = "/"
+                    inputFocused = true
                 } label: {
-                    Label(
-                        command.name.replacingOccurrences(of: "-", with: " ").capitalized,
-                        systemImage: "hammer"
-                    )
+                    Label("Browse commands with /", systemImage: "text.cursor")
                 }
-                .disabled(store.isStreaming || store.currentWorkspace == nil)
+            } else {
+                ForEach(composerChips) { command in
+                    Button {
+                        Task { await handleComposerChip(command) }
+                    } label: {
+                        Label(
+                            command.name.replacingOccurrences(of: "-", with: " ").capitalized,
+                            systemImage: "hammer"
+                        )
+                    }
+                    .disabled(store.isStreaming || store.currentWorkspace == nil)
+                }
             }
         } label: {
             Image(systemName: "hammer")
                 .font(.system(size: 13, weight: .medium))
                 .foregroundStyle(.secondary)
-                .frame(width: 22, height: 22)
+                // Visual glyph stays 13pt; the tappable region meets the composer's
+                // 36pt pointer/keyboard target contract.
+                .frame(width: ComposerControlMetrics.minimumHitTarget, height: ComposerControlMetrics.minimumHitTarget)
+                .contentShape(Rectangle())
         }
         .menuStyle(.button)
         .buttonStyle(.plain)
-        .disabled(composerChips.isEmpty)
         .accessibilityLabel("Skills and workflows")
+        .accessibilityValue(
+            composerChips.isEmpty
+                ? "Browse commands"
+                : "\(composerChips.count) available"
+        )
         .help("Skills and workflows")
+    }
+
+    private var toolActivityBlock: some View {
+        ToolActivityGroup(
+            tools: store.liveToolCalls,
+            isExpanded: toolActivityExpanded
+        ) {
+            toolActivityExpanded.toggle()
+        }
     }
 
     private var composer: some View {
@@ -759,6 +915,8 @@ struct ChatView: View {
                     chooseFiles()
                 } label: {
                     Image(systemName: "plus")
+                        .frame(width: ComposerControlMetrics.minimumHitTarget, height: ComposerControlMetrics.minimumHitTarget)
+                        .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
                 .foregroundStyle(.secondary)
@@ -799,6 +957,8 @@ struct ChatView: View {
                         .frame(width: 6, height: 6)
                     Text(store.currentWorkspace?.displayName ?? "No project selected")
                         .lineLimit(1)
+                    Text(connectionSubtitle)
+                        .foregroundStyle(.tertiary)
                     Spacer()
                     Text(showSessionControls ? "Hide session controls" : "Session controls")
                         .foregroundStyle(.tertiary)
@@ -828,8 +988,15 @@ struct ChatView: View {
                 if let project = store.currentWorkspace {
                     Label(project.displayName, systemImage: "folder")
                         .lineLimit(1)
-                    Button(action: onSwitchBranch) {
-                        Label(currentBranchLabel(for: project.path), systemImage: "point.topleft.down.curvedto.point.bottomright.up")
+                    Button {
+                        onSwitchBranch()
+                        // Best-effort refresh once the checkout sheet has had time to act.
+                        Task {
+                            try? await Task.sleep(for: .seconds(3))
+                            await refreshBranchLabel(project.path)
+                        }
+                    } label: {
+                        Label(branchLabel, systemImage: "point.topleft.down.curvedto.point.bottomright.up")
                     }
                     .buttonStyle(.plain)
                     .help("Branches & worktrees")
@@ -854,10 +1021,35 @@ struct ChatView: View {
         .task(id: store.currentWorkspace?.id) {
             await store.loadDiscoveredAgentsIfNeeded()
             cachedCustomSubagentNames = SubagentRoleStore.load().map(\.name)
+            await refreshToolPillStatus()
+            if let path = store.currentWorkspace?.path {
+                await refreshBranchLabel(path)
+            }
+        }
+        // Applied settings only change through flows that restart the connection,
+        // so this re-probes the cached pill inputs exactly when they can differ.
+        .task(id: store.connectionState) {
+            await refreshToolPillStatus()
+            if let path = store.currentWorkspace?.path {
+                await refreshBranchLabel(path)
+            }
+        }
+        // A finished turn may have moved HEAD (grok runs git); one read per message
+        // beats the old read-on-every-render.
+        .onChange(of: store.messages.count) { _, _ in
+            guard let path = store.currentWorkspace?.path else { return }
+            Task { await refreshBranchLabel(path) }
         }
         .onReceive(NotificationCenter.default.publisher(for: .subagentRolesChanged)) { _ in
             cachedCustomSubagentNames = SubagentRoleStore.load().map(\.name)
         }
+    }
+
+    private func refreshBranchLabel(_ projectURL: URL) async {
+        let label = await Task.detached(priority: .utility) {
+            GitService.currentBranch(in: projectURL) ?? "No branch"
+        }.value
+        branchLabel = label
     }
 
     private var agentStatusPill: some View {
@@ -924,6 +1116,7 @@ struct ChatView: View {
         .help(overriding
             ? "Session agent (overrides the default). Changing it restarts this session's grok."
             : "Session agent (follows the Settings default). Changing it restarts this session's grok.")
+        .accessibilityLabel("Session agent")
     }
 
     private var showWorkflowsPill: Bool {
@@ -1107,6 +1300,7 @@ struct ChatView: View {
         .help(available
             ? "Background tasks observed in this session (scheduled, shells, monitors, subagents)."
             : "Background tasks mirror — refresh to query grok.")
+        .accessibilityLabel("Background tasks")
     }
 
     @ViewBuilder
@@ -1261,6 +1455,7 @@ struct ChatView: View {
         .fixedSize()
         .disabled(store.currentWorkspace == nil)
         .help("Cross-session memory is on. Browse files, save a note, or open Memory settings.")
+        .accessibilityLabel("Memory")
     }
 
     private var rememberPromptSheet: some View {
@@ -1292,14 +1487,41 @@ struct ChatView: View {
         .frame(width: 460)
     }
 
-    private var browserStatusPill: some View {
-        let settings = BrowserSettingsStore.load()
-        let configurationIssue = AgentBrowserService.browserToolsConfigurationIssue(settings: settings)
+    /// Filesystem-derived pill inputs, cached so the status row's render loop stops
+    /// stat-ing helper paths on every body evaluation (they only change after an
+    /// Apply, which restarts the connection and re-triggers the refresh task).
+    struct ToolPillStatus {
+        var browserIssue: String?
+        var browserRuntimeMode: BrowserRuntimeMode = .managed
+        var canChooseRuntime = false
+        var computerUseIssue: String?
+    }
+
+    nonisolated static func computeToolPillStatus() -> ToolPillStatus {
+        let browserSettings = BrowserSettingsStore.load()
         let browserBaseReady = AgentBrowserService.bridgeScriptURL() != nil
             && AgentBrowserService.executableURL() != nil
-        let managedRuntimeReady = AgentBrowserService.browserRuntimeConfigurationIssue(settings: settings, mode: .managed) == nil
-        let externalRuntimeReady = AgentBrowserService.browserRuntimeConfigurationIssue(settings: settings, mode: .external) == nil
-        let canChooseRuntime = browserBaseReady && (managedRuntimeReady || externalRuntimeReady)
+        let managedReady = AgentBrowserService.browserRuntimeConfigurationIssue(settings: browserSettings, mode: .managed) == nil
+        let externalReady = AgentBrowserService.browserRuntimeConfigurationIssue(settings: browserSettings, mode: .external) == nil
+        return ToolPillStatus(
+            browserIssue: AgentBrowserService.browserToolsConfigurationIssue(settings: browserSettings),
+            browserRuntimeMode: browserSettings.runtimeMode,
+            canChooseRuntime: browserBaseReady && (managedReady || externalReady),
+            computerUseIssue: ComputerUseService.configurationIssue(settings: ComputerUseSettingsStore.load())
+        )
+    }
+
+    private func refreshToolPillStatus() async {
+        let status = await Task.detached(priority: .utility) {
+            ChatView.computeToolPillStatus()
+        }.value
+        toolPillStatus = status
+    }
+
+    private var browserStatusPill: some View {
+        let configurationIssue = toolPillStatus.browserIssue
+        let canChooseRuntime = toolPillStatus.canChooseRuntime
+        let runtimeMode = toolPillStatus.browserRuntimeMode
         let isConfigured = configurationIssue == nil
         let needsSetup = browserToolsEnabled && !isConfigured
         let title = needsSetup ? "Browser Setup Needed" : "Browser Tools"
@@ -1317,13 +1539,13 @@ struct ChatView: View {
                 Button {
                     onSelectBrowserRuntime(.managed)
                 } label: {
-                    Label("Managed Browser Runtime", systemImage: settings.runtimeMode == .managed ? "checkmark" : "shippingbox")
+                    Label("Managed Browser Runtime", systemImage: runtimeMode == .managed ? "checkmark" : "shippingbox")
                 }
 
                 Button {
                     onSelectBrowserRuntime(.external)
                 } label: {
-                    Label("Existing Chromium Browser", systemImage: settings.runtimeMode == .external ? "checkmark" : "globe")
+                    Label("Existing Chromium Browser", systemImage: runtimeMode == .external ? "checkmark" : "globe")
                 }
             }
 
@@ -1368,8 +1590,7 @@ struct ChatView: View {
     }
 
     private var computerUseStatusPill: some View {
-        let settings = ComputerUseSettingsStore.load()
-        let configurationIssue = ComputerUseService.configurationIssue(settings: settings)
+        let configurationIssue = toolPillStatus.computerUseIssue
         let isConfigured = configurationIssue == nil
         let needsSetup = computerUseEnabled && !isConfigured
         let title = needsSetup ? "Computer Use Setup Needed" : "Computer Use"
@@ -1430,13 +1651,14 @@ struct ChatView: View {
             Button {
                 store.stop()
             } label: {
-                ZStack {
-                    ProgressView()
-                        .controlSize(.small)
-                    Image(systemName: "stop.fill")
-                        .font(.system(size: 7, weight: .bold))
-                }
-                .frame(width: 22, height: 22)
+                // An indeterminate ProgressView here invalidated the entire transcript's
+                // LazyVStack every animation frame. A long web/tool wait could therefore
+                // peg one CPU core and make every nearby control miss clicks.
+                Image(systemName: "stop.circle.fill")
+                    .font(.title2)
+                    .foregroundStyle(.secondary)
+                .frame(width: ComposerControlMetrics.minimumHitTarget, height: ComposerControlMetrics.minimumHitTarget)
+                .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
             .help("Stop session (⌘.)")
@@ -1447,6 +1669,8 @@ struct ChatView: View {
             } label: {
                 Image(systemName: "arrow.up.circle.fill")
                     .font(.title2)
+                    .frame(width: ComposerControlMetrics.minimumHitTarget, height: ComposerControlMetrics.minimumHitTarget)
+                    .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
             .help("Send message")
@@ -1500,13 +1724,18 @@ struct ChatView: View {
                     .font(.system(size: 8, weight: .semibold))
                     .foregroundStyle(.tertiary)
             }
-            .padding(.horizontal, 3)
-            .padding(.vertical, 2)
+            .padding(.horizontal, 7)
+            .frame(minHeight: ComposerControlMetrics.minimumHitTarget)
+            .contentShape(Rectangle())
             .foregroundStyle(.secondary)
+            .accessibilityElement(children: .ignore)
         }
         .menuStyle(.button)
         .buttonStyle(.plain)
         .help("Change agent mode")
+        .accessibilityLabel("Agent mode")
+        .accessibilityValue(displayName(for: store.currentMode))
+        .accessibilityIdentifier("grok-mode-selector")
     }
 
     private func modeMenuRow(icon: String, title: String, isSelected: Bool) -> some View {
@@ -1540,26 +1769,24 @@ struct ChatView: View {
 
     private var modelSelector: some View {
         Menu {
-            Menu {
+            Section("Model") {
                 ForEach(store.availableModels, id: \.self) { modelId in
-                    Toggle(
-                        store.modelDisplayName(modelId),
-                        isOn: Binding(
-                            get: { store.currentModel == modelId },
-                            set: { selected in
-                                if selected {
-                                    store.setModel(modelId)
-                                }
+                    Button {
+                        store.setModel(modelId)
+                    } label: {
+                        HStack {
+                            Text(store.modelDisplayName(modelId))
+                            if store.currentModel == modelId {
+                                Image(systemName: "checkmark")
                             }
-                        )
-                    )
+                        }
+                    }
                     .accessibilityIdentifier("grok-model-option-\(modelId)")
                 }
-            } label: {
-                Text("Model · \(modelSelectorLabel)")
             }
 
             if store.currentModelSupportsReasoningEffort {
+                Divider()
                 Menu {
                     ForEach(ReasoningEffortLevel.menuCases) { level in
                         Toggle(
@@ -1592,9 +1819,11 @@ struct ChatView: View {
                     .font(.system(size: 8, weight: .semibold))
                     .foregroundStyle(.tertiary)
             }
-            .padding(.horizontal, 3)
-            .padding(.vertical, 2)
+            .padding(.horizontal, 7)
+            .frame(minHeight: ComposerControlMetrics.minimumHitTarget)
+            .contentShape(Rectangle())
             .foregroundStyle(.secondary)
+            .accessibilityElement(children: .ignore)
         }
         .menuStyle(.button)
         .buttonStyle(.plain)
@@ -1646,10 +1875,15 @@ struct ChatView: View {
     }
 
     private func submit() async {
-        let text = input.trimmingCharacters(in: .whitespacesAndNewlines)
+        let submittedDraft = input
+        let text = submittedDraft.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty else { return }
-        input = ""
-        _ = await store.send(text)
+        let accepted = await store.send(text)
+        input = ComposerSubmissionPolicy.draftAfterSubmission(
+            currentDraft: input,
+            submittedDraft: submittedDraft,
+            accepted: accepted
+        )
         inputFocused = true
     }
 
@@ -1734,9 +1968,6 @@ struct ChatView: View {
         slashActiveIndex = min(slashActiveIndex, count - 1)
     }
 
-    private func currentBranchLabel(for projectURL: URL) -> String {
-        GitService.currentBranch(in: projectURL) ?? "No branch"
-    }
 }
 
 // MARK: - Quick Start
@@ -1809,6 +2040,32 @@ private struct ContextUsageIndicator: View {
 }
 
 // MARK: - Auth Banner
+
+/// Shown when a streaming turn has produced no ACP events for two minutes. Nothing is
+/// cancelled automatically — a long tool run and a wedged process look identical from
+/// outside, so the user decides.
+private struct TurnStalledBanner: View {
+    let since: Date
+    let onStop: () -> Void
+
+    var body: some View {
+        HStack(spacing: 10) {
+            Image(systemName: "hourglass.badge.exclamationmark")
+                .foregroundStyle(.orange)
+            Text("Grok hasn't sent anything since \(since.formatted(date: .omitted, time: .shortened)). It may be mid-tool-run, or stuck.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            Spacer()
+            Button("Stop turn", action: onStop)
+                .controlSize(.small)
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 8)
+        .background(RoundedRectangle(cornerRadius: AppTheme.Radius.small).fill(AppTheme.Palette.glassTint))
+        .padding(.horizontal, 20)
+        .accessibilityLabel("Turn may be stalled")
+    }
+}
 
 private struct ErrorBanner: View {
     let message: String
@@ -1972,16 +2229,27 @@ struct PermissionCard: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     let permission: PermissionRequest
+    let effectivePermissionMode: GrokPermissionMode
     let onRespond: (String) -> Void
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack {
                 Image(systemName: permission.toolCall.isEdit ? "doc.text" : "terminal")
-                Text(permission.toolCall.title)
-                    .font(.subheadline.weight(.semibold))
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Tool approval required")
+                        .font(.subheadline.weight(.semibold))
+                    Text(permission.toolCall.title)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
                 Spacer()
             }
+
+            Text(permissionPolicyExplanation)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
 
             if permission.toolCall.isEdit, let path = permission.toolCall.filePath {
                 HStack {
@@ -2020,10 +2288,20 @@ struct PermissionCard: View {
         .animation(reduceMotion ? nil : .spring(response: 0.3), value: permission.id)
     }
 
+    private var permissionPolicyExplanation: String {
+        "Effective live process policy: \(effectivePermissionMode.displayName). This tool will not run until you choose an option; explicit deny rules still win."
+    }
+
     private func openNativeDiffPreview(_ toolCall: ToolCall) {
         guard let path = toolCall.filePath,
               let proposed = toolCall.proposedContent else { return }
+        // File writes + process spawn have no business on the main actor.
+        Task.detached(priority: .userInitiated) {
+            Self.launchNativeDiffPreview(path: path, proposed: proposed)
+        }
+    }
 
+    private nonisolated static func launchNativeDiffPreview(path: String, proposed: String) {
         let tempDir = FileManager.default.temporaryDirectory
         let oldURL = tempDir.appendingPathComponent("grok-old-\(UUID().uuidString).txt")
         let newURL = tempDir.appendingPathComponent("grok-new-\(UUID().uuidString).txt")
@@ -2046,8 +2324,7 @@ struct PermissionCard: View {
             }
             try process.run()
         } catch {
-            // Silent fallback
-            print("Failed to open native diff: \(error)")
+            // Silent fallback: the native diff is a convenience, not a required path.
         }
     }
 }

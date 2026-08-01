@@ -10,7 +10,7 @@ struct GrokCLIResult: Sendable {
     }
 }
 
-private final class LockedData: @unchecked Sendable {
+final class LockedData: @unchecked Sendable {
     private let lock = NSLock()
     private var data = Data()
 
@@ -26,6 +26,109 @@ private final class LockedData: @unchecked Sendable {
         let value = data
         lock.unlock()
         return value
+    }
+}
+
+final class LockedFlag: @unchecked Sendable {
+    private let lock = NSLock()
+    private var value = false
+
+    func set() {
+        lock.lock()
+        value = true
+        lock.unlock()
+    }
+
+    var isSet: Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        return value
+    }
+}
+
+/// Shared bounded-kill for one-shot helper subprocesses: SIGTERM at the deadline,
+/// SIGKILL two seconds later if the child ignored it. Keeps a hung `grok`, `git`,
+/// or `agent-browser` invocation from wedging its caller forever.
+enum ProcessKillSchedule {
+    static func schedule(process: Process, after timeout: TimeInterval, flag: LockedFlag) {
+        DispatchQueue.global().asyncAfter(deadline: .now() + timeout) { [weak process] in
+            guard let process, process.isRunning else { return }
+            flag.set()
+            process.terminate()
+            DispatchQueue.global().asyncAfter(deadline: .now() + 2) { [weak process] in
+                guard let process, process.isRunning else { return }
+                kill(process.processIdentifier, SIGKILL)
+            }
+        }
+    }
+}
+
+/// The one deadlock-safe subprocess runner. Every one-shot helper (`grok`, `git`,
+/// `agent-browser`, updater `codesign`/`ditto`) drains through here so the
+/// >64KiB-pipe-buffer deadlock, the SIGTERM→SIGKILL timeout, and task-cancellation
+/// teardown live in exactly one place. Configure the process (executable, args, cwd,
+/// env) and assign the pipes to its standard streams before calling; for a merged
+/// stream, assign one pipe to both `standardOutput` and `standardError` and pass it as
+/// `stdout` with `stderr` nil.
+enum BoundedProcess {
+    struct Result: Sendable {
+        let status: Int32
+        let stdout: Data
+        let stderr: Data
+        let timedOut: Bool
+    }
+
+    static func run(
+        _ process: Process,
+        stdout: Pipe? = nil,
+        stderr: Pipe? = nil,
+        timeout: TimeInterval? = nil
+    ) async throws -> Result {
+        let outData = LockedData()
+        let errData = LockedData()
+        let timedOut = LockedFlag()
+        stdout?.fileHandleForReading.readabilityHandler = { outData.append($0.availableData) }
+        stderr?.fileHandleForReading.readabilityHandler = { errData.append($0.availableData) }
+
+        func clearHandlers() {
+            stdout?.fileHandleForReading.readabilityHandler = nil
+            stderr?.fileHandleForReading.readabilityHandler = nil
+        }
+
+        try await withTaskCancellationHandler {
+            try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
+                process.terminationHandler = { _ in
+                    if let stdout {
+                        stdout.fileHandleForReading.readabilityHandler = nil
+                        outData.append(stdout.fileHandleForReading.readDataToEndOfFile())
+                    }
+                    if let stderr {
+                        stderr.fileHandleForReading.readabilityHandler = nil
+                        errData.append(stderr.fileHandleForReading.readDataToEndOfFile())
+                    }
+                    continuation.resume()
+                }
+                do {
+                    try process.run()
+                } catch {
+                    clearHandlers()
+                    continuation.resume(throwing: error)
+                    return
+                }
+                if let timeout {
+                    ProcessKillSchedule.schedule(process: process, after: timeout, flag: timedOut)
+                }
+            }
+        } onCancel: {
+            if process.isRunning { process.terminate() }
+        }
+
+        return Result(
+            status: process.terminationStatus,
+            stdout: outData.snapshot(),
+            stderr: errData.snapshot(),
+            timedOut: timedOut.isSet
+        )
     }
 }
 
@@ -244,7 +347,7 @@ struct GrokMCPDoctorReport: Sendable {
     }
 }
 
-struct GrokModelInfo: Identifiable, Hashable, Sendable {
+struct GrokModelInfo: Identifiable, Hashable, Sendable, Codable {
     let id: String
     let name: String
     let isDefault: Bool
@@ -308,6 +411,79 @@ struct GrokPermissionSettings: Sendable {
         selectedAgent: "",
         memoryEnabled: false
     )
+}
+
+/// User-facing permission choices for an interactive GrokBuild work session.
+///
+/// The grok CLI also exposes `dontAsk`, but its documented behavior is to silently
+/// deny unmatched tools for headless/CI runs. Calling that mode "Don't ask" in an
+/// interactive desktop app implied the opposite — that work would continue without
+/// interruptions. Keep the raw CLI value available, but label it honestly and route
+/// the interactive always-approve choice through the dedicated `--always-approve`
+/// flag.
+enum GrokPermissionMode: String, CaseIterable, Identifiable, Sendable {
+    case ask = "default"
+    case auto
+    case alwaysApprove
+    case acceptEdits
+    case denyUnapproved = "dontAsk"
+    case plan
+
+    var id: String { rawValue }
+
+    static let interactiveChoices: [GrokPermissionMode] = [.ask, .auto, .alwaysApprove]
+    static let advancedChoices: [GrokPermissionMode] = [.acceptEdits, .denyUnapproved, .plan]
+
+    static func normalizedStoredValue(_ value: String) -> String {
+        value == "bypassPermissions" ? GrokPermissionMode.alwaysApprove.rawValue : value
+    }
+
+    init(storedValue: String) {
+        self = GrokPermissionMode(rawValue: Self.normalizedStoredValue(storedValue)) ?? .ask
+    }
+
+    var displayName: String {
+        switch self {
+        case .ask: return "Ask"
+        case .auto: return "Auto"
+        case .alwaysApprove: return "Always approve"
+        case .acceptEdits: return "Accept edits"
+        case .denyUnapproved: return "Deny unapproved (CI)"
+        case .plan: return "Plan"
+        }
+    }
+
+    var explanation: String {
+        switch self {
+        case .ask:
+            return "Prompt for tool calls that are not already covered by an allow rule."
+        case .auto:
+            return "Let Grok classify safe tools automatically; dangerous actions may still ask."
+        case .alwaysApprove:
+            return "Run tool calls without approval prompts. Deny rules, hooks, and the sandbox still apply."
+        case .acceptEdits:
+            return "Approve file edits automatically but continue prompting for shell commands."
+        case .denyUnapproved:
+            return "Silently deny tools without an explicit allow rule. Intended for headless or CI work."
+        case .plan:
+            return "Keep the session in planning-first permission behavior until the plan is approved."
+        }
+    }
+}
+
+enum GrokPermissionLaunchArguments {
+    static func arguments(for storedMode: String?) -> [String] {
+        guard let storedMode, !storedMode.isEmpty else { return [] }
+        let mode = GrokPermissionMode(storedValue: storedMode)
+        switch mode {
+        case .ask:
+            return []
+        case .alwaysApprove:
+            return ["--always-approve"]
+        default:
+            return ["--permission-mode", mode.rawValue]
+        }
+    }
 }
 
 /// Reasoning depth passed to `grok agent --reasoning-effort` (reasoning-capable models only).
@@ -383,6 +559,7 @@ final class GrokCLIService {
         case notFound
         case failed(args: [String], result: GrokCLIResult)
         case invalidJSON(String)
+        case timedOut(args: [String], seconds: Int)
 
         var errorDescription: String? {
             switch self {
@@ -393,11 +570,18 @@ final class GrokCLIService {
                 return "`grok \(args.joined(separator: " "))` failed with exit code \(result.exitCode).\n\(output)"
             case .invalidJSON(let output):
                 return "The grok CLI returned output that was not valid JSON.\n\(output)"
+            case .timedOut(let args, let seconds):
+                return "`grok \(args.joined(separator: " "))` did not finish within \(seconds)s and was terminated."
             }
         }
     }
 
-    func run(_ args: [String], cwd: URL? = nil, allowFailure: Bool = false) async throws -> GrokCLIResult {
+    func run(
+        _ args: [String],
+        cwd: URL? = nil,
+        allowFailure: Bool = false,
+        timeout: TimeInterval? = 300
+    ) async throws -> GrokCLIResult {
         guard let cli = Self.locateGrokCLI() else { throw CLIError.notFound }
 
         let process = Process()
@@ -411,38 +595,17 @@ final class GrokCLIService {
         process.standardOutput = stdout
         process.standardError = stderr
 
-        let stdoutData = LockedData()
-        let stderrData = LockedData()
+        // A hung invocation must not wedge the update scheduler, a Settings pane, or
+        // launch restore forever — BoundedProcess owns the drain + timeout + cancellation.
+        let outcome = try await BoundedProcess.run(process, stdout: stdout, stderr: stderr, timeout: timeout)
 
-        stdout.fileHandleForReading.readabilityHandler = { handle in
-            stdoutData.append(handle.availableData)
+        if outcome.timedOut {
+            throw CLIError.timedOut(args: args, seconds: Int(timeout ?? 0))
         }
-        stderr.fileHandleForReading.readabilityHandler = { handle in
-            stderrData.append(handle.availableData)
-        }
-
-        try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
-            process.terminationHandler = { _ in
-                stdout.fileHandleForReading.readabilityHandler = nil
-                stderr.fileHandleForReading.readabilityHandler = nil
-                stdoutData.append(stdout.fileHandleForReading.readDataToEndOfFile())
-                stderrData.append(stderr.fileHandleForReading.readDataToEndOfFile())
-                continuation.resume()
-            }
-
-            do {
-                try process.run()
-            } catch {
-                stdout.fileHandleForReading.readabilityHandler = nil
-                stderr.fileHandleForReading.readabilityHandler = nil
-                continuation.resume(throwing: error)
-            }
-        }
-
-        let out = String(decoding: stdoutData.snapshot(), as: UTF8.self)
-        let err = String(decoding: stderrData.snapshot(), as: UTF8.self)
-        let result = GrokCLIResult(stdout: out, stderr: err, exitCode: process.terminationStatus)
-        if process.terminationStatus != 0 && !allowFailure {
+        let out = String(decoding: outcome.stdout, as: UTF8.self)
+        let err = String(decoding: outcome.stderr, as: UTF8.self)
+        let result = GrokCLIResult(stdout: out, stderr: err, exitCode: outcome.status)
+        if outcome.status != 0 && !allowFailure {
             throw CLIError.failed(args: args, result: result)
         }
         return result
@@ -529,7 +692,8 @@ final class GrokCLIService {
     }
 
     func updateGrokCLI() async throws -> GrokCLIResult {
-        try await run(["update"], allowFailure: true)
+        // A CLI self-update legitimately downloads; give it a longer bounded window.
+        try await run(["update"], allowFailure: true, timeout: 600)
     }
 
     func listMCPServers() async throws -> [GrokMCPServerInfo] {
@@ -600,7 +764,11 @@ final class GrokCLIService {
         return String(trimmed[first...])
     }
 
+    /// Test seam: lets fixtures point `run` at a scripted executable.
+    static var cliOverrideForTests: URL?
+
     static func locateGrokCLI() -> URL? {
+        if let override = cliOverrideForTests { return override }
         if let path = ProcessInfo.processInfo.environment["GROK_CLI_PATH"], !path.isEmpty {
             let url = URL(fileURLWithPath: (path as NSString).expandingTildeInPath)
             if FileManager.default.isExecutableFile(atPath: url.path) { return url }

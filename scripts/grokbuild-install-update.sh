@@ -75,8 +75,35 @@ if kill -0 "$PID" 2>/dev/null; then
 fi
 
 if [[ "$RELAUNCH_ONLY" -eq 0 ]]; then
-    ditto "$NEW_APP" "$TARGET"
-    xattr -cr "$TARGET" 2>/dev/null || true
+    # Stage-then-swap instead of ditto-merging into the live bundle: a merge kept
+    # files deleted upstream (slowly breaking the signature seal) and a mid-copy
+    # failure could leave a hybrid install. Staging beside the target keeps both
+    # renames on one volume, so the swap window is two atomic mv calls with a
+    # rollback path.
+    PARENT="$(dirname "$TARGET")"
+    BASE="$(basename "$TARGET" .app)"
+    STAGED="$PARENT/.$BASE.update-$$.app"
+    PREVIOUS="$PARENT/.$BASE.previous-$$.app"
+    rm -rf "$STAGED" "$PREVIOUS"
+    cleanup_staging() { rm -rf "$STAGED" "$PREVIOUS"; }
+    trap cleanup_staging EXIT
+
+    ditto "$NEW_APP" "$STAGED"
+
+    # Verify the exact bytes that will become the installed app, and only then
+    # clear quarantine — on that verified content, never on unchecked files.
+    if ! codesign --verify --deep --strict "$STAGED" >/dev/null 2>&1; then
+        echo "Staged update failed code signature verification; leaving the installed app untouched." >&2
+        exit 1
+    fi
+    xattr -cr "$STAGED" 2>/dev/null || true
+
+    mv "$TARGET" "$PREVIOUS"
+    if ! mv "$STAGED" "$TARGET"; then
+        mv "$PREVIOUS" "$TARGET"
+        echo "Could not move the staged update into place; previous app restored." >&2
+        exit 1
+    fi
 fi
 
 if [[ "$RELAUNCH_ONLY" -eq 1 || "$RELAUNCH" -eq 1 ]]; then

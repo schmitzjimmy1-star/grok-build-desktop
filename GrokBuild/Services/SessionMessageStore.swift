@@ -14,6 +14,23 @@ enum SessionMessageStore {
         saveAll([sessionID: messages])
     }
 
+    /// Persist the exact result of a role/turn/content reconciliation. This is the only
+    /// path allowed to shrink a transcript, so ordinary delayed UI saves retain the
+    /// never-shrink protection while duplicate authoritative finals can be removed.
+    static func replaceAfterAuthoritativeReconciliation(
+        _ messages: [Message],
+        for sessionID: UUID
+    ) {
+        var map = loadMap()
+        let persistable = messages.filter { shouldPersist($0) }
+        if persistable.isEmpty {
+            map.removeValue(forKey: sessionID.uuidString)
+        } else if let data = try? JSONEncoder().encode(persistable) {
+            map[sessionID.uuidString] = data
+        }
+        UserDefaults.standard.set(map, forKey: key)
+    }
+
     /// Merge and persist several sessions' transcripts with one defaults
     /// fetch and one write. The per-session `save` used to load the full
     /// multi-session map twice and rewrite it once per call, which made
@@ -41,7 +58,20 @@ enum SessionMessageStore {
     private static func mergeTranscripts(existing: [Message], incoming: [Message]) -> [Message] {
         guard !existing.isEmpty else { return incoming }
         guard !incoming.isEmpty else { return existing }
-        if incoming.count >= existing.count { return incoming }
+        if incoming.count >= existing.count {
+            var result = incoming
+            for index in 0..<min(existing.count, incoming.count)
+            where existing[index].role == incoming[index].role {
+                let oldText = existing[index].content
+                let newText = incoming[index].content
+                if oldText.count > newText.count && oldText.hasPrefix(newText) {
+                    // A delayed partial UI save must not shorten a completion-time
+                    // backend reconciliation with the same role/turn position.
+                    result[index] = existing[index]
+                }
+            }
+            return result
+        }
 
         var byID = Dictionary(uniqueKeysWithValues: existing.map { ($0.id, $0) })
         for message in incoming {

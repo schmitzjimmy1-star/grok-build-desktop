@@ -34,6 +34,27 @@ struct GrokLaunchOptions: Sendable {
     var mcpServers: [MCPServerConfig] = []
 }
 
+/// Credential-free receipt for the policy/capability state of the currently launched
+/// CLI process. It deliberately excludes environment variables, MCP env, allow/deny rule
+/// contents, and provider credentials.
+struct GrokLaunchReceipt: Sendable, Equatable {
+    let permissionMode: GrokPermissionMode
+    let permissionArguments: [String]
+    let sandboxProfile: String
+    let webSearchEnabled: Bool
+    let subagentsEnabled: Bool
+    let resumeSessionID: String?
+
+    init(options: GrokLaunchOptions) {
+        permissionMode = GrokPermissionMode(storedValue: options.permissionMode ?? "default")
+        permissionArguments = GrokPermissionLaunchArguments.arguments(for: options.permissionMode)
+        sandboxProfile = options.sandboxProfile?.isEmpty == false ? options.sandboxProfile! : "default"
+        webSearchEnabled = !options.disableWebSearch
+        subagentsEnabled = !options.noSubagents
+        resumeSessionID = options.resumeSessionID
+    }
+}
+
 /// Resolves grok's mutually-exclusive memory launch flag. `--no-memory` has absolute priority
 /// (matches grok's own precedence); `--experimental-memory` enables cross-session memory;
 /// `nil` leaves memory at grok's default.
@@ -89,6 +110,24 @@ struct ToolCall: @unchecked Sendable, Identifiable, Hashable {
     let kind: String
     let title: String
     let rawInput: [String: Any]?
+    let status: String?
+    let detail: String?
+
+    init(
+        id: String,
+        kind: String,
+        title: String,
+        rawInput: [String: Any]?,
+        status: String? = nil,
+        detail: String? = nil
+    ) {
+        self.id = id
+        self.kind = kind
+        self.title = title
+        self.rawInput = rawInput
+        self.status = status
+        self.detail = detail
+    }
 
     var identifier: String { id }
 
@@ -184,6 +223,9 @@ enum AcpEvent: @unchecked Sendable {
     case workflowActivity(payload: [String: Any])
     /// Background shells, monitors, subagents, and scheduler tools (richer Tasks pill).
     case backgroundActivity(payload: [String: Any])
+    /// Explicit queue barrier for one prompt turn. ChatStore acknowledges this only
+    /// after every earlier streamed event has been consumed and persisted/reconciled.
+    case turnCompleted
     case rawLine(String)
     case error(String)
 }
@@ -218,6 +260,9 @@ enum AcpLineBuffer {
 @Observable
 final class GrokProcess: @unchecked Sendable {
     private let ioLock = NSLock()
+    private let writeLock = NSLock()
+    private let turnCompletionLock = NSLock()
+    private let terminalManager = ACPClientTerminalManager()
     private(set) var state: GrokProcessState = .idle
     private(set) var currentWorkspace: Workspace?
 
@@ -245,13 +290,23 @@ final class GrokProcess: @unchecked Sendable {
     /// failure; capping prevents a chatty long-lived CLI from growing memory.
     private static let startupStderrLimit = 64 * 1024
 
+    /// Kept test-visible so capability claims cannot drift away from request handlers again.
+    static let clientCapabilities: [String: Any] = [
+        "fs": ["readTextFile": true, "writeTextFile": true],
+        "terminal": true
+    ]
+
     private var nextRequestId = 1
     private struct PendingRequest {
         let continuation: CheckedContinuation<Any?, Error>
         let timeoutTask: Task<Void, Never>?
     }
     private var pendingRequests: [Int: PendingRequest] = [:]
+    private var turnCompletionContinuation: CheckedContinuation<Void, Never>?
+    private var turnCompletionTimeoutTask: Task<Void, Never>?
+    private var didReceiveTurnCompletion = false
     private(set) var sessionId: String?
+    private(set) var launchReceipt: GrokLaunchReceipt?
     /// Set when `session/load` failed with missing on-disk data and `session/new` was used instead.
     private(set) var sessionLoadStartedFreshFallback = false
     private(set) var staleResumeSessionID: String?
@@ -275,7 +330,8 @@ final class GrokProcess: @unchecked Sendable {
 
     // MARK: - Parsing helpers (instance for access to state if needed)
 
-    private func parseToolCall(from payload: [String: Any]) -> ToolCall? {
+    /// Internal for contract tests: tool status/output must survive ACP parsing into the UI model.
+    func parseToolCall(from payload: [String: Any]) -> ToolCall? {
         // Support multiple wire shapes from grok agent stdio
         let tool = payload["toolCall"] as? [String: Any]
             ?? payload["tool_call"] as? [String: Any]
@@ -321,7 +377,54 @@ final class GrokProcess: @unchecked Sendable {
         if let cmd = tool["command"] as? String { raw["command"] = cmd }
         if let newText = tool["newText"] as? String { raw["newText"] = newText }
 
-        return ToolCall(id: tcid, kind: kind, title: title, rawInput: raw.isEmpty ? nil : raw)
+        let status = tool["status"] as? String
+        let contentDetail = Self.toolContentText(tool["content"])
+        let rawOutputDetail = Self.toolRawOutputText(tool["rawOutput"] ?? tool["raw_output"])
+
+        return ToolCall(
+            id: tcid,
+            kind: kind,
+            title: title,
+            rawInput: raw.isEmpty ? nil : raw,
+            status: status,
+            detail: rawOutputDetail ?? contentDetail
+        )
+    }
+
+    private static func toolContentText(_ value: Any?) -> String? {
+        guard let entries = value as? [Any] else { return nil }
+        let texts = entries.compactMap { entry -> String? in
+            guard let item = entry as? [String: Any] else { return nil }
+            if let text = item["text"] as? String { return text }
+            if let nested = item["content"] as? [String: Any] {
+                return nested["text"] as? String
+            }
+            if item["type"] as? String == "terminal", let id = item["terminalId"] as? String {
+                return "Terminal \(id)"
+            }
+            return nil
+        }
+        let combined = texts
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+            .joined(separator: "\n")
+        return combined.isEmpty ? nil : combined
+    }
+
+    private static func toolRawOutputText(_ value: Any?) -> String? {
+        if let text = value as? String {
+            let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+            return trimmed.isEmpty ? nil : trimmed
+        }
+        if let dictionary = value as? [String: Any] {
+            if let message = dictionary["message"] as? String, !message.isEmpty { return message }
+            if let error = dictionary["error"] as? String, !error.isEmpty { return error }
+            guard JSONSerialization.isValidJSONObject(dictionary),
+                  let data = try? JSONSerialization.data(withJSONObject: dictionary, options: [.sortedKeys]),
+                  let text = String(data: data, encoding: .utf8) else { return nil }
+            return text
+        }
+        return nil
     }
 
     private func toolKind(for toolName: String) -> String {
@@ -375,6 +478,7 @@ final class GrokProcess: @unchecked Sendable {
         state = .starting
         currentWorkspace = workspace
         sessionId = nil
+        launchReceipt = nil
         sessionLoadStartedFreshFallback = false
         staleResumeSessionID = nil
         currentModelId = nil
@@ -399,9 +503,7 @@ final class GrokProcess: @unchecked Sendable {
         ) {
             args.append(memoryFlag)
         }
-        if let mode = options.permissionMode, !mode.isEmpty, mode != "default" {
-            args += ["--permission-mode", mode]
-        }
+        args += GrokPermissionLaunchArguments.arguments(for: options.permissionMode)
         if let sandbox = options.sandboxProfile, !sandbox.isEmpty {
             args += ["--sandbox", sandbox]
         }
@@ -441,6 +543,8 @@ final class GrokProcess: @unchecked Sendable {
             state = .failed("Failed to launch: \(error.localizedDescription)")
             return
         }
+
+        launchReceipt = GrokLaunchReceipt(options: options)
 
         self.process = proc
         self.stdin = i.fileHandleForWriting
@@ -482,11 +586,24 @@ final class GrokProcess: @unchecked Sendable {
         await cleanupProcess(setIdle: true)
     }
 
+    /// Terminal teardown: stops the process AND finishes the ACP event stream so the
+    /// owning ChatStore's consume loop ends and the store/process pair can deallocate.
+    /// `stop()` deliberately leaves the stream open because the same instance restarts
+    /// after LRU eviction or a configuration reload; call this only when the session's
+    /// tab closes for good or the app is quitting.
+    func shutdown() async {
+        await cleanupProcess(setIdle: false)
+        acpEventContinuation?.finish()
+        acpEventContinuation = nil
+    }
+
     private func cleanupProcess(setIdle: Bool) async {
         readerTask?.cancel()
         readerTask = nil
         stdout?.fileHandleForReading.readabilityHandler = nil
         stderr?.fileHandleForReading.readabilityHandler = nil
+        terminalManager.releaseAll()
+        finishTurnCompletionWait()
 
         if let sid = sessionId {
             _ = writeJson(["jsonrpc": "2.0", "method": "session/cancel", "params": ["sessionId": sid]])
@@ -503,6 +620,7 @@ final class GrokProcess: @unchecked Sendable {
         stdout = nil
         stderr = nil
         sessionId = nil
+        launchReceipt = nil
         drainPendingRequests(with: NSError(
             domain: "ACP",
             code: -3,
@@ -522,15 +640,21 @@ final class GrokProcess: @unchecked Sendable {
     func send(_ text: String) async -> Bool {
         guard let sid = sessionId, state == .ready || state == .busy else { return false }
         state = .busy
+        beginTurnCompletionWait()
 
         do {
             _ = try await sendRequest(method: "session/prompt", params: [
                 "sessionId": sid,
                 "prompt": [["type": "text", "text": text]]
             ])
+            // Some grok CLI builds resolve `session/prompt` just before their final text
+            // notification. Honor the explicit completion event (with a short fallback)
+            // so ChatStore does not clear its streaming message mid-word.
+            await awaitTurnCompletion()
             state = .ready
             return true
         } catch {
+            finishTurnCompletionWait()
             state = .failed("Prompt error: \(error.localizedDescription)")
             return false
         }
@@ -548,6 +672,14 @@ final class GrokProcess: @unchecked Sendable {
             "jsonrpc": "2.0",
             "id": request.id.base as Any,
             "result": ["outcome": ["outcome": "selected", "optionId": optionId]]
+        ])
+    }
+
+    func rejectPermission(_ request: PermissionRequest, reason: String) {
+        _ = writeJson([
+            "jsonrpc": "2.0",
+            "id": request.id.base as Any,
+            "error": ["code": -32000, "message": reason]
         ])
     }
 
@@ -633,6 +765,8 @@ final class GrokProcess: @unchecked Sendable {
     // MARK: - ACP Implementation
 
     private func writeJson(_ obj: [String: Any]) -> Bool {
+        writeLock.lock()
+        defer { writeLock.unlock() }
         guard let h = stdin else { return false }
         let data: Data
         if #available(macOS 12.0, *) {
@@ -715,6 +849,65 @@ final class GrokProcess: @unchecked Sendable {
         ))
     }
 
+    private func beginTurnCompletionWait() {
+        turnCompletionLock.lock()
+        let staleContinuation = turnCompletionContinuation
+        let staleTimeout = turnCompletionTimeoutTask
+        turnCompletionContinuation = nil
+        turnCompletionTimeoutTask = nil
+        didReceiveTurnCompletion = false
+        turnCompletionLock.unlock()
+        staleTimeout?.cancel()
+        staleContinuation?.resume()
+    }
+
+    private func awaitTurnCompletion() async {
+        await withCheckedContinuation { continuation in
+            turnCompletionLock.lock()
+            if didReceiveTurnCompletion {
+                didReceiveTurnCompletion = false
+                turnCompletionLock.unlock()
+                continuation.resume()
+                return
+            }
+            turnCompletionContinuation = continuation
+            turnCompletionTimeoutTask = Task { [weak self] in
+                try? await Task.sleep(for: .seconds(2))
+                // Compatibility fallback for older CLIs that resolve session/prompt
+                // without emitting turn_completed. Still cross the same ChatStore event
+                // queue barrier; never resume `send` directly from this timer.
+                self?.acpEventContinuation?.yield(.turnCompleted)
+            }
+            turnCompletionLock.unlock()
+        }
+    }
+
+    /// Called by ChatStore after it consumes the `.turnCompleted` event. This keeps
+    /// prompt completion serialized behind all earlier text/tool events.
+    func acknowledgeTurnCompleted() {
+        turnCompletionLock.lock()
+        didReceiveTurnCompletion = true
+        let continuation = turnCompletionContinuation
+        let timeout = turnCompletionTimeoutTask
+        turnCompletionContinuation = nil
+        turnCompletionTimeoutTask = nil
+        turnCompletionLock.unlock()
+        timeout?.cancel()
+        continuation?.resume()
+    }
+
+    private func finishTurnCompletionWait() {
+        turnCompletionLock.lock()
+        let continuation = turnCompletionContinuation
+        let timeout = turnCompletionTimeoutTask
+        turnCompletionContinuation = nil
+        turnCompletionTimeoutTask = nil
+        didReceiveTurnCompletion = false
+        turnCompletionLock.unlock()
+        timeout?.cancel()
+        continuation?.resume()
+    }
+
     private func drainPendingRequests(with error: Error) {
         ioLock.lock()
         let pending = Array(pendingRequests.values)
@@ -735,10 +928,7 @@ final class GrokProcess: @unchecked Sendable {
     private func initializeACP() async throws {
         let res = try await sendRequestWithTimeout(method: "initialize", params: [
             "protocolVersion": 1,
-            "clientCapabilities": [
-                "fs": ["readTextFile": true, "writeTextFile": true],
-                "terminal": true
-            ]
+            "clientCapabilities": Self.clientCapabilities
         ]) as? [String: Any]
 
         // Parse real models from modelState (do not make up)
@@ -862,10 +1052,19 @@ final class GrokProcess: @unchecked Sendable {
             let params = j["params"] as? [String: Any] ?? [:]
             let rid = j["id"]
 
-            if method == "session/update" {
+            if method == "session/update" || method == "_x.ai/session/update" {
                 let update = params["update"] as? [String: Any]
                 if let total = totalTokens(from: params) {
                     acpEventContinuation?.yield(.contextUsage(totalTokens: total))
+                }
+                if update?["sessionUpdate"] as? String == "turn_completed" {
+                    // Replay completion belongs to the historical load stream, not the
+                    // live turn currently owned by ChatStore.
+                    guard !GrokSessionReplay.isReplaySessionUpdate(params: params, update: update) else {
+                        return
+                    }
+                    acpEventContinuation?.yield(.turnCompleted)
+                    return
                 }
                 if !GrokSessionReplay.isReplaySessionUpdate(params: params, update: update),
                    let u = update {
@@ -917,6 +1116,16 @@ final class GrokProcess: @unchecked Sendable {
                 if let p = params["path"] as? String, let c = params["content"] as? String {
                     handleFsWrite(rid: rid, path: p, content: c)
                 }
+            case "terminal/create":
+                handleTerminalCreate(rid: rid, params: params)
+            case "terminal/output":
+                handleTerminalOutput(rid: rid, params: params)
+            case "terminal/wait_for_exit":
+                handleTerminalWaitForExit(rid: rid, params: params)
+            case "terminal/kill":
+                handleTerminalKill(rid: rid, params: params)
+            case "terminal/release":
+                handleTerminalRelease(rid: rid, params: params)
             default:
                 if let r = rid { _ = writeJson(["jsonrpc": "2.0", "id": r, "result": [:]]) }
             }
@@ -1037,6 +1246,15 @@ final class GrokProcess: @unchecked Sendable {
         _ = writeJson(["jsonrpc": "2.0", "id": id, "result": result])
     }
 
+    private func respond(rid: Any?, error: Error, code: Int = -32001) {
+        guard let id = rid else { return }
+        _ = writeJson([
+            "jsonrpc": "2.0",
+            "id": id,
+            "error": ["code": code, "message": error.localizedDescription]
+        ])
+    }
+
     private func handleFsRead(rid: Any?, path: String) {
         do {
             let c = try String(contentsOf: resolvedProjectURL(path), encoding: .utf8)
@@ -1059,6 +1277,85 @@ final class GrokProcess: @unchecked Sendable {
         } catch {
             _ = writeJson(["jsonrpc": "2.0", "id": rid as Any, "error": ["code": -32001, "message": error.localizedDescription]])
         }
+    }
+
+    private func handleTerminalCreate(rid: Any?, params: [String: Any]) {
+        do {
+            guard let command = params["command"] as? String else {
+                throw ACPClientTerminalManager.TerminalError.invalidCommand
+            }
+            let arguments = params["args"] as? [String] ?? []
+            let environment = (params["env"] as? [[String: Any]] ?? []).reduce(into: [String: String]()) {
+                result, entry in
+                if let name = entry["name"] as? String,
+                   let value = entry["value"] as? String,
+                   !name.isEmpty {
+                    result[name] = value
+                }
+            }
+            let requestedLimit = (params["outputByteLimit"] as? NSNumber)?.intValue
+            let terminalID = try terminalManager.create(
+                command: command,
+                arguments: arguments,
+                environment: environment,
+                workingDirectory: params["cwd"] as? String ?? currentWorkspace?.path.path,
+                outputByteLimit: requestedLimit
+            )
+            respond(rid: rid, result: ["terminalId": terminalID])
+        } catch {
+            respond(rid: rid, error: error)
+        }
+    }
+
+    private func handleTerminalOutput(rid: Any?, params: [String: Any]) {
+        do {
+            let terminalID = try terminalID(from: params)
+            respond(rid: rid, result: try terminalManager.snapshot(terminalID: terminalID).jsonObject)
+        } catch {
+            respond(rid: rid, error: error)
+        }
+    }
+
+    private func handleTerminalWaitForExit(rid: Any?, params: [String: Any]) {
+        do {
+            let terminalID = try terminalID(from: params)
+            Task { [weak self] in
+                guard let self else { return }
+                do {
+                    let status = try await self.terminalManager.waitForExit(terminalID: terminalID)
+                    self.respond(rid: rid, result: status.jsonObject)
+                } catch {
+                    self.respond(rid: rid, error: error)
+                }
+            }
+        } catch {
+            respond(rid: rid, error: error)
+        }
+    }
+
+    private func handleTerminalKill(rid: Any?, params: [String: Any]) {
+        do {
+            try terminalManager.kill(terminalID: try terminalID(from: params))
+            respond(rid: rid)
+        } catch {
+            respond(rid: rid, error: error)
+        }
+    }
+
+    private func handleTerminalRelease(rid: Any?, params: [String: Any]) {
+        do {
+            try terminalManager.release(terminalID: try terminalID(from: params))
+            respond(rid: rid)
+        } catch {
+            respond(rid: rid, error: error)
+        }
+    }
+
+    private func terminalID(from params: [String: Any]) throws -> String {
+        guard let terminalID = params["terminalId"] as? String, !terminalID.isEmpty else {
+            throw ACPClientTerminalManager.TerminalError.unknownTerminal("missing terminalId")
+        }
+        return terminalID
     }
 
     private func isPlanFileWrite(_ path: String) -> Bool {
@@ -1084,7 +1381,10 @@ final class GrokProcess: @unchecked Sendable {
 
     // MARK: - Utils
 
+    static var cliOverrideForTests: URL?
+
     private static func locateGrokCLI() -> URL? {
+        if let cliOverrideForTests { return cliOverrideForTests }
         if let p = ProcessInfo.processInfo.environment["GROK_CLI_PATH"], !p.isEmpty {
             let u = URL(fileURLWithPath: (p as NSString).expandingTildeInPath)
             if FileManager.default.isExecutableFile(atPath: u.path) { return u }

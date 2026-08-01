@@ -5,13 +5,14 @@ import XCTest
 /// Tests the helper's contract directly — the executable target itself cannot
 /// be imported, which is why this logic lives in GrokBuildComputerUseCore.
 final class ComputerUseCoreTests: XCTestCase {
-    func testToolTableExposesAllTenTools() {
+    func testToolTableExposesAllElevenTools() {
         XCTAssertEqual(computerUseTools.map(\.name), [
             "computer_snapshot",
             "computer_screenshot",
             "computer_click",
             "computer_type",
             "computer_press",
+            "computer_close_app",
             "computer_get",
             "computer_wait",
             "computer_list_apps",
@@ -91,6 +92,12 @@ final class ComputerUseCoreTests: XCTestCase {
             ["type", "@e5", "hello"]
         )
         XCTAssertEqual(try buildPressArgs(["combo": "cmd+s"]), ["press", "cmd+s"])
+        XCTAssertEqual(try buildCloseAppArgs(["app": "Calculator"]), ["close-app", "Calculator"])
+        XCTAssertEqual(
+            try buildCloseAppArgs(["app": "Calculator", "force": true]),
+            ["close-app", "Calculator", "--force"]
+        )
+        XCTAssertThrowsError(try buildCloseAppArgs(["app": "  "]))
         XCTAssertEqual(
             try buildGetArgs(["ref": "@e3", "property": "value"]),
             ["get", "@e3", "--property", "value"]
@@ -122,6 +129,41 @@ final class ComputerUseCoreTests: XCTestCase {
         XCTAssertEqual(mappedError(from: "", fallback: 3), "agent-desktop exited with 3")
         XCTAssertNil(mappedStructuredFailure(from: #"{"ok":true,"data":{}}"#))
         XCTAssertNotNil(mappedStructuredFailure(from: #"{"ok":false,"error":{"message":"nope"}}"#))
+    }
+
+    func testWindowSelectorRejectsHiddenAndHelperWindowsForCalculator() {
+        let json = #"""
+        {"ok":true,"data":{"windows":[
+          {"id":"w-9169","title":"Calculator","visible":false,"bounds":{"width":1440,"height":30}},
+          {"id":"w-9168","title":"Calculator","visible":false,"bounds":{"width":1440,"height":30}},
+          {"id":"w-9167","title":"Calculator","visible":false,"bounds":{"width":1440,"height":30}},
+          {"id":"w-9166","title":"Calculator","visible":false,"bounds":{"width":1440,"height":30}},
+          {"id":"w-9164","title":"Window","visible":true,"bounds":{"width":66,"height":20}},
+          {"id":"w-9162","title":"Calculator","visible":true,"bounds":{"width":230,"height":408}}
+        ]}}
+        """#
+
+        XCTAssertEqual(
+            ComputerWindowSelector.preferredWindowID(fromJSON: json, appName: "Calculator"),
+            "w-9162"
+        )
+    }
+
+    func testWindowSelectorPrefersFocusedThenAreaAndHasStableTieBreak() {
+        let focused = #"{"ok":true,"data":{"windows":[{"id":"large","title":"Editor","visible":true,"bounds":{"width":900,"height":700}},{"id":"focused","title":"Window","visible":true,"is_focused":true,"bounds":{"width":200,"height":100}}]}}"#
+        XCTAssertEqual(
+            ComputerWindowSelector.preferredWindowID(fromJSON: focused, appName: "Editor"),
+            "focused"
+        )
+
+        let tied = #"{"ok":true,"data":{"windows":[{"id":"b","title":"Editor","visible":true,"bounds":{"width":100,"height":100}},{"id":"a","title":"Editor","visible":true,"bounds":{"width":100,"height":100}}]}}"#
+        XCTAssertEqual(
+            ComputerWindowSelector.preferredWindowID(fromJSON: tied, appName: "Editor"),
+            "a"
+        )
+
+        let hidden = #"{"ok":true,"data":{"windows":[{"id":"zero","visible":true,"bounds":{"width":0,"height":20}},{"id":"hidden","visible":false,"bounds":{"width":200,"height":200}}]}}"#
+        XCTAssertNil(ComputerWindowSelector.preferredWindowID(fromJSON: hidden, appName: "Editor"))
     }
 }
 

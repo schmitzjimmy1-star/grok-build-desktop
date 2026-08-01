@@ -98,6 +98,7 @@ struct SettingsView: View {
     @Bindable var store: ChatStore
     @Binding var selectedTab: SettingsTab
     var onBackToChat: () -> Void = {}
+    var onConfigurationChanged: (ConfigurationChange) -> Void = { _ in }
 
     /// Tabs opened at least once stay mounted so pane `@State` / `.task` survive revisits.
     @State private var loadedTabs: Set<SettingsTab> = []
@@ -110,8 +111,9 @@ struct SettingsView: View {
                 } label: {
                     Label("Session", systemImage: "chevron.left")
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(GrokChromeButtonStyle())
                 .foregroundStyle(.secondary)
+                .keyboardShortcut(.cancelAction)
 
                 Text("Settings")
                     .font(AppTheme.Typography.heading)
@@ -137,6 +139,7 @@ struct SettingsView: View {
         .onChange(of: selectedTab) { _, tab in
             SettingsTabKeepAlive.recordVisit(tab, loaded: &loadedTabs)
         }
+        .onExitCommand(perform: onBackToChat)
     }
 
     private var settingsSidebar: some View {
@@ -220,9 +223,7 @@ struct SettingsView: View {
             .settingsPaneColumn()
 
         case .models:
-            CustomModelsSettingsPane {
-                Task { await store.reloadConfiguration() }
-            }
+            CustomModelsSettingsPane(onConfigurationChanged: onConfigurationChanged)
 
         case .permissions:
             PermissionsSettingsPane {
@@ -1289,6 +1290,8 @@ private struct PluginsSettingsPane: View {
     }
 
     private func perform(_ operation: @escaping () async throws -> Void) async {
+        // Rapid re-taps must not stack concurrent CLI mutations.
+        guard !isLoading else { return }
         isLoading = true
         errorMessage = nil
         do {
@@ -1400,7 +1403,9 @@ private struct HooksSettingsPane: View {
                 .font(.caption)
                 .foregroundStyle(.secondary)
         }
-        .task { await refresh() }
+        // Keyed to the workspace: a kept-alive pane must refetch after a project switch
+        // instead of showing the old workspace's data until a manual Refresh.
+        .task(id: workspace?.path) { await refresh() }
     }
 
     private func refresh() async {
@@ -1684,6 +1689,8 @@ private struct MarketplaceSettingsPane: View {
     }
 
     private func perform(_ operation: @escaping () async throws -> Void) async {
+        // Rapid re-taps must not stack concurrent CLI mutations.
+        guard !isLoading else { return }
         isLoading = true
         errorMessage = nil
         do {
@@ -1791,7 +1798,7 @@ private struct SkillsSettingsPane: View {
                 .font(.caption)
                 .foregroundStyle(.secondary)
         }
-        .task { await refresh() }
+        .task(id: workspace?.path) { await refresh() }
     }
 
     private func refresh() async {
@@ -1857,7 +1864,7 @@ private struct AgentsSettingsPane: View {
                     .textSelection(.enabled)
             }
         }
-        .task { await refresh() }
+        .task(id: workspace?.path) { await refresh() }
     }
 
     private var discoveredAgentsSection: some View {
@@ -2921,26 +2928,31 @@ private struct ComputerUseSettingsPane: View {
 }
 
 private struct CustomModelsSettingsPane: View {
-    let onConfigurationChanged: () -> Void
+    let onConfigurationChanged: (ConfigurationChange) -> Void
 
-    @State private var providers: [Provider] = []
-    @State private var models: [CustomModel] = []
-    @State private var defaultModelID = ""
+    @State private var viewModel = CustomModelsSettingsViewModel()
     @State private var editingID: String?
     @State private var draft = CustomModel(id: "", model: "", baseURL: "")
     @State private var revealKey = false
+    @State private var allowUnverifiedCustomModel = false
     @State private var editingProviderID: String?
     @State private var providerDraft = Provider(id: "", name: "", baseURL: "")
     @State private var revealProviderKey = false
-    @State private var errorMessage: String?
-    @State private var statusMessage: String?
+    @State private var modelFilterText = ""
 
-    // Fetched-model state, keyed by the provider id the models were fetched for.
-    @State private var fetchedModels: [String: [FetchedModel]] = [:]
-    @State private var fetchingProviderID: String?
-    @State private var fetchErrorProviderID: String?
-    @State private var fetchErrorMessage: String?
+    private enum ProviderEditorField: Hashable { case id, name, url, key }
+    @FocusState private var providerEditorFocus: ProviderEditorField?
 
+    /// See the comment at the provider-editor fields: present only while the field is
+    /// unfocused, so the first click lands here and forcibly moves focus.
+    @ViewBuilder
+    private func focusClickCatcher(for field: ProviderEditorField) -> some View {
+        if providerEditorFocus != field {
+            Color.clear
+                .contentShape(Rectangle())
+                .onTapGesture { providerEditorFocus = field }
+        }
+    }
     // Drives programmatic scrolling to an editor when a card opens it.
     @State private var scrollTarget: String?
     // True while the provider editor holds a not-yet-saved template (so we lock the id and
@@ -2957,6 +2969,55 @@ private struct CustomModelsSettingsPane: View {
     @State private var showProviderRemovalConfirmation = false
     @State private var providerPendingRemoval: Provider?
 
+    private var providers: [Provider] {
+        get { viewModel.providers }
+        nonmutating set { viewModel.providers = newValue }
+    }
+    private var models: [CustomModel] {
+        get { viewModel.models }
+        nonmutating set { viewModel.models = newValue }
+    }
+    private var defaultModelID: String {
+        get { viewModel.defaultModelID }
+        nonmutating set { viewModel.defaultModelID = newValue }
+    }
+    private var persistedDefaultModelID: String {
+        get { viewModel.persistedDefaultModelID }
+        nonmutating set { viewModel.persistedDefaultModelID = newValue }
+    }
+    private var errorMessage: String? {
+        get { viewModel.errorMessage }
+        nonmutating set { viewModel.errorMessage = newValue }
+    }
+    private var statusMessage: String? {
+        get { viewModel.statusMessage }
+        nonmutating set { viewModel.statusMessage = newValue }
+    }
+    private var migrationIssues: [ProviderCredentialMigrationIssue] {
+        get { viewModel.migrationIssues }
+        nonmutating set { viewModel.migrationIssues = newValue }
+    }
+    private var validationResults: [String: ProviderValidationResult] {
+        get { viewModel.validationResults }
+        nonmutating set { viewModel.validationResults = newValue }
+    }
+    private var fetchedModels: [String: [FetchedModel]] {
+        get { viewModel.fetchedModels }
+        nonmutating set { viewModel.fetchedModels = newValue }
+    }
+    private var fetchingProviderID: String? {
+        get { viewModel.fetchingProviderID }
+        nonmutating set { viewModel.fetchingProviderID = newValue }
+    }
+    private var fetchErrorProviderID: String? {
+        get { viewModel.fetchErrorProviderID }
+        nonmutating set { viewModel.fetchErrorProviderID = newValue }
+    }
+    private var fetchErrorMessage: String? {
+        get { viewModel.fetchErrorMessage }
+        nonmutating set { viewModel.fetchErrorMessage = newValue }
+    }
+
     private struct DefaultModelOption: Identifiable {
         var id: String
         var label: String
@@ -2968,11 +3029,12 @@ private struct CustomModelsSettingsPane: View {
         var id: Int { value }
     }
 
-    private let builtInDefaultModels: [DefaultModelOption] = [
-        DefaultModelOption(id: "", label: "No default override"),
-        DefaultModelOption(id: "grok-composer-2.5-fast", label: "Composer 2.5 Fast"),
-        DefaultModelOption(id: "grok-build", label: "Grok Build")
-    ]
+    @State private var builtInModels = GrokModelCatalog.cachedOrFallback()
+
+    private var builtInDefaultModels: [DefaultModelOption] {
+        [DefaultModelOption(id: "", label: "No default override")]
+            + builtInModels.map { DefaultModelOption(id: $0.id, label: $0.name) }
+    }
 
     private let contextTokenPresets: [ContextTokenPreset] = [
         ContextTokenPreset(label: "128K", value: 128_000),
@@ -2987,6 +3049,7 @@ private struct CustomModelsSettingsPane: View {
     /// finishes or cancels the current edit before starting another action.
     private var isAnyEditorOpen: Bool { showingProviderEditor || showingModelEditor }
     private var isAtModelLimit: Bool { models.count >= CustomModelStore.maxModels }
+    private var isDefaultModelDirty: Bool { defaultModelID != persistedDefaultModelID }
 
     private var defaultModelOptions: [DefaultModelOption] {
         var options = builtInDefaultModels
@@ -3040,6 +3103,9 @@ private struct CustomModelsSettingsPane: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 18) {
                     header
+                    if !migrationIssues.isEmpty {
+                        migrationIssueCard
+                    }
                     defaultModelCard
                     providerTemplatesCard
                     if showingProviderEditor {
@@ -3079,7 +3145,10 @@ private struct CustomModelsSettingsPane: View {
                 scrollTarget = nil
             }
         }
-        .task { reload() }
+        .task {
+            await reload()
+            builtInModels = await GrokModelCatalog.shared.models()
+        }
         .alert("Remove Model?", isPresented: $showModelRemovalConfirmation) {
             Button("Cancel", role: .cancel) {
                 modelPendingRemoval = nil
@@ -3124,6 +3193,19 @@ private struct CustomModelsSettingsPane: View {
         )
     }
 
+    private var migrationIssueCard: some View {
+        settingsCard(title: "Credential migration needs attention", systemImage: "exclamationmark.triangle") {
+            VStack(alignment: .leading, spacing: 6) {
+                ForEach(migrationIssues) { issue in
+                    Text("\(issue.providerID): \(issue.message)")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .textSelection(.enabled)
+                }
+            }
+        }
+    }
+
     private var defaultModelCard: some View {
         settingsCard(title: "Default Model", systemImage: "checkmark.circle") {
             VStack(alignment: .leading, spacing: 12) {
@@ -3132,7 +3214,10 @@ private struct CustomModelsSettingsPane: View {
                     .foregroundStyle(.secondary)
 
                 HStack(spacing: 14) {
-                    Picker("Default model", selection: $defaultModelID) {
+                    Picker("Default model", selection: Binding(
+                        get: { defaultModelID },
+                        set: { defaultModelID = $0 }
+                    )) {
                         ForEach(defaultModelOptions, id: \.id) { option in
                             Text(option.label).tag(option.id)
                         }
@@ -3143,10 +3228,11 @@ private struct CustomModelsSettingsPane: View {
                     Spacer()
 
                     Button("Save Default") {
-                        persist()
+                        persist(change: .defaultModel)
                     }
                     .buttonStyle(.borderedProminent)
                     .controlSize(.small)
+                    .disabled(!isDefaultModelDirty)
                 }
             }
         }
@@ -3285,6 +3371,10 @@ private struct CustomModelsSettingsPane: View {
                     Text(provider.name)
                         .font(.headline)
                     providerKeyBadge(for: provider)
+                    if provider.allowInsecureHTTP {
+                        badge("Insecure HTTP", systemImage: "lock.open")
+                    }
+                    providerValidationBadge(for: provider)
                     let count = models.filter { $0.providerID == provider.id }.count
                     if count > 0 {
                         Text("\(count) model\(count == 1 ? "" : "s")")
@@ -3312,6 +3402,14 @@ private struct CustomModelsSettingsPane: View {
                     Text(message)
                         .font(.caption2)
                         .foregroundStyle(.secondary)
+                } else if let result = validationResults[provider.id] {
+                    HStack(spacing: 6) {
+                        Text(result.message)
+                        Text("·")
+                        Text(result.checkedAt, style: .relative)
+                    }
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
                 }
             }
             Spacer()
@@ -3339,6 +3437,7 @@ private struct CustomModelsSettingsPane: View {
                 let canFetchProvider = canFetch(
                     baseURL: provider.baseURL,
                     apiKey: provider.apiKey,
+                    authScheme: provider.authScheme,
                     providerID: provider.id
                 )
                 let highlightFetch = !hasFetchedModels(for: provider) && canFetchProvider
@@ -3350,10 +3449,10 @@ private struct CustomModelsSettingsPane: View {
                             if fetchingProviderID == provider.id {
                                 HStack(spacing: 5) {
                                     ProgressView().controlSize(.small)
-                                    Text("Fetching…")
+                                    Text("Checking…")
                                 }
                             } else {
-                                Label("Fetch models", systemImage: "arrow.down.circle.fill")
+                                Label("Test connection", systemImage: "checkmark.circle.fill")
                             }
                         }
                         .controlSize(.small)
@@ -3365,10 +3464,10 @@ private struct CustomModelsSettingsPane: View {
                             if fetchingProviderID == provider.id {
                                 HStack(spacing: 5) {
                                     ProgressView().controlSize(.small)
-                                    Text("Fetching…")
+                                    Text("Checking…")
                                 }
                             } else {
-                                Label("Fetch models", systemImage: "arrow.down.circle")
+                                Label("Test connection", systemImage: "checkmark.circle")
                             }
                         }
                         .controlSize(.small)
@@ -3380,6 +3479,15 @@ private struct CustomModelsSettingsPane: View {
                     || !canFetchProvider
                 )
                 .help(fetchHelp(for: provider, highlight: highlightFetch))
+
+                if let result = validationResults[provider.id] {
+                    Button("Copy diagnostics") {
+                        copyToPasteboard(providerDiagnostics(provider: provider, result: result))
+                    }
+                    .buttonStyle(.link)
+                    .font(.caption2)
+                    .help("Copy endpoint, auth mode, and redacted connection status.")
+                }
             }
         }
         .padding(.vertical, 4)
@@ -3396,6 +3504,20 @@ private struct CustomModelsSettingsPane: View {
             : "Refresh the provider's model list."
     }
 
+    private func providerDiagnostics(provider: Provider, result: ProviderValidationResult) -> String {
+        let missing = result.missingModelIDs.isEmpty ? "none" : result.missingModelIDs.joined(separator: ", ")
+        return """
+        Provider: \(provider.name) (\(provider.id))
+        Endpoint: \(ProviderEndpointPolicy.redactedDisplay(urlString: provider.baseURL))
+        Authentication: \(provider.authScheme.rawValue)
+        Credential present: \(provider.hasInlineKey ? "yes" : "no")
+        Status: \(result.status.rawValue)
+        Models returned: \(result.models.count)
+        Missing configured models: \(missing)
+        Checked: \(result.checkedAt.formatted(.iso8601))
+        """
+    }
+
     @ViewBuilder
     private func providerKeyBadge(for provider: Provider) -> some View {
         if provider.hasInlineKey {
@@ -3404,6 +3526,36 @@ private struct CustomModelsSettingsPane: View {
             badge("Local", systemImage: "desktopcomputer")
         } else {
             badge("No key", systemImage: "exclamationmark.triangle")
+        }
+    }
+
+    @ViewBuilder
+    private func providerValidationBadge(for provider: Provider) -> some View {
+        if fetchingProviderID == provider.id {
+            badge("Checking", systemImage: "arrow.triangle.2.circlepath")
+        } else if let result = validationResults[provider.id] {
+            switch result.status {
+            case .connected:
+                badge("Connected", systemImage: "checkmark.circle.fill")
+            case .modelUnavailable:
+                badge("Model missing", systemImage: "exclamationmark.triangle.fill")
+            case .unauthorized:
+                badge("Unauthorized", systemImage: "key.slash")
+            case .rateLimited:
+                badge("Rate limited", systemImage: "clock")
+            case .endpointMissing:
+                badge("Endpoint missing", systemImage: "link.badge.plus")
+            case .providerUnavailable, .timeoutOrOffline:
+                badge("Offline", systemImage: "wifi.slash")
+            case .incompatibleResponse, .emptyCatalog:
+                badge("Catalog issue", systemImage: "exclamationmark.circle")
+            case .insecureEndpoint:
+                badge("Insecure URL", systemImage: "lock.slash")
+            case .redirectBlocked:
+                badge("Redirect blocked", systemImage: "arrow.uturn.right.circle")
+            }
+        } else {
+            badge("Not tested", systemImage: "questionmark.circle")
         }
     }
 
@@ -3435,20 +3587,60 @@ private struct CustomModelsSettingsPane: View {
                     .background(RoundedRectangle(cornerRadius: AppTheme.Radius.small).fill(AppTheme.Palette.glassTint))
                 }
 
+                // Pointer clicks between these fields do not reliably move AppKit's
+                // first responder: the draft binds through the view model's computed
+                // properties and the pane re-renders per keystroke, and NSTextField
+                // swallows mousedowns before SwiftUI gestures see them (stable ids and
+                // tap gestures both failed in live testing). The focusClickCatcher
+                // overlay exists only while its field is unfocused — it takes the
+                // first click, drives FocusState, then vanishes so native editing and
+                // selection work untouched.
                 settingRow("Provider id") {
                     TextField("openai", text: $providerDraft.id)
                         .textFieldStyle(.roundedBorder)
                         .disabled(isEditingProvider || providerDraftFromPreset)
                         .frame(maxWidth: 280)
+                        .id("provider-editor-id")
+                        .focused($providerEditorFocus, equals: .id)
+                        .overlay(focusClickCatcher(for: .id))
                 }
                 settingRow("Name") {
                     TextField("ChatGPT (OpenAI)", text: $providerDraft.name)
                         .textFieldStyle(.roundedBorder)
                         .frame(maxWidth: 280)
+                        .id("provider-editor-name")
+                        .focused($providerEditorFocus, equals: .name)
+                        .overlay(focusClickCatcher(for: .name))
                 }
                 settingRow("Base URL") {
                     TextField("https://api.openai.com/v1", text: $providerDraft.baseURL)
                         .textFieldStyle(.roundedBorder)
+                        .id("provider-editor-url")
+                        .focused($providerEditorFocus, equals: .url)
+                        .overlay(focusClickCatcher(for: .url))
+                }
+                if ProviderEndpointPolicy.locality(ofBaseURL: providerDraft.baseURL) == .remote,
+                   !ProviderEndpointPolicy.isHTTPS(providerDraft.baseURL) {
+                    settingRow("Insecure HTTP") {
+                        VStack(alignment: .leading, spacing: 4) {
+                            Toggle("Allow http:// for this trusted LAN endpoint", isOn: $providerDraft.allowInsecureHTTP)
+                                .toggleStyle(.checkbox)
+                            Text("Requests — including any API key — travel unencrypted. Only for model servers on hardware you control.")
+                                .font(.caption2)
+                                .foregroundStyle(.orange)
+                        }
+                    }
+                }
+                settingRow("Authentication") {
+                    Picker("Authentication", selection: $providerDraft.authScheme) {
+                        Text("Bearer token").tag(ProviderAuthScheme.bearer)
+                        Text("API key header").tag(ProviderAuthScheme.apiKeyHeader)
+                        Text("Bearer + API key").tag(ProviderAuthScheme.bearerAndAPIKey)
+                        Text("None / local").tag(ProviderAuthScheme.none)
+                    }
+                    .labelsHidden()
+                    .frame(maxWidth: 280)
+                    .disabled(providerDraftFromPreset)
                 }
                 settingRow("API key") {
                     HStack(spacing: 8) {
@@ -3461,6 +3653,8 @@ private struct CustomModelsSettingsPane: View {
                         }
                         .textFieldStyle(.roundedBorder)
                         .frame(maxWidth: 280)
+                        .focused($providerEditorFocus, equals: .key)
+                        .overlay(focusClickCatcher(for: .key))
                         Button {
                             revealProviderKey.toggle()
                         } label: {
@@ -3470,7 +3664,7 @@ private struct CustomModelsSettingsPane: View {
                     }
                 }
 
-                Text("The API key is shared by every model using this provider and is written into each model's config.toml table (plain text on disk). Local/open servers don't need a key.")
+                Text("The API key is stored in macOS Keychain. GrokBuild projects only the CLI-required copy into the owner-only ~/.grok/config.toml file. Local/open servers don't need a key.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
 
@@ -3506,6 +3700,7 @@ private struct CustomModelsSettingsPane: View {
         let canFetchNow = canFetch(
             baseURL: providerDraft.baseURL,
             apiKey: providerDraft.apiKey,
+            authScheme: providerDraft.authScheme,
             providerID: providerDraft.id
         )
         let usesLiveCatalog = providerDraft.supportsLiveCatalogRefresh
@@ -3524,7 +3719,7 @@ private struct CustomModelsSettingsPane: View {
                             Text("Fetching…")
                         }
                     } else {
-                        Label("Fetch models", systemImage: "arrow.down.circle")
+                        Label("Test connection", systemImage: "checkmark.circle")
                     }
                 }
                 .controlSize(.small)
@@ -3636,7 +3831,7 @@ private struct CustomModelsSettingsPane: View {
     }
 
     private func modelMetadataSummary(_ model: CustomModel) -> String {
-        var pieces: [String] = []
+        var pieces: [String] = [model.apiBackend.displayName]
         if let tokens = model.contextTokens {
             pieces.append("\(compactTokenCount(tokens)) context")
         } else {
@@ -3675,7 +3870,7 @@ private struct CustomModelsSettingsPane: View {
             VStack(alignment: .leading, spacing: 12) {
                 settingRow("Provider") {
                     Picker("", selection: providerSelection) {
-                        Text("None (enter endpoint manually)").tag("")
+                        Text("None (advanced manual endpoint)").tag("")
                         ForEach(providers) { provider in
                             Text(provider.name).tag(provider.id)
                         }
@@ -3694,7 +3889,7 @@ private struct CustomModelsSettingsPane: View {
                                 if fetchingProviderID == provider.id {
                                     HStack(spacing: 5) {
                                         ProgressView().controlSize(.small)
-                                        Text("Fetching…")
+                                        Text("Checking…")
                                     }
                                 } else {
                                     Label("Fetch models from \(provider.name)", systemImage: "arrow.down.circle")
@@ -3706,6 +3901,7 @@ private struct CustomModelsSettingsPane: View {
                                 || !canFetch(
                                     baseURL: provider.baseURL,
                                     apiKey: provider.apiKey,
+                                    authScheme: provider.authScheme,
                                     providerID: provider.id
                                 )
                             )
@@ -3722,23 +3918,45 @@ private struct CustomModelsSettingsPane: View {
                     }
 
                     settingRow("Choose model") {
-                        HStack(spacing: 8) {
-                            Picker("", selection: fetchedModelSelection) {
-                                Text(modelPickerPlaceholder(for: provider)).tag("")
-                                ForEach(selectableModelsForDraft) { fetched in
-                                    Text(modelPickerLabel(fetched)).tag(fetched.id)
+                        VStack(alignment: .leading, spacing: 6) {
+                            // Large catalogs (OpenRouter returns ~300+) are unusable as a
+                            // bare dropdown; a filter field narrows it as you type.
+                            if selectableModelsForDraft.count > 12 {
+                                TextField(
+                                    "Filter \(selectableModelsForDraft.count) models (e.g. anthropic/)…",
+                                    text: $modelFilterText
+                                )
+                                .textFieldStyle(.roundedBorder)
+                                .frame(maxWidth: 280)
+                            }
+                            HStack(spacing: 8) {
+                                Picker("", selection: fetchedModelSelection) {
+                                    Text(modelPickerPlaceholder(for: provider)).tag("")
+                                    ForEach(filteredSelectableModels) { fetched in
+                                        Text(modelPickerLabel(fetched)).tag(fetched.id)
+                                    }
+                                }
+                                .labelsHidden()
+                                .frame(maxWidth: 280)
+                                .disabled(selectableModelsForDraft.isEmpty)
+                                if !selectableModelsForDraft.isEmpty {
+                                    Text(filteredCountLabel)
+                                        .font(.caption2)
+                                        .foregroundStyle(.secondary)
                                 }
                             }
-                            .labelsHidden()
-                            .frame(maxWidth: 280)
-                            .disabled(selectableModelsForDraft.isEmpty)
-                            if !selectableModelsForDraft.isEmpty {
-                                Text("\(selectableModelsForDraft.count)")
-                                    .font(.caption2)
-                                    .foregroundStyle(.secondary)
-                            }
                         }
+                        .onChange(of: draft.providerID) { _, _ in modelFilterText = "" }
                     }
+                }
+
+                if let provider = draftProvider,
+                   ProviderPreset.matching(provider: provider) == nil {
+                    Toggle("Advanced: allow an unverified model ID", isOn: $allowUnverifiedCustomModel)
+                        .font(.caption)
+                    Text("Use this only when a custom or local provider does not expose a complete model catalog.")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
                 }
 
                 settingRow("Model id") {
@@ -3760,6 +3978,15 @@ private struct CustomModelsSettingsPane: View {
                     TextField(displayNamePlaceholder, text: $draft.name)
                         .textFieldStyle(.roundedBorder)
                         .frame(maxWidth: 280)
+                }
+                settingRow("API protocol") {
+                    Picker("API protocol", selection: $draft.apiBackend) {
+                        ForEach(ModelAPIBackend.allCases, id: \.self) { backend in
+                            Text(backend.displayName).tag(backend)
+                        }
+                    }
+                    .labelsHidden()
+                    .frame(maxWidth: 280)
                 }
 
                 if draft.providerID == nil {
@@ -3788,7 +4015,7 @@ private struct CustomModelsSettingsPane: View {
                             .help(revealKey ? "Hide API key" : "Show API key")
                         }
                     }
-                    Text("Stored as api_key in ~/.grok/config.toml (plain text on disk). Local/open servers don't need a key.")
+                    Text("Advanced manual models write the CLI-required api_key only to the owner-readable ~/.grok/config.toml file. Prefer a saved provider so its credential is also backed by Keychain. Local/open servers don't need a key.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 } else if let provider = providers.first(where: { $0.id == draft.providerID }) {
@@ -3840,7 +4067,7 @@ private struct CustomModelsSettingsPane: View {
                     .frame(maxWidth: 280, alignment: .leading)
                 }
 
-                Text("These GrokBuild-only hints control the model picker, context badge, and reasoning-effort UI. They do not change grok's provider routing or tool harness.")
+                Text("API protocol and context window are native Grok settings. The capability checkboxes are GrokBuild-only UI hints kept outside config.toml.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
 
@@ -3928,6 +4155,17 @@ private struct CustomModelsSettingsPane: View {
     /// Validation for the save button, including duplicate-id checks when adding a new model.
     private var draftSaveBlockedReason: String? {
         if let error = resolvedDraft.validationError { return error }
+        if let provider = draftProvider {
+            let appearsInCatalog = selectableModelsForDraft.contains { $0.id == draft.model }
+            if ProviderPreset.matching(provider: provider) != nil, !appearsInCatalog {
+                return "Test the connection and choose a model returned by this provider."
+            }
+            if ProviderPreset.matching(provider: provider) == nil,
+               !appearsInCatalog,
+               !allowUnverifiedCustomModel {
+                return "Choose a fetched model, or explicitly allow an unverified custom model ID."
+            }
+        }
         if !isEditing, models.count >= CustomModelStore.maxModels {
             return "GrokBuild supports up to \(CustomModelStore.maxModels) custom models."
         }
@@ -3942,10 +4180,15 @@ private struct CustomModelsSettingsPane: View {
         Binding(
             get: { draft.providerID ?? "" },
             set: { newValue in
+                allowUnverifiedCustomModel = false
                 if newValue.isEmpty {
                     draft.providerID = nil
                 } else {
                     draft.providerID = newValue
+                    if let provider = providers.first(where: { $0.id == newValue }),
+                       let preset = ProviderPreset.matching(provider: provider) {
+                        draft.apiBackend = preset.defaultAPIBackend
+                    }
                     if !isEditing {
                         draft.model = ""
                         draft.id = ""
@@ -3958,21 +4201,52 @@ private struct CustomModelsSettingsPane: View {
 
     // MARK: - Actions
 
-    private func reload() {
-        providers = ProviderStore.load()
-        let snapshot = CustomModelStore.load()
+    private func reload() async {
+        // Keychain reads can wait on securityd. Running them synchronously in this
+        // SwiftUI task freezes every click and even the accessibility server.
+        let loaded = await SettingsBackgroundLoader.run {
+            (ProviderStore.loadResult(), CustomModelStore.load())
+        }
+        let providerLoad = loaded.0
+        let snapshot = loaded.1
+        providers = providerLoad.providers
+        migrationIssues = providerLoad.migrationIssues
         defaultModelID = snapshot.defaultModelID ?? ""
-        // Re-attach providerID to parsed models by matching their base_url to a known provider,
-        // since config.toml itself doesn't store the provider link. Then re-resolve the
+        persistedDefaultModelID = defaultModelID
+        // Repair a missing sidecar provider link only when the endpoint identifies exactly one
+        // provider. Then re-resolve the
         // endpoint/credential from the provider so a model reflects a key added to its provider
         // even if its own config.toml table predates that key.
-        models = snapshot.models.map { model in
+        let resolvedModels = snapshot.models.map { model in
             var m = model
-            if m.providerID == nil,
-               let match = providers.first(where: { $0.baseURL == model.baseURL }) {
-                m.providerID = match.id
+            if m.providerID == nil {
+                let matches = providers.filter { $0.baseURL == model.baseURL }
+                if matches.count == 1 {
+                    m.providerID = matches[0].id
+                }
             }
             return m.resolved(using: providers)
+        }
+        models = resolvedModels
+
+        let inferredProviderLinks = zip(snapshot.models, resolvedModels).contains { original, resolved in
+            original.providerID != resolved.providerID
+        }
+        let needsCredentialProjection = zip(snapshot.models, resolvedModels).contains { original, resolved in
+            original.apiKey != resolved.apiKey || original.baseURL != resolved.baseURL
+        }
+        if needsCredentialProjection && !providerLoad.migrationIssues.contains(where: { $0.kind == .storage }) {
+            do {
+                try CustomModelStore.save(
+                    models: resolvedModels,
+                    defaultModelID: snapshot.defaultModelID
+                )
+                statusMessage = "Provider credentials migrated to Keychain; secured CLI configuration."
+            } catch {
+                errorMessage = "Credential migration could not update config.toml: \(error.localizedDescription)"
+            }
+        } else if inferredProviderLinks {
+            CustomModelMetadataStore.save(models: resolvedModels)
         }
     }
 
@@ -4025,6 +4299,7 @@ private struct CustomModelsSettingsPane: View {
 
     private func saveProviderDraft() {
         guard providerDraft.validationError == nil else { return }
+        let affectedModelIDs = Set(modelsUsingProviderID(editingProviderID ?? providerDraft.id).map(\.id))
         if let editingProviderID, let index = providers.firstIndex(where: { $0.id == editingProviderID }) {
             providers[index] = providerDraft
             // Propagate endpoint/credential changes to models linked to this provider.
@@ -4034,9 +4309,13 @@ private struct CustomModelsSettingsPane: View {
         } else {
             providers.append(providerDraft)
         }
-        ProviderStore.save(providers)
-        resetProviderDraft()
-        persist()
+        do {
+            try ProviderStore.save(providers)
+            resetProviderDraft()
+            persist(change: .models(affectedModelIDs))
+        } catch {
+            errorMessage = error.localizedDescription
+        }
     }
 
     /// Models currently attached to (in use by) the given provider.
@@ -4044,15 +4323,24 @@ private struct CustomModelsSettingsPane: View {
         models.filter { $0.providerID == provider.id }
     }
 
+    private func modelsUsingProviderID(_ providerID: String) -> [CustomModel] {
+        models.filter { $0.providerID == providerID }
+    }
+
     private func removeProvider(_ provider: Provider) {
         // A provider can only be removed once none of its models reference it, so the
         // user explicitly removes the models first and we never orphan config.toml tables.
         guard modelsUsing(provider).isEmpty else { return }
         providers.removeAll { $0.id == provider.id }
-        ProviderStore.save(providers)
-        if editingProviderID == provider.id { resetProviderDraft() }
-        fetchedModels[provider.id] = nil
-        persist()
+        do {
+            try ProviderStore.save(providers)
+            if editingProviderID == provider.id { resetProviderDraft() }
+            fetchedModels[provider.id] = nil
+            validationResults[provider.id] = nil
+            persist(change: .models([]))
+        } catch {
+            errorMessage = error.localizedDescription
+        }
     }
 
     // MARK: - Fetch models
@@ -4061,47 +4349,54 @@ private struct CustomModelsSettingsPane: View {
     private func fetchModelsForDraft() {
         let draftSnapshot = providerDraft
         guard !draftSnapshot.baseURL.trimmingCharacters(in: .whitespaces).isEmpty else { return }
-        fetchModels(
-            forProviderID: draftSnapshot.id,
-            baseURL: draftSnapshot.baseURL,
-            apiKey: draftSnapshot.apiKey
-        )
+        validateProvider(draftSnapshot)
     }
 
     /// Fetches the model catalog for an already-installed provider.
     private func fetchModels(for provider: Provider) {
-        fetchModels(
-            forProviderID: provider.id,
-            baseURL: provider.baseURL,
-            apiKey: provider.apiKey
-        )
+        validateProvider(provider)
     }
 
-    private func fetchModels(forProviderID id: String, baseURL: String, apiKey: String) {
-        let key = id.isEmpty ? "__draft__" : id
+    private func validateProvider(_ provider: Provider) {
+        let key = provider.id.isEmpty ? "__draft__" : provider.id
         fetchingProviderID = key
         fetchErrorProviderID = nil
         fetchErrorMessage = nil
-        let provider = Provider(id: id, name: "", baseURL: baseURL, apiKey: apiKey)
+        let configuredModelIDs = models
+            .filter { $0.providerID == provider.id || ($0.providerID == nil && $0.baseURL == provider.baseURL) }
+            .map(\.model)
         Task {
-            do {
-                let result = try await ProviderModelFetcher.fetch(for: provider)
-                await MainActor.run {
-                    fetchedModels[key] = result
-                    fetchingProviderID = nil
-                }
-            } catch {
-                await MainActor.run {
-                    fetchingProviderID = nil
+            let result = await ProviderModelFetcher.validate(
+                provider: provider,
+                configuredModelIDs: configuredModelIDs
+            )
+            await MainActor.run {
+                // Only clear the busy marker if it is still ours — a second provider's
+                // check may have started while this one was in flight.
+                if fetchingProviderID == key { fetchingProviderID = nil }
+                // Never resurrect state for a provider removed mid-check.
+                guard key == "__draft__" || providers.contains(where: { $0.id == key }) else { return }
+                fetchedModels[key] = result.models
+                validationResults[key] = result
+                if result.status != .connected {
                     fetchErrorProviderID = key
-                    fetchErrorMessage = (error as? ProviderModelFetcher.FetchError)?.errorDescription
-                        ?? error.localizedDescription
+                    fetchErrorMessage = result.message
                 }
             }
         }
     }
 
     /// Models available for the provider linked to the current model draft (fetched or catalog).
+    private var filteredSelectableModels: [FetchedModel] {
+        ProviderModelFetcher.filterModels(selectableModelsForDraft, query: modelFilterText)
+    }
+
+    private var filteredCountLabel: String {
+        let total = selectableModelsForDraft.count
+        let shown = filteredSelectableModels.count
+        return shown == total ? "\(total)" : "\(shown)/\(total)"
+    }
+
     private var selectableModelsForDraft: [FetchedModel] {
         guard let id = draft.providerID,
               let provider = providers.first(where: { $0.id == id }) else { return [] }
@@ -4112,16 +4407,29 @@ private struct CustomModelsSettingsPane: View {
         hasFetchedModels(for: provider) ? "Pick a fetched model…" : "Fetch models first…"
     }
 
-    private func canFetch(baseURL: String, apiKey: String, providerID: String = "") -> Bool {
-        let provider = Provider(id: providerID, name: "", baseURL: baseURL, apiKey: apiKey)
+    private func canFetch(
+        baseURL: String,
+        apiKey: String,
+        authScheme: ProviderAuthScheme,
+        providerID: String = ""
+    ) -> Bool {
+        // The caller's real auth scheme must survive this reconstruction: omitting it
+        // would apply the `.bearer` default and permanently disable "Test connection"
+        // for keyless remote providers that explicitly chose `.none`.
+        let provider = Provider(
+            id: providerID,
+            name: "",
+            baseURL: baseURL,
+            apiKey: apiKey,
+            authScheme: authScheme
+        )
         // Cline Pass uses the public recommended-models feed — no API key required.
         if provider.supportsLiveCatalogRefresh {
             return true
         }
         guard ProviderModelFetcher.modelsURL(for: baseURL) != nil else { return false }
-        let isLocal = provider.isLocalEndpoint
-        // Local servers accept no key; remote ones need an inline key.
-        if isLocal { return true }
+        // Local servers accept no key; keyless (`.none`) providers never need one.
+        if provider.isLocalEndpoint || provider.authScheme == .none { return true }
         return ProviderModelFetcher.resolveKey(apiKey: apiKey) != nil
     }
 
@@ -4133,10 +4441,13 @@ private struct CustomModelsSettingsPane: View {
             id: "",
             model: "",
             baseURL: "",
+            apiBackend: ProviderPreset.matching(provider: provider)?.defaultAPIBackend
+                ?? .chatCompletions,
             providerID: provider.id
         )
         editingID = nil
         revealKey = false
+        allowUnverifiedCustomModel = false
         errorMessage = nil
         showingModelEditor = true
         showingProviderEditor = false
@@ -4148,6 +4459,7 @@ private struct CustomModelsSettingsPane: View {
         draft = freshModelDraft()
         editingID = nil
         revealKey = false
+        allowUnverifiedCustomModel = false
         errorMessage = nil
         showingModelEditor = true
         showingProviderEditor = false
@@ -4158,6 +4470,7 @@ private struct CustomModelsSettingsPane: View {
         draft = model
         editingID = model.id
         revealKey = false
+        allowUnverifiedCustomModel = false
         errorMessage = nil
         showingModelEditor = true
         showingProviderEditor = false
@@ -4168,6 +4481,7 @@ private struct CustomModelsSettingsPane: View {
         draft = freshModelDraft()
         editingID = nil
         revealKey = false
+        allowUnverifiedCustomModel = false
         showingModelEditor = false
     }
 
@@ -4180,6 +4494,8 @@ private struct CustomModelsSettingsPane: View {
                 id: "",
                 model: "",
                 baseURL: "",
+                apiBackend: ProviderPreset.matching(provider: provider)?.defaultAPIBackend
+                    ?? .chatCompletions,
                 providerID: provider.id
             )
         }
@@ -4217,6 +4533,7 @@ private struct CustomModelsSettingsPane: View {
 
     private func saveDraft() {
         guard draftSaveBlockedReason == nil else { return }
+        let changedModelIDs = Set([draft.id] + (editingID.map { [$0] } ?? []))
         var updated = models
         if let editingID, let index = updated.firstIndex(where: { $0.id == editingID }) {
             updated[index] = draft
@@ -4225,7 +4542,7 @@ private struct CustomModelsSettingsPane: View {
         }
         models = updated
         resetDraft()
-        persist()
+        persist(change: .models(changedModelIDs))
     }
 
     private func remove(_ model: CustomModel) {
@@ -4234,10 +4551,10 @@ private struct CustomModelsSettingsPane: View {
             defaultModelID = ""
         }
         if editingID == model.id { resetDraft() }
-        persist()
+        persist(change: .models([model.id]))
     }
 
-    private func persist() {
+    private func persist(change: ConfigurationChange) {
         do {
             let resolvedModels = models.map { $0.resolved(using: providers) }
             let selectedDefault = defaultModelID.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -4247,7 +4564,8 @@ private struct CustomModelsSettingsPane: View {
             )
             statusMessage = "Saved to ~/.grok/config.toml."
             errorMessage = nil
-            onConfigurationChanged()
+            persistedDefaultModelID = defaultModelID
+            onConfigurationChanged(change)
         } catch {
             errorMessage = "Failed to save config.toml: \(error.localizedDescription)"
             statusMessage = nil
@@ -4484,6 +4802,8 @@ private struct MCPSettingsPane: View {
     }
 
     private func perform(_ operation: @escaping () async throws -> Void) async {
+        // Rapid re-taps must not stack concurrent CLI mutations.
+        guard !isLoading else { return }
         isLoading = true
         errorMessage = nil
         do {
@@ -4519,6 +4839,9 @@ private struct PermissionsSettingsPane: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .background(AppTheme.Palette.canvas)
+        .onAppear {
+            permissionMode = GrokPermissionMode.normalizedStoredValue(permissionMode)
+        }
     }
 
     private var header: some View {
@@ -4528,7 +4851,7 @@ private struct PermissionsSettingsPane: View {
                 subtitle: "Control how Grok asks for approval and accesses your project.",
                 systemImage: SettingsTab.permissions.systemImage
             )
-            Text(permissionModeLabel)
+            Text(permissionModeChoice.displayName)
                 .font(.caption.weight(.semibold))
                 .foregroundStyle(.secondary)
         }
@@ -4537,17 +4860,39 @@ private struct PermissionsSettingsPane: View {
     private var launchFlagsCard: some View {
         settingsCard(title: "Launch Behavior", systemImage: "slider.horizontal.3") {
             VStack(alignment: .leading, spacing: 14) {
-                settingRow("Permission mode", description: "Controls how often Grok asks before running tools.") {
+                settingRow("Permission mode", description: permissionModeChoice.explanation) {
                     Picker("", selection: $permissionMode) {
-                        Text("Default").tag("default")
-                        Text("Accept edits").tag("acceptEdits")
-                        Text("Auto").tag("auto")
-                        Text("Don't ask").tag("dontAsk")
-                        Text("Bypass permissions").tag("bypassPermissions")
-                        Text("Plan").tag("plan")
+                        Section("Interactive") {
+                            ForEach(GrokPermissionMode.interactiveChoices) { mode in
+                                Text(mode.displayName).tag(mode.rawValue)
+                            }
+                        }
+                        Section("Advanced") {
+                            ForEach(GrokPermissionMode.advancedChoices) { mode in
+                                Text(mode.displayName).tag(mode.rawValue)
+                            }
+                        }
                     }
                     .labelsHidden()
                     .frame(width: AppTheme.Layout.settingsControlWidth)
+                }
+
+                if permissionModeChoice == .alwaysApprove {
+                    Label(
+                        "Tool prompts are skipped, but deny rules, hooks, and the selected sandbox remain enforced.",
+                        systemImage: "exclamationmark.shield"
+                    )
+                    .font(.caption)
+                    .foregroundStyle(.orange)
+                    .fixedSize(horizontal: false, vertical: true)
+                } else if permissionModeChoice == .denyUnapproved {
+                    Label(
+                        "This is a deny-by-default automation policy, not a low-interruption interactive mode.",
+                        systemImage: "nosign"
+                    )
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
                 }
 
                 settingRow("Sandbox", description: "Limits file system and command access for Grok.") {
@@ -4626,15 +4971,8 @@ private struct PermissionsSettingsPane: View {
         )
     }
 
-    private var permissionModeLabel: String {
-        switch permissionMode {
-        case "acceptEdits": return "Accept edits"
-        case "auto": return "Auto"
-        case "dontAsk": return "Don't ask"
-        case "bypassPermissions": return "Bypass"
-        case "plan": return "Plan"
-        default: return "Default"
-        }
+    private var permissionModeChoice: GrokPermissionMode {
+        GrokPermissionMode(storedValue: permissionMode)
     }
 
     private func settingsCard<Content: View>(
@@ -5007,7 +5345,7 @@ private struct CompatibilitySettingsPane: View {
                 HStack(alignment: .top, spacing: 14) {
                     settingsPaneHeader(
                         "Compatibility",
-                        subtitle: "Use compatible skills, hooks, and servers from other coding agents.",
+                        subtitle: "Import the capability groups Grok supports from other coding agents.",
                         systemImage: SettingsTab.compatibility.systemImage
                     )
                     Button("Refresh") {
@@ -5070,7 +5408,9 @@ private struct CompatibilitySettingsPane: View {
     private func compatToggle(_ title: String, binding: Binding<Bool>) -> some View {
         SettingsToggleRow(
             title,
-            subtitle: "Use compatible \(title) extensions in GrokBuild.",
+            subtitle: title == "Codex"
+                ? "Use compatible \(title) sessions in GrokBuild."
+                : "Use compatible \(title) skills, rules, agents, MCPs, hooks, and sessions.",
             isOn: binding
         )
     }
@@ -5120,6 +5460,8 @@ private struct CompatibilitySettingsPane: View {
 }
 
 private struct AppUpdatesSettingsPane: View {
+    @State private var updateRevision = 0
+
     private var autoCheckBinding: Binding<Bool> {
         Binding(
             get: { UpdateSettingsStore.autoCheckEnabled },
@@ -5128,6 +5470,11 @@ private struct AppUpdatesSettingsPane: View {
     }
 
     var body: some View {
+        // UpdateScheduler stores its receipts statically rather than through an
+        // observable model. Reading this revision ties the kept-alive App pane to
+        // the update-state notification so a just-updated CLI version cannot stay
+        // visually stale until the user leaves and reopens Settings.
+        let _ = updateRevision
         ScrollView {
             VStack(alignment: .leading, spacing: 18) {
                 SettingsPaneHeader(
@@ -5225,6 +5572,9 @@ private struct AppUpdatesSettingsPane: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .background(AppTheme.Palette.canvas)
+        .onReceive(NotificationCenter.default.publisher(for: .grokBuildUpdateStateChanged)) { _ in
+            updateRevision &+= 1
+        }
     }
 
     private func updatesCard<Content: View>(

@@ -1,5 +1,19 @@
 import Foundation
 
+enum ModelAPIBackend: String, CaseIterable, Codable, Sendable {
+    case chatCompletions = "chat_completions"
+    case responses
+    case messages
+
+    var displayName: String {
+        switch self {
+        case .chatCompletions: return "Chat Completions"
+        case .responses: return "Responses"
+        case .messages: return "Anthropic Messages"
+        }
+    }
+}
+
 /// A user-defined OpenAI-compatible model entry for `~/.grok/config.toml`.
 ///
 /// Maps to a `[model.<id>]` table, e.g.
@@ -27,14 +41,15 @@ struct CustomModel: Identifiable, Hashable, Sendable {
     /// Optional context-window size GrokBuild uses when the CLI does not advertise one.
     var contextTokens: Int?
     /// Whether GrokBuild should expose the reasoning-effort control for this model.
-    /// Opt-out: defaults to `true` (both for new models and for existing config.toml
-    /// entries missing the `grokbuild_supports_reasoning_effort` key) so the control keeps
-    /// showing unless the user explicitly disables it.
+    /// Opt-out: defaults to `true` so the control keeps showing unless the user explicitly
+    /// disables it in GrokBuild's non-secret model metadata sidecar.
     var supportsReasoningEffort: Bool
     /// Whether the provider model can accept image inputs.
     var supportsVision: Bool
     /// Whether GrokBuild should expect/display model thinking blocks for this model.
     var supportsThinkingDisplay: Bool
+    /// Grok's native request protocol for this model.
+    var apiBackend: ModelAPIBackend
     /// Optional link to a saved `Provider`. GrokBuild-only; the endpoint/credential are still
     /// written into this model's own `[model.<id>]` table so the Grok CLI can read them.
     var providerID: String?
@@ -49,6 +64,7 @@ struct CustomModel: Identifiable, Hashable, Sendable {
         supportsReasoningEffort: Bool = true,
         supportsVision: Bool = false,
         supportsThinkingDisplay: Bool = false,
+        apiBackend: ModelAPIBackend = .chatCompletions,
         providerID: String? = nil
     ) {
         self.id = id
@@ -60,16 +76,14 @@ struct CustomModel: Identifiable, Hashable, Sendable {
         self.supportsReasoningEffort = supportsReasoningEffort
         self.supportsVision = supportsVision
         self.supportsThinkingDisplay = supportsThinkingDisplay
+        self.apiBackend = apiBackend
         self.providerID = providerID
     }
 
-    /// `true` when this looks like a local/self-hosted endpoint that needs no API key.
+    /// `true` when this is a local/self-hosted endpoint that needs no API key.
+    /// Decided from the URL's exact host, not substring matching.
     var isLocalEndpoint: Bool {
-        let lower = baseURL.lowercased()
-        return lower.contains("localhost")
-            || lower.contains("127.0.0.1")
-            || lower.contains("0.0.0.0")
-            || lower.contains("host.docker.internal")
+        ProviderEndpointPolicy.isLocal(baseURL: baseURL)
     }
 
     /// `true` when an inline API key is stored in config.toml.
@@ -124,6 +138,9 @@ struct CustomModel: Identifiable, Hashable, Sendable {
         if !(trimmedURL.hasPrefix("http://") || trimmedURL.hasPrefix("https://")) {
             return "Base URL must start with http:// or https://."
         }
+        if let transportIssue = ProviderEndpointPolicy.transportIssue(forBaseURL: trimmedURL) {
+            return transportIssue
+        }
         if let contextTokens, contextTokens <= 0 {
             return "Context window must be greater than zero."
         }
@@ -163,25 +180,58 @@ struct Provider: Identifiable, Hashable, Codable, Sendable {
     var apiKey: String
     /// A suggested default model id for this provider (used when adding a model from the provider).
     var suggestedModel: String
+    /// Authentication headers used by this provider's OpenAI-compatible endpoint.
+    var authScheme: ProviderAuthScheme
+    /// Explicit advanced opt-in for a cleartext remote endpoint (trusted-LAN model
+    /// servers). Off by default; the UI keeps a persistent warning while it is on.
+    var allowInsecureHTTP: Bool
 
-    init(id: String, name: String, baseURL: String, apiKey: String = "", suggestedModel: String = "") {
+    init(
+        id: String,
+        name: String,
+        baseURL: String,
+        apiKey: String = "",
+        suggestedModel: String = "",
+        authScheme: ProviderAuthScheme = .bearer,
+        allowInsecureHTTP: Bool = false
+    ) {
         self.id = id
         self.name = name
         self.baseURL = baseURL
         self.apiKey = apiKey
         self.suggestedModel = suggestedModel
+        self.authScheme = authScheme
+        self.allowInsecureHTTP = allowInsecureHTTP
     }
 
     private enum CodingKeys: String, CodingKey {
-        case id, name, baseURL, apiKey, suggestedModel
+        case id, name, baseURL, apiKey, suggestedModel, authScheme, allowInsecureHTTP
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decode(String.self, forKey: .id)
+        name = try container.decode(String.self, forKey: .name)
+        baseURL = try container.decode(String.self, forKey: .baseURL)
+        // Read the legacy field once so ProviderStore can migrate it to Keychain.
+        apiKey = try container.decodeIfPresent(String.self, forKey: .apiKey) ?? ""
+        suggestedModel = try container.decodeIfPresent(String.self, forKey: .suggestedModel) ?? ""
+        authScheme = try container.decodeIfPresent(ProviderAuthScheme.self, forKey: .authScheme) ?? .bearer
+        allowInsecureHTTP = try container.decodeIfPresent(Bool.self, forKey: .allowInsecureHTTP) ?? false
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(id, forKey: .id)
+        try container.encode(name, forKey: .name)
+        try container.encode(baseURL, forKey: .baseURL)
+        try container.encode(suggestedModel, forKey: .suggestedModel)
+        try container.encode(authScheme, forKey: .authScheme)
+        try container.encode(allowInsecureHTTP, forKey: .allowInsecureHTTP)
     }
 
     var isLocalEndpoint: Bool {
-        let lower = baseURL.lowercased()
-        return lower.contains("localhost")
-            || lower.contains("127.0.0.1")
-            || lower.contains("0.0.0.0")
-            || lower.contains("host.docker.internal")
+        ProviderEndpointPolicy.isLocal(baseURL: baseURL)
     }
 
     var hasInlineKey: Bool { !apiKey.trimmingCharacters(in: .whitespaces).isEmpty }
@@ -196,6 +246,12 @@ struct Provider: Identifiable, Hashable, Codable, Sendable {
         if !(url.hasPrefix("http://") || url.hasPrefix("https://")) {
             return "Base URL must start with http:// or https://."
         }
+        if let transportIssue = ProviderEndpointPolicy.transportIssue(
+            forBaseURL: url,
+            allowingInsecureHTTP: allowInsecureHTTP
+        ) {
+            return transportIssue
+        }
         return nil
     }
 }
@@ -203,6 +259,7 @@ struct Provider: Identifiable, Hashable, Codable, Sendable {
 /// Built-in provider presets for popular OpenAI-compatible endpoints.
 enum ProviderPreset: String, CaseIterable, Identifiable {
     case openai
+    case openrouter
     case zai
     case minimax
     case kimi
@@ -222,6 +279,7 @@ enum ProviderPreset: String, CaseIterable, Identifiable {
     var displayName: String {
         switch self {
         case .openai: return "ChatGPT (OpenAI)"
+        case .openrouter: return "OpenRouter"
         case .zai: return "Z.ai (GLM)"
         case .minimax: return "MiniMax"
         case .kimi: return "Kimi (Moonshot)"
@@ -254,8 +312,18 @@ enum ProviderPreset: String, CaseIterable, Identifiable {
         switch self {
         case .clinePass:
             return ClinePassCatalog.documentationURL
+        case .openrouter:
+            return URL(string: "https://openrouter.ai/models")
         default:
             return nil
+        }
+    }
+
+    /// Protocol used for newly-added models from this preset.
+    var defaultAPIBackend: ModelAPIBackend {
+        switch self {
+        case .openai: return .responses
+        default: return .chatCompletions
         }
     }
 
@@ -267,6 +335,17 @@ enum ProviderPreset: String, CaseIterable, Identifiable {
                 name: "ChatGPT (OpenAI)",
                 baseURL: "https://api.openai.com/v1",
                 suggestedModel: "gpt-4o"
+            )
+        case .openrouter:
+            // One OpenRouter key fronts models from many labs. It is OpenAI Chat
+            // Completions-compatible, so it rides the existing provider/catalog/Keychain
+            // machinery. `openrouter/auto` is the always-available auto-router default;
+            // fetch the catalog to pin a specific model like `openai/gpt-4o`.
+            return Provider(
+                id: "openrouter",
+                name: "OpenRouter",
+                baseURL: "https://openrouter.ai/api/v1",
+                suggestedModel: "openrouter/auto"
             )
         case .zai:
             return Provider(
@@ -301,7 +380,8 @@ enum ProviderPreset: String, CaseIterable, Identifiable {
                 id: "xiaomi-mimo",
                 name: "Xiaomi MiMo",
                 baseURL: "https://api.xiaomimimo.com/v1",
-                suggestedModel: "mimo-v2.5-pro"
+                suggestedModel: "mimo-v2.5-pro",
+                authScheme: .bearerAndAPIKey
             )
         case .deepseek:
             return Provider(
@@ -318,7 +398,8 @@ enum ProviderPreset: String, CaseIterable, Identifiable {
                 name: "Ollama (local)",
                 baseURL: "http://localhost:11434/v1",
                 apiKey: "ollama",
-                suggestedModel: "llama3.2"
+                suggestedModel: "llama3.2",
+                authScheme: .none
             )
         case .clinePass:
             return Provider(
@@ -400,6 +481,30 @@ struct FetchedModel: Identifiable, Hashable, Sendable {
     var ownedBy: String?
 }
 
+enum ProviderValidationStatus: String, Sendable, Equatable {
+    case connected
+    case unauthorized
+    case rateLimited
+    case endpointMissing
+    case providerUnavailable
+    case incompatibleResponse
+    case timeoutOrOffline
+    case emptyCatalog
+    case modelUnavailable
+    case insecureEndpoint
+    case redirectBlocked
+}
+
+struct ProviderValidationResult: Sendable, Equatable {
+    var status: ProviderValidationStatus
+    var models: [FetchedModel]
+    var missingModelIDs: [String]
+    var message: String
+    var checkedAt: Date
+
+    var isConnected: Bool { status == .connected }
+}
+
 /// Fetches the list of available models from an OpenAI-compatible provider.
 ///
 /// Calls `GET {base_url}/models` with `Authorization: Bearer <key>` and decodes the
@@ -411,19 +516,31 @@ enum ProviderModelFetcher {
     enum FetchError: LocalizedError {
         case invalidURL
         case unauthorized
+        case rateLimited
+        case endpointMissing
+        case providerUnavailable(Int)
         case http(Int)
         case empty
         case transport(String)
         case decode
+        case insecureEndpoint
+        case redirectBlocked
 
         var errorDescription: String? {
             switch self {
             case .invalidURL: return "The base URL is not a valid endpoint."
             case .unauthorized: return "Unauthorized — check the API key for this provider."
+            case .rateLimited: return "The provider rate-limited this check. Try again shortly."
+            case .endpointMissing: return "The provider does not expose a model catalog at this URL."
+            case .providerUnavailable(let code): return "The provider is unavailable (HTTP \(code))."
             case .http(let code): return "The provider returned HTTP \(code)."
             case .empty: return "The provider returned no models."
             case .transport(let message): return message
             case .decode: return "Could not read the model list from the provider."
+            case .insecureEndpoint:
+                return "This remote endpoint uses http:// — GrokBuild will not send a credential over an unencrypted connection. Switch the base URL to https:// (http is allowed only for local servers)."
+            case .redirectBlocked:
+                return "The provider redirected this request to a different origin or an insecure URL, so GrokBuild stopped the check without following it."
             }
         }
     }
@@ -434,6 +551,16 @@ enum ProviderModelFetcher {
         guard !trimmed.isEmpty else { return nil }
         let normalized = trimmed.hasSuffix("/") ? String(trimmed.dropLast()) : trimmed
         return URL(string: normalized + "/models")
+    }
+
+    /// Case-insensitive substring match on a fetched model's id and its owner label —
+    /// used to filter large catalogs (OpenRouter returns ~300+) in the picker.
+    static func filterModels(_ models: [FetchedModel], query rawQuery: String) -> [FetchedModel] {
+        let query = rawQuery.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        guard !query.isEmpty else { return models }
+        return models.filter {
+            $0.id.lowercased().contains(query) || ($0.ownedBy?.lowercased().contains(query) ?? false)
+        }
     }
 
     /// Resolves the effective inline API key for a fetch, or nil when none is set.
@@ -468,32 +595,63 @@ enum ProviderModelFetcher {
         return models.sorted { $0.id.localizedCaseInsensitiveCompare($1.id) == .orderedAscending }
     }
 
-    /// Fetches and parses the model list for a provider.
-    static func fetch(
-        baseURL: String,
-        apiKey: String
-    ) async throws -> [FetchedModel] {
-        guard let url = modelsURL(for: baseURL) else { throw FetchError.invalidURL }
+    static func request(for provider: Provider) throws -> URLRequest {
+        guard let url = modelsURL(for: provider.baseURL) else { throw FetchError.invalidURL }
 
         var request = URLRequest(url: url)
         request.timeoutInterval = 15
         request.setValue("application/json", forHTTPHeaderField: "Accept")
-        if let key = resolveKey(apiKey: apiKey) {
-            request.setValue("Bearer \(key)", forHTTPHeaderField: "Authorization")
-            // Xiaomi MiMo also accepts an `api-key` header; set both for broad compatibility.
-            request.setValue(key, forHTTPHeaderField: "api-key")
+        if !provider.isLocalEndpoint, provider.authScheme != .none,
+           let key = resolveKey(apiKey: provider.apiKey) {
+            // A credential never rides a cleartext remote connection — unless the user
+            // explicitly opted this provider into trusted-LAN http.
+            guard ProviderEndpointPolicy.isHTTPS(provider.baseURL) || provider.allowInsecureHTTP else {
+                throw FetchError.insecureEndpoint
+            }
+            switch provider.authScheme {
+            case .bearer:
+                request.setValue("Bearer \(key)", forHTTPHeaderField: "Authorization")
+            case .apiKeyHeader:
+                request.setValue(key, forHTTPHeaderField: "api-key")
+            case .bearerAndAPIKey:
+                request.setValue("Bearer \(key)", forHTTPHeaderField: "Authorization")
+                request.setValue(key, forHTTPHeaderField: "api-key")
+            case .none:
+                break
+            }
         }
+        return request
+    }
+
+    /// Fetches and parses the model list using this provider's explicit auth scheme.
+    static func fetch(
+        for provider: Provider,
+        session: URLSession = .shared
+    ) async throws -> [FetchedModel] {
+        if provider.supportsLiveCatalogRefresh {
+            return try await fetchClinePassRecommended(session: session)
+        }
+        let request = try request(for: provider)
 
         let data: Data
         let response: URLResponse
         do {
-            (data, response) = try await URLSession.shared.data(for: request)
+            // The policy delegate follows redirects only within the original origin;
+            // a refused hop surfaces here as the raw 30x response.
+            (data, response) = try await session.data(
+                for: request,
+                delegate: ProviderRedirectPolicyDelegate()
+            )
         } catch {
             throw FetchError.transport(error.localizedDescription)
         }
 
         if let http = response as? HTTPURLResponse {
+            if (300..<400).contains(http.statusCode) { throw FetchError.redirectBlocked }
             if http.statusCode == 401 || http.statusCode == 403 { throw FetchError.unauthorized }
+            if http.statusCode == 404 { throw FetchError.endpointMissing }
+            if http.statusCode == 429 { throw FetchError.rateLimited }
+            if http.statusCode >= 500 { throw FetchError.providerUnavailable(http.statusCode) }
             guard (200..<300).contains(http.statusCode) else { throw FetchError.http(http.statusCode) }
         }
 
@@ -504,7 +662,8 @@ enum ProviderModelFetcher {
 
     /// Fetches Cline Pass models from the public recommended-models feed (no API key).
     static func fetchClinePassRecommended(
-        url: URL = ClinePassCatalog.recommendedModelsURL
+        url: URL = ClinePassCatalog.recommendedModelsURL,
+        session: URLSession = .shared
     ) async throws -> [FetchedModel] {
         var request = URLRequest(url: url)
         request.timeoutInterval = 15
@@ -513,12 +672,16 @@ enum ProviderModelFetcher {
         let data: Data
         let response: URLResponse
         do {
-            (data, response) = try await URLSession.shared.data(for: request)
+            (data, response) = try await session.data(
+                for: request,
+                delegate: ProviderRedirectPolicyDelegate()
+            )
         } catch {
             throw FetchError.transport(error.localizedDescription)
         }
 
         if let http = response as? HTTPURLResponse {
+            if (300..<400).contains(http.statusCode) { throw FetchError.redirectBlocked }
             guard (200..<300).contains(http.statusCode) else { throw FetchError.http(http.statusCode) }
         }
 
@@ -549,31 +712,177 @@ enum ProviderModelFetcher {
         return ClinePassCatalog.sortedAlphabetically(models)
     }
 
-    /// Fetches models for an installed/draft provider, routing Cline Pass to its live catalog.
-    static func fetch(for provider: Provider) async throws -> [FetchedModel] {
-        if provider.supportsLiveCatalogRefresh {
-            return try await fetchClinePassRecommended()
+    static func validate(
+        provider: Provider,
+        configuredModelIDs: [String],
+        session: URLSession = .shared,
+        now: Date = Date()
+    ) async -> ProviderValidationResult {
+        do {
+            let models = try await fetch(for: provider, session: session)
+            let available = Set(models.map(\.id))
+            let missing = configuredModelIDs.filter { !available.contains($0) }.sorted()
+            if !missing.isEmpty {
+                return ProviderValidationResult(
+                    status: .modelUnavailable,
+                    models: models,
+                    missingModelIDs: missing,
+                    message: "Connected, but the configured model is not available to this credential.",
+                    checkedAt: now
+                )
+            }
+            return ProviderValidationResult(
+                status: .connected,
+                models: models,
+                missingModelIDs: [],
+                message: "Connected — \(models.count) model\(models.count == 1 ? "" : "s") available.",
+                checkedAt: now
+            )
+        } catch let error as FetchError {
+            let status: ProviderValidationStatus
+            switch error {
+            case .unauthorized: status = .unauthorized
+            case .rateLimited: status = .rateLimited
+            case .endpointMissing, .invalidURL: status = .endpointMissing
+            case .providerUnavailable: status = .providerUnavailable
+            case .decode: status = .incompatibleResponse
+            case .transport: status = .timeoutOrOffline
+            case .empty: status = .emptyCatalog
+            case .http: status = .providerUnavailable
+            case .insecureEndpoint: status = .insecureEndpoint
+            case .redirectBlocked: status = .redirectBlocked
+            }
+            return ProviderValidationResult(
+                status: status,
+                models: [],
+                missingModelIDs: [],
+                message: error.localizedDescription,
+                checkedAt: now
+            )
+        } catch {
+            return ProviderValidationResult(
+                status: .timeoutOrOffline,
+                models: [],
+                missingModelIDs: [],
+                message: error.localizedDescription,
+                checkedAt: now
+            )
         }
-        return try await fetch(baseURL: provider.baseURL, apiKey: provider.apiKey)
     }
 }
 
-/// Persists user-defined `Provider`s in `UserDefaults` (config.toml has no provider concept).
+/// Persists provider metadata in UserDefaults and provider credentials in macOS Keychain.
 enum ProviderStore {
     private static let key = "grokbuild.customModelProviders"
 
-    static func load() -> [Provider] {
-        guard let data = UserDefaults.standard.data(forKey: key),
-              let providers = try? JSONDecoder().decode([Provider].self, from: data) else {
-            return []
-        }
-        return providers
+    struct LoadResult: Sendable {
+        var providers: [Provider]
+        var migrationIssues: [ProviderCredentialMigrationIssue]
     }
 
-    static func save(_ providers: [Provider]) {
-        if let data = try? JSONEncoder().encode(providers) {
-            UserDefaults.standard.set(data, forKey: key)
+    static func load() -> [Provider] {
+        loadResult().providers
+    }
+
+    static func loadResult(
+        defaults: UserDefaults = .standard,
+        credentialStore: any ProviderCredentialStoring = KeychainProviderCredentialStore(),
+        migrationModels: [CustomModel]? = nil,
+        enforceConfigPermissions: Bool = true
+    ) -> LoadResult {
+        guard let data = defaults.data(forKey: key),
+              let decoded = try? JSONDecoder().decode([Provider].self, from: data) else {
+            if enforceConfigPermissions {
+                try? GrokConfigRepository.shared.enforceSecurePermissionsIfPresent()
+            }
+            return LoadResult(providers: [], migrationIssues: [])
         }
+
+        let normalized = decoded.map { provider -> Provider in
+            var copy = provider
+            if let preset = ProviderPreset.matching(provider: provider) {
+                copy.authScheme = preset.provider.authScheme
+            } else if provider.isLocalEndpoint {
+                copy.authScheme = .none
+            }
+            return copy
+        }
+        let migration = ProviderCredentialMigrator.migrate(
+            providers: normalized,
+            models: migrationModels ?? CustomModelStore.load().models,
+            credentialStore: credentialStore
+        )
+
+        var issues = migration.issues
+        if !migration.storageFailed {
+            do {
+                if enforceConfigPermissions {
+                    try GrokConfigRepository.shared.enforceSecurePermissionsIfPresent()
+                }
+                try saveMetadata(migration.providers, defaults: defaults)
+            } catch {
+                for providerID in migration.createdProviderIDs {
+                    try? credentialStore.removeCredential(for: providerID)
+                }
+                issues.append(ProviderCredentialMigrationIssue(
+                    kind: .storage,
+                    providerID: "provider-metadata",
+                    message: error.localizedDescription
+                ))
+                return LoadResult(providers: normalized, migrationIssues: issues)
+            }
+        }
+        return LoadResult(providers: migration.providers, migrationIssues: issues)
+    }
+
+    static func save(
+        _ providers: [Provider],
+        defaults: UserDefaults = .standard,
+        credentialStore: any ProviderCredentialStoring = KeychainProviderCredentialStore()
+    ) throws {
+        let priorProviders: [Provider]
+        if let data = defaults.data(forKey: key) {
+            priorProviders = (try? JSONDecoder().decode([Provider].self, from: data)) ?? []
+        } else {
+            priorProviders = []
+        }
+
+        let providerIDs = Set(priorProviders.map(\.id)).union(providers.map(\.id))
+        var priorCredentials: [String: String?] = [:]
+        for providerID in providerIDs {
+            priorCredentials[providerID] = try credentialStore.credential(for: providerID)
+        }
+
+        do {
+            for provider in providers {
+                let credential = provider.apiKey.trimmingCharacters(in: .whitespacesAndNewlines)
+                if credential.isEmpty {
+                    try credentialStore.removeCredential(for: provider.id)
+                } else {
+                    try credentialStore.setCredential(credential, for: provider.id)
+                    guard try credentialStore.credential(for: provider.id) == credential else {
+                        throw ProviderCredentialError.verificationFailed
+                    }
+                }
+            }
+            for removedID in Set(priorProviders.map(\.id)).subtracting(providers.map(\.id)) {
+                try credentialStore.removeCredential(for: removedID)
+            }
+            try saveMetadata(providers, defaults: defaults)
+        } catch {
+            for (providerID, previousCredential) in priorCredentials {
+                if let previousCredential {
+                    try? credentialStore.setCredential(previousCredential, for: providerID)
+                } else {
+                    try? credentialStore.removeCredential(for: providerID)
+                }
+            }
+            throw error
+        }
+    }
+
+    private static func saveMetadata(_ providers: [Provider], defaults: UserDefaults) throws {
+        defaults.set(try JSONEncoder().encode(providers), forKey: key)
     }
 }
 
@@ -586,8 +895,7 @@ enum CustomModelStore {
     static let maxModels = 28
 
     static var configURL: URL {
-        URL(fileURLWithPath: NSHomeDirectory())
-            .appendingPathComponent(".grok/config.toml")
+        GrokConfigRepository.shared.configURL
     }
 
     // MARK: - Loading
@@ -598,11 +906,17 @@ enum CustomModelStore {
         var defaultModelID: String?
     }
 
-    static func load() -> Snapshot {
-        guard let contents = try? String(contentsOf: configURL, encoding: .utf8) else {
+    static func load(
+        repository: GrokConfigRepository = .shared,
+        defaults: UserDefaults = .standard
+    ) -> Snapshot {
+        let contents = repository.read()
+        guard !contents.isEmpty else {
             return Snapshot(models: [], defaultModelID: nil)
         }
-        return parse(contents)
+        var snapshot = parse(contents)
+        snapshot.models = CustomModelMetadataStore.apply(to: snapshot.models, defaults: defaults)
+        return snapshot
     }
 
     static func parse(_ contents: String) -> Snapshot {
@@ -621,10 +935,12 @@ enum CustomModelStore {
                 baseURL: fields["base_url"] ?? "",
                 name: fields["name"] ?? "",
                 apiKey: fields["api_key"] ?? "",
-                contextTokens: parseInt(fields["grokbuild_context_tokens"]),
+                contextTokens: parseInt(fields["context_window"])
+                    ?? parseInt(fields["grokbuild_context_tokens"]),
                 supportsReasoningEffort: parseBool(fields["grokbuild_supports_reasoning_effort"]) ?? true,
                 supportsVision: parseBool(fields["grokbuild_supports_vision"]) ?? false,
-                supportsThinkingDisplay: parseBool(fields["grokbuild_supports_thinking"]) ?? false
+                supportsThinkingDisplay: parseBool(fields["grokbuild_supports_thinking"]) ?? false,
+                apiBackend: ModelAPIBackend(rawValue: fields["api_backend"] ?? "") ?? .chatCompletions
             ))
             currentModelID = nil
             fields = [:]
@@ -662,19 +978,48 @@ enum CustomModelStore {
     // MARK: - Saving
 
     /// Persists `models` and `defaultModelID` into the config file, preserving unrelated content.
-    static func save(models: [CustomModel], defaultModelID: String?) throws {
-        let existing = (try? String(contentsOf: configURL, encoding: .utf8)) ?? ""
-        let updated = rewrite(existing, models: models, defaultModelID: defaultModelID)
-        try FileManager.default.createDirectory(
-            at: configURL.deletingLastPathComponent(),
-            withIntermediateDirectories: true
-        )
-        try updated.write(to: configURL, atomically: true, encoding: .utf8)
+    static func save(
+        models: [CustomModel],
+        defaultModelID: String?,
+        repository: GrokConfigRepository = .shared,
+        defaults: UserDefaults = .standard
+    ) throws {
+        try repository.update { existing in
+            rewrite(existing, models: models, defaultModelID: defaultModelID)
+        }
+        CustomModelMetadataStore.save(models: models, defaults: defaults)
     }
 
     /// Produces a new config string: drops all existing `[model.*]` tables and the `[models].default`
     /// key, then appends fresh versions while keeping every other section intact.
     static func rewrite(_ contents: String, models: [CustomModel], defaultModelID: String?) -> String {
+        let managedModelKeys: Set<String> = [
+            "model", "base_url", "name", "api_key", "api_backend", "context_window",
+            "grokbuild_context_tokens", "grokbuild_supports_reasoning_effort",
+            "grokbuild_supports_vision", "grokbuild_supports_thinking", "grokbuild_provider_id",
+        ]
+        var preservedModelLines: [String: [String]] = [:]
+        var preservingModelID: String?
+        for rawLine in contents.components(separatedBy: .newlines) {
+            let trimmed = stripComment(rawLine).trimmingCharacters(in: .whitespaces)
+            if trimmed.hasPrefix("[") && trimmed.hasSuffix("]") {
+                let header = String(trimmed.dropFirst().dropLast()).trimmingCharacters(in: .whitespaces)
+                preservingModelID = header.hasPrefix("model.")
+                    ? unquote(String(header.dropFirst("model.".count)))
+                    : nil
+                continue
+            }
+            guard let preservingModelID else { continue }
+            if let key = trimmed.split(separator: "=", maxSplits: 1).first?
+                .trimmingCharacters(in: .whitespaces),
+               managedModelKeys.contains(key) {
+                continue
+            }
+            if !trimmed.isEmpty {
+                preservedModelLines[preservingModelID, default: []].append(rawLine)
+            }
+        }
+
         var output: [String] = []
         var skippingModelTable = false
         var inModelsTable = false
@@ -722,12 +1067,13 @@ enum CustomModelStore {
             if !model.apiKey.trimmingCharacters(in: .whitespaces).isEmpty {
                 result += "api_key = \(quote(model.apiKey))\n"
             }
+            result += "api_backend = \(quote(model.apiBackend.rawValue))\n"
             if let contextTokens = model.contextTokens {
-                result += "grokbuild_context_tokens = \(contextTokens)\n"
+                result += "context_window = \(contextTokens)\n"
             }
-            result += "grokbuild_supports_reasoning_effort = \(model.supportsReasoningEffort)\n"
-            result += "grokbuild_supports_vision = \(model.supportsVision)\n"
-            result += "grokbuild_supports_thinking = \(model.supportsThinkingDisplay)\n"
+            if let preserved = preservedModelLines[model.id], !preserved.isEmpty {
+                result += preserved.joined(separator: "\n") + "\n"
+            }
         }
 
         // Re-establish [models].default. Reuse an existing [models] table if present.
@@ -920,7 +1266,7 @@ enum SubagentRoleStore {
     static let maxRoles = 24
 
     static var configURL: URL {
-        URL(fileURLWithPath: NSHomeDirectory()).appendingPathComponent(".grok/config.toml")
+        GrokConfigRepository.shared.configURL
     }
 
     static var promptsDirectory: URL {
@@ -934,7 +1280,8 @@ enum SubagentRoleStore {
     // MARK: - Loading
 
     static func load() -> [SubagentRole] {
-        guard let contents = try? String(contentsOf: configURL, encoding: .utf8) else { return [] }
+        let contents = GrokConfigRepository.shared.read()
+        guard !contents.isEmpty else { return [] }
         return parse(contents)
     }
 
@@ -1000,11 +1347,9 @@ enum SubagentRoleStore {
     /// instruction to its prompt file. Prompt files for removed roles are deleted only when
     /// the role's `prompt_file` in config.toml pointed to the GrokBuild-managed path.
     static func save(_ roles: [SubagentRole]) throws {
-        let existing = (try? String(contentsOf: configURL, encoding: .utf8)) ?? ""
+        let existing = GrokConfigRepository.shared.read()
         // Capture prompt_file paths before overwriting, so we can check which files are safe to delete.
         let previousPromptFiles = parsePromptFilePaths(existing)
-        let updated = rewrite(existing, roles: roles)
-
         try FileManager.default.createDirectory(
             at: configURL.deletingLastPathComponent(), withIntermediateDirectories: true)
         try FileManager.default.createDirectory(
@@ -1026,7 +1371,9 @@ enum SubagentRoleStore {
             }
         }
 
-        try updated.write(to: configURL, atomically: true, encoding: .utf8)
+        try GrokConfigRepository.shared.update { latest in
+            rewrite(latest, roles: roles)
+        }
     }
 
     /// Returns a map of role name → raw `prompt_file` value for every `[subagents.roles.*]` table.

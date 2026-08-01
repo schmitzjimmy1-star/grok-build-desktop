@@ -25,7 +25,7 @@ make app
 make dmg
 ```
 
-Output: `dist/GrokBuild.app`, optionally `dist/GrokBuild-{tag}-macOS.dmg`. Copies the Grok mark from `GrokBuild/Resources/Assets.xcassets/MenuBarIcon.imageset/` (or legacy project-root PNGs).
+Output: `dist/GrokBuild.app` and `dist/GrokBuild-macOS.dmg` (release.sh copies the DMG to a versioned `GrokBuild-{tag}-macOS.dmg` name at publish time). Copies the Grok mark from `GrokBuild/Resources/Assets.xcassets/MenuBarIcon.imageset/` (or legacy project-root PNGs).
 
 ---
 

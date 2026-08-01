@@ -34,6 +34,14 @@ UpdateChecker.checkGrokCLI()      // grok update --check --json
 
 Stored in `UserDefaults` via `GrokSettingsKeys` — `allowRules`, `denyRules`, `permissionMode`, `selectedAgent`, etc. Passed to `GrokLaunchOptions` in `ChatStore`.
 
+The running process exposes a credential-free `GrokLaunchReceipt`. Cards and ACP request disposition use that receipt: Always approve/YOLO select a real allow option, Deny unapproved selects rejection, and Ask/Auto remain interactive when the CLI asks. Never write an approved edit from GrokBuild; reply to ACP and let the CLI enforce sandbox, hooks, and deny rules.
+
+## Turn completion and transcript truth
+
+`GrokProcess` yields `.turnCompleted` through the same event queue as text/tool updates and waits for ChatStore acknowledgment. `TurnSettlementCoordinator` joins that queue barrier with the prompt RPC result and rejects stale generations after Stop/restart. Before acknowledgment, ChatStore flushes streaming text and reconciles the exact captured backend history file using occurrence-aware role/turn/content identity. Recovery runs for partial as well as empty transcripts and must remain idempotent.
+
+Configuration reloads resume `ChatStore.durableGrokSessionID`; do not derive continuity from transient `process.sessionId` alone. A legitimate stale-load fallback reconciles the prior exact backend file and persists an explicit old-ID → new-ID recovery fork before another prompt.
+
 ## Session agent (`--agent`) — per tab
 
 - **Per session tab.** Each tab launches with `ChatStore.effectiveAgentSelection` → `GrokAgentProfiles.launchArgument(for:)` → `GrokLaunchOptions.agent` → `grok --agent`.

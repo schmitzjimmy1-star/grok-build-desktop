@@ -40,7 +40,7 @@ enum MarkdownBlockParser {
     /// True when `$…$` content looks like LaTeX, not currency or shell variables.
     static func looksLikeInlineMath(_ content: String) -> Bool {
         if content.contains("\\") { return true }
-        if content.contains(where: { "^_{}".contains($0) }) { return true }
+        if content.contains(where: { "^_{}[]".contains($0) }) { return true }
         if content.contains(where: { "=<>≠≤≥≈∝".contains($0) }) { return true }
         return false
     }
@@ -67,10 +67,6 @@ enum MarkdownBlockParser {
             if best == nil || m.range.lowerBound < best!.range.lowerBound { best = m }
         }
 
-        if let m = matchInlineMath(in: text) {
-            if best == nil || m.range.lowerBound < best!.range.lowerBound { best = m }
-        }
-
         return best
     }
 
@@ -87,9 +83,10 @@ enum MarkdownBlockParser {
         return regexes
     }()
 
-    private static let displayMathRegex = try? NSRegularExpression(pattern: #"\$\$([\s\S]*?)\$\$"#)
-
-    private static let inlineMathRegex = try? NSRegularExpression(pattern: #"(?<!\$)\$(?!\$)([^\$\n]+?)\$(?!\$)"#)
+    private static let displayMathRegexes = [
+        try? NSRegularExpression(pattern: #"\$\$([\s\S]*?)\$\$"#),
+        try? NSRegularExpression(pattern: #"\\\[([\s\S]*?)\\\]"#),
+    ].compactMap { $0 }
 
     private static func matchFenced(in text: String, language: String) -> Match? {
         guard let regex = fencedRegexes[language] else { return nil }
@@ -106,27 +103,201 @@ enum MarkdownBlockParser {
     }
 
     private static func matchDisplayMath(in text: String) -> Match? {
-        guard let regex = displayMathRegex else { return nil }
         let ns = text as NSString
-        guard let result = regex.firstMatch(in: text, range: NSRange(location: 0, length: ns.length)),
-              result.numberOfRanges > 1,
-              let fullRange = Range(result.range, in: text),
-              let contentRange = Range(result.range(at: 1), in: text) else { return nil }
-        return Match(range: fullRange, block: .latex(String(text[contentRange]), display: true))
-    }
-
-    private static func matchInlineMath(in text: String) -> Match? {
-        guard let regex = inlineMathRegex else { return nil }
-        let ns = text as NSString
-        for result in regex.matches(in: text, range: NSRange(location: 0, length: ns.length)) {
-            guard result.numberOfRanges > 1,
+        var best: Match?
+        for regex in displayMathRegexes {
+            guard let result = regex.firstMatch(in: text, range: NSRange(location: 0, length: ns.length)),
+                  result.numberOfRanges > 1,
                   let fullRange = Range(result.range, in: text),
                   let contentRange = Range(result.range(at: 1), in: text) else { continue }
-            let content = String(text[contentRange])
-            guard looksLikeInlineMath(content) else { continue }
-            return Match(range: fullRange, block: .latex(content, display: false))
+            let candidate = Match(
+                range: fullRange,
+                block: .latex(String(text[contentRange]), display: true)
+            )
+            if best == nil || candidate.range.lowerBound < best!.range.lowerBound {
+                best = candidate
+            }
         }
-        return nil
+        return best
+    }
+
+}
+
+/// Inline LaTeX must remain inside its paragraph/list/table cell. Promoting `\(...\)`
+/// to a top-level WKWebView splits Markdown tables at every formula. Keep display math
+/// in KaTeX blocks, while translating common inline notation to readable native text.
+enum InlineMathNormalizer {
+    private static let escapedRegex = try? NSRegularExpression(pattern: #"\\\(([^\n]*?)\\\)"#)
+    private static let dollarRegex = try? NSRegularExpression(
+        pattern: #"(?<!\$)\$(?!\$)([^\$\n]+?)\$(?!\$)"#
+    )
+    private static let bracedFractionRegex = try? NSRegularExpression(
+        pattern: #"\\(?:[td]?frac)\{([^{}]+)\}\{([^{}]+)\}"#
+    )
+    private static let textCommandRegex = try? NSRegularExpression(
+        pattern: #"\\(?:text|texttt|mathrm|operatorname)\{([^{}]*)\}"#
+    )
+
+    static func normalize(_ source: String) -> String {
+        var result = replacingMatches(in: source, regex: escapedRegex, requireMathSignals: false)
+        result = replacingMatches(in: result, regex: dollarRegex, requireMathSignals: true)
+        return result
+    }
+
+    private static func replacingMatches(
+        in source: String,
+        regex: NSRegularExpression?,
+        requireMathSignals: Bool
+    ) -> String {
+        guard let regex else { return source }
+        var result = source
+        let matches = regex.matches(
+            in: source,
+            range: NSRange(location: 0, length: (source as NSString).length)
+        )
+        for match in matches.reversed() {
+            guard match.numberOfRanges > 1,
+                  let fullRange = Range(match.range, in: result),
+                  let contentRange = Range(match.range(at: 1), in: result) else { continue }
+            let content = String(result[contentRange])
+            if requireMathSignals && !MarkdownBlockParser.looksLikeInlineMath(content) { continue }
+            result.replaceSubrange(fullRange, with: readable(content))
+        }
+        return result
+    }
+
+    static func readable(_ latex: String) -> String {
+        var result = latex
+        result = replacingCapture(in: result, regex: textCommandRegex, template: "$1")
+        result = replacingCapture(in: result, regex: bracedFractionRegex, template: "$1/$2")
+        let replacements = [
+            (#"\Bigl"#, ""), (#"\Bigr"#, ""), (#"\left"#, ""), (#"\right"#, ""),
+            (#"\frac12"#, "1/2"), (#"\frac14"#, "1/4"),
+            (#"\tfrac12"#, "1/2"), (#"\tfrac14"#, "1/4"),
+            (#"\dfrac12"#, "1/2"), (#"\dfrac14"#, "1/4"),
+            (#"\ln"#, "ln"), (#"\int"#, "∫"), (#"\sum"#, "∑"),
+            (#"\times"#, "×"), (#"\cdot"#, "·"), (#"\to"#, "→"),
+            (#"\approx"#, "≈"), (#"\le"#, "≤"), (#"\ge"#, "≥"),
+            (#"\,"#, " "), (#"\!"#, ""), (#"\;"#, " "),
+        ]
+        for (target, replacement) in replacements {
+            result = result.replacingOccurrences(of: target, with: replacement)
+        }
+        return result
+            .replacingOccurrences(of: "{", with: "")
+            .replacingOccurrences(of: "}", with: "")
+    }
+
+    private static func replacingCapture(
+        in source: String,
+        regex: NSRegularExpression?,
+        template: String
+    ) -> String {
+        guard let regex else { return source }
+        return regex.stringByReplacingMatches(
+            in: source,
+            range: NSRange(location: 0, length: (source as NSString).length),
+            withTemplate: template
+        )
+    }
+}
+
+struct InlineMarkdownLink: Identifiable, Hashable, Sendable {
+    let title: String
+    let destination: URL
+
+    var id: String { "\(title)|\(destination.absoluteString)" }
+}
+
+/// One parser owns visual link treatment and the virtual AX link children. SwiftUI's
+/// native Markdown `Text` keeps links clickable, while the virtual children stop a
+/// paragraph containing several sources from collapsing into one undifferentiated AX node.
+enum InlineMarkdownPresentation {
+    static func rendered(_ source: String) -> AttributedString {
+        let normalized = InlineMathNormalizer.normalize(source)
+        guard var attributed = try? AttributedString(
+            markdown: normalized,
+            options: AttributedString.MarkdownParsingOptions(
+                interpretedSyntax: .inlineOnlyPreservingWhitespace
+            )
+        ) else {
+            return AttributedString(normalized)
+        }
+
+        let linkRanges = attributed.runs.compactMap { run in
+            run.link == nil ? nil : run.range
+        }
+        for range in linkRanges {
+            attributed[range].foregroundColor = .accentColor
+            attributed[range].underlineStyle = .single
+        }
+        return attributed
+    }
+
+    static func links(in source: String) -> [InlineMarkdownLink] {
+        let attributed = rendered(source)
+        return attributed.runs.compactMap { run in
+            guard let destination = run.link else { return nil }
+            let title = String(attributed.characters[run.range])
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !title.isEmpty else { return nil }
+            return InlineMarkdownLink(title: title, destination: destination)
+        }
+    }
+
+    static func spokenText(_ source: String) -> String {
+        String(rendered(source).characters)
+    }
+}
+
+enum MathAccessibility {
+    static func spokenDescription(_ latex: String) -> String {
+        let readable = InlineMathNormalizer.readable(latex)
+            .replacingOccurrences(of: "\n", with: " ")
+            .split(whereSeparator: \.isWhitespace)
+            .joined(separator: " ")
+        return readable.isEmpty ? "Equation" : "Equation: \(readable)"
+    }
+}
+
+enum MarkdownTableAccessibility {
+    static func summary(headers: [String], rows: [[String]]) -> String {
+        "Table, \(headers.count) column\(headers.count == 1 ? "" : "s"), \(rows.count) data row\(rows.count == 1 ? "" : "s")"
+    }
+
+    static func headerLabel(_ header: String, column: Int) -> String {
+        "Column \(column + 1), \(InlineMarkdownPresentation.spokenText(header))"
+    }
+
+    static func cellLabel(headers: [String], value: String, column: Int) -> String {
+        let spokenValue = InlineMarkdownPresentation.spokenText(value)
+        guard headers.indices.contains(column) else {
+            return "Column \(column + 1): \(spokenValue)"
+        }
+        return "\(InlineMarkdownPresentation.spokenText(headers[column])): \(spokenValue)"
+    }
+}
+
+private struct InlineMarkdownAccessibilityModifier: ViewModifier {
+    let source: String
+
+    func body(content: Content) -> some View {
+        let links = InlineMarkdownPresentation.links(in: source)
+        content
+            .accessibilityElement(children: links.isEmpty ? .combine : .contain)
+            .accessibilityLabel(InlineMarkdownPresentation.spokenText(source))
+            .accessibilityChildren {
+                ForEach(links) { link in
+                    Link(link.title, destination: link.destination)
+                        .accessibilityLabel("Link: \(link.title)")
+                }
+            }
+    }
+}
+
+private extension View {
+    func accessibleInlineMarkdown(_ source: String) -> some View {
+        modifier(InlineMarkdownAccessibilityModifier(source: source))
     }
 }
 
@@ -319,12 +490,12 @@ enum MarkdownTextBlockParser {
     }
 
     private static func looksLikeTableRow(_ line: String) -> Bool {
-        tableCells(in: line).count >= 2
+        !tableCells(in: line).isEmpty
     }
 
     private static func looksLikeTableSeparator(_ line: String) -> Bool {
         let cells = tableCells(in: line)
-        guard cells.count >= 2 else { return false }
+        guard !cells.isEmpty else { return false }
         return cells.allSatisfy { cell in
             let stripped = cell
                 .replacingOccurrences(of: ":", with: "")
@@ -335,9 +506,10 @@ enum MarkdownTextBlockParser {
 
     private static func tableCells(in line: String) -> [String] {
         var value = line.trimmingCharacters(in: .whitespaces)
+        let wasPipeWrapped = value.hasPrefix("|") && value.hasSuffix("|")
         if value.hasPrefix("|") { value.removeFirst() }
         if value.hasSuffix("|") { value.removeLast() }
-        guard value.contains("|") else { return [] }
+        guard value.contains("|") || wasPipeWrapped else { return [] }
         return value
             .split(separator: "|", omittingEmptySubsequences: false)
             .map { $0.trimmingCharacters(in: .whitespaces) }
@@ -390,12 +562,14 @@ private struct MarkdownTextView: View {
                 .lineSpacing(4)
                 .textSelection(.enabled)
                 .frame(maxWidth: .infinity, alignment: .leading)
+                .accessibleInlineMarkdown(text)
 
         case .heading(let level, let text):
             Text(renderedInlineMarkdown(text))
                 .font(headingFont(level: level))
                 .padding(.top, level == 1 ? 4 : 1)
                 .textSelection(.enabled)
+                .accessibleInlineMarkdown(text)
 
         case .unorderedList(let items):
             VStack(alignment: .leading, spacing: 7) {
@@ -422,6 +596,7 @@ private struct MarkdownTextView: View {
                     .foregroundStyle(AppTheme.Palette.textMuted)
                     .lineSpacing(4)
                     .textSelection(.enabled)
+                    .accessibleInlineMarkdown(text)
             }
             .padding(.vertical, 3)
 
@@ -470,29 +645,37 @@ private struct MarkdownTextView: View {
                 .lineSpacing(3)
                 .textSelection(.enabled)
                 .frame(maxWidth: .infinity, alignment: .leading)
+                .accessibleInlineMarkdown(text)
         }
     }
 
     private func markdownTable(headers: [String], rows: [[String]]) -> some View {
         ScrollView(.horizontal, showsIndicators: false) {
             VStack(alignment: .leading, spacing: 0) {
-                tableRow(headers, emphasized: true)
+                tableRow(headers, headers: headers, rowIndex: nil, emphasized: true)
                 ForEach(Array(rows.enumerated()), id: \.offset) { index, row in
-                    tableRow(row, emphasized: false)
+                    tableRow(row, headers: headers, rowIndex: index, emphasized: false)
                         .background(index.isMultiple(of: 2) ? Color.white.opacity(0.025) : .clear)
                 }
             }
         }
         .background(Color.black.opacity(0.16), in: RoundedRectangle(cornerRadius: AppTheme.Radius.small))
         .overlay {
-            RoundedRectangle(cornerRadius: AppTheme.Radius.small)
-                .stroke(AppTheme.Palette.glassBorder)
+                RoundedRectangle(cornerRadius: AppTheme.Radius.small)
+                    .stroke(AppTheme.Palette.glassBorder)
         }
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel(MarkdownTableAccessibility.summary(headers: headers, rows: rows))
     }
 
-    private func tableRow(_ cells: [String], emphasized: Bool) -> some View {
+    private func tableRow(
+        _ cells: [String],
+        headers: [String],
+        rowIndex: Int?,
+        emphasized: Bool
+    ) -> some View {
         HStack(spacing: 0) {
-            ForEach(Array(cells.enumerated()), id: \.offset) { _, cell in
+            ForEach(Array(cells.enumerated()), id: \.offset) { column, cell in
                 Text(renderedInlineMarkdown(cell))
                     .font(.system(size: 13, weight: emphasized ? .semibold : .regular))
                     .foregroundStyle(emphasized ? Color.primary : AppTheme.Palette.textMuted)
@@ -504,9 +687,17 @@ private struct MarkdownTextView: View {
                             .fill(AppTheme.Palette.glassBorder)
                             .frame(width: 1)
                     }
+                    .accessibilityLabel(
+                        emphasized
+                            ? MarkdownTableAccessibility.headerLabel(cell, column: column)
+                            : MarkdownTableAccessibility.cellLabel(headers: headers, value: cell, column: column)
+                    )
+                    .accessibilityAddTraits(emphasized ? .isHeader : [])
             }
         }
         .background(emphasized ? AppTheme.Palette.accentSoft : .clear)
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel(rowIndex.map { "Row \($0 + 1)" } ?? "Column headers")
     }
 
     private func headingFont(level: Int) -> Font {
@@ -514,15 +705,7 @@ private struct MarkdownTextView: View {
     }
 
     private func renderedInlineMarkdown(_ chunk: String) -> AttributedString {
-        if let attr = try? AttributedString(
-            markdown: chunk,
-            options: AttributedString.MarkdownParsingOptions(
-                interpretedSyntax: .inlineOnlyPreservingWhitespace
-            )
-        ) {
-            return attr
-        }
-        return AttributedString(chunk)
+        InlineMarkdownPresentation.rendered(chunk)
     }
 }
 
@@ -541,6 +724,8 @@ private struct SizedMermaidWebView: View {
             }
         }
         .frame(height: height)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("Diagram: \(source)")
     }
 }
 
@@ -566,6 +751,8 @@ private struct SizedLaTeXWebView: View {
             }
         }
         .frame(height: height)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(MathAccessibility.spokenDescription(latex))
     }
 }
 
@@ -670,7 +857,10 @@ private struct LaTeXWebView: NSViewRepresentable {
         <meta charset="utf-8">
         <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css">
         <script src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js"></script>
-        <style>body{margin:0;padding:4px 8px;background:transparent}</style>
+        <style>
+        body{margin:0;padding:4px 8px;background:transparent;color:#e6e6e6;font-family:-apple-system,sans-serif}
+        .katex{color:#e6e6e6}
+        </style>
         </head><body><div id="math"></div>
         <script>
         katex.render('\(escaped)', document.getElementById('math'), { displayMode: \(displayMode ? "true" : "false"), throwOnError: false });

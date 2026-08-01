@@ -116,6 +116,17 @@ public let computerUseTools: [MCPTool] = [
         )
     ),
     MCPTool(
+        name: "computer_close_app",
+        description: "Close one explicitly named application. Uses graceful quit by default. Set force only when the user explicitly accepts termination that may discard unsaved work.",
+        inputSchema: objectSchema(
+            properties: [
+                "app": stringSchema("Exact application name to close."),
+                "force": boolSchema("Explicitly terminate the app if graceful quit cannot complete. May discard unsaved work. Defaults to false.")
+            ],
+            required: ["app"]
+        )
+    ),
+    MCPTool(
         name: "computer_get",
         description: "Read a property from an accessibility ref.",
         inputSchema: objectSchema(
@@ -238,6 +249,12 @@ public func buildPressArgs(_ args: [String: Any]) throws -> [String] {
     ["press", try requiredString(args, "combo")]
 }
 
+public func buildCloseAppArgs(_ args: [String: Any]) throws -> [String] {
+    var command = ["close-app", try requiredString(args, "app")]
+    appendBool(args, "force", flag: "--force", to: &command)
+    return command
+}
+
 public func buildGetArgs(_ args: [String: Any]) throws -> [String] {
     var command = ["get", try requiredString(args, "ref"), "--property", try requiredString(args, "property")]
     appendString(args, "snapshot", flag: "--snapshot", to: &command)
@@ -264,6 +281,79 @@ public func buildListWindowsArgs(_ args: [String: Any]) throws -> [String] {
     var command = ["list-windows"]
     appendString(args, "app", flag: "--app", to: &command)
     return command
+}
+
+/// Selects the main visible standard window from agent-desktop's structured
+/// `list-windows` result. The CLI can include hidden menu/helper windows before the
+/// real app window, so wire order is never treated as priority.
+public enum ComputerWindowSelector {
+    private struct Candidate {
+        let id: String
+        let focused: Bool
+        let area: Double
+        let titleQuality: Int
+    }
+
+    public static func preferredWindowID(fromJSON text: String, appName: String) -> String? {
+        guard let data = text.data(using: .utf8),
+              let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              (root["ok"] as? Bool) != false else { return nil }
+        let payload = root["data"]
+        let rows: [[String: Any]]
+        if let array = payload as? [[String: Any]] {
+            rows = array
+        } else if let dictionary = payload as? [String: Any] {
+            rows = dictionary["windows"] as? [[String: Any]] ?? []
+        } else {
+            rows = []
+        }
+
+        let candidates = rows.compactMap { row -> Candidate? in
+            guard (row["visible"] as? Bool ?? row["is_visible"] as? Bool ?? true),
+                  let id = nonEmptyString(row["id"] ?? row["window_id"]) else { return nil }
+            let bounds = row["bounds"] as? [String: Any]
+                ?? row["frame"] as? [String: Any]
+                ?? [:]
+            let width = number(bounds["width"] ?? row["width"])
+            let height = number(bounds["height"] ?? row["height"])
+            guard width > 0, height > 0 else { return nil }
+            let title = nonEmptyString(row["title"] ?? row["name"]) ?? ""
+            let quality: Int
+            if title.caseInsensitiveCompare(appName) == .orderedSame {
+                quality = 2
+            } else if title.isEmpty || title.caseInsensitiveCompare("Window") == .orderedSame {
+                quality = 0
+            } else {
+                quality = 1
+            }
+            return Candidate(
+                id: id,
+                focused: row["is_focused"] as? Bool ?? row["focused"] as? Bool ?? false,
+                area: width * height,
+                titleQuality: quality
+            )
+        }
+
+        return candidates.sorted {
+            if $0.focused != $1.focused { return $0.focused && !$1.focused }
+            if $0.area != $1.area { return $0.area > $1.area }
+            if $0.titleQuality != $1.titleQuality { return $0.titleQuality > $1.titleQuality }
+            return $0.id < $1.id
+        }.first?.id
+    }
+
+    private static func nonEmptyString(_ value: Any?) -> String? {
+        guard let value = value as? String,
+              !value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return nil }
+        return value
+    }
+
+    private static func number(_ value: Any?) -> Double {
+        if let value = value as? Double { return value }
+        if let value = value as? Int { return Double(value) }
+        if let value = value as? NSNumber { return value.doubleValue }
+        return 0
+    }
 }
 
 public func requiredString(_ args: [String: Any], _ key: String) throws -> String {

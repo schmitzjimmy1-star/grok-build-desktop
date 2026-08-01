@@ -23,7 +23,7 @@ export SIGN_IDENTITY NOTARY_PROFILE RELEASE_TYPE
 #   make run            # Build + launch the app
 #   make app            # Package .app into dist/
 #   make install        # Package .app and copy to /Applications/ (signs when SIGN_IDENTITY in .env)
-#   make dmg            # Package .app + DMG (auto-notarizes if NOTARY_PROFILE set)
+#   make dmg            # Package .app + DMG (notarizes by default via NOTARY_PROFILE=AC_PASSWORD; pass NOTARY_PROFILE= to skip)
 #   make signed         # Codesigned build
 #   make notarize       # Notarize (NOTARY_PROFILE=...)
 #   make release        # Local only: build + publish GitHub release (gh auth); or push a v* tag for CI
@@ -53,7 +53,7 @@ help: ## Show this help
 	@echo "  $(YELLOW)make run-debug$(NC)        Build debug + launch (dev tools, Simulate Updates)"
 	@echo "  $(YELLOW)make app$(NC)              Package .app into dist/"
 	@echo "  $(YELLOW)make install$(NC)          Package .app and copy to /Applications/ (signs if SIGN_IDENTITY in .env)"
-	@echo "  $(YELLOW)make dmg$(NC)              Build .app + DMG (auto-notarizes + re-DMG if NOTARY_PROFILE set)"
+	@echo "  $(YELLOW)make dmg$(NC)              Build .app + DMG (notarizes by default; NOTARY_PROFILE= skips)"
 	@echo "  $(YELLOW)make signed$(NC)           Codesigned release"
 	@echo "  $(YELLOW)make notarize$(NC)         Notarize (NOTARY_PROFILE=...)"
 	@echo "  $(YELLOW)make release$(NC)          Local only: build + publish GitHub release (or push v* tag for CI)"

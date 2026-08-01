@@ -30,6 +30,90 @@ final class SessionPersistenceTests: XCTestCase {
         super.tearDown()
     }
 
+    @MainActor
+    func testBindingRestoredTabReassertsSavedBackendSessionIdentity() {
+        let store = ChatStore()
+        let restoredID = "019f-restored-gpt-session"
+
+        store.bindTabSession(
+            UUID(),
+            savedModel: "gpt-5.6-terra",
+            savedGrokSessionID: restoredID
+        )
+
+        let actualID = store.savedGrokSessionIDForTests
+        XCTAssertEqual(actualID, restoredID)
+    }
+
+    func testPopulatedRestoredTabUsesSavedBackendIdentityWhenRestartRequestOmitsIt() {
+        XCTAssertEqual(
+            ChatStore.resolvedResumeSessionID(
+                requested: nil,
+                saved: "019f-saved-gpt-session",
+                hasUserMessages: true
+            ),
+            "019f-saved-gpt-session"
+        )
+        XCTAssertNil(
+            ChatStore.resolvedResumeSessionID(
+                requested: nil,
+                saved: "019f-saved-gpt-session",
+                hasUserMessages: false
+            )
+        )
+        XCTAssertEqual(
+            ChatStore.resolvedResumeSessionID(
+                requested: "019f-explicit-session",
+                saved: "019f-saved-gpt-session",
+                hasUserMessages: true
+            ),
+            "019f-explicit-session"
+        )
+    }
+
+    func testProcessTeardownCannotErasePersistedBackendSessionIdentity() {
+        XCTAssertFalse(SessionIdentityPersistencePolicy.shouldPersistChangedSessionID(nil))
+        XCTAssertFalse(SessionIdentityPersistencePolicy.shouldPersistChangedSessionID("  "))
+        XCTAssertTrue(
+            SessionIdentityPersistencePolicy.shouldPersistChangedSessionID(
+                "019f-durable-backend-session"
+            )
+        )
+    }
+
+    func testSidebarSessionMetadataExposesFullTitleModelAndStatus() {
+        let session = SidebarSession(
+            id: UUID(),
+            workspaceID: UUID(),
+            title: "Implement the persistent workflow dashboard with recovery",
+            modelName: "GPT 5.6 Terra",
+            lastAccessed: Date(timeIntervalSince1970: 1_719_000_000),
+            isRunning: true
+        )
+
+        let help = SessionSidebarMetadata.helpText(for: session)
+        let accessibility = SessionSidebarMetadata.accessibilityLabel(for: session)
+        XCTAssertTrue(help.contains(session.title))
+        XCTAssertTrue(help.contains("GPT 5.6 Terra"))
+        XCTAssertTrue(accessibility.contains("working"))
+        XCTAssertTrue(accessibility.contains(session.title))
+    }
+
+    func testSidebarSessionMetadataCallsUnpersistedTabNewSession() {
+        let session = SidebarSession(
+            id: UUID(),
+            workspaceID: UUID(),
+            title: "New chat",
+            modelName: "Grok 4.5",
+            lastAccessed: nil,
+            isRunning: false
+        )
+
+        XCTAssertTrue(SessionSidebarMetadata.helpText(for: session).contains("New session"))
+        XCTAssertTrue(SessionSidebarMetadata.accessibilityLabel(for: session).contains("new session"))
+        XCTAssertFalse(SessionSidebarMetadata.accessibilityLabel(for: session).contains("last used"))
+    }
+
     func testSessionTitleUsesFirstUserMessageOnly() {
         let messages = [
             Message(role: .assistant, content: "Ignore assistant output"),
@@ -442,6 +526,44 @@ final class SessionPersistenceTests: XCTestCase {
         XCTAssertEqual(loaded.filter { $0.role == .system }.first?.content, "note")
 
         SessionMessageStore.remove(for: sessionID)
+    }
+
+    @MainActor
+    func testPostStartRecoveryRehydratesOnlyAnEmptyStore() {
+        let sessionID = UUID()
+        let workspace = Workspace(
+            name: "Post-start recovery",
+            path: URL(fileURLWithPath: NSTemporaryDirectory(), isDirectory: true)
+        )
+        let persisted = [
+            Message(role: .user, content: "persisted prompt"),
+            Message(role: .assistant, content: "persisted answer")
+        ]
+        SessionMessageStore.save(persisted, for: sessionID)
+        defer { SessionMessageStore.remove(for: sessionID) }
+
+        let store = ChatStore()
+        XCTAssertTrue(store.messages.isEmpty)
+        XCTAssertTrue(store.recoverPersistedMessagesAfterStartIfEmpty(
+            for: sessionID,
+            grokSessionID: nil,
+            workspace: workspace
+        ))
+        XCTAssertEqual(store.messages, persisted)
+
+        store.restorePersistedMessages([
+            Message(role: .user, content: "newer visible prompt"),
+            Message(role: .assistant, content: "newer visible answer")
+        ])
+        XCTAssertFalse(store.recoverPersistedMessagesAfterStartIfEmpty(
+            for: sessionID,
+            grokSessionID: nil,
+            workspace: workspace
+        ))
+        XCTAssertEqual(store.messages.map(\.content), [
+            "newer visible prompt",
+            "newer visible answer"
+        ])
     }
 
     // MARK: - Stale grok session load

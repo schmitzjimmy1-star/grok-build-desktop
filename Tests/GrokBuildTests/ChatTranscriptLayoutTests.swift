@@ -2,6 +2,50 @@ import XCTest
 @testable import GrokBuild
 
 final class ChatTranscriptLayoutTests: XCTestCase {
+    func testAutoScrollRetriesThroughLateRichTextLayout() {
+        let gaps = ChatAutoScrollPolicy.layoutSettleGapsMilliseconds
+        XCTAssertEqual(gaps.first, 0)
+        XCTAssertGreaterThanOrEqual(gaps.count, 4)
+        XCTAssertGreaterThanOrEqual(gaps.reduce(0, +), 800)
+        XCTAssertTrue(gaps.allSatisfy { $0 >= 0 })
+    }
+
+    func testActiveAssistantAnchorKeepsToolActivityAboveStreamingAnswer() {
+        let prompt = Message(role: .user, content: "Search")
+        let answer = Message(role: .assistant, content: "Streaming")
+
+        XCTAssertEqual(
+            ChatTranscriptLayout.activeAssistantMessageID(
+                messages: [prompt, answer],
+                streamingMessageID: answer.id
+            ),
+            answer.id
+        )
+        XCTAssertEqual(
+            ChatTranscriptLayout.activeAssistantMessageID(
+                messages: [prompt, answer],
+                streamingMessageID: nil
+            ),
+            answer.id
+        )
+    }
+
+    func testStreamingTextBufferSmoothsBurstsWithoutChangingContent() {
+        let text = String(repeating: "Grok stream 🚀 ", count: 240)
+        var buffer = StreamingTextBuffer()
+        buffer.append(text)
+
+        var batches: [String] = []
+        while !buffer.isEmpty {
+            batches.append(buffer.popNextBatch())
+        }
+
+        XCTAssertGreaterThan(batches.count, 1)
+        XCTAssertLessThan(batches.count, 24)
+        XCTAssertEqual(batches.joined(), text)
+        XCTAssertTrue(batches.allSatisfy { !$0.isEmpty })
+    }
+
     func testThinkingUsesStreamingAssistantWhenAvailable() {
         let completed = Message(role: .assistant, content: "Earlier")
         let streaming = Message(role: .assistant, content: "")
@@ -93,6 +137,52 @@ final class ChatTranscriptLayoutTests: XCTestCase {
         XCTAssertEqual(
             ComposerModelMenuLayout.effortDisplayName(storedValue: "unknown"),
             "Default"
+        )
+    }
+
+    func testFailedOrRacingSubmissionPreservesComposerDraft() {
+        XCTAssertEqual(
+            ComposerSubmissionPolicy.draftAfterSubmission(
+                currentDraft: "build it",
+                submittedDraft: "build it",
+                accepted: false
+            ),
+            "build it"
+        )
+        XCTAssertEqual(
+            ComposerSubmissionPolicy.draftAfterSubmission(
+                currentDraft: "build it, plus tests",
+                submittedDraft: "build it",
+                accepted: true
+            ),
+            "build it, plus tests"
+        )
+        XCTAssertEqual(
+            ComposerSubmissionPolicy.draftAfterSubmission(
+                currentDraft: "build it",
+                submittedDraft: "build it",
+                accepted: true
+            ),
+            ""
+        )
+    }
+
+    func testConnectionStatusNamesLazyResumeExplicitly() {
+        XCTAssertEqual(
+            ConnectionStatusPresentation.subtitle(
+                state: .starting,
+                isResumedSession: true,
+                hasWorkspace: true
+            ),
+            "Resuming session…"
+        )
+        XCTAssertEqual(
+            ConnectionStatusPresentation.subtitle(
+                state: .starting,
+                isResumedSession: false,
+                hasWorkspace: true
+            ),
+            "Starting agent…"
         )
     }
 }

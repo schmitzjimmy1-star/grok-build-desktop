@@ -111,7 +111,28 @@ enum UpdateChecker {
         let error: String?
     }
 
+    /// Personal-use gate: this GrokBuild is built and installed locally, so the upstream
+    /// GitHub feed is not an update source for it (a foreign-team release could not
+    /// install anyway — fail-closed TeamID policy). Default off; set the defaults key
+    /// `grokbuild.updates.appReleaseFeedEnabled` to true to re-enable the feed.
+    /// grok CLI updates from xAI are unaffected.
+    static var appReleaseFeedEnabled: Bool {
+        UserDefaults.standard.object(forKey: "grokbuild.updates.appReleaseFeedEnabled") as? Bool ?? false
+    }
+
     static func checkAppRelease() async throws -> AppRelease {
+        guard appReleaseFeedEnabled else {
+            let installed = AppVersion.short
+            return AppRelease(
+                installedVersion: installed,
+                latestVersion: installed,
+                tagName: "",
+                releaseURL: URL(string: "https://github.com/\(releasesRepo)")!,
+                downloadURL: nil,
+                publishedAt: nil,
+                updateAvailable: false
+            )
+        }
         let release = try await fetchLatestNotarizedAppRelease()
         let installed = AppVersion.short
         let latest = normalizedVersion(release.tagName)
@@ -160,7 +181,7 @@ enum UpdateChecker {
     static func checkGrokCLI() async -> GrokCLIStatus {
         do {
             let result = try await GrokCLIService()
-                .run(["update", "--check", "--json"], allowFailure: true)
+                .run(["update", "--check", "--json"], allowFailure: true, timeout: 60)
             return grokCLIStatus(fromCheckOutput: result.stdout, stderr: result.stderr)
         } catch GrokCLIService.CLIError.notFound {
             return GrokCLIStatus(state: .notInstalled)

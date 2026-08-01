@@ -393,6 +393,8 @@ struct MicButton: View {
         Button(action: toggle) {
             Image(systemName: iconName)
                 .foregroundStyle(iconColor)
+                .frame(width: ComposerControlMetrics.minimumHitTarget, height: ComposerControlMetrics.minimumHitTarget)
+                .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         .help(helpText)

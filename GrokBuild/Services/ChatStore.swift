@@ -3,6 +3,92 @@ import Observation
 import SwiftUI
 import AppKit
 
+struct TurnSettlementCoordinator {
+    struct Decision: Equatable {
+        let assistantID: UUID
+        let ok: Bool
+    }
+
+    private(set) var generation = 0
+    private var assistantID: UUID?
+    private var promptResult: Bool?
+    private var completionConsumed = false
+    private var finalized = false
+
+    mutating func begin(assistantID: UUID) -> Int {
+        generation &+= 1
+        self.assistantID = assistantID
+        promptResult = nil
+        completionConsumed = false
+        finalized = false
+        return generation
+    }
+
+    mutating func recordPromptResult(generation: Int, ok: Bool) -> Decision? {
+        guard generation == self.generation, assistantID != nil, !finalized else { return nil }
+        promptResult = ok
+        return takeDecisionIfReady()
+    }
+
+    mutating func recordCompletionConsumed() -> Decision? {
+        guard assistantID != nil, !finalized else { return nil }
+        completionConsumed = true
+        return takeDecisionIfReady()
+    }
+
+    mutating func invalidate() {
+        generation &+= 1
+        assistantID = nil
+        promptResult = nil
+        completionConsumed = false
+        finalized = true
+    }
+
+    private mutating func takeDecisionIfReady() -> Decision? {
+        guard let assistantID, let promptResult else { return nil }
+        // A failed RPC is terminal even when the CLI never emits completion. Success
+        // waits until the completion event has crossed ChatStore's event queue.
+        guard !promptResult || completionConsumed else { return nil }
+        finalized = true
+        return Decision(assistantID: assistantID, ok: promptResult)
+    }
+}
+
+enum PermissionRequestDisposition: Equatable {
+    case allow(optionID: String)
+    case deny(optionID: String?)
+    case prompt
+}
+
+enum PermissionRequestPolicy {
+    static func disposition(
+        mode: GrokPermissionMode,
+        isYolo: Bool,
+        options: [PermissionOption]
+    ) -> PermissionRequestDisposition {
+        if isYolo || mode == .alwaysApprove {
+            if let allow = options.first(where: { isAllow($0) }) {
+                return .allow(optionID: allow.id)
+            }
+            return .deny(optionID: options.first(where: { isDeny($0) })?.id)
+        }
+        if mode == .denyUnapproved {
+            return .deny(optionID: options.first(where: { isDeny($0) })?.id)
+        }
+        return .prompt
+    }
+
+    private static func isAllow(_ option: PermissionOption) -> Bool {
+        let kind = option.kind.lowercased()
+        return kind.contains("allow") || kind.contains("approve")
+    }
+
+    private static func isDeny(_ option: PermissionOption) -> Bool {
+        let kind = option.kind.lowercased()
+        return kind.contains("reject") || kind.contains("deny") || kind.contains("cancel")
+    }
+}
+
 @Observable
 @MainActor
 final class ChatStore {
@@ -39,6 +125,11 @@ final class ChatStore {
     private(set) var thinkingText = ""
     private(set) var thinkingDuration: TimeInterval?
     private(set) var isThinkingExpanded = false
+    /// Bumped on every streamed thinking/answer chunk. A streaming answer appends to the
+    /// existing assistant message's content, which changes neither `messages.count` nor
+    /// `isGrokking` — so the transcript needs this to auto-scroll the growing answer into
+    /// view instead of stranding it below the fold behind the thinking chip.
+    private(set) var streamRevision = 0
     private(set) var liveToolCalls: [LiveToolCall] = []
     private var thinkingStartedAt: Date?
     /// When the current turn began — drives the elapsed/"warming up" indicator.
@@ -48,6 +139,18 @@ final class ChatStore {
         let id: String
         let title: String
         let kind: String
+        let status: String?
+        let detail: String?
+
+        var isFailed: Bool {
+            guard let status else { return false }
+            return ["failed", "error", "rejected"].contains(status.lowercased())
+        }
+
+        var isComplete: Bool {
+            guard let status else { return false }
+            return ["completed", "complete", "success", "succeeded"].contains(status.lowercased())
+        }
     }
 
     /// Set when the underlying grok CLI indicates the user is not authenticated.
@@ -60,29 +163,38 @@ final class ChatStore {
     private(set) var pendingPermissions: [PermissionRequest] = []
     private(set) var pendingExitPlan: ExitPlanRequest?
     private(set) var pendingQuestions: [QuestionRequest] = []
-    private(set) var availableSlashCommands: [SlashCommand] = []
+    private(set) var availableSlashCommands: [SlashCommand] = GrokCommandCatalog.cached()
     /// Local goal state updated when the user sends `/goal …`; cleared on new session.
     private(set) var goalState: SessionGoalState?
     private(set) var fileAttachments: [FileAttachment] = []
     private(set) var isYolo: Bool = false
 
     var grokSessionId: String? { process.sessionId }
+    var durableGrokSessionID: String? { process.sessionId ?? savedGrokSessionID }
+    var effectiveLaunchReceipt: GrokLaunchReceipt? { process.launchReceipt }
+    var effectivePermissionMode: GrokPermissionMode {
+        process.launchReceipt?.permissionMode ?? .ask
+    }
 
     // MARK: - Model selection (real models from `grok models` + initialize modelState)
-    private(set) var currentModel: String = "grok-composer-2.5-fast"
-    private(set) var availableModels: [String] = [
-        "grok-composer-2.5-fast",
-        "grok-build"
-    ]
-    private var modelDisplayNames: [String: String] = [
-        "grok-composer-2.5-fast": "Composer 2.5 Fast",
-        "grok-build": "Grok Build"
-    ]
-    private var modelContextTokens: [String: Int] = [
-        "grok-composer-2.5-fast": 200_000,
-        "grok-build": 512_000
-    ]
+    private(set) var currentModel: String = "grok-4.5"
+    private(set) var availableModels: [String] = []
+    private var modelDisplayNames: [String: String] = [:]
+    private var modelContextTokens: [String: Int] = ["grok-4.5": 500_000]
+    private var builtInModelIDs = Set<String>()
     private var customModelsByID: [String: CustomModel] = [:]
+    private var pendingConfigurationChange: ConfigurationChange?
+    private var pendingRuntimeReload = false
+
+    /// Set when a streaming turn has produced no ACP events for `turnStallThreshold`.
+    /// The UI offers Stop-and-retry; nothing is killed automatically, because a long
+    /// tool run is indistinguishable from a wedge without the user's judgment.
+    private(set) var turnStalledSince: Date?
+    private var lastTurnEventAt = Date()
+    private var stallWatchdogTask: Task<Void, Never>?
+    static let turnStallThreshold: TimeInterval = 120
+    private(set) var isApplyingConfiguration = false
+    private(set) var configurationStatusMessage: String?
     private(set) var usedContextTokens: Int?
 
     // Persist mode/model choices per Grok session id.
@@ -138,6 +250,9 @@ final class ChatStore {
         isStreaming = value
     }
 
+    var pendingRuntimeReloadForTests: Bool { pendingRuntimeReload }
+    var savedGrokSessionIDForTests: String? { savedGrokSessionID }
+
     // MARK: - Workflow runs (grok `workflow` tools, mirrored by observing ACP tool calls)
     private(set) var workflowRuns: [WorkflowRun] = []
     private var workflowRunTracker = WorkflowRunTracker()
@@ -154,9 +269,19 @@ final class ChatStore {
 
     private(set) var streamingMessageID: UUID?
     private var connectionWatchdogTask: Task<Void, Never>?
+    private var streamingTextBuffer = StreamingTextBuffer()
+    private var streamingTextFlushTask: Task<Void, Never>?
+    private var deferredPromptCompletion: (assistantID: UUID, ok: Bool)?
+    private var turnSettlement = TurnSettlementCoordinator()
+    private var activeTurnBackendSessionID: String?
+    private var authoritativeTailAssistantID: UUID?
+    private var closedTurnAssistantID: UUID?
+    private var closedTurnHasAuthoritativeHistory = false
+    private var pendingLateChunkPersistence = false
 
     init(process: GrokProcess? = nil) {
         self.process = process ?? GrokProcess()
+        applyBuiltInModelCatalog(GrokModelCatalog.cachedOrFallback())
         loadSessionSelections()
         Task { [weak self] in await self?.consumeOutput() }
     }
@@ -179,13 +304,28 @@ final class ChatStore {
         resetSessionUI()
         self.savedGrokSessionID = savedGrokSessionID
         currentWorkspace = workspace
+        applyBuiltInModelCatalog(GrokModelCatalog.cachedOrFallback())
         mergeCustomModels()
         loadWorkspaceReasoningEffort()
+        Task { [weak self] in
+            guard let self else { return }
+            self.applyBuiltInModelCatalog(await GrokModelCatalog.shared.models())
+        }
     }
 
-    /// Bind this store to a sidebar tab and apply its saved model + agent when present.
-    func bindTabSession(_ id: UUID, savedModel: String?, savedAgent: String? = nil) {
+    /// Bind this store to a sidebar tab and apply its saved backend session, model, and agent.
+    /// Reasserting the backend id here matters during launch: the persisted transcript can be
+    /// visible before the selected tab's lazy `session/load` task has finished.
+    func bindTabSession(
+        _ id: UUID,
+        savedModel: String?,
+        savedAgent: String? = nil,
+        savedGrokSessionID: String? = nil
+    ) {
         tabSessionID = id
+        if let savedGrokSessionID, !savedGrokSessionID.isEmpty {
+            self.savedGrokSessionID = savedGrokSessionID
+        }
         tabHasExplicitModel = false
         tabHasExplicitAgent = false
         currentAgent = defaultAgentSelection
@@ -325,6 +465,47 @@ final class ChatStore {
         restorePersistedMessages(recovered ?? saved)
     }
 
+    /// A lazy `session/load` can finish after tab selection and, for some provider
+    /// backends, leave the prepared in-memory transcript empty even though the tab's
+    /// durable local transcript is intact. Rehydrate only that empty post-start state;
+    /// never replace visible/newer local work.
+    @discardableResult
+    func recoverPersistedMessagesAfterStartIfEmpty(
+        for sessionID: UUID,
+        grokSessionID: String?,
+        workspace: Workspace
+    ) -> Bool {
+        guard messages.isEmpty,
+              SessionMessageStore.hasRestorableTranscript(for: sessionID) else {
+            return false
+        }
+        restorePersistedMessages(
+            for: sessionID,
+            grokSessionID: grokSessionID,
+            workspace: workspace
+        )
+        return !messages.isEmpty
+    }
+
+    /// Re-run the bounded exact-history reconciliation when selecting an already-loaded
+    /// tab. This closes the window where the tab was restored before a late backend final
+    /// was durable, without scanning or polling any unrelated session directory.
+    func reconcilePersistedMessages(
+        for sessionID: UUID,
+        grokSessionID: String?,
+        workspace: Workspace
+    ) {
+        mergePersistedMessages(SessionMessageStore.messages(for: sessionID))
+        if let recovered = SessionTranscriptRecovery.recoverIfNeeded(
+            sessionID: sessionID,
+            grokSessionID: grokSessionID,
+            workspacePath: workspace.path,
+            currentMessages: messages
+        ) {
+            restorePersistedMessages(recovered)
+        }
+    }
+
     /// Merge disk transcript into memory without dropping messages already loaded.
     func mergePersistedMessages(_ saved: [Message]) {
         let filtered = filteredPersistedMessages(saved)
@@ -345,9 +526,73 @@ final class ChatStore {
     // setAgent for personas removed - use CLI's AGENTS.md, skills, or --agent for custom profiles.
 
     func reloadConfiguration() async {
-        if currentWorkspace != nil {
-            await restartProcess()
+        guard currentWorkspace != nil else { return }
+        // Never kill an in-flight response for a wiring change — queue it like model
+        // changes are queued, and apply it when the turn completes.
+        if isStreaming {
+            pendingRuntimeReload = true
+            configurationStatusMessage = "Configuration changes will apply after the current response."
+            return
+        }
+        await performRuntimeReload()
+    }
+
+    /// Restarts with the current grok session resumed, so browser/computer-use/MCP/
+    /// permission wiring changes keep the live conversation context instead of silently
+    /// dropping it with a fresh `session/new`.
+    private func performRuntimeReload() async {
+        pendingRuntimeReload = false
+        if configurationStatusMessage == "Configuration changes will apply after the current response." {
+            configurationStatusMessage = nil
+        }
+        let resumeID = grokSessionId ?? savedGrokSessionID
+        await restartProcess(resumeSessionID: resumeID)
+        if connectionState == .ready {
             appendSystemNote("Reloaded Grok configuration.")
+        } else {
+            configurationStatusMessage = lastError ?? "Grok configuration could not be reloaded."
+        }
+    }
+
+    /// Applies a typed config change without restarting unrelated live sessions.
+    func applyConfigurationChange(_ change: ConfigurationChange) async {
+        mergeCustomModels()
+        guard change.impact == .modelRuntime,
+              !change.affectedModelIDs.isEmpty,
+              change.affectedModelIDs.contains(currentModel),
+              currentWorkspace != nil else {
+            return
+        }
+
+        if isStreaming {
+            if var pending = pendingConfigurationChange {
+                pending.affectedModelIDs.formUnion(change.affectedModelIDs)
+                pendingConfigurationChange = pending
+            } else {
+                pendingConfigurationChange = change
+            }
+            configurationStatusMessage = "Model changes will apply after the current response."
+            return
+        }
+
+        await applyRuntimeConfigurationChange()
+    }
+
+    private func applyRuntimeConfigurationChange() async {
+        pendingConfigurationChange = nil
+        // One restart applies the whole current launch configuration, so a general
+        // reload queued during the same turn is satisfied here too.
+        pendingRuntimeReload = false
+        isApplyingConfiguration = true
+        configurationStatusMessage = "Applying model configuration…"
+        let resumeID = grokSessionId ?? savedGrokSessionID
+        await restartProcess(resumeSessionID: resumeID)
+        isApplyingConfiguration = false
+        if connectionState == .ready {
+            configurationStatusMessage = "Model configuration applied."
+            appendSystemNote("Applied updated model configuration.")
+        } else {
+            configurationStatusMessage = lastError ?? "Model configuration could not be applied."
         }
     }
 
@@ -400,6 +645,15 @@ final class ChatStore {
 
     private func restartProcess(resumeSessionID: String? = nil) async {
         guard let ws = currentWorkspace else { return }
+        // A populated restored tab always belongs to its saved backend session. Several
+        // asynchronous launch paths can request a restart without carrying that id; resolving
+        // it centrally prevents any of them from silently replacing the visible conversation
+        // with a fresh default-model session.
+        let effectiveResumeSessionID = Self.resolvedResumeSessionID(
+            requested: resumeSessionID,
+            saved: savedGrokSessionID,
+            hasUserMessages: hasUserMessages
+        )
         clearTurnState()
         isStreaming = false
         streamingMessageID = nil
@@ -408,8 +662,9 @@ final class ChatStore {
         connectionState = .starting
         lastError = nil
         startConnectionWatchdog()
+        applyBuiltInModelCatalog(await GrokModelCatalog.shared.models())
         let settings = loadPermissionSettings()
-        let savedSelection = resumeSessionID.flatMap { sessionSelections[$0] }
+        let savedSelection = effectiveResumeSessionID.flatMap { sessionSelections[$0] }
         let modelForLaunch = modelForProcessLaunch(fallbackSelection: savedSelection)
         let reasoningEffortForLaunch = modelSupportsReasoningEffort(modelForLaunch) ? workspaceReasoningEffort : ""
         let browserSettings = BrowserSettingsStore.loadApplied()
@@ -450,7 +705,7 @@ final class ChatStore {
             noSubagents: settings.noSubagents,
             allowRules: lineList(settings.allowRules),
             denyRules: lineList(settings.denyRules),
-            resumeSessionID: resumeSessionID,
+            resumeSessionID: effectiveResumeSessionID,
             forkSession: launchForkSession,
             newSessionID: launchNewSessionID,
             mcpServers: mcpServers
@@ -462,6 +717,22 @@ final class ChatStore {
             lastError = message
             return
         }
+        let resumedBackendID = effectiveResumeSessionID
+        if process.sessionLoadStartedFreshFallback,
+           let oldBackendID = resumedBackendID,
+           let sessionID = tabSessionID,
+           let reconciliation = SessionTranscriptRecovery.reconcile(
+               sessionID: sessionID,
+               grokSessionID: oldBackendID,
+               workspacePath: ws.path,
+               currentMessages: messages
+           ) {
+            if reconciliation.changed {
+                messages = filteredPersistedMessages(reconciliation.messages)
+                streamRevision &+= 1
+            }
+        }
+        savedGrokSessionID = process.sessionId ?? effectiveResumeSessionID
         availableModes = process.availableModes
         syncModelsFromProcess()
         if process.sessionLoadStartedFreshFallback {
@@ -470,20 +741,34 @@ final class ChatStore {
                     || ($0.role == .assistant
                         && !$0.content.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
             }
+            let oldID = resumedBackendID ?? "unknown"
+            let newID = savedGrokSessionID ?? "unknown"
             if hasLocalTranscript {
                 appendSystemNote(
-                    "Previous grok session expired; started a fresh chat. Your saved transcript in this tab is still shown."
+                    "Session recovery fork: \(oldID) could not resume, so GrokBuild reconciled its available transcript and continued as \(newID)."
                 )
             } else {
                 appendSystemNote(
-                    "Previous grok session expired; started a fresh chat. The prior transcript could not be restored."
+                    "Session recovery fork: \(oldID) could not resume and no prior transcript was recoverable; continued as \(newID)."
                 )
             }
             notifyMessagesChanged()
         }
         restoreSessionSelection(savedSelection)
         saveCurrentSessionSelection()
-        availableSlashCommands = process.availableSlashCommands
+        if !process.availableSlashCommands.isEmpty {
+            applyAvailableSlashCommands(process.availableSlashCommands)
+        }
+    }
+
+    nonisolated static func resolvedResumeSessionID(
+        requested: String?,
+        saved: String?,
+        hasUserMessages: Bool
+    ) -> String? {
+        if let requested, !requested.isEmpty { return requested }
+        guard hasUserMessages, let saved, !saved.isEmpty else { return nil }
+        return saved
     }
 
     private func startConnectionWatchdog() {
@@ -771,7 +1056,11 @@ final class ChatStore {
         }
         if connectionState != .ready {
             if process.sessionId == nil && connectionState != .starting {
-                await restartProcess()
+                // Restored tabs render their local transcript before the live Grok
+                // session finishes its lazy resume. If the user sends during that
+                // window, resume the saved session here too; starting without its id
+                // silently forks the visible conversation onto the default model.
+                await restartProcess(resumeSessionID: savedGrokSessionID)
             }
             guard connectionState == .ready else {
                 if lastError == nil {
@@ -791,6 +1080,7 @@ final class ChatStore {
         clearTurnState()
         isGrokking = true
         turnStartedAt = Date()
+        startStallWatchdog()
 
         if let attachmentBlock = AttachmentPromptBuilder.build(from: fileAttachments) {
             trimmed = trimmed.isEmpty ? attachmentBlock : "\(attachmentBlock)\n\n\(trimmed)"
@@ -810,6 +1100,8 @@ final class ChatStore {
         let assistant = Message(role: .assistant, content: "")
         messages.append(assistant)
         streamingMessageID = assistant.id
+        activeTurnBackendSessionID = durableGrokSessionID
+        let turnGeneration = turnSettlement.begin(assistantID: assistant.id)
         isStreaming = true
         lastError = nil
         authRequiredMessage = nil
@@ -819,25 +1111,38 @@ final class ChatStore {
         connectionState = .busy
 
         let payload = trimmed
-        let assistantID = assistant.id
 
         if waitForCompletion {
             let ok = await process.send(payload)
-            finishPrompt(assistantID: assistantID, ok: ok)
+            applyTurnSettlementDecision(
+                turnSettlement.recordPromptResult(generation: turnGeneration, ok: ok)
+            )
             return ok
         }
 
         Task { [weak self] in
             guard let self else { return }
             let ok = await self.process.send(payload)
-            self.finishPrompt(assistantID: assistantID, ok: ok)
+            self.applyTurnSettlementDecision(
+                self.turnSettlement.recordPromptResult(generation: turnGeneration, ok: ok)
+            )
         }
 
         return true
     }
 
     private func finishPrompt(assistantID: UUID, ok: Bool) {
-        if ok, let idx = messages.firstIndex(where: { $0.id == assistantID }) {
+        if !streamingTextBuffer.isEmpty || streamingTextFlushTask != nil {
+            deferredPromptCompletion = (assistantID, ok)
+            scheduleStreamingTextFlushIfNeeded()
+            return
+        }
+        finishPromptNow(assistantID: assistantID, ok: ok)
+    }
+
+    private func finishPromptNow(assistantID: UUID, ok: Bool) {
+        let settledAssistantID = authoritativeTailAssistantID ?? assistantID
+        if ok, let idx = messages.firstIndex(where: { $0.id == settledAssistantID }) {
             captureAsideAndShare(from: messages[idx].content)
         }
 
@@ -845,17 +1150,38 @@ final class ChatStore {
         isGrokking = false
         turnStartedAt = nil
         streamingMessageID = nil
+        closedTurnAssistantID = ok ? settledAssistantID : nil
+        stopStallWatchdog()
         if let start = thinkingStartedAt, !thinkingText.isEmpty {
             thinkingDuration = Date().timeIntervalSince(start)
         }
         if ok {
             connectionState = .ready
             notifyMessagesChanged()
-            drainPromptQueueIfNeeded()
+            activeTurnBackendSessionID = nil
+            authoritativeTailAssistantID = nil
+            if pendingConfigurationChange != nil {
+                Task { [weak self] in
+                    guard let self else { return }
+                    await self.applyRuntimeConfigurationChange()
+                    self.drainPromptQueueIfNeeded()
+                }
+            } else if pendingRuntimeReload {
+                Task { [weak self] in
+                    guard let self else { return }
+                    await self.performRuntimeReload()
+                    self.drainPromptQueueIfNeeded()
+                }
+            } else {
+                drainPromptQueueIfNeeded()
+            }
             return
         }
 
         pendingShareURLCapture = false
+        closedTurnHasAuthoritativeHistory = false
+        authoritativeTailAssistantID = nil
+        activeTurnBackendSessionID = nil
         lastError = process.state.errorMessage ?? "Failed to send to grok."
         connectionState = process.state == .ready ? .ready : process.state
         if let idx = messages.firstIndex(where: { $0.id == assistantID }),
@@ -863,6 +1189,11 @@ final class ChatStore {
             messages.remove(at: idx)
         }
         notifyMessagesChanged()
+    }
+
+    private func applyTurnSettlementDecision(_ decision: TurnSettlementCoordinator.Decision?) {
+        guard let decision else { return }
+        finishPrompt(assistantID: decision.assistantID, ok: decision.ok)
     }
 
     private func drainPromptQueueIfNeeded() {
@@ -894,6 +1225,8 @@ final class ChatStore {
     }
 
     func clearTurnState() {
+        cancelStreamingTextFlush()
+        invalidateTurnSettlement()
         isGrokking = false
         thinkingText = ""
         thinkingDuration = nil
@@ -903,11 +1236,22 @@ final class ChatStore {
         liveToolCalls = []
     }
 
+    private func invalidateTurnSettlement() {
+        turnSettlement.invalidate()
+        activeTurnBackendSessionID = nil
+        authoritativeTailAssistantID = nil
+        closedTurnAssistantID = nil
+        closedTurnHasAuthoritativeHistory = false
+    }
+
     func stop() {
+        cancelStreamingTextFlush()
+        invalidateTurnSettlement()
         isStreaming = false
         isGrokking = false
         turnStartedAt = nil
         streamingMessageID = nil
+        stopStallWatchdog()
         pendingPermissions.removeAll()
         pendingExitPlan = nil
         pendingQuestions.removeAll()
@@ -916,11 +1260,29 @@ final class ChatStore {
     }
 
     func shutdown() async {
+        cancelStreamingTextFlush()
+        invalidateTurnSettlement()
         connectionWatchdogTask?.cancel()
+        stopStallWatchdog()
         isStreaming = false
         isGrokking = false
         streamingMessageID = nil
         await process.stop()
+        connectionState = .idle
+    }
+
+    /// Terminal variant of `shutdown()` for a closed tab or app quit: also ends the
+    /// process's ACP event stream, which terminates `consumeOutput()` and lets the
+    /// store/process pair deallocate. A store must not reconnect after this.
+    func shutdownPermanently() async {
+        cancelStreamingTextFlush()
+        invalidateTurnSettlement()
+        connectionWatchdogTask?.cancel()
+        stopStallWatchdog()
+        isStreaming = false
+        isGrokking = false
+        streamingMessageID = nil
+        await process.shutdown()
         connectionState = .idle
     }
 
@@ -968,32 +1330,43 @@ final class ChatStore {
     }
 
     func respondToPermission(_ request: PermissionRequest, with optionId: String) {
-        let isAllow = optionId.lowercased().contains("allow")
-
-        if isAllow && request.toolCall.isEdit,
-           let path = request.toolCall.editFilePath,
-           let newContent = request.toolCall.proposedContent {
-
-            // Trigger actual patch/application from the permission response
-            do {
-                let base = currentWorkspace?.path ?? URL(fileURLWithPath: FileManager.default.currentDirectoryPath)
-                let url = URL(fileURLWithPath: path, relativeTo: base)
-                try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
-                try newContent.write(to: url, atomically: true, encoding: .utf8)
-
-                // Also use existing diff apply logic if we can construct a simple diff
-                if request.toolCall.oldContent != nil {
-                    // For richer, we could build unified diff here, but direct write is reliable
-                    appendSystemNote("Applied edit to \(path) from permission approval.")
-                }
-            } catch {
-                lastError = "Failed to apply edit from permission: \(error.localizedDescription)"
-            }
-        }
-
+        // Permission is an ACP decision only. The CLI remains the sole executor so its
+        // sandbox, deny rules, and hooks cannot be bypassed by a client-side file write.
         process.respondToPermission(request, with: optionId)
-        // Remove from pending
         pendingPermissions.removeAll { $0.id == request.id }
+    }
+
+    private func denyPermission(_ request: PermissionRequest, optionID: String?) {
+        if let optionID {
+            process.respondToPermission(request, with: optionID)
+        } else {
+            process.rejectPermission(
+                request,
+                reason: "The effective GrokBuild launch policy denied this unapproved tool request."
+            )
+        }
+        pendingPermissions.removeAll { $0.id == request.id }
+    }
+
+    private func recordAutomaticPermissionDecision(
+        _ request: PermissionRequest,
+        allowed: Bool,
+        mode: GrokPermissionMode
+    ) {
+        let receipt = LiveToolCall(
+            id: request.toolCall.id,
+            title: displayTitle(for: request.toolCall),
+            kind: displayKind(for: request.toolCall),
+            status: allowed ? "completed" : "rejected",
+            detail: allowed
+                ? "Allowed automatically by the live \(mode.displayName) policy."
+                : "Denied automatically by the live \(mode.displayName) policy."
+        )
+        if let index = liveToolCalls.firstIndex(where: { $0.id == receipt.id }) {
+            liveToolCalls[index] = receipt
+        } else {
+            liveToolCalls.append(receipt)
+        }
     }
 
     func setMode(_ mode: AgentMode) {
@@ -1119,10 +1492,18 @@ final class ChatStore {
     func setYolo(_ enabled: Bool) {
         isYolo = enabled
         if enabled {
-            // Auto-approve any current pending
             for perm in pendingPermissions {
-                if let allow = perm.options.first(where: { $0.kind.contains("allow") }) ?? perm.options.first {
-                    respondToPermission(perm, with: allow.id)
+                switch PermissionRequestPolicy.disposition(
+                    mode: effectivePermissionMode,
+                    isYolo: true,
+                    options: perm.options
+                ) {
+                case .allow(let optionID):
+                    respondToPermission(perm, with: optionID)
+                case .deny(let optionID):
+                    denyPermission(perm, optionID: optionID)
+                case .prompt:
+                    break
                 }
             }
             pendingPermissions.removeAll()
@@ -1206,7 +1587,7 @@ final class ChatStore {
     }
 
     @discardableResult
-    func applyDiffs(from message: Message, workspace: Workspace) -> (applied: Int, errors: [String]) {
+    func applyDiffs(from message: Message, workspace: Workspace) async -> (applied: Int, errors: [String]) {
         let diffs = detectedDiffs(in: message)
         guard !diffs.isEmpty else { return (0, []) }
 
@@ -1214,7 +1595,7 @@ final class ChatStore {
         var errs: [String] = []
         for d in diffs {
             do {
-                try DiffUtils.applyUnifiedDiff(d.raw, root: workspace.path)
+                try await DiffUtils.applyUnifiedDiff(d.raw, root: workspace.path)
                 applied += 1
             } catch {
                 errs.append("\(d.filePath ?? "file"): \(error.localizedDescription)")
@@ -1234,7 +1615,46 @@ final class ChatStore {
         }
     }
 
+    private func touchTurnActivity() {
+        lastTurnEventAt = Date()
+        if turnStalledSince != nil { turnStalledSince = nil }
+    }
+
+    private func startStallWatchdog() {
+        stallWatchdogTask?.cancel()
+        turnStalledSince = nil
+        lastTurnEventAt = Date()
+        stallWatchdogTask = Task { [weak self] in
+            while !Task.isCancelled {
+                try? await Task.sleep(for: .seconds(15))
+                guard let self, self.isStreaming else { return }
+                self.evaluateTurnStall(now: Date())
+            }
+        }
+    }
+
+    private func stopStallWatchdog() {
+        stallWatchdogTask?.cancel()
+        stallWatchdogTask = nil
+        turnStalledSince = nil
+    }
+
+    func evaluateTurnStall(now: Date) {
+        guard isStreaming else {
+            turnStalledSince = nil
+            return
+        }
+        if now.timeIntervalSince(lastTurnEventAt) >= Self.turnStallThreshold, turnStalledSince == nil {
+            turnStalledSince = now
+        }
+    }
+
+    func setLastTurnEventAtForTests(_ date: Date) {
+        lastTurnEventAt = date
+    }
+
     private func handleAcpEvent(_ event: AcpEvent) {
+        if isStreaming { touchTurnActivity() }
         switch event {
         case .messageChunk(let text):
             isGrokking = false
@@ -1243,7 +1663,9 @@ final class ChatStore {
             isGrokking = false
             if thinkingStartedAt == nil { thinkingStartedAt = Date() }
             thinkingText += text
+            streamRevision &+= 1
         case .toolCall(let tc):
+            flushAllPendingAssistantText()
             isGrokking = false
             if !liveToolCalls.contains(where: { $0.id == tc.id }) {
                 liveToolCalls.append(liveToolCall(from: tc))
@@ -1290,7 +1712,7 @@ final class ChatStore {
                 pendingQuestions.append(req)
             }
         case .availableCommands(let commands):
-            availableSlashCommands = commands
+            applyAvailableSlashCommands(commands)
         case .schedulerActivity(let payload):
             scheduledTaskTracker.apply(update: payload)
             scheduledTasks = scheduledTaskTracker.tasks
@@ -1303,17 +1725,31 @@ final class ChatStore {
             backgroundTaskTracker.apply(update: payload)
             backgroundActivities = backgroundTaskTracker.activities
             scheduledTasks = backgroundTaskTracker.activities.compactMap(\.scheduledTask)
+        case .turnCompleted:
+            // This event shares the same AsyncStream queue as text/tool updates. By
+            // acknowledging only here, `process.send` cannot outrun already-yielded
+            // synthesis chunks and detach them from their assistant message.
+            flushAllPendingAssistantText()
+            reconcileActiveTurnFromBackend()
+            process.acknowledgeTurnCompleted()
+            applyTurnSettlementDecision(turnSettlement.recordCompletionConsumed())
         case .permissionRequest(let req):
-            if isYolo {
-                // Auto-approve in YOLO mode (prefer allow_always or first allow)
-                if let allow = req.options.first(where: { $0.kind.contains("always") || $0.kind.contains("allow") }) ?? req.options.first {
-                    respondToPermission(req, with: allow.id)
+            let liveMode = effectivePermissionMode
+            switch PermissionRequestPolicy.disposition(
+                mode: liveMode,
+                isYolo: isYolo,
+                options: req.options
+            ) {
+            case .allow(let optionID):
+                respondToPermission(req, with: optionID)
+                recordAutomaticPermissionDecision(req, allowed: true, mode: liveMode)
+            case .deny(let optionID):
+                denyPermission(req, optionID: optionID)
+                recordAutomaticPermissionDecision(req, allowed: false, mode: liveMode)
+            case .prompt:
+                if !pendingPermissions.contains(where: { $0.id == req.id }) {
+                    pendingPermissions.append(req)
                 }
-                return
-            }
-            // Avoid duplicates
-            if !pendingPermissions.contains(where: { $0.id == req.id }) {
-                pendingPermissions.append(req)
             }
         case .modeChanged(let mode):
             currentMode = mode
@@ -1323,7 +1759,7 @@ final class ChatStore {
             usedContextTokens = totalTokens
 
         case .rawLine(let line):
-            appendAssistantText(line)
+            appendAssistantText(line, allowClosedTurn: false)
         case .error(let msg):
             lastError = msg
         }
@@ -1333,14 +1769,22 @@ final class ChatStore {
         LiveToolCall(
             id: toolCall.id,
             title: displayTitle(for: toolCall),
-            kind: displayKind(for: toolCall)
+            kind: displayKind(for: toolCall),
+            status: toolCall.status,
+            detail: toolCall.detail
         )
     }
 
     private func mergedToolCall(existing: LiveToolCall, update: ToolCall) -> LiveToolCall {
         let title = isPlaceholderTitle(update.title) ? existing.title : displayTitle(for: update)
         let kind = isPlaceholderKind(update.kind) ? existing.kind : displayKind(for: update)
-        return LiveToolCall(id: existing.id, title: title, kind: kind)
+        return LiveToolCall(
+            id: existing.id,
+            title: title,
+            kind: kind,
+            status: update.status ?? existing.status,
+            detail: update.detail ?? existing.detail
+        )
     }
 
     private func displayTitle(for toolCall: ToolCall) -> String {
@@ -1379,8 +1823,37 @@ final class ChatStore {
         return normalized.isEmpty || normalized == "unknown"
     }
 
-    private func appendAssistantText(_ text: String) {
-        guard let id = streamingMessageID,
+    private func reconcileActiveTurnFromBackend() {
+        guard let sessionID = tabSessionID,
+              let backendID = activeTurnBackendSessionID,
+              let workspace = currentWorkspace,
+              let result = SessionTranscriptRecovery.reconcile(
+                  sessionID: sessionID,
+                  grokSessionID: backendID,
+                  workspacePath: workspace.path,
+                  currentMessages: messages
+              ) else {
+            return
+        }
+        if result.changed {
+            messages = filteredPersistedMessages(result.messages)
+            streamRevision &+= 1
+        }
+        if let authoritativeID = result.authoritativeTailAssistantID {
+            authoritativeTailAssistantID = authoritativeID
+            streamingMessageID = authoritativeID
+            closedTurnHasAuthoritativeHistory = true
+        }
+    }
+
+    private func appendAssistantText(_ text: String, allowClosedTurn: Bool = true) {
+        if closedTurnHasAuthoritativeHistory {
+            // Completion reconciliation already committed the terminal backend answer.
+            // Ignore a late ACP copy instead of rendering the synthesis twice.
+            return
+        }
+        let targetID = streamingMessageID ?? (allowClosedTurn ? closedTurnAssistantID : nil)
+        guard let id = targetID,
               let idx = messages.firstIndex(where: { $0.id == id }) else { return }
 
         let clean = text.replacingOccurrences(of: "<<USER>> ", with: "")
@@ -1388,8 +1861,96 @@ final class ChatStore {
            !clean.contains("diff") { return }
 
         if !clean.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || !messages[idx].content.isEmpty {
-            messages[idx].content += clean
+            streamingTextBuffer.append(clean)
+            if streamingMessageID == nil {
+                pendingLateChunkPersistence = true
+            }
+            scheduleStreamingTextFlushIfNeeded()
         }
+    }
+
+    private func applyAvailableSlashCommands(_ commands: [SlashCommand]) {
+        availableSlashCommands = commands
+        GrokCommandCatalog.record(commands)
+    }
+
+    private func scheduleStreamingTextFlushIfNeeded() {
+        guard streamingTextFlushTask == nil, !streamingTextBuffer.isEmpty else {
+            if streamingTextBuffer.isEmpty { finishDeferredPromptIfNeeded() }
+            return
+        }
+        streamingTextFlushTask = Task { [weak self] in
+            while !Task.isCancelled {
+                do {
+                    try await Task.sleep(for: .milliseconds(20))
+                } catch {
+                    return
+                }
+                guard let self else { return }
+                let hasMore = self.flushNextAssistantTextBatch()
+                if !hasMore {
+                    self.streamingTextFlushTask = nil
+                    self.finishDeferredPromptIfNeeded()
+                    self.persistLateChunkIfNeeded()
+                    return
+                }
+            }
+        }
+    }
+
+    @discardableResult
+    private func flushNextAssistantTextBatch() -> Bool {
+        guard let id = streamingMessageID ?? closedTurnAssistantID,
+              let idx = messages.firstIndex(where: { $0.id == id }) else {
+            streamingTextBuffer.clear()
+            return false
+        }
+        let batch = streamingTextBuffer.popNextBatch()
+        if !batch.isEmpty {
+            messages[idx].content += batch
+            streamRevision &+= 1
+        }
+        return !streamingTextBuffer.isEmpty
+    }
+
+    private func flushAllPendingAssistantText() {
+        guard !streamingTextBuffer.isEmpty,
+              let id = streamingMessageID ?? closedTurnAssistantID,
+              let idx = messages.firstIndex(where: { $0.id == id }) else { return }
+        let remaining = streamingTextBuffer.drain()
+        guard !remaining.isEmpty else { return }
+        messages[idx].content += remaining
+        streamRevision &+= 1
+    }
+
+    private func finishDeferredPromptIfNeeded() {
+        guard streamingTextBuffer.isEmpty,
+              let deferredPromptCompletion else { return }
+        self.deferredPromptCompletion = nil
+        finishPromptNow(
+            assistantID: deferredPromptCompletion.assistantID,
+            ok: deferredPromptCompletion.ok
+        )
+    }
+
+    private func persistLateChunkIfNeeded() {
+        guard pendingLateChunkPersistence,
+              streamingTextBuffer.isEmpty,
+              deferredPromptCompletion == nil else { return }
+        pendingLateChunkPersistence = false
+        if let id = closedTurnAssistantID,
+           let idx = messages.firstIndex(where: { $0.id == id }) {
+            captureAsideAndShare(from: messages[idx].content)
+        }
+        notifyMessagesChanged()
+    }
+
+    private func cancelStreamingTextFlush() {
+        streamingTextFlushTask?.cancel()
+        streamingTextFlushTask = nil
+        streamingTextBuffer.clear()
+        deferredPromptCompletion = nil
+        pendingLateChunkPersistence = false
     }
 
     private func appendSystem(_ text: String) {
@@ -1455,6 +2016,7 @@ final class ChatStore {
 
     private func syncModelsFromProcess() {
         if !process.availableModelsInfo.isEmpty {
+            builtInModelIDs = Set(process.availableModelsInfo.map(\.id))
             availableModels = process.availableModelsInfo.map { $0.id }
             modelDisplayNames = Dictionary(uniqueKeysWithValues: process.availableModelsInfo.map { ($0.id, $0.name) })
             modelContextTokens = Dictionary(uniqueKeysWithValues: process.availableModelsInfo.compactMap { model in
@@ -1465,11 +2027,48 @@ final class ChatStore {
         mergeCustomModels()
     }
 
+    private func applyBuiltInModelCatalog(_ models: [GrokModelInfo]) {
+        guard !models.isEmpty, process.availableModelsInfo.isEmpty else { return }
+        let previousBuiltInIDs = builtInModelIDs
+        builtInModelIDs = Set(models.map(\.id))
+
+        for removed in previousBuiltInIDs.subtracting(builtInModelIDs) where customModelsByID[removed] == nil {
+            modelDisplayNames.removeValue(forKey: removed)
+            if removed != "grok-4.5" { modelContextTokens.removeValue(forKey: removed) }
+        }
+        for model in models {
+            modelDisplayNames[model.id] = model.name
+        }
+        if builtInModelIDs.contains("grok-4.5") {
+            modelContextTokens["grok-4.5"] = modelContextTokens["grok-4.5"] ?? 500_000
+        }
+
+        let customIDs = availableModels.filter { customModelsByID[$0] != nil }
+        availableModels = models.map(\.id) + customIDs.filter { !builtInModelIDs.contains($0) }
+        mergeCustomModels()
+
+        guard !tabHasExplicitModel else { return }
+        let preferred = workspaceDefaultModel().flatMap { availableModels.contains($0) ? $0 : nil }
+            ?? models.first(where: \.isDefault)?.id
+            ?? models.first?.id
+        if let preferred, !availableModels.contains(currentModel) || previousBuiltInIDs.contains(currentModel) {
+            currentModel = preferred
+            notifyModelChanged()
+        }
+    }
+
     /// Fold custom OpenAI-compatible models from `~/.grok/config.toml` into the picker so they
     /// are selectable alongside the agent's built-in models. Without this they are only reachable
     /// by typing `/model <id>`, since the composer list is otherwise driven by the agent's
     /// advertised `modelState.availableModels`. Idempotent — safe to call on every resync.
     private func mergeCustomModels() {
+        let previousCustomModelIDs = Set(customModelsByID.keys)
+        let processModelIDs = Set(process.availableModelsInfo.map(\.id))
+        availableModels.removeAll { previousCustomModelIDs.contains($0) && !processModelIDs.contains($0) }
+        for removedID in previousCustomModelIDs where !processModelIDs.contains(removedID) {
+            modelDisplayNames.removeValue(forKey: removedID)
+            modelContextTokens.removeValue(forKey: removedID)
+        }
         let customModels = CustomModelStore.load().models
         customModelsByID = [:]
         for model in customModels {
@@ -1655,19 +2254,27 @@ enum DiffUtils {
         return nil
     }
 
-    static func applyUnifiedDiff(_ diffText: String, root: URL) throws {
+    static func applyUnifiedDiff(_ diffText: String, root: URL) async throws {
         let tmp = FileManager.default.temporaryDirectory
             .appendingPathComponent("grokbuild-\(UUID().uuidString).patch")
         try diffText.write(to: tmp, atomically: true, encoding: .utf8)
         defer { try? FileManager.default.removeItem(at: tmp) }
 
+        // Await termination instead of blocking the caller (this used to hold the
+        // main actor through /usr/bin/patch).
         let p = Process()
         p.executableURL = URL(fileURLWithPath: "/usr/bin/patch")
         p.arguments = ["-p1", "-d", root.path, "-i", tmp.path]
         p.standardOutput = Pipe()
         p.standardError = Pipe()
-        try p.run()
-        p.waitUntilExit()
+        try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
+            p.terminationHandler = { _ in continuation.resume() }
+            do {
+                try p.run()
+            } catch {
+                continuation.resume(throwing: error)
+            }
+        }
 
         if p.terminationStatus != 0 {
             try naiveApply(diffText, root: root)

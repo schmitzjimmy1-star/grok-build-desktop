@@ -65,7 +65,17 @@ final class CustomModelTests: XCTestCase {
         XCTAssertEqual(reparsed.models.first?.apiKey, #"sk-with"quote\and-backslash"#)
     }
 
-    func testModelMetadataRoundTripsThroughRewrite() {
+    func testModelMetadataIsStoredOutsideCLIConfig() throws {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("grokbuild-model-metadata-\(UUID().uuidString)")
+        let repository = GrokConfigRepository(configURL: directory.appendingPathComponent("config.toml"))
+        let suiteName = "GrokBuildTests.modelMetadata.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defer {
+            defaults.removePersistentDomain(forName: suiteName)
+            try? FileManager.default.removeItem(at: directory)
+        }
+
         let model = CustomModel(
             id: "zai-glm",
             model: "glm-5.2",
@@ -73,20 +83,56 @@ final class CustomModelTests: XCTestCase {
             contextTokens: 128_000,
             supportsReasoningEffort: true,
             supportsVision: true,
-            supportsThinkingDisplay: true
+            supportsThinkingDisplay: true,
+            providerID: "zai"
         )
 
-        let rewritten = CustomModelStore.rewrite("", models: [model], defaultModelID: nil)
-        XCTAssertTrue(rewritten.contains("grokbuild_context_tokens = 128000"))
-        XCTAssertTrue(rewritten.contains("grokbuild_supports_reasoning_effort = true"))
-        XCTAssertTrue(rewritten.contains("grokbuild_supports_vision = true"))
-        XCTAssertTrue(rewritten.contains("grokbuild_supports_thinking = true"))
+        try CustomModelStore.save(
+            models: [model],
+            defaultModelID: nil,
+            repository: repository,
+            defaults: defaults
+        )
+        let cliConfig = repository.read()
+        XCTAssertFalse(cliConfig.contains("grokbuild_"))
+        XCTAssertTrue(cliConfig.contains("context_window = 128000"))
 
-        let reparsed = CustomModelStore.parse(rewritten)
-        XCTAssertEqual(reparsed.models.first?.contextTokens, 128_000)
-        XCTAssertEqual(reparsed.models.first?.supportsReasoningEffort, true)
-        XCTAssertEqual(reparsed.models.first?.supportsVision, true)
-        XCTAssertEqual(reparsed.models.first?.supportsThinkingDisplay, true)
+        let reloaded = CustomModelStore.load(repository: repository, defaults: defaults)
+        XCTAssertEqual(reloaded.models.first?.contextTokens, 128_000)
+        XCTAssertEqual(reloaded.models.first?.supportsReasoningEffort, true)
+        XCTAssertEqual(reloaded.models.first?.supportsVision, true)
+        XCTAssertEqual(reloaded.models.first?.supportsThinkingDisplay, true)
+        XCTAssertEqual(reloaded.models.first?.providerID, "zai")
+    }
+
+    func testNativeAPIBackendAndUnknownModelFieldsRoundTrip() {
+        let original = """
+        [model.openai]
+        model = "gpt-5.6-terra"
+        base_url = "https://api.openai.com/v1"
+        api_backend = "responses"
+        context_window = 400000
+        description = "Keep this CLI-owned field"
+        stream_tool_calls = false
+        """
+        let parsed = CustomModelStore.parse(original)
+        XCTAssertEqual(parsed.models.first?.apiBackend, .responses)
+        XCTAssertEqual(parsed.models.first?.contextTokens, 400_000)
+
+        let rewritten = CustomModelStore.rewrite(
+            original,
+            models: parsed.models,
+            defaultModelID: nil
+        )
+        XCTAssertTrue(rewritten.contains("api_backend = \"responses\""))
+        XCTAssertTrue(rewritten.contains("context_window = 400000"))
+        XCTAssertTrue(rewritten.contains("description = \"Keep this CLI-owned field\""))
+        XCTAssertTrue(rewritten.contains("stream_tool_calls = false"))
+    }
+
+    func testOpenAIPresetDefaultsNewModelsToResponsesAPI() {
+        XCTAssertEqual(ProviderPreset.openai.defaultAPIBackend, .responses)
+        XCTAssertEqual(ProviderPreset.kimi.defaultAPIBackend, .chatCompletions)
     }
 
     func testModelMetadataDefaultsWhenMissing() {
@@ -318,6 +364,70 @@ final class CustomModelTests: XCTestCase {
         XCTAssertEqual(provider.suggestedModel, "deepseek-v4-pro")
     }
 
+    func testOpenRouterPresetIsAPasteKeyReadyBearerProvider() {
+        let preset = ProviderPreset.openrouter
+        let provider = preset.provider
+        XCTAssertEqual(provider.id, "openrouter")
+        XCTAssertEqual(provider.name, "OpenRouter")
+        XCTAssertEqual(provider.baseURL, "https://openrouter.ai/api/v1")
+        XCTAssertEqual(provider.authScheme, .bearer)
+        XCTAssertEqual(provider.suggestedModel, "openrouter/auto")
+        // HTTPS remote → no transport issue, and the standard /models catalog fetch path.
+        XCTAssertNil(provider.validationError)
+        XCTAssertTrue(preset.supportsModelListingFetch)
+        XCTAssertFalse(preset.supportsLiveCatalogRefresh)
+        XCTAssertFalse(provider.isLocalEndpoint)
+        XCTAssertEqual(preset.defaultAPIBackend, .chatCompletions)
+        XCTAssertEqual(preset.catalogDocumentationURL?.absoluteString, "https://openrouter.ai/models")
+        XCTAssertEqual(
+            ProviderModelFetcher.modelsURL(for: provider.baseURL)?.absoluteString,
+            "https://openrouter.ai/api/v1/models"
+        )
+        // Matching resolves an installed OpenRouter provider back to this preset.
+        XCTAssertEqual(ProviderPreset.matching(provider: provider), .openrouter)
+    }
+
+    func testModelFilterMatchesIDAndOwnerCaseInsensitively() {
+        let models = [
+            FetchedModel(id: "openai/gpt-4o", ownedBy: "OpenAI"),
+            FetchedModel(id: "anthropic/claude-3.7-sonnet", ownedBy: "Anthropic"),
+            FetchedModel(id: "x-ai/grok-4", ownedBy: nil),
+            FetchedModel(id: "meta-llama/llama-4", ownedBy: "Meta"),
+        ]
+        // Empty query returns everything.
+        XCTAssertEqual(ProviderModelFetcher.filterModels(models, query: "  ").count, 4)
+        // Lab prefix on id.
+        XCTAssertEqual(
+            ProviderModelFetcher.filterModels(models, query: "anthropic/").map(\.id),
+            ["anthropic/claude-3.7-sonnet"]
+        )
+        // Case-insensitive on owner.
+        XCTAssertEqual(
+            ProviderModelFetcher.filterModels(models, query: "META").map(\.id),
+            ["meta-llama/llama-4"]
+        )
+        // Substring anywhere in id, incl. models with no owner.
+        XCTAssertEqual(ProviderModelFetcher.filterModels(models, query: "grok").map(\.id), ["x-ai/grok-4"])
+        XCTAssertTrue(ProviderModelFetcher.filterModels(models, query: "zzz").isEmpty)
+    }
+
+    func testOpenRouterCatalogParsesLabHyphenatedModelIDs() {
+        // OpenRouter returns lab-prefixed ids and a `name`, no `owned_by`.
+        let payload = #"""
+        {"data":[
+          {"id":"openai/gpt-4o","name":"OpenAI: GPT-4o"},
+          {"id":"anthropic/claude-3.7-sonnet","name":"Anthropic: Claude 3.7 Sonnet"},
+          {"id":"openrouter/auto","name":"Auto Router"}
+        ]}
+        """#
+        let models = ProviderModelFetcher.parse(Data(payload.utf8))
+        XCTAssertEqual(models?.map(\.id), [
+            "anthropic/claude-3.7-sonnet",
+            "openai/gpt-4o",
+            "openrouter/auto",
+        ])
+    }
+
     func testClinePassPresetFetchesLiveCatalog() {
         let preset = ProviderPreset.clinePass
         // Listing uses the recommended-models feed (not `/models`), so this flag stays false.
@@ -489,20 +599,26 @@ final class CustomModelTests: XCTestCase {
         XCTAssertEqual(resolved.apiKey, "sk-provider")
     }
 
-    func testProviderStoreRoundTrips() {
-        let key = "grokbuild.customModelProviders"
-        let saved = UserDefaults.standard.data(forKey: key)
-        defer {
-            if let saved { UserDefaults.standard.set(saved, forKey: key) }
-            else { UserDefaults.standard.removeObject(forKey: key) }
-        }
+    func testProviderStoreRoundTripsWithoutSerializingCredentials() throws {
+        let suite = "ProviderStoreTests.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suite)!
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let credentialStore = InMemoryProviderCredentialStore()
 
         let providers = [
             ProviderPreset.kimi.provider,
             Provider(id: "custom", name: "Custom", baseURL: "https://x/v1", apiKey: "sk-z")
         ]
-        ProviderStore.save(providers)
-        XCTAssertEqual(ProviderStore.load(), providers)
+        try ProviderStore.save(providers, defaults: defaults, credentialStore: credentialStore)
+        let loaded = ProviderStore.loadResult(
+            defaults: defaults,
+            credentialStore: credentialStore,
+            migrationModels: [],
+            enforceConfigPermissions: false
+        ).providers
+        XCTAssertEqual(loaded, providers)
+        let metadata = defaults.data(forKey: "grokbuild.customModelProviders")!
+        XCTAssertFalse(String(decoding: metadata, as: UTF8.self).contains("sk-z"))
     }
 
     // MARK: - ProviderModelFetcher

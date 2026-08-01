@@ -69,6 +69,15 @@ enum SessionTabModelPolicy {
     }
 }
 
+enum SessionIdentityPersistencePolicy {
+    /// Process teardown clears the live ACP id after the durable layout has already captured it.
+    /// Persisting that transient nil would erase the only receipt needed to resume the tab.
+    static func shouldPersistChangedSessionID(_ sessionID: String?) -> Bool {
+        guard let sessionID else { return false }
+        return !sessionID.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+}
+
 struct SessionLayoutSnapshot: Codable {
     var records: [SavedSessionRecord]
     var sessionOrderByWorkspace: [UUID: [UUID]]

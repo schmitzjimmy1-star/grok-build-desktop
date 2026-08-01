@@ -5,7 +5,26 @@ struct SidebarSession: Identifiable, Hashable {
     let id: UUID
     let workspaceID: Workspace.ID
     let title: String
+    let modelName: String
+    let lastAccessed: Date?
     let isRunning: Bool
+}
+
+enum SessionSidebarMetadata {
+    static func helpText(for session: SidebarSession) -> String {
+        let activity = session.lastAccessed.map {
+            "Last used \($0.formatted(date: .abbreviated, time: .shortened))"
+        } ?? "New session"
+        return "\(session.title)\n\(session.modelName) · \(activity)"
+    }
+
+    static func accessibilityLabel(for session: SidebarSession) -> String {
+        let state = session.isRunning ? "working" : "idle"
+        let activity = session.lastAccessed.map {
+            "last used \($0.formatted(date: .abbreviated, time: .shortened))"
+        } ?? "new session"
+        return "Session: \(session.title), \(session.modelName), \(state), \(activity)"
+    }
 }
 
 struct SidebarView: View {
@@ -164,25 +183,26 @@ struct SidebarView: View {
 
                             let hidden = hiddenCount(for: ws.id, loadedSessions: projectSessions, isExpanded: isExpanded)
                             if hidden > 0 || isExpanded {
-                                HStack(spacing: 6) {
-                                    Text(isExpanded ? "Show less" : "Show more")
-                                        .font(.caption.weight(.medium))
-                                    Image(systemName: isExpanded ? "chevron.up" : "chevron.down")
-                                        .font(.caption2.weight(.semibold))
-                                    Spacer()
-                                }
-                                .foregroundStyle(.secondary)
-                                .frame(maxWidth: .infinity, alignment: .leading)
-                                .contentShape(Rectangle())
-                                .onTapGesture {
+                                Button {
                                     if isExpanded {
                                         expandedSessionWorkspaceIDs.remove(ws.id)
                                     } else {
                                         expandedSessionWorkspaceIDs.insert(ws.id)
                                     }
                                     onSessionDisclosureChanged()
+                                } label: {
+                                    HStack(spacing: 6) {
+                                        Text(isExpanded ? "Show less" : "Show more")
+                                            .font(.caption.weight(.medium))
+                                        Image(systemName: isExpanded ? "chevron.up" : "chevron.down")
+                                            .font(.caption2.weight(.semibold))
+                                        Spacer()
+                                    }
+                                    .foregroundStyle(.secondary)
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+                                    .contentShape(Rectangle())
                                 }
-                                .accessibilityAddTraits(.isButton)
+                                .buttonStyle(.plain)
                                 .listRowInsets(EdgeInsets(top: 2, leading: 34, bottom: 6, trailing: 10))
                                 .listRowBackground(Color.clear)
 
@@ -262,7 +282,12 @@ struct SidebarView: View {
         SessionSidebarRow(
             session: session,
             isSelected: selectedSessionID == session.id,
-            onSelect: { onSelectSession(session.id) }
+            onSelect: { onSelectSession(session.id) },
+            onRename: {
+                renamingSessionID = session.id
+                renameText = session.title
+            },
+            onClose: { onCloseSession(session.id) }
         )
         .listRowInsets(EdgeInsets(top: 2, leading: 18, bottom: 2, trailing: 10))
         .listRowBackground(Color.clear)
@@ -314,15 +339,19 @@ private struct SessionSidebarRow: View {
     let session: SidebarSession
     let isSelected: Bool
     var onSelect: () -> Void
+    var onRename: () -> Void
+    var onClose: () -> Void
+    @State private var isHovered = false
 
     var body: some View {
-        Button(action: onSelect) {
-            HStack(spacing: 8) {
+        HStack(spacing: 4) {
+            Button(action: onSelect) {
+                HStack(spacing: 8) {
                 ZStack {
                     Circle()
-                        .fill(AppTheme.Palette.textMuted)
+                        .fill(session.isRunning ? Color.green : AppTheme.Palette.textMuted)
                         .frame(width: 6, height: 6)
-                        .opacity(isSelected ? 1 : 0)
+                        .opacity(isSelected || session.isRunning ? 1 : 0)
                 }
                 .frame(width: 10)
 
@@ -331,16 +360,33 @@ private struct SessionSidebarRow: View {
                     .lineLimit(1)
                     .foregroundStyle(isSelected ? .primary : .secondary)
                 Spacer()
+                }
+                .padding(.horizontal, 8)
+                .padding(.vertical, 5)
+                .contentShape(Rectangle())
+                .background(
+                    isSelected ? AppTheme.Palette.accentSoft : Color.clear,
+                    in: RoundedRectangle(cornerRadius: AppTheme.Radius.small)
+                )
             }
-            .padding(.horizontal, 8)
-            .padding(.vertical, 5)
-            .contentShape(Rectangle())
-            .background(
-                isSelected ? AppTheme.Palette.accentSoft : Color.clear,
-                in: RoundedRectangle(cornerRadius: AppTheme.Radius.small)
-            )
+            .buttonStyle(.plain)
+            .accessibilityLabel(SessionSidebarMetadata.accessibilityLabel(for: session))
+
+            Menu {
+                Button("Rename…", action: onRename)
+                Button("Close Session", role: .destructive, action: onClose)
+            } label: {
+                Image(systemName: "ellipsis")
+                    .frame(width: 20, height: 20)
+                    .contentShape(Rectangle())
+            }
+            .menuStyle(.borderlessButton)
+            .help("Session actions")
+            .accessibilityLabel("Session actions for \(session.title)")
+            .opacity(isHovered || isSelected ? 1 : 0)
         }
-        .buttonStyle(.plain)
+        .onHover { isHovered = $0 }
+        .help(SessionSidebarMetadata.helpText(for: session))
     }
 }
 

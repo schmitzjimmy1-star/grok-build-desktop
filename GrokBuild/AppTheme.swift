@@ -73,6 +73,43 @@ enum AppTheme {
     }
 }
 
+/// Consistent desktop chrome control: forgiving hit area, hover/press feedback, keyboard focus,
+/// and restrained disabled treatment without changing the graphite visual language.
+struct GrokChromeButtonStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        GrokChromeButtonBody(configuration: configuration)
+    }
+
+    private struct GrokChromeButtonBody: View {
+        let configuration: ButtonStyle.Configuration
+        @Environment(\.isEnabled) private var isEnabled
+        @State private var isHovering = false
+
+        var body: some View {
+            configuration.label
+                .frame(minWidth: 32, minHeight: 32)
+                .padding(.horizontal, 2)
+                .contentShape(Rectangle())
+                .background(
+                    RoundedRectangle(cornerRadius: AppTheme.Radius.medium, style: .continuous)
+                        .fill(backgroundColor)
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: AppTheme.Radius.medium, style: .continuous)
+                        .stroke(isHovering && isEnabled ? AppTheme.Palette.glassBorder : .clear)
+                )
+                .opacity(isEnabled ? 1 : 0.42)
+                .onHover { isHovering = $0 }
+        }
+
+        private var backgroundColor: Color {
+            if configuration.isPressed { return AppTheme.Palette.accentSoft.opacity(1.5) }
+            if isHovering && isEnabled { return AppTheme.Palette.surfaceHover }
+            return .clear
+        }
+    }
+}
+
 private struct GrokGlassSurfaceModifier: ViewModifier {
     let cornerRadius: CGFloat
     let emphasized: Bool

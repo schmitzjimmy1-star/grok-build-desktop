@@ -55,8 +55,8 @@ struct SessionDashboardPanel: View {
             if entries.isEmpty {
                 ContentUnavailableView(
                     "No Sessions",
-                    systemImage: "bubble.left.and.bubble.right",
-                    description: Text("Open a project and start a session to see it here.")
+                    systemImage: "hammer",
+                    description: Text("Open a project and start a build session to track work here.")
                 )
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {

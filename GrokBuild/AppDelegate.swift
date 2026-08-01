@@ -61,6 +61,11 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMenuDele
         }
 
         LegacySettingsMigration.run()
+        do {
+            try GrokConfigLegacyMigration.run()
+        } catch {
+            NSLog("GrokBuild could not sanitize the Grok CLI configuration: %@", error.localizedDescription)
+        }
         UpdateScheduler.start()
         DistributedNotificationCenter.default.addObserver(
             self,
@@ -80,13 +85,43 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMenuDele
             name: .grokBuildUpdateStateChanged,
             object: nil
         )
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(sessionTeardownCompleted),
+            name: .grokBuildShutdownComplete,
+            object: nil
+        )
 
         // Open a main window on launch
         openMainWindow()
     }
 
-    func applicationWillTerminate(_ notification: Notification) {
+    private var sessionTeardownComplete = false
+    private var terminationReplyPending = false
+
+    @objc private func sessionTeardownCompleted() {
+        sessionTeardownComplete = true
+    }
+
+    func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
+        // Give live grok sessions a bounded window to close cleanly. The previous
+        // fire-and-forget shutdown raced process exit, so SIGTERM frequently lost and
+        // children were left to die on stdin EOF instead.
+        guard !terminationReplyPending else { return .terminateNow }
+        terminationReplyPending = true
+        sessionTeardownComplete = false
         NotificationCenter.default.post(name: .grokBuildPrepareForShutdown, object: nil)
+        Task { @MainActor in
+            let deadline = ContinuousClock.now.advanced(by: .seconds(3))
+            while !sessionTeardownComplete, ContinuousClock.now < deadline {
+                try? await Task.sleep(for: .milliseconds(50))
+            }
+            sender.reply(toApplicationShouldTerminate: true)
+        }
+        return .terminateLater
+    }
+
+    func applicationWillTerminate(_ notification: Notification) {
         DistributedNotificationCenter.default.removeObserver(self)
         NotificationCenter.default.removeObserver(self)
         // Closing the fd releases the flock.
