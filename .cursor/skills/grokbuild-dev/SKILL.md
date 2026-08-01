@@ -42,6 +42,7 @@ Full checklist: `.cursor/rules/docs-and-tests.mdc`.
 | Clean | `make clean` |
 | Unit tests | `make test` |
 | Lifecycle v3 / true-MRU tests | `swift test --filter 'Session(LifecycleV3|Persistence)Tests'` |
+| Slice 3 continuity / send-gate tests | `swift test --filter 'GrokSessionTranscriptImporterTests|SessionLifecycleV3Tests|ACPClientContractTests/testSavedBackendCannotStartOrSendBeforeContinuityGateAllowsIt'` |
 | Slice 0 synthetic fixtures | `Tests/GrokBuildTests/Fixtures/CoherenceRepair/` |
 
 ## Coherence profiling

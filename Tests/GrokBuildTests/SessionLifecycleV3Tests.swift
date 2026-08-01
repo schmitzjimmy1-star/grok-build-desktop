@@ -183,6 +183,100 @@ final class SessionLifecycleV3Tests: XCTestCase {
         XCTAssertEqual(record.modelExecutionState, .unknown)
     }
 
+    func testAuthenticatedV3RoundTripsContinuityReceiptAndAppendOnlyForkLedger() throws {
+        let defaults = isolatedDefaults()
+        let workspaceID = UUID()
+        let sessionID = UUID()
+        let entry = SessionForkLedgerEntry(
+            id: UUID(),
+            localSessionID: sessionID,
+            predecessorBackendID: "backend-before",
+            successorBackendID: "backend-after",
+            reason: .resumeFallback,
+            createdAt: Date(timeIntervalSince1970: 123),
+            localMessageCountAtFork: 2,
+            transcriptTag: "opaque-local-tag"
+        )
+        let receipt = SessionContinuityReceipt(
+            status: .recoveryForked,
+            reason: .recoveryForked,
+            normalizationVersion: VersionedOpaqueTag.transcriptNormalizationVersion,
+            authenticationSchemaVersion: VersionedOpaqueTag.transcriptAuthenticationSchemaVersion,
+            localMessageCount: 2,
+            backendMessageCount: 0,
+            matchingPrefixCount: 0,
+            localTranscriptTag: "opaque-local-tag",
+            backendTranscriptTag: nil,
+            verifiedAt: Date(timeIntervalSince1970: 123)
+        )
+        let binding = SessionBackendBinding(
+            backendID: "backend-after",
+            origin: .recoveryFork,
+            predecessorBackendID: "backend-before",
+            verification: .verified,
+            continuityReceipt: receipt
+        )
+        let record = SavedSessionRecord(
+            id: sessionID,
+            workspaceID: workspaceID,
+            backendBinding: binding,
+            title: "Forked",
+            modelIntent: .inheritProjectDefault,
+            agentIntent: .inheritGlobalDefault,
+            lastAccessed: Date(timeIntervalSince1970: 123),
+            lastActivationOrdinal: 1,
+            forkLedgerReference: entry.id.uuidString
+        )
+        let snapshot = SessionLayoutSnapshot(
+            records: [record],
+            sessionOrderByWorkspace: [workspaceID: [sessionID]],
+            selectedSessionID: sessionID,
+            selectedWorkspaceID: workspaceID,
+            forkLedger: [entry]
+        )
+
+        XCTAssertTrue(SessionLayoutStore.saveSessions(
+            snapshot,
+            defaults: defaults,
+            keyProvider: provider
+        ).committed)
+        let loaded = SessionLayoutStore.loadSessionsResult(defaults: defaults, keyProvider: provider)
+        XCTAssertEqual(loaded.authority, .v3Committed)
+        XCTAssertEqual(loaded.snapshot, snapshot)
+        XCTAssertEqual(loaded.snapshot.forkLedger, [entry])
+        XCTAssertEqual(
+            loaded.snapshot.records.first?.backendBinding?.continuityReceipt,
+            receipt
+        )
+        let historical = [
+            Message(role: .user, content: "old"),
+            Message(role: .assistant, content: "old answer"),
+        ]
+        let successor = [
+            Message(role: .user, content: "new"),
+            Message(role: .assistant, content: "new answer"),
+        ]
+        XCTAssertEqual(
+            loaded.snapshot.forkLedger[0].localMessagesForBackendVerification(historical + successor),
+            successor
+        )
+        let freshStart = SessionForkLedgerEntry(
+            id: UUID(),
+            localSessionID: sessionID,
+            predecessorBackendID: "backend-before",
+            successorBackendID: "fresh-backend",
+            reason: .explicitFreshStart,
+            createdAt: Date(timeIntervalSince1970: 124),
+            localMessageCountAtFork: historical.count,
+            transcriptTag: "opaque-old-transcript-tag"
+        )
+        XCTAssertEqual(
+            freshStart.localMessagesForBackendVerification(successor),
+            successor,
+            "a fresh-start tab must verify its whole new transcript, not drop the old boundary count"
+        )
+    }
+
     func testRestoreDecisionUsesTrueMRUNotTranscriptLength() {
         let workspaceID = UUID()
         let olderLongTranscript = UUID()
@@ -343,6 +437,7 @@ final class SessionLifecycleV3Tests: XCTestCase {
         let fixture = try decodeFixture(HMACFixture.self, name: "transcript-hmac-v1", extension: "json")
         let key = try Data(hex: fixture.keyHex)
         XCTAssertEqual(fixture.schemaVersion, VersionedOpaqueTag.transcriptNormalizationVersion)
+        XCTAssertEqual(fixture.schemaVersion, VersionedOpaqueTag.transcriptAuthenticationSchemaVersion)
         for vector in fixture.vectors {
             let payload = VersionedOpaqueTag.transcriptMessagePayload(
                 role: vector.role, ordinal: vector.ordinal, content: vector.content

@@ -705,22 +705,49 @@ struct ContentView: View {
             )
         }
         var records: [SavedSessionRecord] = []
+        var forkLedger = sessionLayout.forkLedger
         for session in liveSessions {
             // Prefer the live process id, but fall back to the known/saved id so lazily-restored
             // (not-yet-started) and LRU-evicted sessions are still persisted and resumable.
             let grokSessionID = session.store.durableGrokSessionID ?? session.grokSessionID
             guard sessionHasContent(session) else { continue }
             let existing = sessionLayout.records.first { $0.id == session.id }
+            for entry in session.store.pendingForkLedgerEntries
+                where !forkLedger.contains(where: { $0.id == entry.id }) {
+                forkLedger.append(entry)
+            }
+            let latestForkEntry = forkLedger
+                .filter { $0.localSessionID == session.id }
+                .max { $0.createdAt < $1.createdAt }
             let backendBinding: SessionBackendBinding? = {
                 guard let grokSessionID else { return existing?.backendBinding }
+                let receipt = session.store.persistedContinuityReceipt
+                let verification: SessionBackendBindingVerification = {
+                    switch receipt?.status {
+                    case .verified, .backendOnly, .recoveryForked:
+                        return .verified
+                    case .diverged, .compositeSuspected, .backendMissing:
+                        return .failed
+                    case .localOnly, .verifying, .verificationIncomplete, nil:
+                        return .unverified
+                    }
+                }()
                 if existing?.backendBinding?.backendID == grokSessionID {
-                    return existing?.backendBinding
+                    var binding = existing?.backendBinding
+                    binding?.verification = verification
+                    if let receipt { binding?.continuityReceipt = receipt }
+                    return binding
                 }
+                let matchingFork = latestForkEntry?.successorBackendID == grokSessionID
+                    ? latestForkEntry
+                    : nil
                 return SessionBackendBinding(
                     backendID: grokSessionID,
-                    origin: .runtime,
-                    predecessorBackendID: existing?.backendBinding?.backendID,
-                    verification: .unverified
+                    origin: matchingFork == nil ? .runtime : .recoveryFork,
+                    predecessorBackendID: matchingFork?.predecessorBackendID
+                        ?? existing?.backendBinding?.backendID,
+                    verification: verification,
+                    continuityReceipt: receipt
                 )
             }()
             records.append(
@@ -740,7 +767,8 @@ struct ContentView: View {
                         ?? 0,
                     transcriptGeneration: existing?.transcriptGeneration ?? 0,
                     transcriptStorageVersion: existing?.transcriptStorageVersion ?? 1,
-                    forkLedgerReference: existing?.forkLedgerReference
+                    forkLedgerReference: latestForkEntry?.id.uuidString
+                        ?? existing?.forkLedgerReference
                 )
             )
         }
@@ -779,7 +807,8 @@ struct ContentView: View {
             selectedSessionIDByWorkspace: selectedByWorkspace,
             expandedSessionWorkspaceIDs: expandedSessionWorkspaceIDs,
             hiddenSessionWorkspaceIDs: hiddenSessionWorkspaceIDs,
-            activationCounter: sessionLayout.activationCounter
+            activationCounter: sessionLayout.activationCounter,
+            forkLedger: forkLedger
         )
         recentSessionOrder = SessionRestorePolicy.recentSessionOrder(from: records)
         let layoutReceipt = SessionLayoutStore.saveSessions(sessionLayout)
@@ -870,7 +899,11 @@ struct ContentView: View {
                 modelIntent: record.modelIntent,
                 savedModelExecutionState: record.modelExecutionState,
                 agentIntent: record.agentIntent,
-                savedGrokSessionID: durableGrokID
+                savedGrokSessionID: durableGrokID,
+                savedBackendBinding: record.backendBinding,
+                savedForkLedgerEntry: record.forkLedgerReference.flatMap { reference in
+                    saved.forkLedger.first { $0.id.uuidString == reference }
+                }
             )
             store.restorePersistedMessages(savedMessages)
             liveSessions.append(
@@ -1134,12 +1167,12 @@ struct ContentView: View {
             return
         }
         if session.store.messages.isEmpty {
-            session.store.restorePersistedMessages(
-                for: id,
-                grokSessionID: session.grokSessionID,
-                workspace: session.workspace
-            )
-        } else if reconcilePersistedTranscript {
+            // Backend history is not continuity authority. Restore only the local durable
+            // transcript here; Slice 3 imports/reconciles the exact backend after its
+            // keyed comparison permits the relationship.
+            session.store.restorePersistedMessages(SessionMessageStore.messages(for: id))
+        } else if reconcilePersistedTranscript,
+                  session.store.continuityPermitsAuthoritativeReconciliation {
             session.store.reconcilePersistedMessages(
                 for: id,
                 grokSessionID: session.grokSessionID,
@@ -1155,7 +1188,11 @@ struct ContentView: View {
             modelIntent: savedRecord?.modelIntent ?? .inheritProjectDefault,
             savedModelExecutionState: savedRecord?.modelExecutionState ?? .unknown,
             agentIntent: savedRecord?.agentIntent ?? .inheritGlobalDefault,
-            savedGrokSessionID: session.grokSessionID
+            savedGrokSessionID: session.grokSessionID,
+            savedBackendBinding: savedRecord?.backendBinding,
+            savedForkLedgerEntry: savedRecord?.forkLedgerReference.flatMap { reference in
+                sessionLayout.forkLedger.first { $0.id.uuidString == reference }
+            }
         )
         session.store.syncWorkspaceReasoningEffortFromStorage()
         session.store.syncTabModelToLiveProcessIfNeeded()
@@ -1168,9 +1205,11 @@ struct ContentView: View {
             noteSessionUsed(id)
         }
         Task {
-            if !deferBackendStart {
-                await ensureSessionStarted(id)
-            }
+            // Slice 3 verifies the exact bound history before any resume. The old
+            // defer flag now means "verify before start", not "wait until Send and
+            // blindly resume"; a failed check leaves the process stopped.
+            _ = deferBackendStart
+            await ensureSessionStarted(id)
             await enforceConnectionCap()
             await refreshProjectChangedFiles()
             await Task.yield()

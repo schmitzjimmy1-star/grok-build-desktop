@@ -102,6 +102,37 @@ struct SessionBackendBinding: Codable, Hashable, Sendable {
     var origin: SessionBackendBindingOrigin
     var predecessorBackendID: String?
     var verification: SessionBackendBindingVerification
+    var continuityReceipt: SessionContinuityReceipt? = nil
+}
+
+enum SessionForkLedgerReason: String, Codable, Hashable, Sendable {
+    case localOnlyStart
+    case resumeFallback
+    case explicitContinueAsNew
+    case explicitFreshStart
+    case explicitBackendFork
+    case explicitRelink
+}
+
+struct SessionForkLedgerEntry: Codable, Hashable, Sendable, Identifiable {
+    let id: UUID
+    let localSessionID: UUID
+    let predecessorBackendID: String?
+    let successorBackendID: String
+    let reason: SessionForkLedgerReason
+    let createdAt: Date
+    let localMessageCountAtFork: Int
+    /// Versioned keyed HMAC of the local transcript at the fork boundary.
+    let transcriptTag: String?
+
+    func localMessagesForBackendVerification(_ messages: [Message]) -> [Message] {
+        switch reason {
+        case .localOnlyStart, .resumeFallback, .explicitContinueAsNew:
+            return Array(messages.dropFirst(min(localMessageCountAtFork, messages.count)))
+        case .explicitFreshStart, .explicitBackendFork, .explicitRelink:
+            return messages
+        }
+    }
 }
 
 struct SavedSessionRecord: Codable, Identifiable, Hashable {
@@ -339,6 +370,7 @@ struct SessionLayoutSnapshot: Codable, Equatable {
     var expandedSessionWorkspaceIDs: Set<UUID>
     var hiddenSessionWorkspaceIDs: Set<UUID>
     var activationCounter: UInt64
+    var forkLedger: [SessionForkLedgerEntry]
 
     init(
         records: [SavedSessionRecord],
@@ -348,7 +380,8 @@ struct SessionLayoutSnapshot: Codable, Equatable {
         selectedSessionIDByWorkspace: [UUID: UUID] = [:],
         expandedSessionWorkspaceIDs: Set<UUID> = [],
         hiddenSessionWorkspaceIDs: Set<UUID> = [],
-        activationCounter: UInt64? = nil
+        activationCounter: UInt64? = nil,
+        forkLedger: [SessionForkLedgerEntry] = []
     ) {
         schemaVersion = Self.currentSchemaVersion
         self.records = records
@@ -359,12 +392,14 @@ struct SessionLayoutSnapshot: Codable, Equatable {
         self.expandedSessionWorkspaceIDs = expandedSessionWorkspaceIDs
         self.hiddenSessionWorkspaceIDs = hiddenSessionWorkspaceIDs
         self.activationCounter = activationCounter ?? records.map(\.lastActivationOrdinal).max() ?? 0
+        self.forkLedger = forkLedger
     }
 
     private enum CodingKeys: String, CodingKey {
         case schemaVersion, records, sessionOrderByWorkspace, selectedSessionID
         case selectedWorkspaceID, selectedSessionIDByWorkspace
         case expandedSessionWorkspaceIDs, hiddenSessionWorkspaceIDs, activationCounter
+        case forkLedger
     }
 
     init(from decoder: Decoder) throws {
@@ -380,6 +415,7 @@ struct SessionLayoutSnapshot: Codable, Equatable {
         hiddenSessionWorkspaceIDs = try container.decodeIfPresent(Set<UUID>.self, forKey: .hiddenSessionWorkspaceIDs) ?? []
         activationCounter = try container.decodeIfPresent(UInt64.self, forKey: .activationCounter)
             ?? records.map(\.lastActivationOrdinal).max() ?? 0
+        forkLedger = try container.decodeIfPresent([SessionForkLedgerEntry].self, forKey: .forkLedger) ?? []
     }
 }
 

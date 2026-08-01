@@ -2,6 +2,35 @@ import Foundation
 
 /// Imports user/assistant text from grok CLI on-disk `chat_history.jsonl` files.
 enum GrokSessionTranscriptImporter {
+    struct BoundedImportLimits: Equatable, Sendable {
+        let softByteLimit: Int
+        let softConversationalRowLimit: Int
+        let timeLimit: TimeInterval
+
+        static let `default` = BoundedImportLimits(
+            softByteLimit: 2 * 1024 * 1024,
+            softConversationalRowLimit: 2_000,
+            timeLimit: 5
+        )
+    }
+
+    enum BoundedImportOutcome: Equatable, Sendable {
+        case complete
+        case missing
+        case unreadable
+        case incomplete
+    }
+
+    struct BoundedImportResult: Sendable {
+        let messages: [Message]
+        let outcome: BoundedImportOutcome
+        let bytesRead: Int
+        let rowCount: Int
+        /// Non-nil only after the soft byte/row bound was crossed. Downstream
+        /// fingerprint work must finish inside the same deadline.
+        let verificationDeadline: Date?
+    }
+
     static var grokHomeDirectory = URL(fileURLWithPath: NSHomeDirectory())
         .appendingPathComponent(".grok", isDirectory: true)
 
@@ -26,6 +55,90 @@ enum GrokSessionTranscriptImporter {
 
     static func importMessages(from url: URL) -> [Message] {
         (try? loadMessages(from: url)) ?? []
+    }
+
+    /// Streams one exact backend history. Files at or below the normal bound are fully
+    /// consumed; larger histories may continue only inside the bounded time window.
+    /// Callers run this off the main actor and treat an unfinished result as unknown.
+    static func importMessagesBounded(
+        from url: URL,
+        limits: BoundedImportLimits = .default
+    ) -> BoundedImportResult {
+        guard FileManager.default.fileExists(atPath: url.path) else {
+            return BoundedImportResult(
+                messages: [], outcome: .missing, bytesRead: 0, rowCount: 0,
+                verificationDeadline: nil
+            )
+        }
+        guard let handle = try? FileHandle(forReadingFrom: url) else {
+            return BoundedImportResult(
+                messages: [], outcome: .unreadable, bytesRead: 0, rowCount: 0,
+                verificationDeadline: nil
+            )
+        }
+        defer { try? handle.close() }
+
+        var buffer = Data()
+        var messages: [Message] = []
+        var bytesRead = 0
+        var rowCount = 0
+        var extendedDeadline: Date?
+
+        func parseLine(_ line: Data) {
+            guard !line.isEmpty,
+                  let row = try? JSONSerialization.jsonObject(with: line) as? [String: Any] else {
+                return
+            }
+            rowCount += 1
+            if let message = message(from: row) {
+                messages.append(message)
+            }
+        }
+
+        do {
+            while let chunk = try handle.read(upToCount: 64 * 1024), !chunk.isEmpty {
+                bytesRead += chunk.count
+                buffer.append(chunk)
+
+                while let newline = buffer.firstIndex(of: 0x0A) {
+                    parseLine(Data(buffer[..<newline]))
+                    buffer.removeSubrange(...newline)
+                }
+
+                if bytesRead > limits.softByteLimit
+                    || messages.count > limits.softConversationalRowLimit {
+                    if extendedDeadline == nil {
+                        extendedDeadline = Date().addingTimeInterval(max(0, limits.timeLimit))
+                    }
+                    if Task<Never, Never>.isCancelled
+                        || Date() >= (extendedDeadline ?? .distantPast) {
+                        return BoundedImportResult(
+                            messages: messages,
+                            outcome: .incomplete,
+                            bytesRead: bytesRead,
+                            rowCount: rowCount,
+                            verificationDeadline: extendedDeadline
+                        )
+                    }
+                }
+            }
+            if !buffer.isEmpty { parseLine(buffer) }
+            return BoundedImportResult(
+                messages: messages,
+                outcome: .complete,
+                bytesRead: bytesRead,
+                rowCount: rowCount,
+                verificationDeadline: extendedDeadline
+            )
+        } catch {
+            return BoundedImportResult(
+                messages: messages,
+                outcome: .unreadable,
+                bytesRead: bytesRead,
+                rowCount: rowCount,
+                verificationDeadline: extendedDeadline
+            )
+        }
     }
 
     /// One-shot legacy recovery for a populated tab whose durable backend id was already
@@ -137,32 +250,38 @@ enum GrokSessionTranscriptImporter {
             guard !trimmed.isEmpty,
                   let data = trimmed.data(using: .utf8),
                   let row = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-                  let type = row["type"] as? String else { continue }
-
-            switch type {
-            case "user":
-                // Grok records injected project instructions and system reminders as
-                // user-shaped rows. They are runtime context, not transcript turns.
-                guard row["synthetic_reason"] == nil else { continue }
-                guard let content = extractUserText(from: row["content"]),
-                      !content.isEmpty,
-                      !isRuntimeContextOnly(content),
-                      !isSyntheticSystemReminderOnly(content) else { continue }
-                messages.append(Message(role: .user, content: content))
-            case "assistant":
-                // Assistant rows that carry tool calls are pre-tool narration/receipts,
-                // not the settled parent synthesis. Tool activity already has its own UI.
-                if let toolCalls = row["tool_calls"] as? [Any], !toolCalls.isEmpty {
-                    continue
-                }
-                guard let content = extractAssistantText(from: row["content"]),
-                      !content.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { continue }
-                messages.append(Message(role: .assistant, content: stripThinkingTags(from: content)))
-            default:
-                continue
-            }
+                  let message = message(from: row) else { continue }
+            messages.append(message)
         }
         return messages
+    }
+
+    private static func message(from row: [String: Any]) -> Message? {
+        guard let type = row["type"] as? String else { return nil }
+        switch type {
+        case "user":
+            // Grok records injected project instructions and system reminders as
+            // user-shaped rows. They are runtime context, not transcript turns.
+            guard row["synthetic_reason"] == nil,
+                  let content = extractUserText(from: row["content"]),
+                  !content.isEmpty,
+                  !isRuntimeContextOnly(content),
+                  !isSyntheticSystemReminderOnly(content) else { return nil }
+            return Message(role: .user, content: content)
+        case "assistant":
+            // Assistant rows that carry tool calls are pre-tool narration/receipts,
+            // not the settled parent synthesis. Tool activity already has its own UI.
+            if let toolCalls = row["tool_calls"] as? [Any], !toolCalls.isEmpty {
+                return nil
+            }
+            guard let content = extractAssistantText(from: row["content"]),
+                  !content.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+                return nil
+            }
+            return Message(role: .assistant, content: stripThinkingTags(from: content))
+        default:
+            return nil
+        }
     }
 
     private static func extractUserText(from value: Any?) -> String? {

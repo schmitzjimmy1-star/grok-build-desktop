@@ -161,6 +161,128 @@ final class GrokSessionTranscriptImporterTests: XCTestCase {
         )
     }
 
+    func testContinuityVerifierAcceptsExactAndVerifiedPrefixHistories() {
+        let key = Data(0..<32)
+        let firstTurn = [
+            Message(role: .user, content: "Build the synthetic fixture."),
+            Message(role: .assistant, content: "Synthetic fixture complete."),
+        ]
+        let backend = firstTurn + [
+            Message(role: .user, content: "Add a second deterministic turn."),
+            Message(role: .assistant, content: "Second turn complete."),
+        ]
+
+        let exact = SessionTranscriptRecovery.verifyContinuity(
+            localMessages: backend,
+            backendMessages: backend,
+            key: key
+        )
+        XCTAssertEqual(exact.status, .verified)
+        XCTAssertEqual(exact.reason, .exactMatch)
+        XCTAssertEqual(exact.matchingPrefixCount, backend.count)
+
+        let prefix = SessionTranscriptRecovery.verifyContinuity(
+            localMessages: firstTurn,
+            backendMessages: backend,
+            key: key
+        )
+        XCTAssertEqual(prefix.status, .verified)
+        XCTAssertEqual(prefix.reason, .localVerifiedPrefix)
+        XCTAssertEqual(prefix.matchingPrefixCount, firstTurn.count)
+    }
+
+    func testContinuityVerifierClassifiesBackendOnlyDivergenceAndCompositeEvidence() {
+        let key = Data(0..<32)
+        let backend = [
+            Message(role: .user, content: "First backend turn"),
+            Message(role: .assistant, content: "First backend answer"),
+            Message(role: .user, content: "Second backend turn"),
+            Message(role: .assistant, content: "Second backend answer"),
+        ]
+
+        let backendOnly = SessionTranscriptRecovery.verifyContinuity(
+            localMessages: [],
+            backendMessages: backend,
+            key: key
+        )
+        XCTAssertEqual(backendOnly.status, .backendOnly)
+        XCTAssertEqual(backendOnly.reason, .backendOnly)
+
+        let diverged = SessionTranscriptRecovery.verifyContinuity(
+            localMessages: [
+                backend[0],
+                Message(role: .assistant, content: "A different answer"),
+            ],
+            backendMessages: backend,
+            key: key
+        )
+        XCTAssertEqual(diverged.status, .diverged)
+        XCTAssertEqual(diverged.reason, .contentMismatch)
+
+        let composite = SessionTranscriptRecovery.verifyContinuity(
+            localMessages: [
+                backend[0], backend[1],
+                Message(role: .user, content: "Turn from another backend"),
+                Message(role: .assistant, content: "Other backend answer"),
+                backend[2], backend[3],
+            ],
+            backendMessages: backend,
+            key: key
+        )
+        XCTAssertEqual(composite.status, .compositeSuspected)
+        XCTAssertEqual(composite.reason, .nonContiguousBackendEvidence)
+    }
+
+    func testBoundedContinuityVerificationFailsClosedForSyntheticMissingAndIncompleteHistory() throws {
+        let key = Data(0..<32)
+        let local = [Message(role: .user, content: "Local work must stay safe")]
+        let synthetic = try fixtureURL("backend-synthetic-only.jsonl")
+        let syntheticResult = SessionTranscriptRecovery.verifyContinuity(
+            localMessages: local,
+            backendHistoryURL: synthetic,
+            key: key
+        )
+        XCTAssertEqual(syntheticResult.receipt.status, .backendMissing)
+        XCTAssertEqual(syntheticResult.receipt.reason, .syntheticOnlyHistory)
+
+        let missing = FileManager.default.temporaryDirectory
+            .appendingPathComponent("missing-history-\(UUID().uuidString).jsonl")
+        let missingResult = SessionTranscriptRecovery.verifyContinuity(
+            localMessages: local,
+            backendHistoryURL: missing,
+            key: key
+        )
+        XCTAssertEqual(missingResult.receipt.status, .backendMissing)
+        XCTAssertEqual(missingResult.receipt.reason, .backendHistoryMissing)
+
+        let verified = try fixtureURL("backend-verified.jsonl")
+        let incomplete = SessionTranscriptRecovery.verifyContinuity(
+            localMessages: local,
+            backendHistoryURL: verified,
+            key: key,
+            limits: .init(softByteLimit: 16, softConversationalRowLimit: 1, timeLimit: 0)
+        )
+        XCTAssertEqual(incomplete.receipt.status, .verificationIncomplete)
+        XCTAssertEqual(incomplete.receipt.reason, .boundedReadIncomplete)
+    }
+
+    func testSendGateAllowsOnlySafeContinuityStates() {
+        XCTAssertEqual(SessionSendGate.decision(for: .localOnly), .allowLocalBackendCreation)
+        XCTAssertEqual(SessionSendGate.decision(for: .verified), .allowVerifiedBackend)
+        XCTAssertEqual(SessionSendGate.decision(for: .backendOnly), .allowVerifiedBackend)
+        XCTAssertEqual(SessionSendGate.decision(for: .recoveryForked), .allowRecoveryFork)
+
+        for blocked in [
+            SessionContinuityStatus.verifying,
+            .diverged,
+            .compositeSuspected,
+            .backendMissing,
+            .verificationIncomplete,
+        ] {
+            XCTAssertEqual(SessionSendGate.decision(for: blocked), .block)
+        }
+    }
+
     func testReconcilerExtendsPrefixInPlaceAndIsIdempotent() {
         let user = Message(role: .user, content: "Do the work")
         let partial = Message(role: .assistant, content: "Final result")
@@ -534,5 +656,15 @@ final class GrokSessionTranscriptImporterTests: XCTestCase {
             .appendingPathComponent("chat_history-\(UUID().uuidString).jsonl")
         try contents.write(to: url, atomically: true, encoding: .utf8)
         return url
+    }
+
+    private func fixtureURL(_ filename: String) throws -> URL {
+        try XCTUnwrap(
+            Bundle.module.url(
+                forResource: filename,
+                withExtension: nil,
+                subdirectory: "Fixtures/CoherenceRepair"
+            )
+        )
     }
 }

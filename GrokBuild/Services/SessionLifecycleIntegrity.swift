@@ -8,6 +8,7 @@ import Security
 /// the opaque tags it produces.
 enum VersionedOpaqueTag {
     static let transcriptNormalizationVersion = 1
+    static let transcriptAuthenticationSchemaVersion = 1
 
     static func authenticationCode(
         key: Data,
@@ -49,7 +50,7 @@ enum VersionedOpaqueTag {
         authenticationCode(
             key: key,
             domain: "transcript-message",
-            schemaVersion: transcriptNormalizationVersion,
+            schemaVersion: transcriptAuthenticationSchemaVersion,
             payload: transcriptMessagePayload(role: role, ordinal: ordinal, content: content)
         )
     }

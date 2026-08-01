@@ -267,6 +267,15 @@ struct ChatView: View {
                 )
             }
 
+            if store.shouldShowContinuityBanner {
+                SessionContinuityBanner(
+                    status: store.continuityStatus,
+                    headline: store.continuityHeadline,
+                    message: store.continuityMessage,
+                    details: store.continuityDetails
+                )
+            }
+
             ScrollViewReader { proxy in
                 ScrollView {
                     LazyVStack(alignment: .leading, spacing: 22) {
@@ -693,6 +702,16 @@ struct ChatView: View {
     }
 
     private var connectionStatusColor: Color {
+        switch store.continuityStatus {
+        case .verifying:
+            return .yellow
+        case .diverged, .compositeSuspected, .backendMissing, .verificationIncomplete:
+            return .orange
+        case .localOnly:
+            if store.hasUserMessages { return .secondary }
+        case .verified, .backendOnly, .recoveryForked:
+            break
+        }
         switch store.connectionState {
         case .starting: return .yellow
         case .ready, .busy: return .green
@@ -702,7 +721,17 @@ struct ChatView: View {
     }
 
     private var connectionSubtitle: String {
-        ConnectionStatusPresentation.subtitle(
+        switch store.continuityStatus {
+        case .verifying:
+            return "Checking continuity…"
+        case .diverged, .compositeSuspected, .backendMissing, .verificationIncomplete:
+            return "Continuity blocked"
+        case .localOnly where store.hasUserMessages:
+            return "Local only"
+        case .localOnly, .verified, .backendOnly, .recoveryForked:
+            break
+        }
+        return ConnectionStatusPresentation.subtitle(
             state: store.connectionState,
             isResumedSession: store.isResumedSessionTab,
             hasWorkspace: store.currentWorkspace != nil
@@ -1703,11 +1732,16 @@ struct ChatView: View {
                     .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
-            .help("Send message")
-            .accessibilityLabel("Send message")
+            .help(store.continuityBlocksSend
+                ? "Send is blocked until conversation continuity is resolved."
+                : "Send message")
+            .accessibilityLabel(store.continuityBlocksSend
+                ? "Send blocked by conversation continuity"
+                : "Send message")
             .disabled(input.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && !store.hasVisibleFileAttachments ||
                       store.currentWorkspace == nil ||
-                      store.authRequiredMessage != nil)
+                      store.authRequiredMessage != nil ||
+                      store.continuityBlocksSend)
             .keyboardShortcut(.return, modifiers: .command)
         }
     }
@@ -2118,6 +2152,64 @@ private struct ErrorBanner: View {
         .background(.regularMaterial, in: RoundedRectangle(cornerRadius: AppTheme.Radius.large))
         .padding(.horizontal, 20)
         .padding(.top, 10)
+    }
+}
+
+private struct SessionContinuityBanner: View {
+    let status: SessionContinuityStatus
+    let headline: String
+    let message: String
+    let details: String
+
+    @State private var showsDetails = false
+
+    private var color: Color {
+        switch status {
+        case .diverged, .compositeSuspected, .backendMissing, .verificationIncomplete:
+            return .orange
+        case .verifying:
+            return .secondary
+        case .localOnly, .backendOnly, .verified, .recoveryForked:
+            return .accentColor
+        }
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 7) {
+            HStack(alignment: .top, spacing: 8) {
+                Image(systemName: status == .verifying ? "checkmark.shield" : "exclamationmark.shield")
+                    .foregroundStyle(color)
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(headline)
+                        .font(.caption.weight(.semibold))
+                    Text(message)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                Spacer()
+            }
+            DisclosureGroup("View redacted continuity details", isExpanded: $showsDetails) {
+                Text(details)
+                    .font(.caption.monospaced())
+                    .foregroundStyle(.secondary)
+                    .textSelection(.enabled)
+                    .padding(.top, 4)
+            }
+            .font(.caption)
+        }
+        .padding(10)
+        .background(color.opacity(0.08), in: RoundedRectangle(cornerRadius: AppTheme.Radius.large))
+        .overlay(
+            RoundedRectangle(cornerRadius: AppTheme.Radius.large)
+                .stroke(color.opacity(0.24), lineWidth: 1)
+        )
+        .padding(.horizontal, 20)
+        .padding(.top, 10)
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel(headline)
+        .accessibilityValue(message)
+        .accessibilityHint("Send remains blocked when the saved backend cannot be verified. Your local transcript is unchanged.")
     }
 }
 

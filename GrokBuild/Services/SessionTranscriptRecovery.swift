@@ -1,5 +1,89 @@
 import Foundation
 
+enum SessionContinuityStatus: String, Codable, Hashable, Sendable {
+    case localOnly
+    case backendOnly
+    case verifying
+    case verified
+    case diverged
+    case compositeSuspected
+    case backendMissing
+    case recoveryForked
+    case verificationIncomplete
+}
+
+enum SessionContinuityReason: String, Codable, Hashable, Sendable {
+    case noBackendBinding
+    case verificationPending
+    case exactMatch
+    case localVerifiedPrefix
+    case backendOnly
+    case contentMismatch
+    case nonContiguousBackendEvidence
+    case backendHistoryMissing
+    case backendHistoryUnreadable
+    case syntheticOnlyHistory
+    case boundedReadIncomplete
+    case integrityKeyUnavailable
+    case recoveryForked
+}
+
+struct SessionContinuityReceipt: Codable, Hashable, Sendable {
+    let status: SessionContinuityStatus
+    let reason: SessionContinuityReason
+    let normalizationVersion: Int
+    let authenticationSchemaVersion: Int
+    let localMessageCount: Int
+    let backendMessageCount: Int
+    let matchingPrefixCount: Int
+    /// Keyed, versioned HMACs. These stay in the authenticated local lifecycle
+    /// snapshot and are never included in logs or exported diagnostics.
+    let localTranscriptTag: String?
+    let backendTranscriptTag: String?
+    let verifiedAt: Date
+
+    static let localOnly = SessionContinuityReceipt(
+        status: .localOnly,
+        reason: .noBackendBinding,
+        normalizationVersion: VersionedOpaqueTag.transcriptNormalizationVersion,
+        authenticationSchemaVersion: VersionedOpaqueTag.transcriptAuthenticationSchemaVersion,
+        localMessageCount: 0,
+        backendMessageCount: 0,
+        matchingPrefixCount: 0,
+        localTranscriptTag: nil,
+        backendTranscriptTag: nil,
+        verifiedAt: .distantPast
+    )
+}
+
+struct SessionContinuityVerification: Sendable {
+    let receipt: SessionContinuityReceipt
+    let backendMessages: [Message]
+}
+
+enum SessionSendGateDecision: Equatable, Sendable {
+    case allowLocalBackendCreation
+    case allowVerifiedBackend
+    case allowRecoveryFork
+    case block
+}
+
+enum SessionSendGate {
+    static func decision(for status: SessionContinuityStatus) -> SessionSendGateDecision {
+        switch status {
+        case .localOnly:
+            return .allowLocalBackendCreation
+        case .verified, .backendOnly:
+            return .allowVerifiedBackend
+        case .recoveryForked:
+            return .allowRecoveryFork
+        case .verifying, .diverged, .compositeSuspected, .backendMissing,
+             .verificationIncomplete:
+            return .block
+        }
+    }
+}
+
 /// Reconciles GrokBuild tabs with one known grok CLI `chat_history.jsonl`.
 ///
 /// Imported message UUIDs are intentionally not treated as identity: grok history does
@@ -10,6 +94,300 @@ enum SessionTranscriptRecovery {
         let messages: [Message]
         let changed: Bool
         let authoritativeTailAssistantID: UUID?
+    }
+
+    static func verifyContinuity(
+        localMessages: [Message],
+        backendHistoryURL: URL,
+        key: Data,
+        limits: GrokSessionTranscriptImporter.BoundedImportLimits = .default
+    ) -> SessionContinuityVerification {
+        let imported = GrokSessionTranscriptImporter.importMessagesBounded(
+            from: backendHistoryURL,
+            limits: limits
+        )
+        switch imported.outcome {
+        case .missing:
+            return failedContinuityVerification(
+                localMessages: localMessages,
+                status: .backendMissing,
+                reason: .backendHistoryMissing
+            )
+        case .unreadable:
+            return failedContinuityVerification(
+                localMessages: localMessages,
+                status: .backendMissing,
+                reason: .backendHistoryUnreadable
+            )
+        case .incomplete:
+            return failedContinuityVerification(
+                localMessages: localMessages,
+                status: .verificationIncomplete,
+                reason: .boundedReadIncomplete,
+                backendMessages: imported.messages
+            )
+        case .complete:
+            guard !imported.messages.isEmpty else {
+                return failedContinuityVerification(
+                    localMessages: localMessages,
+                    status: .backendMissing,
+                    reason: .syntheticOnlyHistory
+                )
+            }
+            return SessionContinuityVerification(
+                receipt: verifyContinuity(
+                    localMessages: localMessages,
+                    backendMessages: imported.messages,
+                    key: key,
+                    deadline: imported.verificationDeadline
+                ),
+                backendMessages: imported.messages
+            )
+        }
+    }
+
+    static func verifyContinuity(
+        localMessages: [Message],
+        backendMessages: [Message],
+        key: Data
+    ) -> SessionContinuityReceipt {
+        verifyContinuity(
+            localMessages: localMessages,
+            backendMessages: backendMessages,
+            key: key,
+            deadline: nil
+        )
+    }
+
+    private static func verifyContinuity(
+        localMessages: [Message],
+        backendMessages: [Message],
+        key: Data,
+        deadline: Date?
+    ) -> SessionContinuityReceipt {
+        let local = conversationalMessages(localMessages)
+        let backend = conversationalMessages(backendMessages)
+        guard !key.isEmpty else {
+            return receipt(
+                status: .verificationIncomplete,
+                reason: .integrityKeyUnavailable,
+                local: local,
+                backend: backend,
+                matchingPrefixCount: 0,
+                key: nil,
+                localOrderedTags: nil,
+                backendOrderedTags: nil
+            )
+        }
+        guard let localOrdered = orderedTags(local, key: key, deadline: deadline),
+              let backendOrdered = orderedTags(backend, key: key, deadline: deadline) else {
+            return receipt(
+                status: .verificationIncomplete,
+                reason: .boundedReadIncomplete,
+                local: local,
+                backend: backend,
+                matchingPrefixCount: 0,
+                key: key,
+                localOrderedTags: nil,
+                backendOrderedTags: nil
+            )
+        }
+        guard !local.isEmpty else {
+            return receipt(
+                status: .backendOnly,
+                reason: .backendOnly,
+                local: local,
+                backend: backend,
+                matchingPrefixCount: 0,
+                key: key,
+                localOrderedTags: localOrdered,
+                backendOrderedTags: backendOrdered
+            )
+        }
+        guard !backend.isEmpty else {
+            return receipt(
+                status: .backendMissing,
+                reason: .syntheticOnlyHistory,
+                local: local,
+                backend: backend,
+                matchingPrefixCount: 0,
+                key: key,
+                localOrderedTags: localOrdered,
+                backendOrderedTags: backendOrdered
+            )
+        }
+
+        let prefixCount = matchingPrefixCount(localOrdered, backendOrdered)
+        if prefixCount == localOrdered.count {
+            return receipt(
+                status: .verified,
+                reason: localOrdered.count == backendOrdered.count ? .exactMatch : .localVerifiedPrefix,
+                local: local,
+                backend: backend,
+                matchingPrefixCount: prefixCount,
+                key: key,
+                localOrderedTags: localOrdered,
+                backendOrderedTags: backendOrdered
+            )
+        }
+
+        guard let localContent = contentIdentityTags(local, key: key, deadline: deadline),
+              let backendContent = contentIdentityTags(backend, key: key, deadline: deadline) else {
+            return receipt(
+                status: .verificationIncomplete,
+                reason: .boundedReadIncomplete,
+                local: local,
+                backend: backend,
+                matchingPrefixCount: prefixCount,
+                key: key,
+                localOrderedTags: nil,
+                backendOrderedTags: nil
+            )
+        }
+        let localEvidence = Set(localContent.dropFirst(prefixCount))
+        let backendEvidence = Set(backendContent.dropFirst(prefixCount))
+        let composite = localEvidence.intersection(backendEvidence).count >= 2
+        return receipt(
+            status: composite ? .compositeSuspected : .diverged,
+            reason: composite ? .nonContiguousBackendEvidence : .contentMismatch,
+            local: local,
+            backend: backend,
+            matchingPrefixCount: prefixCount,
+            key: key,
+            localOrderedTags: localOrdered,
+            backendOrderedTags: backendOrdered
+        )
+    }
+
+    private static func failedContinuityVerification(
+        localMessages: [Message],
+        status: SessionContinuityStatus,
+        reason: SessionContinuityReason,
+        backendMessages: [Message] = []
+    ) -> SessionContinuityVerification {
+        let local = conversationalMessages(localMessages)
+        let backend = conversationalMessages(backendMessages)
+        return SessionContinuityVerification(
+            receipt: SessionContinuityReceipt(
+                status: status,
+                reason: reason,
+                normalizationVersion: VersionedOpaqueTag.transcriptNormalizationVersion,
+                authenticationSchemaVersion: VersionedOpaqueTag.transcriptAuthenticationSchemaVersion,
+                localMessageCount: local.count,
+                backendMessageCount: backend.count,
+                matchingPrefixCount: 0,
+                localTranscriptTag: nil,
+                backendTranscriptTag: nil,
+                verifiedAt: Date()
+            ),
+            backendMessages: backendMessages
+        )
+    }
+
+    private static func receipt(
+        status: SessionContinuityStatus,
+        reason: SessionContinuityReason,
+        local: [Message],
+        backend: [Message],
+        matchingPrefixCount: Int,
+        key: Data?,
+        localOrderedTags: [String]?,
+        backendOrderedTags: [String]?
+    ) -> SessionContinuityReceipt {
+        SessionContinuityReceipt(
+            status: status,
+            reason: reason,
+            normalizationVersion: VersionedOpaqueTag.transcriptNormalizationVersion,
+            authenticationSchemaVersion: VersionedOpaqueTag.transcriptAuthenticationSchemaVersion,
+            localMessageCount: local.count,
+            backendMessageCount: backend.count,
+            matchingPrefixCount: matchingPrefixCount,
+            localTranscriptTag: localOrderedTags.flatMap { tags in
+                key.map { transcriptSequenceTag(from: tags, key: $0) }
+            },
+            backendTranscriptTag: backendOrderedTags.flatMap { tags in
+                key.map { transcriptSequenceTag(from: tags, key: $0) }
+            },
+            verifiedAt: Date()
+        )
+    }
+
+    private static func conversationalMessages(_ messages: [Message]) -> [Message] {
+        messages.filter {
+            ($0.role == .user || $0.role == .assistant)
+                && !$0.content.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        }
+    }
+
+    private static func orderedTags(
+        _ messages: [Message],
+        key: Data,
+        deadline: Date?
+    ) -> [String]? {
+        var tags: [String] = []
+        tags.reserveCapacity(messages.count)
+        for (index, message) in messages.enumerated() {
+            if index.isMultiple(of: 64),
+               let deadline,
+               Task<Never, Never>.isCancelled || Date() >= deadline {
+                return nil
+            }
+            tags.append(VersionedOpaqueTag.transcriptMessageTag(
+                key: key,
+                role: message.role.rawValue,
+                ordinal: index,
+                content: message.content
+            ))
+        }
+        return deadline.map({ Date() >= $0 }) == true ? nil : tags
+    }
+
+    private static func contentIdentityTags(
+        _ messages: [Message],
+        key: Data,
+        deadline: Date?
+    ) -> [String]? {
+        var tags: [String] = []
+        tags.reserveCapacity(messages.count)
+        for (index, message) in messages.enumerated() {
+            if index.isMultiple(of: 64),
+               let deadline,
+               Task<Never, Never>.isCancelled || Date() >= deadline {
+                return nil
+            }
+            tags.append(VersionedOpaqueTag.transcriptMessageTag(
+                key: key,
+                role: message.role.rawValue,
+                ordinal: 0,
+                content: message.content
+            ))
+        }
+        return deadline.map({ Date() >= $0 }) == true ? nil : tags
+    }
+
+    static func transcriptSequenceTag(_ messages: [Message], key: Data) -> String {
+        transcriptSequenceTag(
+            from: orderedTags(messages, key: key, deadline: nil) ?? [],
+            key: key
+        )
+    }
+
+    private static func transcriptSequenceTag(from orderedTags: [String], key: Data) -> String {
+        let payload = Data(orderedTags.joined(separator: "\u{1F}").utf8)
+        return VersionedOpaqueTag.authenticationCode(
+            key: key,
+            domain: "transcript-sequence",
+            schemaVersion: VersionedOpaqueTag.transcriptAuthenticationSchemaVersion,
+            payload: payload
+        )
+    }
+
+    private static func matchingPrefixCount(_ lhs: [String], _ rhs: [String]) -> Int {
+        var count = 0
+        while count < lhs.count, count < rhs.count, lhs[count] == rhs[count] {
+            count += 1
+        }
+        return count
     }
 
     /// Returns reconciled messages when recovery changed the transcript; `nil` otherwise.

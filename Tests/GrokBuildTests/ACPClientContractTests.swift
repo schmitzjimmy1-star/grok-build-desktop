@@ -491,6 +491,43 @@ final class ACPClientContractTests: XCTestCase {
         XCTAssertTrue(source.contains("await restartProcess(resumeSessionID: savedGrokSessionID)"))
     }
 
+    func testSavedBackendCannotStartOrSendBeforeContinuityGateAllowsIt() throws {
+        let repositoryRoot = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        let sourceURL = repositoryRoot
+            .appendingPathComponent("GrokBuild/Services/ChatStore.swift")
+        let source = try String(contentsOf: sourceURL, encoding: .utf8)
+        let restartStart = try XCTUnwrap(source.range(of: "private func restartProcess"))
+        let processStart = try XCTUnwrap(
+            source.range(of: "await process.start", range: restartStart.upperBound..<source.endIndex)
+        )
+        let preStart = String(source[restartStart.lowerBound..<processStart.lowerBound])
+        XCTAssertTrue(preStart.contains("await verifyContinuityBeforeResume"))
+        XCTAssertTrue(preStart.contains("SessionSendGate.decision(for: status) != .block"))
+
+        let deliveryStart = try XCTUnwrap(source.range(of: "private func deliverPrompt"))
+        let deliveryEnd = try XCTUnwrap(
+            source.range(of: "// MARK:", range: deliveryStart.upperBound..<source.endIndex)
+        )
+        let delivery = String(source[deliveryStart.lowerBound..<deliveryEnd.lowerBound])
+        XCTAssertTrue(delivery.contains("guard SessionSendGate.decision(for: continuityStatus) != .block"))
+        XCTAssertTrue(source.contains("else if !isSameContinuityBinding"))
+
+        let contentSource = try String(
+            contentsOf: repositoryRoot.appendingPathComponent("GrokBuild/ContentView.swift"),
+            encoding: .utf8
+        )
+        let selectionStart = try XCTUnwrap(contentSource.range(of: "private func selectSession("))
+        let selectionEnd = try XCTUnwrap(
+            contentSource.range(of: "private func noteSessionUsed", range: selectionStart.upperBound..<contentSource.endIndex)
+        )
+        let selection = String(contentSource[selectionStart.lowerBound..<selectionEnd.lowerBound])
+        XCTAssertTrue(selection.contains("SessionMessageStore.messages(for: id)"))
+        XCTAssertTrue(selection.contains("continuityPermitsAuthoritativeReconciliation"))
+    }
+
     func testAppUpdatePaneObservesFreshUpdateReceipts() throws {
         let repositoryRoot = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent()
