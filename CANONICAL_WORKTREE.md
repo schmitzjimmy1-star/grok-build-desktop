@@ -45,9 +45,20 @@ shasum -a 256 dist/GrokBuild.app/Contents/MacOS/GrokBuild \
   /Applications/GrokBuild.app/Contents/MacOS/GrokBuild
 ```
 
-Stop on any path, branch, repository, bundle, or stamped-commit mismatch. A model
-provider selected *inside* GrokBuild (Grok, GPT, OpenRouter, Kimi) never changes
-which application repository owns the workbench.
+Stop on any path, branch, repository, or bundle mismatch. The stamped commit is
+the exact clean source used to compile the installed binary. It must equal HEAD
+or be an ancestor followed only by receipt/documentation commits; prove the
+latter with:
+
+```bash
+git merge-base --is-ancestor <stamped-commit> HEAD
+git diff --quiet <stamped-commit>..HEAD -- \
+  GrokBuild GrokBuildComputerUseCore GrokBuildComputerUseMCP \
+  Package.swift VERSION Makefile scripts
+```
+
+A model provider selected *inside* GrokBuild (Grok, GPT, OpenRouter, Kimi) never
+changes which application repository owns the workbench.
 
 ## Current accepted installed receipt — 2026-08-01
 
