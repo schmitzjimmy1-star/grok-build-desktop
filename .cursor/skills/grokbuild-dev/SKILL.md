@@ -41,6 +41,14 @@ Full checklist: `.cursor/rules/docs-and-tests.mdc`.
 | DMG | `make dmg` |
 | Clean | `make clean` |
 | Unit tests | `make test` |
+| Lifecycle v3 / true-MRU tests | `swift test --filter 'Session(LifecycleV3|Persistence)Tests'` |
+| Slice 0 synthetic fixtures | `Tests/GrokBuildTests/Fixtures/CoherenceRepair/` |
+
+## Coherence profiling
+
+The redacted `OSSignposter` contract lives in `PerformanceInstrumentation.swift` under subsystem `com.grokbuild.app`, category `Performance`. Capture the named lanes with Instruments → Points of Interest; never add prompts, rendered content, credentials, headers, environment values, raw histories, or absolute private paths as signpost metadata. Use `docs/GROKBUILD_SLICE_0_BASELINE_2026-08-01.md` as the pre-repair corpus/baseline and keep Computer Use transport time separate from product signpost duration.
+
+Session lifecycle changes must run both the focused filter above and `make test`. Migration tests use isolated UserDefaults suites plus the pinned synthetic HMAC/CLI fixtures; do not point tests at the installed app's preference domain.
 
 ## grok CLI dependency
 

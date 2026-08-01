@@ -17,6 +17,8 @@ enum MarkdownBlock: Identifiable, Hashable {
 
 enum MarkdownBlockParser {
     static func parse(_ text: String) -> [MarkdownBlock] {
+        let interval = GrokBuildPerformance.begin(.richMessageParse)
+        defer { interval.end() }
         var blocks: [MarkdownBlock] = []
         var remaining = text
 
@@ -774,6 +776,8 @@ private struct MermaidWebView: NSViewRepresentable {
     func updateNSView(_ view: WKWebView, context: Context) {
         context.coordinator.onHeightChange = onHeightChange
         guard source != context.coordinator.lastLoadedSource else { return }
+        context.coordinator.renderInterval?.end()
+        context.coordinator.renderInterval = GrokBuildPerformance.begin(.mermaidRender)
         context.coordinator.lastLoadedSource = source
         view.loadHTMLString(Self.html(for: source), baseURL: nil)
     }
@@ -796,12 +800,19 @@ private struct MermaidWebView: NSViewRepresentable {
     final class Coordinator: NSObject, WKNavigationDelegate {
         var lastLoadedSource: String?
         var onHeightChange: (CGFloat) -> Void
+        var renderInterval: GrokBuildPerformanceInterval?
 
         init(onHeightChange: @escaping (CGFloat) -> Void) {
             self.onHeightChange = onHeightChange
         }
 
+        deinit {
+            renderInterval?.end()
+        }
+
         func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
+            renderInterval?.end()
+            renderInterval = nil
             webView.evaluateJavaScript("document.body.scrollHeight") { result, _ in
                 guard let height = webViewScrollHeight(from: result) else { return }
                 DispatchQueue.main.async {

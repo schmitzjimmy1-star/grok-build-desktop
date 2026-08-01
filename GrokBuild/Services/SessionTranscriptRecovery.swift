@@ -40,45 +40,47 @@ enum SessionTranscriptRecovery {
         workspacePath: URL,
         currentMessages: [Message]
     ) -> Result? {
-        guard let grokSessionID,
-              let historyURL = GrokSessionTranscriptImporter.chatHistoryURL(
-                  workspacePath: workspacePath,
-                  grokSessionID: grokSessionID
-              ),
-              GrokSessionTranscriptImporter.hasRecoverableTranscript(at: historyURL) else {
-            return nil
-        }
+        GrokBuildPerformance.measure(.continuityVerification) {
+            guard let grokSessionID,
+                  let historyURL = GrokSessionTranscriptImporter.chatHistoryURL(
+                      workspacePath: workspacePath,
+                      grokSessionID: grokSessionID
+                  ),
+                  GrokSessionTranscriptImporter.hasRecoverableTranscript(at: historyURL) else {
+                return nil
+            }
 
-        let imported = GrokSessionTranscriptImporter.importMessages(from: historyURL)
-        let reconciled = SessionTranscriptReconciler.reconcile(
-            local: currentMessages,
-            authoritative: imported
-        )
-        let changed = SessionTranscriptReconciler.contentSignature(reconciled)
-            != SessionTranscriptReconciler.contentSignature(currentMessages)
-        if changed {
-            SessionMessageStore.replaceAfterAuthoritativeReconciliation(
-                reconciled,
-                for: sessionID
+            let imported = GrokSessionTranscriptImporter.importMessages(from: historyURL)
+            let reconciled = SessionTranscriptReconciler.reconcile(
+                local: currentMessages,
+                authoritative: imported
+            )
+            let changed = SessionTranscriptReconciler.contentSignature(reconciled)
+                != SessionTranscriptReconciler.contentSignature(currentMessages)
+            if changed {
+                SessionMessageStore.replaceAfterAuthoritativeReconciliation(
+                    reconciled,
+                    for: sessionID
+                )
+            }
+
+            let authoritativeTail = SessionTranscriptReconciler.authoritativeTailAssistantContent(
+                local: reconciled,
+                authoritative: imported
+            )
+            let authoritativeTailAssistantID = authoritativeTail.flatMap { tail in
+                let normalizedTail = SessionTranscriptReconciler.normalizedContent(tail)
+                return reconciled.last(where: {
+                    $0.role == .assistant
+                        && SessionTranscriptReconciler.normalizedContent($0.content) == normalizedTail
+                })?.id
+            }
+            return Result(
+                messages: reconciled,
+                changed: changed,
+                authoritativeTailAssistantID: authoritativeTailAssistantID
             )
         }
-
-        let authoritativeTail = SessionTranscriptReconciler.authoritativeTailAssistantContent(
-            local: reconciled,
-            authoritative: imported
-        )
-        let authoritativeTailAssistantID = authoritativeTail.flatMap { tail in
-            let normalizedTail = SessionTranscriptReconciler.normalizedContent(tail)
-            return reconciled.last(where: {
-                $0.role == .assistant
-                    && SessionTranscriptReconciler.normalizedContent($0.content) == normalizedTail
-            })?.id
-        }
-        return Result(
-            messages: reconciled,
-            changed: changed,
-            authoritativeTailAssistantID: authoritativeTailAssistantID
-        )
     }
 }
 

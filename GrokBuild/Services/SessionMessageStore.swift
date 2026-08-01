@@ -6,8 +6,10 @@ enum SessionMessageStore {
     private static let key = "GrokBuild.sessionMessages.v1"
 
     static func messages(for sessionID: UUID) -> [Message] {
-        guard let data = blob(for: sessionID) else { return [] }
-        return (try? JSONDecoder().decode([Message].self, from: data)) ?? []
+        GrokBuildPerformance.measure(.selectedTranscriptLoad) {
+            guard let data = blob(for: sessionID) else { return [] }
+            return (try? JSONDecoder().decode([Message].self, from: data)) ?? []
+        }
     }
 
     static func save(_ messages: [Message], for sessionID: UUID) {
@@ -21,14 +23,16 @@ enum SessionMessageStore {
         _ messages: [Message],
         for sessionID: UUID
     ) {
-        var map = loadMap()
-        let persistable = messages.filter { shouldPersist($0) }
-        if persistable.isEmpty {
-            map.removeValue(forKey: sessionID.uuidString)
-        } else if let data = try? JSONEncoder().encode(persistable) {
-            map[sessionID.uuidString] = data
+        GrokBuildPerformance.measure(.transcriptWrite) {
+            var map = loadMap()
+            let persistable = messages.filter { shouldPersist($0) }
+            if persistable.isEmpty {
+                map.removeValue(forKey: sessionID.uuidString)
+            } else if let data = try? JSONEncoder().encode(persistable) {
+                map[sessionID.uuidString] = data
+            }
+            UserDefaults.standard.set(map, forKey: key)
         }
-        UserDefaults.standard.set(map, forKey: key)
     }
 
     /// Merge and persist several sessions' transcripts with one defaults
@@ -37,21 +41,23 @@ enum SessionMessageStore {
     /// `persistSessionLayout` O(sessions x total transcript bytes).
     static func saveAll(_ messagesBySession: [UUID: [Message]]) {
         guard !messagesBySession.isEmpty else { return }
-        var map = loadMap()
-        let decoder = JSONDecoder()
-        let encoder = JSONEncoder()
-        for (sessionID, messages) in messagesBySession {
-            let mapKey = sessionID.uuidString
-            let existing = map[mapKey].flatMap { try? decoder.decode([Message].self, from: $0) } ?? []
-            let persistable = messages.filter { shouldPersist($0) }
-            let merged = mergeTranscripts(existing: existing, incoming: persistable)
-            if merged.isEmpty {
-                map.removeValue(forKey: mapKey)
-            } else if let data = try? encoder.encode(merged) {
-                map[mapKey] = data
+        GrokBuildPerformance.measure(.transcriptWrite) {
+            var map = loadMap()
+            let decoder = JSONDecoder()
+            let encoder = JSONEncoder()
+            for (sessionID, messages) in messagesBySession {
+                let mapKey = sessionID.uuidString
+                let existing = map[mapKey].flatMap { try? decoder.decode([Message].self, from: $0) } ?? []
+                let persistable = messages.filter { shouldPersist($0) }
+                let merged = mergeTranscripts(existing: existing, incoming: persistable)
+                if merged.isEmpty {
+                    map.removeValue(forKey: mapKey)
+                } else if let data = try? encoder.encode(merged) {
+                    map[mapKey] = data
+                }
             }
+            UserDefaults.standard.set(map, forKey: key)
         }
-        UserDefaults.standard.set(map, forKey: key)
     }
 
     /// Never drop a longer on-disk transcript when memory is temporarily empty or partial.
@@ -93,10 +99,16 @@ enum SessionMessageStore {
         messages(for: sessionID).filter { $0.role == .user || $0.role == .assistant }.count
     }
 
+    static var storedTranscriptCount: Int {
+        loadMap().count
+    }
+
     static func remove(for sessionID: UUID) {
-        var map = loadMap()
-        map.removeValue(forKey: sessionID.uuidString)
-        UserDefaults.standard.set(map, forKey: key)
+        GrokBuildPerformance.measure(.transcriptWrite) {
+            var map = loadMap()
+            map.removeValue(forKey: sessionID.uuidString)
+            UserDefaults.standard.set(map, forKey: key)
+        }
     }
 
     /// Legacy resume notes added before message persistence — drop on load.

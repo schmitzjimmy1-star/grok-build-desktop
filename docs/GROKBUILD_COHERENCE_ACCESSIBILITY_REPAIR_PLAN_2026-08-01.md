@@ -3,7 +3,7 @@
 | Field | Value |
 |---|---|
 | Prepared | 2026-08-01 |
-| Status | Implementation-ready planning authority; no repair in this document is marked complete |
+| Status | Slices 0–2 implemented and installed-app accepted in the working tree; Slices 3–11 remain unstarted |
 | Scope | Maintained SwiftUI app, current Grok CLI 0.2.118 contract, installed-app acceptance, and every unresolved hole from the Settings/startup/performance/backend-CPR audit |
 | Canonical worktree | /Users/jimmyschmitz/Desktop/Projects/MCP Servers/Grok Build/grok-build-desktop |
 | Canonical branch | codex/warm-glass-ui |
@@ -1487,6 +1487,18 @@ Exit:
 - failed migration shows legacy state rather than empty data;
 - rapid A → B → quit deterministically selects B.
 
+#### Slices 0–1 implementation receipt — 2026-08-01
+
+- Source remained on `codex/warm-glass-ui` at plan commit `ee55e48ebc2e6181226302995df56959529ee115`; the implementation is intentionally uncommitted and the installed bundle is stamped dirty against that source commit.
+- Slice 0 added the pinned synthetic corpus, all fifteen redacted `com.grokbuild.app` performance lanes, and `docs/GROKBUILD_SLICE_0_BASELINE_2026-08-01.md`.
+- Slice 1 added the separate v3 candidate/commit/flush keys, Keychain-keyed HMAC marker, semantic model/agent intents, structured backend binding, transcript generations, true activation-ordinal MRU, one-load restored-transcript handoff, conservative v2 fallback, and deterministic flush receipts.
+- `make test`: 425 tests, 0 failures, 13.382 seconds. The focused lifecycle suite: 11 tests, 0 failures.
+- Installed Computer Use proof opened Settings and returned to the selected transcript, then quit/relaunched `/Applications/GrokBuild.app` in 1.402 seconds with the transcript visible, Grok 4.5 selected, and no migration banner.
+- The original 7,902-byte v2 payload remained byte-identical at SHA-256 `b9d760c004f74f88996d75ee83df5a2f5636ded80c6863a996c63442d5bacad7`. The accepted v3 snapshot contains 24 records, all 24 unproven v2 models are `legacyUnknown`, and its authenticated commit marker plus 33-transcript flush receipt are present.
+- No backend CPR, provider send, history rewrite, or new Grok/ACP child process was used. A live data-protection-Keychain attempt failed closed with `errSecMissingEntitlement`; the accepted implementation uses the standard macOS login Keychain off the main thread and caches the 32-byte key in process memory.
+- Installed and packaged executables match at SHA-256 `f6115553c85d30e6e39a2a63411cd775db0cca9844db17f61d57104855b612b7`; deep/strict signing passes, quarantine is absent, and the previous exact app is recoverable at `/Users/jimmyschmitz/.Trash/GrokBuild-pre-slice-0-1-20260801-1744.app`.
+- Slice 1 installed proof covers the saved-selection relaunch path. Rapid A → B → quit, divergence, no-viable-candidate, and intent inheritance are deterministic fixture tests; live tab switching was deliberately not used because an unverified migrated backend must not be started merely to manufacture acceptance evidence.
+
 ### Slice 2 — process and model truth
 
 **Primary files:** GrokProcess.swift, ChatStore.swift, SessionLayoutStore.swift, ChatView.swift, ACPClientContractTests.swift.
@@ -1504,6 +1516,17 @@ Exit:
 - absent effective model is Unknown/requested, not confirmed;
 - rejected/late callbacks cannot overwrite current state;
 - explicit confirmed model and desired intent survive relaunch correctly.
+
+#### Slice 2 implementation receipt — 2026-08-01
+
+- Source remained on `codex/warm-glass-ui` at plan commit `ee55e48ebc2e6181226302995df56959529ee115`; Slices 0–2 remain intentionally uncommitted and the installed bundle is stamped dirty against that source commit.
+- The app now owns a monotonic process generation, a credential-free launch receipt, and a persisted model receipt keyed by local tab, backend session, process generation, and request UUID. Exact identity is required before an asynchronous callback may settle state.
+- Model transitions use one requested/pending/confirmed/rejected reducer. An accepted `session/set_model` response without an explicit effective-model readback stays Requested; launch/session responses can confirm only when they independently expose the effective model. CLI lookup, spawn, and ACP initialization failures close the active generation and reject any launch-model request. Restoring a tab no longer sends a hidden model RPC to cosmetically force saved state.
+- `make test`: 433 tests, 0 failures, 13.648 seconds. The combined focused ACP/lifecycle run completed 34 tests with 0 failures in 0.964 seconds, including stale-generation, empty-success, explicit-readback, rejection, failed-launch settlement, saved-not-live, launch-receipt, and v3 round-trip cases.
+- Installed Computer Use proof exposed the keyboard-reachable receipt menu with `Current backend model is unknown.` and `No process launch receipt for this tab.`, while the compact workbench showed `No active process` and the model selector exposed Unknown rather than Live. Settings opened in 1.663 seconds and returned to the exact transcript in 1.742 seconds; Command-Q exited in 537 ms and the final installed relaunch restored the same transcript in 1.254 seconds.
+- The original 7,902-byte v2 payload remains byte-identical at SHA-256 `b9d760c004f74f88996d75ee83df5a2f5636ded80c6863a996c63442d5bacad7`. The accepted v3 snapshot still contains 24 records and now persists 24 model-execution receipts; its authenticated marker and the 33-transcript flush receipt remain present.
+- No backend CPR, provider send, migrated-backend start, or owned Grok/browser/Computer Use child was used. A real Live label was deliberately not manufactured; explicit confirmation and rejected/late callback behavior are covered by deterministic ACP fixtures.
+- Installed and packaged executables match at SHA-256 `cafe63f1043da2c7453d9caf12eec88a8d2c0969194cca0962ec4cc25e5c0da1`; deep/strict signing passes under Team `DD2GCQJVB4`, quarantine is absent, and the exact pre-Slice-2 app is recoverable at `/Users/jimmyschmitz/.Trash/GrokBuild-pre-slice-2-20260801-1822.app`.
 
 ### Slice 3 — continuity verifier and send gate
 

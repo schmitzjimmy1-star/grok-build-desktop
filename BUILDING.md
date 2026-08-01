@@ -147,7 +147,7 @@ Or run the script directly:
   helpers with filename-derived identifiers and break the shared Accessibility grant
 
 ### Notes on entitlements
-The current bundle uses a minimal entitlement for unsigned executable memory (needed by some Swift runtime features). For full notarization you may want to review and expand the entitlements.
+The main app carries the minimal unsigned-executable-memory entitlement needed for Swift runtime compatibility. The lifecycle HMAC key uses the standard macOS login Keychain so local SwiftPM builds do not require a provisioning profile; Keychain access stays off the main thread. `agent-desktop` separately receives the JIT entitlements required by its embedded JavaScript runtime.
 
 ## Notarization
 

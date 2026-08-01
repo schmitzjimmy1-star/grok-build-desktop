@@ -2,6 +2,12 @@ import XCTest
 @testable import GrokBuild
 
 final class SessionPersistenceTests: XCTestCase {
+    private struct StaticIntegrityKeyProvider: SessionLifecycleIntegrityKeyProviding {
+        let key = Data(repeating: 0xA5, count: 32)
+        func existingKey() -> Data? { key }
+        func existingOrCreateKey() -> Data { key }
+    }
+
     private let sessionLayoutKey = "GrokBuild.sessionLayout.v2"
     private let workspaceLayoutKey = "GrokBuild.workspaceLayout.v1"
     private let sessionNameKey = "grokbuild.sessionNames.v1"
@@ -189,6 +195,9 @@ final class SessionPersistenceTests: XCTestCase {
     }
 
     func testSessionLayoutStoreRoundTripsSnapshot() {
+        let suiteName = "SessionPersistenceTests.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defaults.removePersistentDomain(forName: suiteName)
         let workspaceID = UUID()
         let sessionID = UUID()
         let snapshot = SessionLayoutSnapshot(
@@ -209,9 +218,17 @@ final class SessionPersistenceTests: XCTestCase {
             hiddenSessionWorkspaceIDs: [UUID()]
         )
 
-        SessionLayoutStore.saveSessions(snapshot)
-        let loaded = SessionLayoutStore.loadSessions()
+        let receipt = SessionLayoutStore.saveSessions(
+            snapshot,
+            defaults: defaults,
+            keyProvider: StaticIntegrityKeyProvider()
+        )
+        let loaded = SessionLayoutStore.loadSessionsResult(
+            defaults: defaults,
+            keyProvider: StaticIntegrityKeyProvider()
+        ).snapshot
 
+        XCTAssertTrue(receipt.committed)
         XCTAssertEqual(loaded.records, snapshot.records)
         XCTAssertEqual(loaded.sessionOrderByWorkspace, snapshot.sessionOrderByWorkspace)
         XCTAssertEqual(loaded.selectedSessionID, snapshot.selectedSessionID)
@@ -377,7 +394,7 @@ final class SessionPersistenceTests: XCTestCase {
         XCTAssertEqual(SessionRestorePolicy.recentSessionOrder(from: records), [newer, older])
     }
 
-    func testPreferredSessionIDHonorsSavedSelectionEvenWhenEmpty() {
+    func testPreferredSessionIDSkipsRememberedEmptySession() {
         let workspaceID = UUID()
         let emptySession = UUID()
         let contentSession = UUID()
@@ -399,7 +416,7 @@ final class SessionPersistenceTests: XCTestCase {
             hasContent: { $0 == contentSession }
         )
 
-        XCTAssertEqual(preferred, emptySession)
+        XCTAssertEqual(preferred, contentSession)
     }
 
     func testRestoreSelectedSessionIDSkipsEmptySavedSelection() {
@@ -728,6 +745,26 @@ final class SessionPersistenceTests: XCTestCase {
         XCTAssertEqual(store.effectiveAgentSelection, "researcher")
         XCTAssertEqual(store.persistedAgentSelection, "researcher")
         XCTAssertEqual(store.effectiveAgentDisplayName, "researcher")
+    }
+
+    @MainActor
+    func testChatStoreV3IntentBindingPreservesInheritanceAndLegacyUnknown() {
+        let store = ChatStore()
+        store.bindTabSession(
+            UUID(),
+            modelIntent: .inheritProjectDefault,
+            agentIntent: .inheritGlobalDefault
+        )
+        XCTAssertEqual(store.persistedModelIntent, .inheritProjectDefault)
+        XCTAssertEqual(store.persistedAgentIntent, .inheritGlobalDefault)
+
+        store.bindTabSession(
+            UUID(),
+            modelIntent: .legacyUnknown("grok-4.5"),
+            agentIntent: .explicit("researcher")
+        )
+        XCTAssertEqual(store.persistedModelIntent, .legacyUnknown("grok-4.5"))
+        XCTAssertEqual(store.persistedAgentIntent, .explicit("researcher"))
     }
 
     func testSessionTabModelPolicyPrefersTabOverWorkspaceDefault() {

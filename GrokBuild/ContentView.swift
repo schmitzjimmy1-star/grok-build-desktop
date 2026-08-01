@@ -48,7 +48,16 @@ struct ContentView: View {
     @State private var restoreStatusText = "Restoring sessions..."
     @State private var sessionListRevision = 0
     @State private var cachedSessionTitles: [UUID: String] = [:]
-    @State private var sessionLayout = SessionLayoutStore.loadSessions()
+    @State private var sessionLayout = SessionLayoutSnapshot(
+        records: [],
+        sessionOrderByWorkspace: [:],
+        selectedSessionID: nil,
+        selectedWorkspaceID: nil
+    )
+    @State private var sessionLayoutAuthority: SessionLayoutAuthority = .empty
+    @State private var sessionLayoutFailure: SessionLayoutFailureCode?
+    @State private var pendingActivationDates: [UUID: Date] = [:]
+    @State private var pendingActivationOrdinals: [UUID: UInt64] = [:]
     @State private var isUpgradeBannerDismissed = false
     @State private var showUpgradeBanner = false
     @State private var bannerAppVersion: String?
@@ -68,6 +77,19 @@ struct ContentView: View {
     var body: some View {
         ZStack {
             VStack(spacing: 0) {
+            if sessionLayoutFailure != nil {
+                HStack(spacing: 8) {
+                    Image(systemName: "exclamationmark.triangle.fill")
+                    Text("Saved session migration failed. Legacy sessions are open read-only.")
+                        .font(.caption.weight(.medium))
+                }
+                .foregroundStyle(Color.orange)
+                .padding(.horizontal, 12)
+                .padding(.vertical, 8)
+                .frame(maxWidth: .infinity)
+                .background(Color.orange.opacity(0.10))
+                .accessibilityElement(children: .combine)
+            }
             if showUpgradeBanner {
                 UpdatesBanner(
                     appVersion: bannerAppVersion,
@@ -675,6 +697,8 @@ struct ContentView: View {
     }
 
     private func persistSessionLayout(saveMessages: Bool = true) {
+        guard sessionLayoutAuthority != .legacyV2Fallback,
+              sessionLayoutFailure == nil else { return }
         if saveMessages {
             SessionMessageStore.saveAll(
                 Dictionary(uniqueKeysWithValues: liveSessions.map { ($0.id, $0.store.messages) })
@@ -687,22 +711,38 @@ struct ContentView: View {
             let grokSessionID = session.store.durableGrokSessionID ?? session.grokSessionID
             guard sessionHasContent(session) else { continue }
             let existing = sessionLayout.records.first { $0.id == session.id }
+            let backendBinding: SessionBackendBinding? = {
+                guard let grokSessionID else { return existing?.backendBinding }
+                if existing?.backendBinding?.backendID == grokSessionID {
+                    return existing?.backendBinding
+                }
+                return SessionBackendBinding(
+                    backendID: grokSessionID,
+                    origin: .runtime,
+                    predecessorBackendID: existing?.backendBinding?.backendID,
+                    verification: .unverified
+                )
+            }()
             records.append(
                 SavedSessionRecord(
                     id: session.id,
                     workspaceID: session.workspace.id,
-                    grokSessionID: grokSessionID,
+                    backendBinding: backendBinding,
                     title: computeSessionTitle(for: session),
-                    model: session.store.currentModel,
-                    agent: session.store.persistedAgentSelection,
-                    lastAccessed: existing?.lastAccessed ?? Date()
+                    modelIntent: session.store.persistedModelIntent,
+                    modelExecutionState: session.store.persistedModelExecutionState,
+                    agentIntent: session.store.persistedAgentIntent,
+                    lastAccessed: pendingActivationDates[session.id]
+                        ?? existing?.lastAccessed
+                        ?? .distantPast,
+                    lastActivationOrdinal: pendingActivationOrdinals[session.id]
+                        ?? existing?.lastActivationOrdinal
+                        ?? 0,
+                    transcriptGeneration: existing?.transcriptGeneration ?? 0,
+                    transcriptStorageVersion: existing?.transcriptStorageVersion ?? 1,
+                    forkLedgerReference: existing?.forkLedgerReference
                 )
             )
-        }
-
-        if let selectedSessionID,
-           let idx = records.firstIndex(where: { $0.id == selectedSessionID }) {
-            records[idx].lastAccessed = Date()
         }
 
         var order = sessionLayout.sessionOrderByWorkspace
@@ -738,9 +778,23 @@ struct ContentView: View {
             selectedWorkspaceID: selectedWorkspaceID,
             selectedSessionIDByWorkspace: selectedByWorkspace,
             expandedSessionWorkspaceIDs: expandedSessionWorkspaceIDs,
-            hiddenSessionWorkspaceIDs: hiddenSessionWorkspaceIDs
+            hiddenSessionWorkspaceIDs: hiddenSessionWorkspaceIDs,
+            activationCounter: sessionLayout.activationCounter
         )
-        SessionLayoutStore.saveSessions(sessionLayout)
+        recentSessionOrder = SessionRestorePolicy.recentSessionOrder(from: records)
+        let layoutReceipt = SessionLayoutStore.saveSessions(sessionLayout)
+        if saveMessages {
+            _ = SessionLayoutStore.recordFlushReceipt(
+                layoutReceipt: layoutReceipt,
+                transcriptCount: SessionMessageStore.storedTranscriptCount
+            )
+        }
+        if layoutReceipt.committed {
+            sessionLayoutAuthority = .v3Committed
+            sessionLayoutFailure = nil
+            pendingActivationDates = pendingActivationDates.filter { !recordIDs.contains($0.key) }
+            pendingActivationOrdinals = pendingActivationOrdinals.filter { !recordIDs.contains($0.key) }
+        }
     }
 
     // MARK: - Logic
@@ -748,8 +802,18 @@ struct ContentView: View {
     private func bootstrap() {
         guard !didBootstrap else { return }
         didBootstrap = true
-
-        Task { await restorePersistedSessions() }
+        isRestoringSessions = true
+        restoreStatusText = "Loading saved sessions..."
+        Task {
+            let loaded = await Task.detached(priority: .userInitiated) {
+                SessionLayoutStore.loadSessionsResult()
+            }.value
+            sessionLayout = loaded.snapshot
+            sessionLayoutAuthority = loaded.authority
+            sessionLayoutFailure = loaded.failure
+            await restorePersistedSessions()
+            isRestoringSessions = false
+        }
     }
 
     private func restorePersistedSessions() async {
@@ -782,6 +846,7 @@ struct ContentView: View {
 
         var titleCacheByWorkspace: [Workspace.ID: [String: String]] = [:]
         let cli = GrokCLIService()
+        var restoreCandidates: [SessionRestoreCandidate] = []
 
         // Lazy restore: only rebuild lightweight session state here (no grok process spawn).
         // The selected session is started below; the rest resume on demand when first opened.
@@ -792,13 +857,7 @@ struct ContentView: View {
 
             let store = ChatStore()
             let savedMessages = SessionMessageStore.messages(for: record.id)
-            let recoveredLegacyGrokID = record.grokSessionID == nil
-                ? GrokSessionTranscriptImporter.uniqueSessionIDMatchingTranscript(
-                    workspacePath: workspace.path,
-                    localMessages: savedMessages
-                )
-                : nil
-            let durableGrokID = record.grokSessionID ?? recoveredLegacyGrokID
+            let durableGrokID = record.grokSessionID
             let title = await restoredTitle(
                 for: record,
                 workspace: workspace,
@@ -806,18 +865,14 @@ struct ContentView: View {
                 cli: cli
             )
             store.prepare(workspace: workspace, savedGrokSessionID: durableGrokID)
-            let legacyModel = record.model ?? SessionLayoutStore.agentSettings(for: workspace.id).model
             store.bindTabSession(
                 record.id,
-                savedModel: legacyModel,
-                savedAgent: record.agent,
+                modelIntent: record.modelIntent,
+                savedModelExecutionState: record.modelExecutionState,
+                agentIntent: record.agentIntent,
                 savedGrokSessionID: durableGrokID
             )
-            store.restorePersistedMessages(
-                for: record.id,
-                grokSessionID: durableGrokID,
-                workspace: workspace
-            )
+            store.restorePersistedMessages(savedMessages)
             liveSessions.append(
                 LiveSession(
                     id: record.id,
@@ -827,52 +882,63 @@ struct ContentView: View {
                     grokSessionID: durableGrokID
                 )
             )
+            let hasLocalTranscript = savedMessages.contains { message in
+                message.role == .user
+                    || (message.role == .assistant
+                        && !message.content.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+            }
+            restoreCandidates.append(
+                SessionRestoreCandidate(
+                    id: record.id,
+                    workspaceID: record.workspaceID,
+                    lastActivationOrdinal: record.lastActivationOrdinal,
+                    lastAccessed: record.lastAccessed,
+                    hasLocalTranscript: hasLocalTranscript,
+                    hasContent: hasLocalTranscript || record.backendBinding != nil,
+                    hasVerifiedBinding: record.backendBinding?.verification == .verified,
+                    isDiverged: record.backendBinding?.verification == .failed
+                )
+            )
             restoredSessionCount += 1
         }
 
         sessionListRevision &+= 1
         recentSessionOrder = SessionRestorePolicy.recentSessionOrder(from: restorableRecords)
 
-        let hasContent: (UUID) -> Bool = { id in
-            if let session = liveSessions.first(where: { $0.id == id }) {
-                return sessionHasContent(session)
-            }
-            return sessionHasPersistedContent(id)
-        }
-
-        let hasTranscript: (UUID) -> Bool = { id in
-            if let session = liveSessions.first(where: { $0.id == id }) {
-                return SessionRestorePolicy.sessionHasRestorableTranscript(
-                    hasUserMessages: session.store.hasUserMessages,
-                    sessionID: id
-                )
-            }
-            return sessionHasPersistedContent(id)
-        }
-
         let workspaceID = saved.selectedWorkspaceID
-            ?? restorableRecords.max(by: { $0.lastAccessed < $1.lastAccessed })?.workspaceID
+            ?? restorableRecords.max(by: {
+                if $0.lastActivationOrdinal != $1.lastActivationOrdinal {
+                    return $0.lastActivationOrdinal < $1.lastActivationOrdinal
+                }
+                return $0.id.uuidString > $1.id.uuidString
+            })?.workspaceID
             ?? liveSessions.first?.workspace.id
 
-        if let workspaceID,
-           let selected = SessionRestorePolicy.restoreSelectedSessionID(
-               saved: saved,
-               workspaceID: workspaceID,
-               liveSessionIDsInWorkspace: liveSessions
-                   .filter { $0.workspace.id == workspaceID }
-                   .map(\.id),
-               hasTranscript: hasTranscript,
-               hasContent: hasContent,
-               preferredSessionID: { wsID in
-                   guard let workspace = workspaceStore.workspaces.first(where: { $0.id == wsID }) else {
-                       return nil
-                   }
-                   return preferredSessionID(for: workspace, saved: saved)
-               }
-           ) {
-            selectSession(selected)
-        } else if let first = liveSessions.first {
-            selectSession(first.id)
+        guard let workspaceID,
+              let workspace = workspaceStore.workspaces.first(where: { $0.id == workspaceID }) else {
+            return
+        }
+        let restoreInterval = GrokBuildPerformance.begin(.restoreDecision)
+        let decision = SessionRestorePolicy.restoreDecision(
+            input: SessionRestoreInput(
+                workspaceID: workspaceID,
+                savedSelectedSessionID: saved.selectedSessionIDByWorkspace[workspaceID]
+                    ?? saved.selectedSessionID,
+                workspaceWasRepaired: saved.selectedWorkspaceID != nil
+                    && saved.selectedWorkspaceID != workspaceID,
+                candidates: restoreCandidates
+            )
+        )
+        restoreInterval.end()
+        if let selected = decision.selectedSessionID {
+            selectSession(
+                selected,
+                recordsActivation: false,
+                deferBackendStart: decision.deferBackendStart,
+                reconcilePersistedTranscript: false
+            )
+        } else if decision.createdNewTab {
+            _ = await createLiveSession(for: workspace)
         }
     }
 
@@ -1056,15 +1122,24 @@ struct ContentView: View {
         }
     }
 
-    private func selectSession(_ id: UUID) {
-        guard let session = liveSessions.first(where: { $0.id == id }) else { return }
+    private func selectSession(
+        _ id: UUID,
+        recordsActivation: Bool = true,
+        deferBackendStart: Bool = false,
+        reconcilePersistedTranscript: Bool = true
+    ) {
+        let switchInterval = GrokBuildPerformance.begin(.tabSwitchToInteractive)
+        guard let session = liveSessions.first(where: { $0.id == id }) else {
+            switchInterval.end()
+            return
+        }
         if session.store.messages.isEmpty {
             session.store.restorePersistedMessages(
                 for: id,
                 grokSessionID: session.grokSessionID,
                 workspace: session.workspace
             )
-        } else {
+        } else if reconcilePersistedTranscript {
             session.store.reconcilePersistedMessages(
                 for: id,
                 grokSessionID: session.grokSessionID,
@@ -1073,15 +1148,13 @@ struct ContentView: View {
         }
         purgeEmptySessions(in: session.workspace.id, keeping: id)
         let savedRecord = sessionLayout.records.first(where: { $0.id == id })
-        let savedModel = savedRecord?.model
-            ?? SessionLayoutStore.agentSettings(for: session.workspace.id).model
         // Selection can happen while the restored tab's lazy process is still starting.
-        // Rebind the saved backend id together with the visible transcript/model so an
-        // immediate send cannot create a default-model replacement session.
+        // Rebind semantic intent together with the backend id; inherited defaults stay inherited.
         session.store.bindTabSession(
             id,
-            savedModel: savedModel,
-            savedAgent: savedRecord?.agent,
+            modelIntent: savedRecord?.modelIntent ?? .inheritProjectDefault,
+            savedModelExecutionState: savedRecord?.modelExecutionState ?? .unknown,
+            agentIntent: savedRecord?.agentIntent ?? .inheritGlobalDefault,
             savedGrokSessionID: session.grokSessionID
         )
         session.store.syncWorkspaceReasoningEffortFromStorage()
@@ -1091,17 +1164,33 @@ struct ContentView: View {
         previewMessageID = nil
         previewDiffs = []
         autoSelectLatestDiffMessage()
-        noteSessionUsed(id)
+        if recordsActivation {
+            noteSessionUsed(id)
+        }
         Task {
-            await ensureSessionStarted(id)
+            if !deferBackendStart {
+                await ensureSessionStarted(id)
+            }
             await enforceConnectionCap()
             await refreshProjectChangedFiles()
+            await Task.yield()
+            await Task.yield()
+            switchInterval.end()
         }
         persistSessionLayout()
     }
 
-    /// Move a session to the front of the most-recently-used order.
+    /// Move a session to the front of the true MRU order. Background writes and streamed
+    /// chunks never call this path, so persistence cannot manufacture recency.
     private func noteSessionUsed(_ id: UUID) {
+        sessionLayout.activationCounter &+= 1
+        let usedAt = Date()
+        pendingActivationDates[id] = usedAt
+        pendingActivationOrdinals[id] = sessionLayout.activationCounter
+        if let index = sessionLayout.records.firstIndex(where: { $0.id == id }) {
+            sessionLayout.records[index].lastAccessed = usedAt
+            sessionLayout.records[index].lastActivationOrdinal = sessionLayout.activationCounter
+        }
         recentSessionOrder.removeAll { $0 == id }
         recentSessionOrder.insert(id, at: 0)
     }
@@ -1185,14 +1274,11 @@ struct ContentView: View {
         persistSessionLayout()
         if let resumeSession {
             store.prepare(workspace: workspace, savedGrokSessionID: resumeSession.id)
-            store.bindTabSession(id, savedModel: nil)
+            store.bindTabSession(id, modelIntent: .inheritProjectDefault)
             await store.start(workspace: workspace, resumeSession: resumeSession)
         } else {
             store.prepare(workspace: workspace)
-            store.bindTabSession(
-                id,
-                savedModel: SessionLayoutStore.agentSettings(for: workspace.id).model
-            )
+            store.bindTabSession(id, modelIntent: .inheritProjectDefault)
         }
         await enforceConnectionCap()
         return id

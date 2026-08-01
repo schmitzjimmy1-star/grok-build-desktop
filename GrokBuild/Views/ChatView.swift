@@ -363,7 +363,10 @@ struct ChatView: View {
                 .onChange(of: store.isStreaming) { _, isStreaming in
                     if !isStreaming {
                         // The final provider event can precede the last rich-text layout.
-                        scheduleSettledAutoScroll(proxy: proxy)
+                        scheduleSettledAutoScroll(
+                            proxy: proxy,
+                            performanceInterval: GrokBuildPerformance.begin(.finalChunkToSettledRender)
+                        )
                     }
                 }
                 // Follows every streamed chunk — thinking AND answer. A streaming answer
@@ -721,9 +724,13 @@ struct ChatView: View {
         }
     }
 
-    private func scheduleSettledAutoScroll(proxy: ScrollViewProxy) {
+    private func scheduleSettledAutoScroll(
+        proxy: ScrollViewProxy,
+        performanceInterval: GrokBuildPerformanceInterval? = nil
+    ) {
         autoScrollTask?.cancel()
         autoScrollTask = Task { @MainActor in
+            defer { performanceInterval?.end() }
             for gap in ChatAutoScrollPolicy.layoutSettleGapsMilliseconds {
                 if gap > 0 {
                     try? await Task.sleep(for: .milliseconds(gap))
@@ -1000,6 +1007,7 @@ struct ChatView: View {
                     }
                     .buttonStyle(.plain)
                     .help("Branches & worktrees")
+                    sessionReceiptMenu
                     agentStatusPill
                     browserStatusPill
                     computerUseStatusPill
@@ -1050,6 +1058,28 @@ struct ChatView: View {
             GitService.currentBranch(in: projectURL) ?? "No branch"
         }.value
         branchLabel = label
+    }
+
+    private var sessionReceiptMenu: some View {
+        Menu {
+            Section("Process and model receipt") {
+                ForEach(store.sessionReceiptDetailLines.indices, id: \.self) { index in
+                    Text(store.sessionReceiptDetailLines[index])
+                }
+            }
+        } label: {
+            Label(store.sessionReceiptCompactLabel, systemImage: "checkmark.seal")
+                .font(.caption2.weight(.semibold))
+                .padding(.horizontal, 2)
+                .padding(.vertical, 2)
+                .foregroundStyle(.secondary)
+        }
+        .menuStyle(.borderlessButton)
+        .fixedSize()
+        .help("Open generation-bound process and model details")
+        .accessibilityLabel("Open session process and model details")
+        .accessibilityValue(store.modelAccessibilityValue)
+        .accessibilityIdentifier("grok-session-receipt")
     }
 
     private var agentStatusPill: some View {
@@ -1782,6 +1812,7 @@ struct ChatView: View {
                         }
                     }
                     .accessibilityIdentifier("grok-model-option-\(modelId)")
+                    .disabled(store.isModelRequestPending)
                 }
             }
 
@@ -1828,13 +1859,13 @@ struct ChatView: View {
         .menuStyle(.button)
         .buttonStyle(.plain)
         .accessibilityLabel("Model and reasoning effort")
-        .accessibilityValue(modelSelectorLabel)
+        .accessibilityValue(store.modelAccessibilityValue)
         .accessibilityIdentifier("grok-model-effort-selector")
         .help(modelSelectorHelp)
     }
 
     private var modelSelectorLabel: String {
-        store.modelDisplayName(store.currentModel)
+        store.modelSelectorDisplayLabel
     }
 
     private var currentReasoningEffortLabel: String {
@@ -1842,6 +1873,9 @@ struct ChatView: View {
     }
 
     private var modelSelectorHelp: String {
+        if store.isModelRequestPending {
+            return "A model request is pending; other model choices are temporarily unavailable"
+        }
         if store.isStreaming {
             return "Select model; wait for the current turn to finish before changing reasoning effort"
         }

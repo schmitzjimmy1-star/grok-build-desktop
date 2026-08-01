@@ -1,0 +1,14 @@
+Add or update an MCP server
+
+Usage: grok mcp add [OPTIONS] <NAME> [COMMAND_OR_URL] [ARGS]...
+
+Arguments:
+  <NAME>          Server name
+  [COMMAND_OR_URL] Command to launch (stdio) or URL to connect to (http, sse)
+  [ARGS]...       Arguments passed to the server command after --
+
+Options:
+  -t, --transport <TRANSPORT>  stdio | http | sse
+  -s, --scope <SCOPE>          user | project
+  -e, --env <KEY=value>        Repeatable process environment entry
+  -H, --header <NAME: VALUE>   Repeatable remote-server HTTP header

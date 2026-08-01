@@ -25,24 +25,26 @@ actor GrokModelCatalog {
     }
 
     func models(forceRefresh: Bool = false) async -> [GrokModelInfo] {
-        if !forceRefresh,
-           let inMemory,
-           let refreshedAt,
-           Date().timeIntervalSince(refreshedAt) < Self.refreshInterval {
-            return inMemory
-        }
-
-        do {
-            let live = Self.normalized(try await GrokCLIService().listModels())
-            guard !live.isEmpty else { return cachedFallback() }
-            inMemory = live
-            refreshedAt = Date()
-            if let data = try? JSONEncoder().encode(live) {
-                UserDefaults.standard.set(data, forKey: Self.cacheKey)
+        await GrokBuildPerformance.measure(.modelCatalogLoad) {
+            if !forceRefresh,
+               let inMemory,
+               let refreshedAt,
+               Date().timeIntervalSince(refreshedAt) < Self.refreshInterval {
+                return inMemory
             }
-            return live
-        } catch {
-            return cachedFallback()
+
+            do {
+                let live = Self.normalized(try await GrokCLIService().listModels())
+                guard !live.isEmpty else { return cachedFallback() }
+                inMemory = live
+                refreshedAt = Date()
+                if let data = try? JSONEncoder().encode(live) {
+                    UserDefaults.standard.set(data, forKey: Self.cacheKey)
+                }
+                return live
+            } catch {
+                return cachedFallback()
+            }
         }
     }
 

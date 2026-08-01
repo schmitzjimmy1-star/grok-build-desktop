@@ -16,6 +16,7 @@ enum GrokProcessState: Sendable, Equatable {
 }
 
 struct GrokLaunchOptions: Sendable {
+    var localTabID: UUID? = nil
     var agent: String? = nil  // advanced: for custom --agent profiles only (built-in personas removed)
     var extraArgs: [String] = []
     var noMemory: Bool = false
@@ -34,25 +35,73 @@ struct GrokLaunchOptions: Sendable {
     var mcpServers: [MCPServerConfig] = []
 }
 
-/// Credential-free receipt for the policy/capability state of the currently launched
-/// CLI process. It deliberately excludes environment variables, MCP env, allow/deny rule
-/// contents, and provider credentials.
+enum GrokLaunchOutcome: String, Sendable, Equatable {
+    case starting
+    case loaded
+    case new
+    case recoveryForked
+    case failed
+    case stopped
+}
+
+/// Credential-free receipt for the exact launched CLI generation. It deliberately
+/// excludes environment variables, MCP env, allow/deny rule contents, URLs, and
+/// provider credentials.
 struct GrokLaunchReceipt: Sendable, Equatable {
+    let localTabID: UUID?
+    let workspaceID: UUID?
+    let processIdentifier: Int32?
+    let processGeneration: UInt64
+    var backendSessionID: String?
+    var outcome: GrokLaunchOutcome
+    let requestedModelID: String?
+    let requestedAgentID: String?
+    let requestedReasoningEffort: String?
     let permissionMode: GrokPermissionMode
     let permissionArguments: [String]
     let sandboxProfile: String
+    let memoryEnabled: Bool
     let webSearchEnabled: Bool
     let subagentsEnabled: Bool
     let resumeSessionID: String?
+    let browserEnabled: Bool
+    let computerUseEnabled: Bool
+    let mcpServerNames: [String]
+    let startedAt: Date
 
-    init(options: GrokLaunchOptions) {
+    init(
+        options: GrokLaunchOptions,
+        workspaceID: UUID? = nil,
+        processIdentifier: Int32? = nil,
+        processGeneration: UInt64 = 0,
+        startedAt: Date = Date()
+    ) {
+        localTabID = options.localTabID
+        self.workspaceID = workspaceID
+        self.processIdentifier = processIdentifier
+        self.processGeneration = processGeneration
+        backendSessionID = options.resumeSessionID
+        outcome = .starting
+        requestedModelID = options.model
+        requestedAgentID = options.agent
+        requestedReasoningEffort = options.reasoningEffort
         permissionMode = GrokPermissionMode(storedValue: options.permissionMode ?? "default")
         permissionArguments = GrokPermissionLaunchArguments.arguments(for: options.permissionMode)
         sandboxProfile = options.sandboxProfile?.isEmpty == false ? options.sandboxProfile! : "default"
+        memoryEnabled = options.experimentalMemory && !options.noMemory
         webSearchEnabled = !options.disableWebSearch
         subagentsEnabled = !options.noSubagents
         resumeSessionID = options.resumeSessionID
+        mcpServerNames = options.mcpServers.map(\.name).sorted()
+        browserEnabled = mcpServerNames.contains("grokbuild-browser")
+        computerUseEnabled = mcpServerNames.contains("grokbuild-computer-use")
+        self.startedAt = startedAt
     }
+}
+
+struct ModelSwitchHandle {
+    let identity: ModelRequestIdentity
+    let result: Task<ModelExecutionState, Never>
 }
 
 /// Resolves grok's mutually-exclusive memory launch flag. `--no-memory` has absolute priority
@@ -307,21 +356,27 @@ final class GrokProcess: @unchecked Sendable {
     private var didReceiveTurnCompletion = false
     private(set) var sessionId: String?
     private(set) var launchReceipt: GrokLaunchReceipt?
+    /// Monotonic launch identity. `activeProcessGeneration == nil` means the most
+    /// recent receipt is historical rather than a live-process claim.
+    private(set) var processGeneration: UInt64 = 0
+    private(set) var activeProcessGeneration: UInt64?
     /// Set when `session/load` failed with missing on-disk data and `session/new` was used instead.
     private(set) var sessionLoadStartedFreshFallback = false
     private(set) var staleResumeSessionID: String?
     private(set) var currentMode: AgentMode = .agent
     private(set) var availableModes: [AgentMode] = [.agent, .plan, .yolo]
     private(set) var currentModelId: String?
+    private(set) var modelExecutionState: ModelExecutionState = .unknown
     /// Set when a model switch fails or times out; the UI can surface and then clear it.
     var modelSwitchError: String?
     /// Set when the failed switch is recoverable by starting a new session (the agent
     /// returned `MODEL_SWITCH_INCOMPATIBLE_AGENT` / suggested `start_new_session`).
     var modelSwitchNeedsNewSession = false
-    /// True while a `session/set_model` RPC is in-flight; cleared (false) on success or failure.
-    /// Use this rather than `currentModelId` to detect completion, since `currentModelId` is
-    /// set optimistically and cannot distinguish "pending" from "confirmed".
-    var modelSwitchPending = false
+    /// True only for a request owned by the active process generation.
+    var modelSwitchPending: Bool {
+        modelExecutionState.isPending
+            && modelExecutionState.identity?.processGeneration == activeProcessGeneration
+    }
 
     // Populated from initialize modelState so we use real models from grok CLI
     private(set) var availableModelsInfo: [(id: String, name: String, contextTokens: Int?)] = []
@@ -473,7 +528,17 @@ final class GrokProcess: @unchecked Sendable {
     // MARK: - Lifecycle
 
     func start(workspace: Workspace, options: GrokLaunchOptions = .init()) async {
-        await stop()
+        await cleanupProcess(setIdle: true)
+
+        processGeneration &+= 1
+        let launchGeneration = processGeneration
+        activeProcessGeneration = launchGeneration
+        let launchIdentity = ModelRequestIdentity(
+            localTabID: options.localTabID,
+            backendSessionID: options.resumeSessionID,
+            processGeneration: launchGeneration,
+            requestID: UUID()
+        )
 
         state = .starting
         currentWorkspace = workspace
@@ -482,9 +547,22 @@ final class GrokProcess: @unchecked Sendable {
         sessionLoadStartedFreshFallback = false
         staleResumeSessionID = nil
         currentModelId = nil
+        modelExecutionState = ModelExecutionReducer.launch(
+            requestedModelID: options.model,
+            identity: launchIdentity
+        )
         availableModelsInfo.removeAll()
 
         guard let cli = Self.locateGrokCLI() else {
+            var receipt = GrokLaunchReceipt(
+                options: options,
+                workspaceID: workspace.id,
+                processGeneration: launchGeneration
+            )
+            receipt.outcome = .failed
+            launchReceipt = receipt
+            rejectLaunchModelReceipt(identity: launchIdentity)
+            activeProcessGeneration = nil
             state = .failed("Could not locate the `grok` CLI. Run `grok login` or set GROK_CLI_PATH.")
             return
         }
@@ -540,11 +618,25 @@ final class GrokProcess: @unchecked Sendable {
         proc.standardError = e
 
         do { try proc.run() } catch {
+            var receipt = GrokLaunchReceipt(
+                options: options,
+                workspaceID: workspace.id,
+                processGeneration: launchGeneration
+            )
+            receipt.outcome = .failed
+            launchReceipt = receipt
+            rejectLaunchModelReceipt(identity: launchIdentity)
+            activeProcessGeneration = nil
             state = .failed("Failed to launch: \(error.localizedDescription)")
             return
         }
 
-        launchReceipt = GrokLaunchReceipt(options: options)
+        launchReceipt = GrokLaunchReceipt(
+            options: options,
+            workspaceID: workspace.id,
+            processIdentifier: proc.processIdentifier,
+            processGeneration: launchGeneration
+        )
 
         self.process = proc
         self.stdin = i.fileHandleForWriting
@@ -557,6 +649,8 @@ final class GrokProcess: @unchecked Sendable {
 
         do {
             try await initializeACP()
+            guard activeProcessGeneration == launchGeneration else { return }
+            let launchOutcome: GrokLaunchOutcome
             if let resumeSessionID = options.resumeSessionID, !resumeSessionID.isEmpty {
                 do {
                     try await loadSession(
@@ -564,21 +658,30 @@ final class GrokProcess: @unchecked Sendable {
                         workspace: workspace,
                         mcpServers: options.mcpServers
                     )
+                    launchOutcome = .loaded
                 } catch {
                     guard GrokSessionLoadError.isStaleSessionMissing(error) else { throw error }
                     staleResumeSessionID = resumeSessionID
                     try await createSession(workspace: workspace, mcpServers: options.mcpServers)
                     sessionLoadStartedFreshFallback = true
+                    launchOutcome = .recoveryForked
                 }
             } else {
                 try await createSession(workspace: workspace, mcpServers: options.mcpServers)
+                launchOutcome = .new
             }
+            guard activeProcessGeneration == launchGeneration else { return }
+            settleLaunchModelReceipt(identity: launchIdentity)
+            updateLaunchReceipt(outcome: launchOutcome, backendSessionID: sessionId)
             state = .ready
         } catch {
+            guard activeProcessGeneration == launchGeneration else { return }
             let stderrDetails = startupStderrSnapshot()
             let suffix = stderrDetails.isEmpty ? "" : "\n\(stderrDetails)"
             state = .failed("ACP initialize failed: \(error.localizedDescription)\(suffix)")
             await cleanupProcess(setIdle: false)
+            rejectLaunchModelReceipt(identity: launchIdentity)
+            updateLaunchReceipt(outcome: .failed, backendSessionID: nil)
         }
     }
 
@@ -598,6 +701,16 @@ final class GrokProcess: @unchecked Sendable {
     }
 
     private func cleanupProcess(setIdle: Bool) async {
+        if modelExecutionState.isPending,
+           let identity = modelExecutionState.identity,
+           identity.processGeneration == activeProcessGeneration {
+            _ = ModelExecutionReducer.reject(
+                failure: .processStopped,
+                identity: identity,
+                state: &modelExecutionState
+            )
+        }
+        activeProcessGeneration = nil
         readerTask?.cancel()
         readerTask = nil
         stdout?.fileHandleForReading.readabilityHandler = nil
@@ -620,7 +733,9 @@ final class GrokProcess: @unchecked Sendable {
         stdout = nil
         stderr = nil
         sessionId = nil
-        launchReceipt = nil
+        if launchReceipt?.outcome != .failed {
+            updateLaunchReceipt(outcome: .stopped, backendSessionID: launchReceipt?.backendSessionID)
+        }
         drainPendingRequests(with: NSError(
             domain: "ACP",
             code: -3,
@@ -632,6 +747,45 @@ final class GrokProcess: @unchecked Sendable {
             state = .idle
         }
         currentWorkspace = nil
+    }
+
+    private func updateLaunchReceipt(
+        outcome: GrokLaunchOutcome,
+        backendSessionID: String?
+    ) {
+        guard var receipt = launchReceipt else { return }
+        receipt.outcome = outcome
+        receipt.backendSessionID = backendSessionID
+        launchReceipt = receipt
+    }
+
+    private func settleLaunchModelReceipt(identity: ModelRequestIdentity) {
+        guard let rebound = ModelExecutionReducer.rebindBackend(
+            sessionId,
+            identity: identity,
+            state: &modelExecutionState
+        ) else { return }
+        if let currentModelId {
+            _ = ModelExecutionReducer.confirm(
+                effectiveModelID: currentModelId,
+                identity: rebound,
+                state: &modelExecutionState
+            )
+        } else {
+            _ = ModelExecutionReducer.acceptWithoutEffectiveModel(
+                identity: rebound,
+                state: &modelExecutionState
+            )
+        }
+    }
+
+    private func rejectLaunchModelReceipt(identity: ModelRequestIdentity) {
+        guard modelExecutionState.requestedModelID != nil else { return }
+        _ = ModelExecutionReducer.reject(
+            failure: .unknown,
+            identity: modelExecutionState.identity ?? identity,
+            state: &modelExecutionState
+        )
     }
 
     // MARK: - Public API
@@ -722,44 +876,107 @@ final class GrokProcess: @unchecked Sendable {
         setMode(AgentMode(rawValue: modeId))
     }
 
-    func setModel(_ modelId: String) {
-        guard let sid = sessionId else { return }
-        let previous = currentModelId
-        // Optimistically reflect the selection; revert if grok rejects/stalls the switch.
-        currentModelId = modelId
-        modelSwitchPending = true
-        Task {
-            defer { modelSwitchPending = false }
+    @discardableResult
+    func setModel(_ modelId: String) -> ModelSwitchHandle? {
+        guard let sid = sessionId,
+              let generation = activeProcessGeneration else { return nil }
+        let identity = ModelRequestIdentity(
+            localTabID: launchReceipt?.localTabID,
+            backendSessionID: sid,
+            processGeneration: generation,
+            requestID: UUID()
+        )
+        modelSwitchError = nil
+        modelSwitchNeedsNewSession = false
+        modelExecutionState = ModelExecutionReducer.beginRequest(
+            modelID: modelId,
+            identity: identity,
+            preserving: modelExecutionState
+        )
+
+        let task = Task { [weak self] () -> ModelExecutionState in
+            guard let self else { return .unknown }
             do {
                 // Switching is a control op and should be fast — bound it so a stalled
                 // set_model can never leave the UI stuck.
-                let res = try await sendRequestWithTimeout(method: "session/set_model", params: [
-                    "sessionId": sid,
-                    "modelId": modelId
-                ], seconds: 12) as? [String: Any]
-                if let meta = res?["_meta"] as? [String: Any],
-                   let model = meta["model"] as? [String: Any],
-                   let selected = model["Ok"] as? String {
-                    currentModelId = selected
+                let result = try await self.sendRequestWithTimeout(
+                    method: "session/set_model",
+                    params: ["sessionId": sid, "modelId": modelId],
+                    seconds: 12
+                ) as? [String: Any]
+                guard self.activeProcessGeneration == generation,
+                      self.modelExecutionState.identity == identity else {
+                    return self.modelExecutionState
+                }
+                if let effective = Self.effectiveModelID(from: result) {
+                    if ModelExecutionReducer.confirm(
+                        effectiveModelID: effective,
+                        identity: identity,
+                        state: &self.modelExecutionState
+                    ) {
+                        self.currentModelId = effective
+                    }
                 } else {
-                    currentModelId = modelId
+                    _ = ModelExecutionReducer.acceptWithoutEffectiveModel(
+                        identity: identity,
+                        state: &self.modelExecutionState
+                    )
                 }
             } catch {
-                // Timed out or failed — restore the previous selection and surface the error.
-                currentModelId = previous
+                guard self.activeProcessGeneration == generation,
+                      self.modelExecutionState.identity == identity else {
+                    return self.modelExecutionState
+                }
                 let ns = error as NSError
                 let code = ns.userInfo["acpErrorCode"] as? String
                 let suggestion = ns.userInfo["acpSuggestion"] as? String
-                if code == "MODEL_SWITCH_INCOMPATIBLE_AGENT" || suggestion == "start_new_session" {
-                    // The agent's message already explains the incompatibility and the fix.
-                    modelSwitchError = ns.localizedDescription
-                    modelSwitchNeedsNewSession = true
+                let incompatible = code == "MODEL_SWITCH_INCOMPATIBLE_AGENT"
+                    || suggestion == "start_new_session"
+                let failure: ModelExecutionFailure
+                if incompatible {
+                    failure = .incompatibleAgent
+                    self.modelSwitchError = ns.localizedDescription
+                    self.modelSwitchNeedsNewSession = true
+                } else if ns.code == -2 {
+                    failure = .timedOut
+                    self.modelSwitchError = "Couldn't switch to \(modelId): timed out waiting for grok."
+                    self.modelSwitchNeedsNewSession = false
+                } else if ns.domain == "ACP" {
+                    failure = .rejected
+                    self.modelSwitchError = "Couldn't switch to \(modelId): \(ns.localizedDescription)"
+                    self.modelSwitchNeedsNewSession = false
                 } else {
-                    modelSwitchError = "Couldn't switch to \(modelId): \(ns.localizedDescription)"
-                    modelSwitchNeedsNewSession = false
+                    failure = .unknown
+                    self.modelSwitchError = "Couldn't switch to \(modelId): \(ns.localizedDescription)"
+                    self.modelSwitchNeedsNewSession = false
                 }
+                _ = ModelExecutionReducer.reject(
+                    failure: failure,
+                    identity: identity,
+                    state: &self.modelExecutionState
+                )
+            }
+            return self.modelExecutionState
+        }
+        return ModelSwitchHandle(identity: identity, result: task)
+    }
+
+    static func effectiveModelID(from result: [String: Any]?) -> String? {
+        if let meta = result?["_meta"] as? [String: Any],
+           let model = meta["model"] as? [String: Any],
+           let selected = model["Ok"] as? String {
+            return selected
+        }
+        if let selected = result?["currentModelId"] as? String {
+            return selected
+        }
+        for key in ["modelState", "models"] {
+            if let state = result?[key] as? [String: Any],
+               let selected = state["currentModelId"] as? String {
+                return selected
             }
         }
+        return nil
     }
 
     // MARK: - ACP Implementation
@@ -941,7 +1158,6 @@ final class GrokProcess: @unchecked Sendable {
                 let meta = m["_meta"] as? [String: Any]
                 return (id: id, name: name, contextTokens: meta?["totalContextTokens"] as? Int)
             }
-            currentModelId = ms["currentModelId"] as? String
         }
     }
 

@@ -11,6 +11,8 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMenuDele
     private var lockFd: Int32 = -1   // fd that holds the flock for the lifetime of the process
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        let launchInterval = GrokBuildPerformance.begin(.appLaunchToWindow)
+        defer { launchInterval.end() }
         // Enforce single instance with flock (advisory lock held by open fd).
         // This is race-free even for rapid `make run ; make run`.
         let support = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!

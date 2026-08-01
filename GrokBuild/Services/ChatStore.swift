@@ -178,6 +178,7 @@ final class ChatStore {
 
     // MARK: - Model selection (real models from `grok models` + initialize modelState)
     private(set) var currentModel: String = "grok-4.5"
+    private(set) var modelExecutionState: ModelExecutionState = .unknown
     private(set) var availableModels: [String] = []
     private var modelDisplayNames: [String: String] = [:]
     private var modelContextTokens: [String: Int] = ["grok-4.5": 500_000]
@@ -205,6 +206,7 @@ final class ChatStore {
     /// Stable GrokBuild tab id (`LiveSession.id`) for per-tab model persistence.
     private(set) var tabSessionID: UUID?
     private var tabHasExplicitModel = false
+    private var tabModelIntent: TabModelIntent = .inheritProjectDefault
 
     // MARK: - Session agent (per tab, launched via `--agent`)
     /// Explicit per-tab session-agent selection id. Empty string with `tabHasExplicitAgent`
@@ -212,6 +214,7 @@ final class ChatStore {
     /// default (`grokbuild.selectedAgent`).
     private(set) var currentAgent: String = ""
     private var tabHasExplicitAgent = false
+    private var tabAgentIntent: TabAgentIntent = .inheritGlobalDefault
     /// Agents discovered for the current workspace (`grok inspect --json`), loaded lazily for the
     /// composer agent picker.
     private(set) var discoveredAgents: [GrokAgentInfo] = []
@@ -278,6 +281,7 @@ final class ChatStore {
     private var closedTurnAssistantID: UUID?
     private var closedTurnHasAuthoritativeHistory = false
     private var pendingLateChunkPersistence = false
+    private var firstChunkInterval: GrokBuildPerformanceInterval?
 
     init(process: GrokProcess? = nil) {
         self.process = process ?? GrokProcess()
@@ -322,20 +326,50 @@ final class ChatStore {
         savedAgent: String? = nil,
         savedGrokSessionID: String? = nil
     ) {
+        bindTabSession(
+            id,
+            modelIntent: savedModel.map(TabModelIntent.explicit) ?? .inheritProjectDefault,
+            savedModelExecutionState: .unknown,
+            agentIntent: savedAgent.map(TabAgentIntent.explicit) ?? .inheritGlobalDefault,
+            savedGrokSessionID: savedGrokSessionID
+        )
+    }
+
+    /// v3 binding preserves semantic intent. Resolving an inherited or legacy model for
+    /// display/process launch must never silently turn it into a per-tab override.
+    func bindTabSession(
+        _ id: UUID,
+        modelIntent: TabModelIntent,
+        savedModelExecutionState: ModelExecutionState = .unknown,
+        agentIntent: TabAgentIntent = .inheritGlobalDefault,
+        savedGrokSessionID: String? = nil
+    ) {
         tabSessionID = id
         if let savedGrokSessionID, !savedGrokSessionID.isEmpty {
             self.savedGrokSessionID = savedGrokSessionID
         }
+        tabModelIntent = modelIntent
+        tabAgentIntent = agentIntent
+        let ownsActiveReceipt = process.activeProcessGeneration != nil
+            && process.launchReceipt?.localTabID == id
+        modelExecutionState = ownsActiveReceipt
+            ? process.modelExecutionState
+            : savedModelExecutionState
         tabHasExplicitModel = false
         tabHasExplicitAgent = false
         currentAgent = defaultAgentSelection
-        if let savedAgent {
+        if case .explicit(let savedAgent) = agentIntent {
             currentAgent = savedAgent
             tabHasExplicitAgent = true
         }
-        guard let savedModel = savedModel?.trimmingCharacters(in: .whitespacesAndNewlines),
-              !savedModel.isEmpty else { return }
-        applyTabModel(savedModel)
+        switch modelIntent {
+        case .inheritProjectDefault:
+            applyInheritedModelIfAvailable()
+        case .explicit(let savedModel):
+            applyTabModel(savedModel)
+        case .legacyUnknown(let savedModel):
+            applyLegacyModelIfAvailable(savedModel)
+        }
     }
 
     /// Global default session agent from Settings → Agents (`grokbuild.selectedAgent`).
@@ -362,6 +396,16 @@ final class ChatStore {
         tabHasExplicitAgent ? currentAgent : nil
     }
 
+    var persistedModelIntent: TabModelIntent {
+        tabModelIntent
+    }
+
+    var persistedModelExecutionState: ModelExecutionState { modelExecutionState }
+
+    var persistedAgentIntent: TabAgentIntent {
+        tabHasExplicitAgent ? .explicit(currentAgent) : tabAgentIntent
+    }
+
     /// Set this session's agent and restart its grok process (agents can only change at launch).
     func setSessionAgent(_ selection: String) async {
         let trimmed = selection.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -369,6 +413,7 @@ final class ChatStore {
         if tabHasExplicitAgent, trimmed == currentAgent { return }
         currentAgent = trimmed
         tabHasExplicitAgent = true
+        tabAgentIntent = .explicit(trimmed)
         notifyAgentChanged()
         guard currentWorkspace != nil else { return }
         await restartProcess(resumeSessionID: grokSessionId ?? savedGrokSessionID)
@@ -394,12 +439,17 @@ final class ChatStore {
         syncWorkspaceReasoningEffortFromStorage()
     }
 
-    /// Apply the tab's `currentModel` to a live grok process when switching tabs.
+    /// Refresh this tab from its own live receipt when switching tabs. Process launch
+    /// already carried the resolved model; selection must not issue a hidden second
+    /// `session/set_model` merely to make the picker look confirmed.
     func syncTabModelToLiveProcessIfNeeded() {
-        guard connectionState != .idle,
-              availableModels.contains(currentModel),
-              process.currentModelId != currentModel else { return }
-        process.setModel(currentModel)
+        guard process.launchReceipt?.localTabID == tabSessionID,
+              process.activeProcessGeneration != nil else { return }
+        modelExecutionState = process.modelExecutionState
+        if modelExecutionState.status == .confirmed,
+           let effective = modelExecutionState.effectiveModelID {
+            currentModel = effective
+        }
     }
 
     func clearProject() {
@@ -693,6 +743,7 @@ final class ChatStore {
             ComputerUseService.computerUseMCPConfig(settings: computerUseSettings)
         ].compactMap { $0 }
         let opts = GrokLaunchOptions(
+            localTabID: tabSessionID,
             agent: GrokAgentProfiles.launchArgument(for: effectiveAgentSelection),
             // Memory is a single app-scoped toggle: on → `--experimental-memory`, off → `--no-memory`.
             noMemory: !settings.memoryEnabled,
@@ -710,7 +761,9 @@ final class ChatStore {
             newSessionID: launchNewSessionID,
             mcpServers: mcpServers
         )
+        let spawnInterval = GrokBuildPerformance.begin(.processSpawnToACPReady)
         await process.start(workspace: ws, options: opts)
+        spawnInterval.end()
         connectionWatchdogTask?.cancel()
         connectionState = process.state
         if case .failed(let message) = process.state {
@@ -733,6 +786,7 @@ final class ChatStore {
             }
         }
         savedGrokSessionID = process.sessionId ?? effectiveResumeSessionID
+        modelExecutionState = process.modelExecutionState
         availableModes = process.availableModes
         syncModelsFromProcess()
         if process.sessionLoadStartedFreshFallback {
@@ -1102,6 +1156,8 @@ final class ChatStore {
         streamingMessageID = assistant.id
         activeTurnBackendSessionID = durableGrokSessionID
         let turnGeneration = turnSettlement.begin(assistantID: assistant.id)
+        firstChunkInterval?.end()
+        firstChunkInterval = GrokBuildPerformance.begin(.firstSendToFirstChunk)
         isStreaming = true
         lastError = nil
         authRequiredMessage = nil
@@ -1141,6 +1197,8 @@ final class ChatStore {
     }
 
     private func finishPromptNow(assistantID: UUID, ok: Bool) {
+        firstChunkInterval?.end()
+        firstChunkInterval = nil
         let settledAssistantID = authoritativeTailAssistantID ?? assistantID
         if ok, let idx = messages.firstIndex(where: { $0.id == settledAssistantID }) {
             captureAsideAndShare(from: messages[idx].content)
@@ -1225,6 +1283,8 @@ final class ChatStore {
     }
 
     func clearTurnState() {
+        firstChunkInterval?.end()
+        firstChunkInterval = nil
         cancelStreamingTextFlush()
         invalidateTurnSettlement()
         isGrokking = false
@@ -1245,6 +1305,8 @@ final class ChatStore {
     }
 
     func stop() {
+        firstChunkInterval?.end()
+        firstChunkInterval = nil
         cancelStreamingTextFlush()
         invalidateTurnSettlement()
         isStreaming = false
@@ -1260,6 +1322,8 @@ final class ChatStore {
     }
 
     func shutdown() async {
+        firstChunkInterval?.end()
+        firstChunkInterval = nil
         cancelStreamingTextFlush()
         invalidateTurnSettlement()
         connectionWatchdogTask?.cancel()
@@ -1275,6 +1339,8 @@ final class ChatStore {
     /// process's ACP event stream, which terminates `consumeOutput()` and lets the
     /// store/process pair deallocate. A store must not reconnect after this.
     func shutdownPermanently() async {
+        firstChunkInterval?.end()
+        firstChunkInterval = nil
         cancelStreamingTextFlush()
         invalidateTurnSettlement()
         connectionWatchdogTask?.cancel()
@@ -1416,32 +1482,156 @@ final class ChatStore {
     func setModel(_ model: String) {
         guard availableModels.contains(model) else { return }
         let previous = currentModel
+        let previousIntent = persistedModelIntent
         currentModel = model
         modelSwitchError = nil
         modelSwitchNeedsNewSession = false
         process.modelSwitchError = nil
         process.modelSwitchNeedsNewSession = false
-        process.setModel(model)
         tabHasExplicitModel = true
+        tabModelIntent = .explicit(model)
+        let handle = process.setModel(model)
+        modelExecutionState = handle == nil
+            ? ModelExecutionState.savedIntent(modelID: model)
+            : process.modelExecutionState
         saveCurrentSessionSelection()
         notifyModelChanged()
 
-        // Reconcile after the switch settles: if grok rejected/timed out the change,
-        // restore the previous selection and surface the reason. Bounded so it can't hang.
+        guard let handle else { return }
         Task { [weak self] in
             guard let self else { return }
-            for _ in 0..<28 {  // ~14s, just past the 12s set_model timeout
-                try? await Task.sleep(for: .milliseconds(500))
-                if let err = self.process.modelSwitchError {
-                    self.currentModel = previous
-                    self.modelSwitchError = err
-                    self.modelSwitchNeedsNewSession = self.process.modelSwitchNeedsNewSession
-                    self.saveCurrentSessionSelection()
-                    return
+            let result = await handle.result.value
+            let identity = handle.identity
+            guard self.tabSessionID == identity.localTabID,
+                  self.process.activeProcessGeneration == identity.processGeneration,
+                  self.process.sessionId == identity.backendSessionID,
+                  result.identity == identity else { return }
+
+            self.modelExecutionState = result
+            switch result.status {
+            case .confirmed:
+                if let effective = result.effectiveModelID {
+                    self.currentModel = effective
                 }
-                if !self.process.modelSwitchPending { return }  // RPC completed successfully
+            case .requested:
+                // ACP accepted the request without exposing the effective model.
+                // Preserve intent, but do not paint it as live.
+                self.currentModel = model
+            case .rejected:
+                self.currentModel = previous
+                self.tabModelIntent = previousIntent
+                self.tabHasExplicitModel = {
+                    if case .explicit = previousIntent { return true }
+                    return false
+                }()
+                self.modelSwitchError = self.process.modelSwitchError
+                    ?? "Grok did not accept the requested model."
+                self.modelSwitchNeedsNewSession = self.process.modelSwitchNeedsNewSession
+            case .unknown, .pending:
+                break
             }
+            self.saveCurrentSessionSelection()
+            self.notifyModelChanged()
         }
+    }
+
+    var isModelRequestPending: Bool { modelExecutionState.status == .pending }
+
+    private var modelReceiptIsCurrentProcess: Bool {
+        guard let identity = modelExecutionState.identity,
+              let generation = process.activeProcessGeneration else { return false }
+        return identity.processGeneration == generation
+            && identity.localTabID == tabSessionID
+            && identity.backendSessionID == process.sessionId
+    }
+
+    var modelSelectorStatusLabel: String {
+        switch modelExecutionState.status {
+        case .confirmed:
+            return modelReceiptIsCurrentProcess ? "Live" : "Last live"
+        case .pending:
+            return modelReceiptIsCurrentProcess ? "Pending" : "Stale"
+        case .requested:
+            return modelExecutionState.identity == nil ? "Saved" : "Requested"
+        case .rejected:
+            return "Rejected"
+        case .unknown:
+            return "Unknown"
+        }
+    }
+
+    var modelSelectorDisplayLabel: String {
+        "\(modelDisplayName(currentModel)) · \(modelSelectorStatusLabel)"
+    }
+
+    var modelAccessibilityValue: String {
+        let requested = modelExecutionState.requestedModelID.map(modelDisplayName)
+        let effective = modelExecutionState.effectiveModelID.map(modelDisplayName)
+        switch modelExecutionState.status {
+        case .confirmed:
+            if modelReceiptIsCurrentProcess, let effective {
+                return "Live model \(effective), confirmed by the current process."
+            }
+            return "Last confirmed model \(effective ?? "unknown"); no current-process confirmation."
+        case .pending:
+            return "Requesting \(requested ?? modelDisplayName(currentModel)); confirmation pending."
+        case .requested:
+            if modelExecutionState.identity == nil {
+                return "Saved model \(requested ?? modelDisplayName(currentModel)) for this tab; no active process."
+            }
+            return "Requested model \(requested ?? modelDisplayName(currentModel)); backend model not independently exposed."
+        case .rejected:
+            let fallback = effective.map { " The last confirmed model is \($0)." } ?? ""
+            return "Model request for \(requested ?? "unknown") was rejected.\(fallback)"
+        case .unknown:
+            return "Current backend model is unknown."
+        }
+    }
+
+    var sessionReceiptCompactLabel: String {
+        switch modelExecutionState.status {
+        case .confirmed where modelReceiptIsCurrentProcess:
+            return "Live · \(modelDisplayName(modelExecutionState.effectiveModelID ?? currentModel))"
+        case .pending:
+            return "Model pending"
+        case .requested:
+            return modelExecutionState.identity == nil ? "Model saved" : "Model requested"
+        case .rejected:
+            return "Model rejected"
+        case .confirmed:
+            return "Last model receipt"
+        case .unknown:
+            return process.activeProcessGeneration == nil ? "No active process" : "Model unknown"
+        }
+    }
+
+    var sessionReceiptDetailLines: [String] {
+        var lines = [modelAccessibilityValue]
+        guard let receipt = process.launchReceipt else {
+            lines.append("No process launch receipt for this tab.")
+            return lines
+        }
+        let pid = receipt.processIdentifier.map(String.init) ?? "unavailable"
+        lines.append("Process generation \(receipt.processGeneration), PID \(pid), \(receipt.outcome.rawValue).")
+        lines.append("Tab \(Self.shortReceiptID(receipt.localTabID?.uuidString)); backend \(Self.shortReceiptID(receipt.backendSessionID)).")
+        lines.append("Requested model: \(receipt.requestedModelID.map(modelDisplayName) ?? "CLI default").")
+        lines.append("Agent: \(GrokAgentProfiles.displayName(for: receipt.requestedAgentID ?? "")); effort: \(receipt.requestedReasoningEffort?.isEmpty == false ? receipt.requestedReasoningEffort! : "default").")
+        lines.append("Permissions: \(receipt.permissionMode.displayName); sandbox: \(receipt.sandboxProfile).")
+        let capabilities = [
+            receipt.memoryEnabled ? "memory" : nil,
+            receipt.webSearchEnabled ? "web" : nil,
+            receipt.subagentsEnabled ? "subagents" : nil,
+            receipt.browserEnabled ? "browser" : nil,
+            receipt.computerUseEnabled ? "computer use" : nil,
+        ].compactMap { $0 }
+        lines.append("Launched capabilities: \(capabilities.isEmpty ? "none" : capabilities.joined(separator: ", ")).")
+        lines.append("MCP servers: \(receipt.mcpServerNames.isEmpty ? "none" : receipt.mcpServerNames.joined(separator: ", ")).")
+        return lines
+    }
+
+    private static func shortReceiptID(_ value: String?) -> String {
+        guard let value, !value.isEmpty else { return "none" }
+        return value.count > 8 ? "…\(value.suffix(8))" : value
     }
 
     func modelDisplayName(_ id: String) -> String {
@@ -1861,6 +2051,8 @@ final class ChatStore {
            !clean.contains("diff") { return }
 
         if !clean.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || !messages[idx].content.isEmpty {
+            firstChunkInterval?.end()
+            firstChunkInterval = nil
             streamingTextBuffer.append(clean)
             if streamingMessageID == nil {
                 pendingLateChunkPersistence = true
@@ -2048,6 +2240,11 @@ final class ChatStore {
         mergeCustomModels()
 
         guard !tabHasExplicitModel else { return }
+        if case .legacyUnknown(let legacyModel) = tabModelIntent,
+           availableModels.contains(legacyModel) {
+            currentModel = legacyModel
+            return
+        }
         let preferred = workspaceDefaultModel().flatMap { availableModels.contains($0) ? $0 : nil }
             ?? models.first(where: \.isDefault)?.id
             ?? models.first?.id
@@ -2119,19 +2316,37 @@ final class ChatStore {
         guard availableModels.contains(model) else { return }
         currentModel = model
         tabHasExplicitModel = true
+        tabModelIntent = .explicit(model)
+    }
+
+    private func applyLegacyModelIfAvailable(_ model: String) {
+        let trimmed = model.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty, availableModels.contains(trimmed) else { return }
+        currentModel = trimmed
+        tabHasExplicitModel = false
+    }
+
+    private func applyInheritedModelIfAvailable() {
+        guard let model = workspaceDefaultModel(), availableModels.contains(model) else { return }
+        currentModel = model
+        tabHasExplicitModel = false
     }
 
     private func modelForProcessLaunch(fallbackSelection: SessionSelection?) -> String {
         if tabHasExplicitModel, availableModels.contains(currentModel) {
             return currentModel
         }
-        if let model = fallbackSelection?.model,
+        if case .legacyUnknown(let model) = tabModelIntent,
            availableModels.contains(model) {
             currentModel = model
-            tabHasExplicitModel = true
             return model
         }
         if let model = workspaceDefaultModel(), availableModels.contains(model) {
+            currentModel = model
+            return model
+        }
+        if let model = fallbackSelection?.model,
+           availableModels.contains(model) {
             currentModel = model
             return model
         }
@@ -2167,28 +2382,22 @@ final class ChatStore {
     private func restoreSessionSelection(_ fallbackSelection: SessionSelection?) {
         let selection = process.sessionId.flatMap { sessionSelections[$0] } ?? fallbackSelection
 
-        if tabHasExplicitModel, availableModels.contains(currentModel) {
-            if process.currentModelId != currentModel {
-                process.setModel(currentModel)
-            }
-        } else if let processModel = process.currentModelId, availableModels.contains(processModel) {
-            currentModel = processModel
-            tabHasExplicitModel = true
-        } else if let model = selection?.model, availableModels.contains(model) {
+        modelExecutionState = process.modelExecutionState
+        if modelExecutionState.status == .confirmed,
+           let effective = modelExecutionState.effectiveModelID {
+            currentModel = effective
+        } else if let requested = modelExecutionState.requestedModelID {
+            currentModel = requested
+        } else if tabHasExplicitModel, availableModels.contains(currentModel) {
+            // Preserve the explicit control value. The launch receipt remains Unknown
+            // until ACP independently reports an effective model.
+        } else if case .legacyUnknown(let model) = tabModelIntent,
+                  availableModels.contains(model) {
             currentModel = model
-            tabHasExplicitModel = true
-            if process.currentModelId != model {
-                process.setModel(model)
-            }
         } else if let model = workspaceDefaultModel(), availableModels.contains(model) {
             currentModel = model
-            if process.currentModelId != model {
-                process.setModel(model)
-            }
-        } else if availableModels.contains(currentModel) {
-            if process.currentModelId != currentModel {
-                process.setModel(currentModel)
-            }
+        } else if let model = selection?.model, availableModels.contains(model) {
+            currentModel = model
         } else if !availableModels.contains(currentModel) {
             currentModel = availableModels.first ?? currentModel
         }

@@ -1,0 +1,20 @@
+{
+  "schemaVersion": 1,
+  "keyHex": "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f",
+  "vectors": [
+    {
+      "role": " USER ",
+      "ordinal": 0,
+      "content": "  Build the synthetic fixture.\r\n  ",
+      "normalized": "user\u001f0\u001fBuild the synthetic fixture.",
+      "tag": "734d330652925984f62b8a88531215cb64f5772dbfe238aff4773f575c7930bc"
+    },
+    {
+      "role": "assistant",
+      "ordinal": 1,
+      "content": "Result: synthetic only.\n",
+      "normalized": "assistant\u001f1\u001fResult: synthetic only.",
+      "tag": "0ecf36fff816a5d10ddd43262906ac95d7df76f51f5ec1d55d0db748ac7d27b2"
+    }
+  ]
+}

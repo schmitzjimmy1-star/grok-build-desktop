@@ -102,6 +102,7 @@ struct SettingsView: View {
 
     /// Tabs opened at least once stay mounted so pane `@State` / `.task` survive revisits.
     @State private var loadedTabs: Set<SettingsTab> = []
+    @State private var paneLoadInterval: GrokBuildPerformanceInterval?
 
     var body: some View {
         VStack(spacing: 0) {
@@ -135,11 +136,27 @@ struct SettingsView: View {
         .background(AppTheme.Palette.canvas)
         .onAppear {
             SettingsTabKeepAlive.recordVisit(selectedTab, loaded: &loadedTabs)
+            measureSelectedPaneLoad()
         }
         .onChange(of: selectedTab) { _, tab in
             SettingsTabKeepAlive.recordVisit(tab, loaded: &loadedTabs)
+            measureSelectedPaneLoad()
         }
         .onExitCommand(perform: onBackToChat)
+    }
+
+    private func measureSelectedPaneLoad() {
+        paneLoadInterval?.end()
+        let interval = GrokBuildPerformance.begin(.settingsPaneLoad)
+        paneLoadInterval = interval
+        Task { @MainActor in
+            await Task.yield()
+            await Task.yield()
+            interval.end()
+            if paneLoadInterval === interval {
+                paneLoadInterval = nil
+            }
+        }
     }
 
     private var settingsSidebar: some View {
@@ -4204,8 +4221,10 @@ private struct CustomModelsSettingsPane: View {
     private func reload() async {
         // Keychain reads can wait on securityd. Running them synchronously in this
         // SwiftUI task freezes every click and even the accessibility server.
-        let loaded = await SettingsBackgroundLoader.run {
-            (ProviderStore.loadResult(), CustomModelStore.load())
+        let loaded = await GrokBuildPerformance.measure(.providerCredentialMetadataLoad) {
+            await SettingsBackgroundLoader.run {
+                (ProviderStore.loadResult(), CustomModelStore.load())
+            }
         }
         let providerLoad = loaded.0
         let snapshot = loaded.1

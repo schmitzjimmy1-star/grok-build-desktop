@@ -230,3 +230,41 @@ The signed installed bundle was rebuilt after the four hostile-stress integratio
 | Canonical source identity | **Pass** — installed `Info.plist`, About, and Settings → App agree on `personal`, `codex/warm-glass-ui`, clean commit `f7cb31837bd48685fe5338342ef489ffb6b313e9`, and `https://github.com/schmitzjimmy1-star/grok-build-desktop`; the retired `jimmmy-Jim/Grok-Build-GUI` line is marked at both source roots |
 
 Model behavior is kept separate: DeepSeek omitted a requested one-column table and bash fence and changed the exact display-math delimiter. Kimi initially skipped typing after a Spotlight attempt, so the outer harness opened Calculator once; Kimi then completed the complete repaired Computer Use target/calculate/read/close path without terminal or AppleScript. Those instruction-following misses are not client defects. UXR-12 through UXR-15 are fixed product contracts with automated and installed-app proof.
+
+## Coherence repair Slices 0–1 — installed lifecycle acceptance (2026-08-01)
+
+This pass implemented the evidence/signpost foundation and the v3 lifecycle/true-MRU slice only. `make test` completed **425 tests with 0 failures** in 13.382 seconds; the focused lifecycle suite completed **11 tests with 0 failures**. No backend CPR, provider send, or migrated-backend start was used for acceptance.
+
+| Check | Installed-app result |
+|---|---|
+| v2 preservation | **Pass** — the original 7,902-byte payload remained SHA-256 `b9d760c004f74f88996d75ee83df5a2f5636ded80c6863a996c63442d5bacad7` before migration, after graceful quit, and after relaunch |
+| v3 commit authority | **Pass** — candidate, authenticated commit marker, and flush receipt are present; the snapshot has schema 3, 24 records, activation counter 24, and 24 `legacyUnknown` model intents; the marker covers all 24 transcript generations and the flush covers 33 transcript blobs |
+| Failure behavior | **Pass** — the rejected data-protection-Keychain attempt failed closed and displayed legacy data read-only; standard login-Keychain access moved off the main actor, the one-time scoped key approval completed migration, and the accepted relaunch showed no failure banner |
+| Settings round trip | **Pass** — Computer Use opened Settings in 1.760 seconds, returned in 1.844 seconds, and found the exact restored transcript plus Grok 4.5 unchanged |
+| Graceful quit/relaunch | **Pass** — Command-Q exited cleanly; exact installed relaunch settled in 1.402 seconds with the transcript visible, Grok 4.5 selected, and no restoring or migration banner |
+| Backend isolation | **Pass** — no Grok ACP/backend or `agent-desktop` child was running; unverified v2 bindings stayed deferred and no CPR was attempted |
+| Installed integrity | **Pass** — `/Applications/GrokBuild.app` and `dist/GrokBuild.app` executable SHA-256 both `f6115553c85d30e6e39a2a63411cd775db0cca9844db17f61d57104855b612b7`; deep/strict signing passed and quarantine is absent |
+| Rollback | **Pass** — v2 remains intact and authoritative on candidate/marker mismatch; the prior exact app is recoverable at `/Users/jimmyschmitz/.Trash/GrokBuild-pre-slice-0-1-20260801-1744.app` |
+
+Rapid A → B → quit, MRU tie-breaking, nil inheritance cycles, divergence, and no-viable-candidate behavior are covered deterministically in the focused suite. Live A → B was intentionally not performed because selecting an unverified migrated tab could start a backend solely for acceptance, which this slice forbids.
+
+## Coherence repair Slice 2 — generation-bound process/model acceptance (2026-08-01)
+
+This pass implemented process/model truth only. `make test` completed **433 tests with 0 failures** in 13.648 seconds; the focused ACP/lifecycle run completed **34 tests with 0 failures** in 0.964 seconds. Acceptance deliberately used no backend CPR, provider send, migrated-backend start, or owned Grok/helper child.
+
+| Check | Installed-app result |
+|---|---|
+| Generation identity | **Pass** — every model request is bound to local tab UUID, backend session ID, monotonic process generation, and request UUID; deterministic tests reject wrong-tab, wrong-backend, stale-generation, and stale-request callbacks, and a failed executable launch closes the generation with a rejected historical receipt |
+| Effective-model truth | **Pass** — explicit ACP readback confirms Live; accepted empty `session/set_model` remains Requested; rejection preserves the prior effective model and reports a classified failure |
+| Restore behavior | **Pass** — restored intent never issues a hidden cosmetic model RPC; an unstarted selection is Saved, while an unverified migrated tab remains Unknown |
+| Receipt persistence | **Pass** — all 24 v3 records round-trip `modelExecutionState`; older v3 records without the field decode conservatively as Unknown |
+| Workbench receipt | **Pass** — the visible compact row showed `No active process`; the keyboard-reachable `grok-session-receipt` menu exposed `Current backend model is unknown.` and `No process launch receipt for this tab.` without paths containing credentials, prompt text, environment values, or server configuration |
+| Model accessibility | **Pass** — the model selector exposed `Current backend model is unknown.` rather than claiming Live; unit coverage also proves Saved, Requested, Live, Rejected, and Unknown reducers |
+| Settings round trip | **Pass** — Computer Use opened Settings in 1.663 seconds, returned to Session in 1.742 seconds, and recovered the exact restored transcript with the Unknown model receipt intact |
+| Graceful quit/relaunch | **Pass** — Command-Q completed in 537 ms and `list_apps` reported `com.grokbuild.app` not running; exact installed relaunch settled in 1.254 seconds with the same transcript, Unknown model value, receipt control visible, and Send disabled |
+| Backend isolation | **Pass** — process inspection showed only `/Applications/GrokBuild.app`; no Grok ACP/backend, browser bridge, Computer Use helper, or `agent-desktop` child ran during acceptance |
+| Data integrity | **Pass** — v2 remains 7,902 bytes at SHA-256 `b9d760c004f74f88996d75ee83df5a2f5636ded80c6863a996c63442d5bacad7`; v3 remains schema 3 with 24 records, authenticated marker, and 33-transcript flush receipt |
+| Installed integrity | **Pass** — `dist` and `/Applications` executable SHA-256 both `cafe63f1043da2c7453d9caf12eec88a8d2c0969194cca0962ec4cc25e5c0da1`; deep/strict signing passed under Team `DD2GCQJVB4`, personal source stamps identify `schmitzjimmy1-star`, and quarantine is absent |
+| Rollback | **Pass** — the prior exact installed app is recoverable at `/Users/jimmyschmitz/.Trash/GrokBuild-pre-slice-2-20260801-1822.app`; the original pre-Slices-0–1 rollback and byte-identical v2 payload also remain intact |
+
+A real provider-backed Live label was not manufactured for this slice because that would violate the no-send boundary. The deterministic fake ACP transport proves both explicit confirmation and empty-success uncertainty; installed acceptance proves that the migrated/restored surface does not lie when no backend is active.

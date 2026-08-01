@@ -68,6 +68,139 @@ final class ACPClientContractTests: XCTestCase {
         )
     }
 
+    func testModelReducerRequiresExactTabBackendGenerationAndRequestIdentity() {
+        let tab = UUID()
+        let identity = ModelRequestIdentity(
+            localTabID: tab,
+            backendSessionID: "backend-a",
+            processGeneration: 7,
+            requestID: UUID()
+        )
+        var state = ModelExecutionReducer.beginRequest(
+            modelID: "grok-4.5",
+            identity: identity,
+            preserving: .unknown,
+            at: Date(timeIntervalSince1970: 1)
+        )
+        let original = state
+        let staleIdentities = [
+            ModelRequestIdentity(
+                localTabID: UUID(), backendSessionID: identity.backendSessionID,
+                processGeneration: identity.processGeneration, requestID: identity.requestID
+            ),
+            ModelRequestIdentity(
+                localTabID: identity.localTabID, backendSessionID: "backend-b",
+                processGeneration: identity.processGeneration, requestID: identity.requestID
+            ),
+            ModelRequestIdentity(
+                localTabID: identity.localTabID, backendSessionID: identity.backendSessionID,
+                processGeneration: 8, requestID: identity.requestID
+            ),
+            ModelRequestIdentity(
+                localTabID: identity.localTabID, backendSessionID: identity.backendSessionID,
+                processGeneration: identity.processGeneration, requestID: UUID()
+            ),
+        ]
+
+        for stale in staleIdentities {
+            XCTAssertFalse(ModelExecutionReducer.confirm(
+                effectiveModelID: "wrong",
+                identity: stale,
+                state: &state
+            ))
+            XCTAssertFalse(ModelExecutionReducer.reject(
+                failure: .rejected,
+                identity: stale,
+                state: &state
+            ))
+            XCTAssertEqual(state, original)
+        }
+    }
+
+    func testModelReducerDoesNotConfirmAnAcceptedRequestWithoutEffectiveModel() {
+        let identity = ModelRequestIdentity(
+            localTabID: UUID(), backendSessionID: "backend",
+            processGeneration: 3, requestID: UUID()
+        )
+        var state = ModelExecutionReducer.beginRequest(
+            modelID: "gpt-5.6-terra",
+            identity: identity,
+            preserving: .unknown
+        )
+
+        XCTAssertTrue(ModelExecutionReducer.acceptWithoutEffectiveModel(
+            identity: identity,
+            state: &state
+        ))
+        XCTAssertEqual(state.status, .requested)
+        XCTAssertEqual(state.requestedModelID, "gpt-5.6-terra")
+        XCTAssertNil(state.effectiveModelID)
+    }
+
+    func testModelReducerConfirmsExplicitReadbackAndPreservesItOnRejection() {
+        let identity = ModelRequestIdentity(
+            localTabID: UUID(), backendSessionID: "backend",
+            processGeneration: 11, requestID: UUID()
+        )
+        var state = ModelExecutionReducer.launch(
+            requestedModelID: "grok-4.5",
+            identity: identity
+        )
+        XCTAssertTrue(ModelExecutionReducer.confirm(
+            effectiveModelID: "grok-4.5",
+            identity: identity,
+            state: &state
+        ))
+        XCTAssertEqual(state.status, .confirmed)
+
+        let next = ModelRequestIdentity(
+            localTabID: identity.localTabID,
+            backendSessionID: identity.backendSessionID,
+            processGeneration: identity.processGeneration,
+            requestID: UUID()
+        )
+        state = ModelExecutionReducer.beginRequest(
+            modelID: "gpt-5.6-terra",
+            identity: next,
+            preserving: state
+        )
+        XCTAssertTrue(ModelExecutionReducer.reject(
+            failure: .rejected,
+            identity: next,
+            state: &state
+        ))
+        XCTAssertEqual(state.status, .rejected)
+        XCTAssertEqual(state.requestedModelID, "gpt-5.6-terra")
+        XCTAssertEqual(state.effectiveModelID, "grok-4.5")
+    }
+
+    func testEffectiveModelParsingRequiresAnExplicitReadback() {
+        XCTAssertNil(GrokProcess.effectiveModelID(from: [:]))
+        XCTAssertEqual(GrokProcess.effectiveModelID(from: [
+            "_meta": ["model": ["Ok": "grok-4.5"]]
+        ]), "grok-4.5")
+        XCTAssertEqual(GrokProcess.effectiveModelID(from: [
+            "modelState": ["currentModelId": "gpt-5.6-terra"]
+        ]), "gpt-5.6-terra")
+    }
+
+    @MainActor
+    func testUnstartedTabModelSelectionIsSavedRatherThanLive() async {
+        let store = ChatStore()
+        store.prepare(workspace: Workspace(
+            name: "fixture",
+            path: FileManager.default.temporaryDirectory
+        ))
+        store.bindTabSession(UUID(), modelIntent: .inheritProjectDefault)
+        store.setModel("grok-4.5")
+
+        XCTAssertEqual(store.modelExecutionState.status, .requested)
+        XCTAssertEqual(store.modelSelectorStatusLabel, "Saved")
+        XCTAssertTrue(store.modelAccessibilityValue.contains("no active process"))
+        XCTAssertEqual(store.persistedModelIntent, .explicit("grok-4.5"))
+        await store.shutdownPermanently()
+    }
+
     func testLiveProcessLaunchAndRestartReceiptsTrackEffectivePermissionAndResume() async throws {
         let fixtureRoot = FileManager.default.temporaryDirectory
             .appendingPathComponent("grokbuild-acp-fixture-\(UUID().uuidString)", isDirectory: true)
@@ -100,9 +233,12 @@ final class ACPClientContractTests: XCTestCase {
         defer { GrokProcess.cliOverrideForTests = nil }
         let process = GrokProcess()
         let workspace = Workspace(name: "fixture", path: fixtureRoot)
+        let tabID = UUID()
 
         await process.start(workspace: workspace, options: GrokLaunchOptions(
+            localTabID: tabID,
             permissionMode: "alwaysApprove",
+            model: "grok-4.5",
             sandboxProfile: "default",
             resumeSessionID: "fixture-resume"
         ))
@@ -110,9 +246,19 @@ final class ACPClientContractTests: XCTestCase {
         XCTAssertEqual(process.sessionId, "fixture-resume")
         XCTAssertEqual(process.launchReceipt?.permissionMode, .alwaysApprove)
         XCTAssertEqual(process.launchReceipt?.permissionArguments, ["--always-approve"])
+        XCTAssertEqual(process.launchReceipt?.localTabID, tabID)
+        XCTAssertEqual(process.launchReceipt?.workspaceID, workspace.id)
+        XCTAssertEqual(process.launchReceipt?.backendSessionID, "fixture-resume")
+        XCTAssertEqual(process.launchReceipt?.outcome, .loaded)
+        XCTAssertEqual(process.modelExecutionState.status, .requested)
+        XCTAssertEqual(process.modelExecutionState.requestedModelID, "grok-4.5")
+        XCTAssertNil(process.modelExecutionState.effectiveModelID)
+        let firstGeneration = process.processGeneration
 
         await process.start(workspace: workspace, options: GrokLaunchOptions(
+            localTabID: tabID,
             permissionMode: "default",
+            model: "grok-4.5",
             sandboxProfile: "default",
             resumeSessionID: "fixture-resume"
         ))
@@ -120,6 +266,8 @@ final class ACPClientContractTests: XCTestCase {
         XCTAssertEqual(process.sessionId, "fixture-resume")
         XCTAssertEqual(process.launchReceipt?.permissionMode, .ask)
         XCTAssertEqual(process.launchReceipt?.permissionArguments, [])
+        XCTAssertEqual(process.processGeneration, firstGeneration + 1)
+        XCTAssertEqual(process.activeProcessGeneration, process.processGeneration)
 
         let launches = try String(contentsOf: logURL, encoding: .utf8)
             .split(whereSeparator: \.isNewline)
@@ -127,6 +275,72 @@ final class ACPClientContractTests: XCTestCase {
         XCTAssertTrue(launches[0].contains("--always-approve"))
         XCTAssertFalse(launches[1].contains("--always-approve"))
         await process.stop()
+    }
+
+    func testProcessKeepsAcceptedModelRequestUnconfirmedWithoutEffectiveReadback() async throws {
+        let fixtureRoot = FileManager.default.temporaryDirectory
+            .appendingPathComponent("grokbuild-model-fixture-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: fixtureRoot, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: fixtureRoot) }
+        let scriptURL = fixtureRoot.appendingPathComponent("fake-grok")
+        let script = """
+        #!/bin/sh
+        while IFS= read -r line; do
+          id=$(printf '%s' "$line" | sed -E 's/.*"id":([0-9]+).*/\\1/')
+          case "$line" in
+            *'"method":"initialize"'*)
+              printf '{"jsonrpc":"2.0","id":%s,"result":{}}\\n' "$id"
+              ;;
+            *'"method":"session/new"'*)
+              printf '{"jsonrpc":"2.0","id":%s,"result":{"sessionId":"model-session","models":{"currentModelId":"grok-4.5","availableModels":[]}}}\\n' "$id"
+              ;;
+            *'"method":"session/set_model"'*)
+              printf '{"jsonrpc":"2.0","id":%s,"result":{}}\\n' "$id"
+              ;;
+          esac
+        done
+        """
+        try script.write(to: scriptURL, atomically: true, encoding: .utf8)
+        try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: scriptURL.path)
+
+        GrokProcess.cliOverrideForTests = scriptURL
+        defer { GrokProcess.cliOverrideForTests = nil }
+        let process = GrokProcess()
+        await process.start(
+            workspace: Workspace(name: "fixture", path: fixtureRoot),
+            options: GrokLaunchOptions(localTabID: UUID(), model: "grok-4.5")
+        )
+        XCTAssertEqual(process.modelExecutionState.status, .confirmed)
+        XCTAssertEqual(process.currentModelId, "grok-4.5")
+
+        let handle = try XCTUnwrap(process.setModel("gpt-5.6-terra"))
+        let result = await handle.result.value
+        XCTAssertEqual(result.status, .requested)
+        XCTAssertEqual(result.requestedModelID, "gpt-5.6-terra")
+        XCTAssertEqual(result.effectiveModelID, "grok-4.5")
+        XCTAssertEqual(process.currentModelId, "grok-4.5")
+        await process.stop()
+    }
+
+    func testFailedProcessLaunchCannotLeaveAnActiveOrRequestedReceipt() async {
+        let missingCLI = FileManager.default.temporaryDirectory
+            .appendingPathComponent("missing-grok-\(UUID().uuidString)")
+        GrokProcess.cliOverrideForTests = missingCLI
+        defer { GrokProcess.cliOverrideForTests = nil }
+        let process = GrokProcess()
+
+        await process.start(
+            workspace: Workspace(
+                name: "fixture",
+                path: FileManager.default.temporaryDirectory
+            ),
+            options: GrokLaunchOptions(localTabID: UUID(), model: "grok-4.5")
+        )
+
+        XCTAssertNil(process.activeProcessGeneration)
+        XCTAssertEqual(process.launchReceipt?.outcome, .failed)
+        XCTAssertEqual(process.modelExecutionState.status, .rejected)
+        XCTAssertEqual(process.modelExecutionState.failure, .unknown)
     }
 
     func testAdvertisedTerminalCapabilityHasWorkingLifecycle() async throws {

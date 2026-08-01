@@ -41,7 +41,8 @@ let package = Package(
         ),
         .testTarget(
             name: "GrokBuildTests",
-            dependencies: ["GrokBuild", "GrokBuildComputerUseCore"]
+            dependencies: ["GrokBuild", "GrokBuildComputerUseCore"],
+            resources: [.copy("Fixtures")]
         )
     ]
 )
