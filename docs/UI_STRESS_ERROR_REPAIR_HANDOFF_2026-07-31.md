@@ -2,9 +2,9 @@
 
 ## Repair closeout — Fixed
 
-UXR-12, UXR-13, UXR-14, and UXR-15 are fixed in the rebuilt installed app. The combined focused filter for ACP contracts, permission/capability handling, transcript import/reconciliation, session persistence, and Computer Use core/integration completed **139 tests with 0 failures**. `make test` completed **409 tests with 0 failures**; `SessionPersistenceTests` alone completed **41 tests with 0 failures**, including the final empty-only post-start rehydration regression, whose direct filter completed **1 test with 0 failures**. The disposable stress fixture remains **2 tests with 0 failures**. `git diff --check` and the repository-wide Markdown/Swift/MDC trailing-whitespace scan both passed.
+UXR-12, UXR-13, UXR-14, and UXR-15 are fixed in the rebuilt installed app. The combined focused filter for ACP contracts, permission/capability handling, transcript import/reconciliation, session persistence, and Computer Use core/integration completed **139 tests with 0 failures**. The 2026-08-01 canonical-identity follow-on brought `make test` to **413 tests with 0 failures**, including **4 focused provenance tests with 0 failures**; `SessionPersistenceTests` alone remains **41 tests with 0 failures**, including the final empty-only post-start rehydration regression. The disposable stress fixture remains **2 tests with 0 failures**. `git diff --check` and the repository-wide Markdown/Swift/MDC trailing-whitespace scan both passed.
 
-The final signed `dist/GrokBuild.app` and `/Applications/GrokBuild.app` main executables match byte-for-byte at SHA-256 `48ca90bd7beaa31b8a2a82fab048fb95d49503a30a6f1893be64c13475e863c8`. `codesign --verify --deep --strict --verbose=2` passes; the app and native helpers are signed under Team `DD2GCQJVB4`; quarantine is absent. The retained signed rollback checkpoints are `/Users/jimmyschmitz/.Trash/GrokBuild-pre-stress-error-repair-20260731-223704.app`, `/Users/jimmyschmitz/.Trash/GrokBuild-pre-final-persistence-20260731-230355.app`, and `/Users/jimmyschmitz/.Trash/GrokBuild-pre-final-repair-20260731-233408.app`; fourteen superseded intermediates were permanently retired during closeout cleanup.
+The final signed `dist/GrokBuild.app` and `/Applications/GrokBuild.app` main executables match byte-for-byte at SHA-256 `464e2cd2bdcfa7e1ba2b94a3b442ca35677e25a00a7cab8b10fd09b78f84ccd8`. `codesign --verify --deep --strict --verbose=2` passes; the app and native helpers are signed under Team `DD2GCQJVB4`; quarantine is absent. The bundle stamps clean source commit `f7cb31837bd48685fe5338342ef489ffb6b313e9`, branch `codex/warm-glass-ui`, channel `personal`, and Jimmy's personal repository; Computer Use visibly confirmed the same receipt in About and Settings → App. The immediate recoverable prior install is `/Users/jimmyschmitz/.Trash/GrokBuild-pre-canonical-identity-20260801-162643.app`; the earlier retained signed rollback checkpoints remain historical evidence.
 
 Installed acceptance restored one clean Grok subagent parent marker (`SUBAGENT-STRESS-OK-0731`), fresh GPT Browser completion/reload markers (`GPT-BROWSER-REPAIR-OK-0731`, `GPT-RELOAD-IDENTITY-OK-0731`), the full DeepSeek rich transcript and reload marker (`OPENROUTER-DEEPSEEK-RICH-OK-0731`, `DEEPSEEK-RELOAD-IDENTITY-OK-0731`), and the Kimi native-close marker (`KIMI-CLOSE-REPAIR-OK-0731`) after relaunch without duplicate assistant messages. Always approve terminal/browser/Computer Use paths were non-blocking; Ask produced one correctly labeled card and ran its displayed command; final state is Always approve, Sandbox Default, web enabled, subagents enabled, Browser Tools Ready, and Computer Use Ready with Accessibility granted. Screen Recording is denied and screenshot fallback is off because accessibility snapshots were sufficient. Settings → App reports CLI Installed 0.2.118 / Latest 0.2.118. The app is left idle on the restored Kimi marker above the composer.
 
@@ -52,10 +52,10 @@ Authorization is **local through installed acceptance**. No commit, push, pull r
 
 ## Current artifact and rollback truth
 
-- Last full production suite: **409 tests, 0 failures**.
+- Last full production suite: **413 tests, 0 failures**.
 - Disposable stress fixture after repair: **2 tests, 0 failures**.
 - Current `dist` and installed executable SHA-256:
-  `48ca90bd7beaa31b8a2a82fab048fb95d49503a30a6f1893be64c13475e863c8`
+  `464e2cd2bdcfa7e1ba2b94a3b442ca35677e25a00a7cab8b10fd09b78f84ccd8`
 - `/Applications/GrokBuild.app` passes `codesign --verify --deep --strict --verbose=2`.
 - Quarantine is absent.
 - Current recoverable prior install:

@@ -48,3 +48,13 @@ shasum -a 256 dist/GrokBuild.app/Contents/MacOS/GrokBuild \
 Stop on any path, branch, repository, bundle, or stamped-commit mismatch. A model
 provider selected *inside* GrokBuild (Grok, GPT, OpenRouter, Kimi) never changes
 which application repository owns the workbench.
+
+## Current accepted installed receipt — 2026-08-01
+
+- Source commit stamped into the bundle: `f7cb31837bd48685fe5338342ef489ffb6b313e9`
+- Build receipt: `personal • codex/warm-glass-ui @ f7cb3183` with `GrokBuildSourceDirty = false`
+- `dist` / installed executable SHA-256: `464e2cd2bdcfa7e1ba2b94a3b442ca35677e25a00a7cab8b10fd09b78f84ccd8`
+- Automated verification: `make test` — **413 tests, 0 failures**; identity filter — **4 tests, 0 failures**
+- Signing: deep/strict pass for app and helpers, Team `DD2GCQJVB4`; quarantine absent
+- Recoverable pre-tattoo install: `/Users/jimmyschmitz/.Trash/GrokBuild-pre-canonical-identity-20260801-162643.app`
+- Installed Computer Use proof: About and Settings → App both visibly show the personal repository, branch, and `f7cb3183` receipt
