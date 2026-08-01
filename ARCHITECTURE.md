@@ -1,6 +1,15 @@
 # GrokBuild — architecture reference
 
-**Read this first in every new chat.** This document is the canonical map of how GrokBuild works. `AGENTS.md` points here; `.cursor/rules/` add file-specific conventions.
+> [!CAUTION]
+> **Canonical application line:**
+> `/Users/jimmyschmitz/Desktop/Projects/MCP Servers/Grok Build/grok-build-desktop`
+> → `schmitzjimmy1-star/grok-build-desktop` → `codex/warm-glass-ui` →
+> `/Applications/GrokBuild.app`. The separate
+> `/Users/jimmyschmitz/Documents/Grok Builf` / `jimmmy-Jim/Grok-Build-GUI`
+> repository is retired reference material. Never build or install it. Run the
+> identity preflight in `CANONICAL_WORKTREE.md` before changing code.
+
+**Read this first in every new chat after `CANONICAL_WORKTREE.md`.** This document is the canonical map of how GrokBuild works. `AGENTS.md` points here; `.cursor/rules/` add file-specific conventions.
 
 ---
 
@@ -43,6 +52,12 @@ GrokBuild is a **windowed macOS project workbench** (SwiftUI + AppKit) over the 
 | In-app updates (app + CLI) | `grok update`, auth (`grok login`) |
 
 **Platform:** macOS 26+. **Version:** `VERSION` → `AppVersion.display`. **Build:** SwiftPM only — no Xcode project; use `make` / `swift build`.
+
+Every packaged bundle also stamps the personal build channel, source repository,
+branch, exact commit, and dirty state into `Info.plist`. `AppBuildIdentity`
+surfaces that receipt in About and Settings → App. `0.1.20` by itself is not
+accepted as source identity because the maintained personal line and upstream
+can share the same marketing version.
 
 ---
 
@@ -865,6 +880,7 @@ make release   # GitHub release via scripts/release.sh
 | Script | Purpose |
 |--------|---------|
 | `scripts/build-macos-app.sh` | Assemble `.app` bundle, copy resources/skills |
+| `scripts/build-identity.sh` | Resolve and escape personal repo / branch / commit / dirty bundle receipts |
 | `scripts/release.sh` | Build, zip, DMG, `gh release create` |
 | `scripts/notarize.sh` | Notarize signed app |
 | `scripts/grokbuild-install-update.sh` | In-app replace + relaunch |
@@ -973,11 +989,12 @@ Prefer extending existing test files. Test pure logic without launching real `gr
 | Doc | Use |
 |-----|-----|
 | `AGENTS.md` | Agent entry point (points here) |
+| `CANONICAL_WORKTREE.md` | Maintained path/remotes/branch and retired duplicate stop rule |
 | `README.md` | User-facing features |
 | `BUILDING.md` | Signing, notarization, release CI |
 | `.cursor/rules/` | Architecture, SwiftUI, CLI integration, AppKit panels |
 | `.cursor/skills/grokbuild-*` | Dev workflow, release, CLI checks |
-| `GrokBuild/Resources/Skills/grokbuild-desktop/SKILL.md` | Hints for agents editing GrokBuild |
+| `GrokBuild/Resources/Skills/` | Bundled runtime skills only; the unused `grokbuild-desktop` editing skill was retired |
 
 ---
 

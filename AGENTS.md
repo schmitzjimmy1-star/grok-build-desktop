@@ -2,9 +2,20 @@
 
 Native SwiftUI macOS frontend for the `grok` CLI (`grok agent stdio`).
 
+## Canonical worktree — hard stop
+
+> [!CAUTION]
+> Active work belongs only in
+> `/Users/jimmyschmitz/Desktop/Projects/MCP Servers/Grok Build/grok-build-desktop`,
+> on Jimmy's `schmitzjimmy1-star/grok-build-desktop` fork. The old
+> `/Users/jimmyschmitz/Documents/Grok Builf` / `jimmmy-Jim/Grok-Build-GUI`
+> line is retired evidence: do not build, install, or continue it. Read
+> `CANONICAL_WORKTREE.md` and run its preflight before editing.
+
 ## Read first
 
-@ARCHITECTURE.md — app map, data flow, persistence keys, feature subsystems, and **“common tasks → files”** lookup for new chats.
+1. `CANONICAL_WORKTREE.md` — immutable repository/worktree identity and retired-line stop rule.
+2. `ARCHITECTURE.md` — app map, data flow, persistence keys, feature subsystems, and **“common tasks → files”** lookup for new chats.
 
 ## Cursor in this repo
 

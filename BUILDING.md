@@ -35,6 +35,14 @@ swift build -c release
 
 `make run` uses `scripts/build-dev-app.sh` for a lightweight `.app` wrapper; `make app` produces a full `dist/GrokBuild.app` for distribution.
 
+Both builders source `scripts/build-identity.sh` and stamp the bundle with
+`GrokBuildBuildChannel`, `GrokBuildSourceRepository`,
+`GrokBuildSourceBranch`, `GrokBuildSourceCommit`, and
+`GrokBuildSourceDirty`. About and Settings → App display the same receipt.
+Build from a clean committed checkout for an acceptance artifact; a dirty build
+is labeled `(dirty)` and cannot masquerade as the settled personal line. The
+canonical/retired repository contract lives in `CANONICAL_WORKTREE.md`.
+
 ## For Development (Recommended)
 
 If you're going to edit the SwiftUI code, install the **full Xcode** IDE from the App Store.
@@ -75,6 +83,7 @@ GitHub release assets use versioned names, e.g. `GrokBuild-v0.1.10.app.zip` and 
 
 The build script (`scripts/build-macos-app.sh`) also:
 - Copies Grok brand-mark assets into `Contents/Resources/`
+- Stamps the personal repository, branch, exact git commit, channel, and dirty state into `Contents/Info.plist`
 - Bundles `Resources/Skills/` into the app
 - Copies `scripts/grokbuild-install-update.sh` → `Contents/Resources/grokbuild-install-update` (in-app upgrade helper)
 - Bundles `agent-desktop` into `Contents/MacOS/` and verifies the copy runs (`agent-desktop version`). **Packaging fails if agent-desktop is missing** — install it with `npm install -g agent-desktop` (CI does), or set `AGENT_DESKTOP_PATH`, or knowingly waive the requirement for a build with non-functional Computer Use via `GROKBUILD_ALLOW_MISSING_AGENT_DESKTOP=1`

@@ -16,7 +16,7 @@ Use `AboutStyle` for About and Update panels:
 
 ## About panel
 
-Custom panel (not `orderFrontStandardAboutPanel`). Order: icon → name → Version → grok CLI line → description → centered link. Fetch CLI version async before presenting.
+Custom panel (not `orderFrontStandardAboutPanel`). Order: icon → name → Version → stamped personal branch/commit identity → grok CLI line → description → canonical personal-repository link. Fetch CLI version async before presenting. Never replace the source receipt with the shared marketing version alone.
 
 ## Application menus
 

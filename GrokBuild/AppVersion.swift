@@ -14,6 +14,10 @@ enum AppVersion {
         short
     }
 
+    static var buildIdentity: AppBuildIdentity {
+        AppBuildIdentity(infoDictionary: Bundle.main.infoDictionary ?? [:])
+    }
+
     private static func bundleValue(_ key: String) -> String? {
         guard let value = Bundle.main.object(forInfoDictionaryKey: key) as? String else {
             return nil

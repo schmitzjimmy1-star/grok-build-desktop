@@ -6,6 +6,8 @@ set -euo pipefail
 # entries from System Settings apply to `make run` launches.
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "$SCRIPT_DIR/build-identity.sh"
 APP_NAME="GrokBuild"
 EXECUTABLE_NAME="GrokBuild"
 APP_VERSION="$(tr -d '[:space:]' < "$ROOT_DIR/VERSION")"
@@ -55,7 +57,6 @@ for icon in MenuBarIcon.png MenuBarIcon@2x.png MenuBarIcon@3x.png; do
     fi
 done
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 chmod +x "$SCRIPT_DIR/bundle-agent-desktop.sh" "$SCRIPT_DIR/codesign-app-bundle.sh"
 # Computer Use is a first-class feature: a build without agent-desktop is
 # broken, so bundling failures fail the build unless explicitly waived.
@@ -83,6 +84,16 @@ cat > "$APP_BUNDLE/Contents/Info.plist" << EOF
     <string>$APP_VERSION</string>
     <key>CFBundleVersion</key>
     <string>$APP_VERSION</string>
+    <key>GrokBuildBuildChannel</key>
+    <string>$GROKBUILD_BUILD_CHANNEL_XML</string>
+    <key>GrokBuildSourceRepository</key>
+    <string>$GROKBUILD_SOURCE_REPOSITORY_XML</string>
+    <key>GrokBuildSourceBranch</key>
+    <string>$GROKBUILD_SOURCE_BRANCH_XML</string>
+    <key>GrokBuildSourceCommit</key>
+    <string>$GROKBUILD_SOURCE_COMMIT_XML</string>
+    <key>GrokBuildSourceDirty</key>
+    <$GROKBUILD_SOURCE_DIRTY/>
     <key>LSMinimumSystemVersion</key>
     <string>26.0</string>
     <key>NSMicrophoneUsageDescription</key>

@@ -1,5 +1,12 @@
 # GrokBuild Desktop App
 
+> [!IMPORTANT]
+> This checkout is Jimmy's maintained personal GrokBuild line:
+> `schmitzjimmy1-star/grok-build-desktop`, branch `codex/warm-glass-ui`, installed
+> as `/Applications/GrokBuild.app`. The older `jimmmy-Jim/Grok-Build-GUI`
+> project is retired and must not be built or installed. See
+> [`CANONICAL_WORKTREE.md`](CANONICAL_WORKTREE.md) before making changes.
+
 GrokBuild Desktop App is a native SwiftUI macOS workbench for the [`grok`](https://grok.com) CLI. It is built for project work: persistent workspaces, resumable build sessions, git branches and worktrees, agents, tools, workflows, tasks, memory, skills, plugins, and reviewable output.
 
 You can also install GrokBuild just to manage custom OpenAI-compatible models in **Settings → Models** (Keychain-backed provider credentials plus a CLI-compatible `~/.grok/config.toml`; no project or session needed), then use them in the grok TUI.
@@ -17,7 +24,7 @@ You can also install GrokBuild just to manage custom OpenAI-compatible models in
 ### Start with a project
 
 1. Install and sign in to the `grok` CLI (`grok login`).
-2. Download a notarized release from [GitHub Releases](https://github.com/rimusz/grok-build-desktop/releases) and move `GrokBuild.app` to `/Applications`.
+2. Use the signed personal build at `/Applications/GrokBuild.app`, or build it from this canonical checkout. Upstream releases do not contain the personal repair line.
 3. Open GrokBuild Desktop App and choose **Add Project**.
 4. Pick a folder. It can be a code repo, a docs folder, or a scratch workspace.
 5. Start a session. GrokBuild Desktop App launches `grok agent stdio` for that project and streams it in the app.
@@ -43,7 +50,13 @@ It is **not** a replacement for the CLI. The `grok` CLI still owns agent reasoni
 
 ## Install
 
-Download a notarized release from the [GitHub Releases page](https://github.com/rimusz/grok-build-desktop/releases), then move `GrokBuild.app` to `/Applications` (or run it from the extracted folder). Releases are signed and notarized — no Gatekeeper workarounds needed.
+Jimmy's maintained app is built from this checkout and installed at
+`/Applications/GrokBuild.app`. Its About panel and Settings → App show the
+personal repository, branch, exact source commit, and dirty-state receipt; do
+not accept `0.1.20` alone as proof of source identity. The preserved
+[`rimusz/grok-build-desktop`](https://github.com/rimusz/grok-build-desktop)
+remote is upstream reference, not the owner of the installed personal repair
+line.
 
 Release assets are versioned, e.g. `GrokBuild-v0.1.10.app.zip` and `GrokBuild-v0.1.10-macOS.dmg`.
 

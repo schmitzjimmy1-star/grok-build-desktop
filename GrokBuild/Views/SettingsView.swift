@@ -5487,6 +5487,14 @@ private struct AppUpdatesSettingsPane: View {
                     VStack(alignment: .leading, spacing: 8) {
                         Text(AppVersion.display)
                             .font(.body)
+                        Text(AppVersion.buildIdentity.summary)
+                            .font(.caption.monospaced())
+                            .foregroundStyle(.secondary)
+                            .textSelection(.enabled)
+                        if let sourceURL = URL(string: AppVersion.buildIdentity.repositoryURL) {
+                            Link(AppVersion.buildIdentity.repositoryURL, destination: sourceURL)
+                                .font(.caption)
+                        }
                         if let lastCheck = UpdateSettingsStore.lastCheckDate {
                             Text("Last checked \(lastCheck.formatted(date: .abbreviated, time: .shortened))")
                                 .font(.caption)

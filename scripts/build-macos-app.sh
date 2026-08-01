@@ -18,6 +18,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(dirname "$SCRIPT_DIR")"
+source "$SCRIPT_DIR/build-identity.sh"
 
 APP_NAME="GrokBuild"
 EXECUTABLE_NAME="GrokBuild"
@@ -199,6 +200,16 @@ if [ -f "$ROOT_DIR/Package.swift" ]; then
     <string>$APP_VERSION</string>
     <key>CFBundleVersion</key>
     <string>$APP_VERSION</string>
+    <key>GrokBuildBuildChannel</key>
+    <string>$GROKBUILD_BUILD_CHANNEL_XML</string>
+    <key>GrokBuildSourceRepository</key>
+    <string>$GROKBUILD_SOURCE_REPOSITORY_XML</string>
+    <key>GrokBuildSourceBranch</key>
+    <string>$GROKBUILD_SOURCE_BRANCH_XML</string>
+    <key>GrokBuildSourceCommit</key>
+    <string>$GROKBUILD_SOURCE_COMMIT_XML</string>
+    <key>GrokBuildSourceDirty</key>
+    <$GROKBUILD_SOURCE_DIRTY/>
     <key>CFBundleIconFile</key>
     <string>AppIcon</string>
     <key>LSMinimumSystemVersion</key>

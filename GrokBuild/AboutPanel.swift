@@ -1,8 +1,6 @@
 import AppKit
 
 enum AboutPanel {
-    static let repositoryURL = "https://github.com/rimusz/grok-build-desktop"
-
     private static let appName = "GrokBuild"
     @MainActor private static var panel: NSPanel?
 
@@ -74,13 +72,20 @@ enum AboutPanel {
             font: AboutStyle.versionFont,
             color: AboutStyle.versionColor
         )
+        let buildLabel = centeredLabel(
+            AppVersion.buildIdentity.summary,
+            font: AboutStyle.versionFont,
+            color: AboutStyle.versionColor
+        )
         let cliLabel = centeredLabel(
             cliVersionLine,
             font: AboutStyle.versionFont,
             color: AboutStyle.versionColor
         )
 
-        let descriptionLabel = NSTextField(wrappingLabelWithString: "Native SwiftUI Mac frontend for the Grok Build CLI.")
+        let descriptionLabel = NSTextField(
+            wrappingLabelWithString: "Canonical personal SwiftUI project workbench for the Grok Build CLI."
+        )
         descriptionLabel.font = AboutStyle.bodyFont
         descriptionLabel.textColor = .labelColor
         descriptionLabel.alignment = .center
@@ -101,6 +106,7 @@ enum AboutPanel {
         container.addSubview(iconView)
         container.addSubview(nameLabel)
         container.addSubview(versionLabel)
+        container.addSubview(buildLabel)
         container.addSubview(cliLabel)
         container.addSubview(descriptionLabel)
         container.addSubview(linkLabel)
@@ -128,7 +134,12 @@ enum AboutPanel {
             versionLabel.leadingAnchor.constraint(greaterThanOrEqualTo: container.leadingAnchor, constant: 24),
             versionLabel.trailingAnchor.constraint(lessThanOrEqualTo: container.trailingAnchor, constant: -24),
 
-            cliLabel.topAnchor.constraint(equalTo: versionLabel.bottomAnchor, constant: 2),
+            buildLabel.topAnchor.constraint(equalTo: versionLabel.bottomAnchor, constant: 2),
+            buildLabel.centerXAnchor.constraint(equalTo: container.centerXAnchor),
+            buildLabel.leadingAnchor.constraint(greaterThanOrEqualTo: container.leadingAnchor, constant: 24),
+            buildLabel.trailingAnchor.constraint(lessThanOrEqualTo: container.trailingAnchor, constant: -24),
+
+            cliLabel.topAnchor.constraint(equalTo: buildLabel.bottomAnchor, constant: 2),
             cliLabel.centerXAnchor.constraint(equalTo: container.centerXAnchor),
             cliLabel.leadingAnchor.constraint(greaterThanOrEqualTo: container.leadingAnchor, constant: 24),
             cliLabel.trailingAnchor.constraint(lessThanOrEqualTo: container.trailingAnchor, constant: -24),
@@ -159,6 +170,7 @@ enum AboutPanel {
     }
 
     private static func linkAttributedString() -> NSAttributedString {
+        let repositoryURL = AppVersion.buildIdentity.repositoryURL
         let paragraphStyle = NSMutableParagraphStyle()
         paragraphStyle.alignment = .center
 
