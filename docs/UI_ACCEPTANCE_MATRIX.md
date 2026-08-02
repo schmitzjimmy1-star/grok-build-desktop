@@ -429,3 +429,18 @@ This pass completed detached transcript reading, accessibility/focus coverage, a
 | Installed performance | **Pass** — a dynamic relative validation label reproduced ~14% Models-pane CPU; the final static checked-at label settled at 0.1% CPU, ~60 MB resident, and zero owned children after live validation. |
 | Installed identity / parity | **Pass** — clean stamp `4bffc490cb1c8b43650b2b918db007203cdbf992`; App UI reported `Personal • codex/warm-glass-ui @ 4bffc490`; dist/install executable SHA-256 both equal `2899c861fd0edd70ea1a301911278906faff8059f72e775ee17854b263066b4e`; deep/strict signing passed and quarantine is absent. |
 | Final continuity / rollback | **Pass** — exact quit/relaunch restored the saved DeepSeek/local-only state. Config and transcript digests remained unchanged; immediate rollback is the signed pre-Slice-12 bundle above. |
+
+## Post-merge provider-routing and OpenRouter OAuth acceptance (2026-08-02)
+
+| Check | Installed-app result |
+|---|---|
+| Wrong-route discovery | **Caught** — the first post-PR-#1 billable OpenAI selection actually produced a Grok backend receipt. The launch argv alone was insufficient proof; backend history identified the single wrong-provider call before release. |
+| Pre-send route gate | **Pass** — explicit launch selections are reasserted over ACP and the process cannot become sendable until the effective model is read back exactly. Missing/wrong confirmation fails closed; the failed OpenRouter alias probe made no provider call. |
+| Custom-model alias | **Pass** — Grok selects the TOML table key `deepseek-deepseek-v4-flash-0731`, then may report its declared provider model `deepseek/deepseek-v4-flash-0731`. The installed picker stays on the table key while the receipt preserves the provider-facing readback. |
+| Direct provider matrix | **Pass** — authorized minimal one-call probes passed for OpenAI `gpt-5.6-terra`, Kimi `kimi-k3`, OpenRouter DeepSeek, and native Grok. Exact marker, live receipt, backend model, and usage agreed for every lane. |
+| OpenRouter OAuth | **Pass** — system-browser S256 flow returned through the random exact loopback callback; the provider card changed to **OpenRouter OAuth** and displayed `Credential saved in Keychain` without revealing the key. |
+| OAuth catalog and install | **Pass** — live catalog returned 337 models. Gemini 2.5 Flash and GPT-4.1 Mini were added alongside the existing DeepSeek route; all three appeared in the installed model selector. |
+| Three OAuth models | **Pass** — DeepSeek V4 Flash, Gemini 2.5 Flash, and GPT-4.1 Mini each completed one explicitly authorized billable call with exact marker output and matching live/backend IDs. Usage totals were 13,459, 10,917, and 10,966 tokens respectively. |
+| Credential/state safety | **Pass** — OAuth persists in device-only Keychain; config remains `0600`. No secret, OAuth code, verifier, callback URL, or response body appears in source or receipts. Existing OpenAI/Kimi entries and retained sessions were not removed. |
+| Automated verification | **Pass** — focused ACP **27/27** and full suite **493/493**, zero failures. |
+| Installed identity | **Pass** — clean repair stamp `9304b7a1fe64ec13c27164bde12f0b6d33d0c8ba`; dist/install executable SHA-256 `a2c5f23eca59b05261fdd2ba72f183ecbbeeecb9c45e3d7119d8fbb99652343b`; deep/strict Team `DD2GCQJVB4`; quarantine absent. |

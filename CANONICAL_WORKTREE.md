@@ -12,8 +12,8 @@
 | Local worktree | `/Users/jimmyschmitz/Desktop/Projects/MCP Servers/Grok Build/grok-build-desktop` |
 | Jimmy's repository | `https://github.com/schmitzjimmy1-star/grok-build-desktop` (`personal`) |
 | Preserved upstream | `https://github.com/rimusz/grok-build-desktop` (`origin`, fetch/reference only) |
-| Active feature branch | `codex/warm-glass-ui` |
-| Draft PR | `https://github.com/schmitzjimmy1-star/grok-build-desktop/pull/1` |
+| Active release branch | `main` |
+| Merged feature PR | `https://github.com/schmitzjimmy1-star/grok-build-desktop/pull/1` |
 | Installed app | `/Applications/GrokBuild.app` |
 
 The commit changes whenever work is committed, so never freeze a mutable HEAD in
@@ -60,7 +60,19 @@ git diff --quiet <stamped-commit>..HEAD -- \
 A model provider selected *inside* GrokBuild (Grok, GPT, OpenRouter, Kimi) never
 changes which application repository owns the workbench.
 
-## Current accepted installed receipt — Slices 11–12 — 2026-08-01
+## Current installed repair acceptance — provider routing and OAuth — 2026-08-02
+
+- PR #1 merged as `c618bc214bfe4feb1f5a28190470f2cfa79f7fa2`. The first post-merge billable probe then exposed a release-blocking truth defect: a fresh tab saved as `gpt-5.6-terra`, and the launched CLI argv carried that selector, but ACP `session/new` retained Grok 4.5 and the first provider call was actually billed to `grok-4.5-build`. The backend receipt, not the picker label, caught the mismatch. The one affected call used 14,922 total tokens; no response body or credential is retained here.
+- Repair commit `9304b7a1fe64ec13c27164bde12f0b6d33d0c8ba` makes startup reassert an explicit model through `session/set_model`, requires an exact effective-model readback before the composer can send, and fails closed on missing or wrong readback. Custom TOML table keys may match only their declared provider-facing `model` value, so `deepseek-deepseek-v4-flash-0731` can truthfully confirm `deepseek/deepseek-v4-flash-0731` without weakening the gate.
+- Automated verification: focused ACP contracts **27/27**; full `swift test` **493 tests, 0 failures** in 15.468 seconds. Direct fake-ACP fixtures cover successful reassertion, wrong-model refusal, and exact custom table-key/provider-model alias confirmation.
+- Installed repair candidate: clean stamp `9304b7a1fe64ec13c27164bde12f0b6d33d0c8ba` on `codex/fix-provider-launch-routing`; `dist` and installed executable SHA-256 both equal `a2c5f23eca59b05261fdd2ba72f183ecbbeeecb9c45e3d7119d8fbb99652343b`. Deep/strict signing passes under `Apple Development: jhschmitz1993@gmail.com (LS4SUB57QL)`, Team `DD2GCQJVB4`; quarantine is absent.
+- Direct provider acceptance used one minimal, explicitly authorized billable call per lane. OpenAI `gpt-5.6-terra` used 10,951 total tokens; Kimi `kimi-k3` used 12,481; OpenRouter API-key `deepseek/deepseek-v4-flash-0731` used 13,534; native `grok-4.5-build` used 14,914 and reported cost metadata. Each installed UI marker, live model receipt, backend history model, and one-call usage record agreed.
+- OpenRouter S256 OAuth completed through the system browser and exact loopback callback. The installed provider card changed from **API key** to **OpenRouter OAuth**, reported 337 available models, and confirmed that the credential was saved in macOS Keychain. No key, authorization code, verifier, callback URL, or response body was copied into source, logs, tests, or receipts.
+- Three distinct OAuth-backed OpenRouter models passed explicit installed-app billable acceptance: `deepseek/deepseek-v4-flash-0731` (13,459 tokens, 2,043 ms provider time), `google/gemini-2.5-flash` (10,917 tokens, 707 ms), and `openai/gpt-4.1-mini` (10,966 tokens, 3,007 ms). Each returned the requested exact marker, reported one model call, and matched the live and backend model IDs.
+- User state changed intentionally for this authorized acceptance: the OpenRouter OAuth credential replaced the prior local connection, and Gemini 2.5 Flash plus GPT-4.1 Mini were added to the existing OpenRouter provider. `~/.grok/config.toml` remains owner-only mode `0600`, 2,308 bytes, SHA-256 `a5a079f739c151e202a9f3e133f0ae31a2a3b3caed748063e2f369b05b056dd5`. Existing direct OpenAI/Kimi entries, prior sessions, authenticated v3 authority, and all named rollback bundles remain retained.
+- This receipt is the accepted repair candidate. Final merged-`main` install/parity is recorded after the focused repair publication; no tag, notarization, or public release is implied.
+
+## Previous accepted installed receipt — Slices 11–12 — 2026-08-01
 
 - Source commit stamped into the bundle: `4bffc490cb1c8b43650b2b918db007203cdbf992`
 - Build receipt: `Personal • codex/warm-glass-ui @ 4bffc490` with `GrokBuildSourceDirty = false`; installed version remains `0.1.20` and the repository receipt points to `schmitzjimmy1-star/grok-build-desktop`.
