@@ -189,6 +189,7 @@ final class SettingsTabTests: XCTestCase {
         XCTAssertTrue(source.contains("ForEach(GrokBuildAppearance.allCases)"))
         XCTAssertTrue(source.contains("grok-appearance-\" + option.rawValue"))
         XCTAssertTrue(source.contains("accessibilityAddTraits"))
+        XCTAssertTrue(source.contains("Image(systemName: \"checkmark\")"))
     }
 
     func testSettingsLoadStatesAndStatusAccessibilityAreDistinct() {

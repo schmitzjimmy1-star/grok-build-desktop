@@ -6954,8 +6954,15 @@ private struct AppUpdatesSettingsPane: View {
         return Button {
             appearanceBinding.wrappedValue = option
         } label: {
-            Text(option.title)
-                .frame(minWidth: 64)
+            HStack(spacing: 4) {
+                if isSelected {
+                    Image(systemName: "checkmark")
+                        .imageScale(.small)
+                }
+                Text(option.title)
+                    .fontWeight(isSelected ? .semibold : .regular)
+            }
+            .frame(minWidth: 64)
         }
         .buttonStyle(.bordered)
         .tint(isSelected ? AppTheme.Palette.accent : .secondary)
