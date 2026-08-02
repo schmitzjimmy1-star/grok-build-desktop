@@ -369,3 +369,20 @@ This pass migrated MCP Servers, Workflows, Skills, Plugins, Marketplace, Hooks, 
 | Relaunch / backend isolation | **Pass** — Command-Q left no GrokBuild process; exact `/Applications/GrokBuild.app` relaunch restored the safe local transcript and exact stamped App receipt. The settled app had zero owned children and sampled 0.0% CPU three times at roughly 119 MB RSS. No provider send, backend, browser/helper, permission prompt, plugin/MCP mutation, Doctor, update check, or Settings Apply ran. |
 
 The installed pass intentionally stopped at truthful Saved/Unknown states. Exact newer-process Live, queued current-tab restarts, malformed CLI data, redaction, and cancellation are covered by deterministic provider-send-free fixtures rather than manufacturing a paid backend solely to paint a green label.
+
+## Coherence repair Slice 9 — lazy lifecycle and rich-render performance acceptance (2026-08-01)
+
+This pass bounded restore, Settings, rich rendering, and WebKit work while preserving the authenticated v3 lifecycle/continuity behavior. The signed installed acceptance made no provider send.
+
+| Check | Installed-app result |
+|---|---|
+| Selected-tab hydration | **Pass** — exact relaunch restored `GPT-CENTRAL-RESUME-BASE-0731` and `GPT-CENTRAL-RESUME-FOLLOWUP-0731`, showed the local continuity boundary, and kept Send disabled; hidden tab selection did not change the complete transcript-tree digest. |
+| Settings lifecycle | **Pass** — Models → Memory → Models retained the three-provider/three-custom-model inventory. Three complete fourteen-pane sweeps passed; selected panes unmounted, hidden work did not recur, and no Apply or connection test ran. |
+| Rich/WebKit lifecycle | **Pass / source + focused tests** — detached Markdown parsing, message/content/width/render-version cache identity, separate text/WebKit sizing caches, visible-only diagram/equation wrappers, accessibility fallbacks, and explicit WebKit dismantling are covered by `SliceNinePerformanceTests` and the installed settled surface. |
+| Performance | **Pass** — warm Settings sweeps sampled 0.0% CPU with RSS at 83,120–89,152 KB; the exact relaunch sampled 0.0% CPU with RSS at 57,088–70,576 KB. No idle spin or owned child process was observed. |
+| Automated verification | **Pass** — `make test` completed **479 tests with 0 failures** in 14.166 seconds. Focused `SettingsTabTests` (14), `SliceNinePerformanceTests` (4), `SessionPersistenceTests` (47), `MarkdownBlockParserTests` (11), and `SessionLifecycleV3Tests` (14) all completed with 0 failures. |
+| Backend / continuity isolation | **Pass** — no provider request, backend resume, `grok agent`, browser/helper action, Computer Use action, or authenticated v3 lifecycle/continuity change occurred during acceptance. Command-Q left no GrokBuild or helper child; exact relaunch restored the same local state. |
+| Persistence / rollback | **Pass** — `~/.grok/config.toml` remained mode `0600`, 1,852 bytes, SHA-256 `54986189bf364f6abe7a06876425b576f9b02466177b181d4921640d4a62bce4`; the 67-file transcript tree remained digest `b2c7c44d313f6e42ba60b650b51cc524502e5e63cbda31b672873a919e9e3346`; v2 remained 7,902 bytes at SHA-256 `b9d760c004f74f88996d75ee83df5a2f5636ded80c6863a996c63442d5bacad7`. Immediate rollback is `/Users/jimmyschmitz/.Trash/GrokBuild-pre-slice-9-20260801-215323.app`, with the signed Slice 8 stamp `68de2a9d5b774fc98fd5c126247fcd834d316c65`; older named rollbacks remain. |
+| Installed identity / signing | **Pass** — clean stamped commit `3b5e1988ef79d8fb0d6b80bfbbcb84259b9399c1`; dist/install executables both SHA-256 `002ccb8a32f852e64895228afd445aed2f4c7a7cd2d5519d34dc86980d8d529d`; deep/strict signing passed under Team `DD2GCQJVB4`, quarantine absent. Gatekeeper is not release proof because this Apple Development build is not notarized. |
+
+The app-owned update/last-flush receipt advanced during normal read-only launch/quit, but no Settings Apply or user transcript/config mutation was performed. A first order-sensitive full-suite attempt reported three migration assertions; the succeeding full-suite runs passed without a source change.

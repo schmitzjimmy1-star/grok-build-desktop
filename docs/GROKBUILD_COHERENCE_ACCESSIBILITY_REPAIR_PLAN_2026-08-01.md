@@ -3,7 +3,7 @@
 | Field | Value |
 |---|---|
 | Prepared | 2026-08-01 |
-| Status | Slices 0–6 implemented and installed-app accepted; Slices 7–11 remain unstarted |
+| Status | Slices 0–9 implemented and installed-app accepted; Slices 10–11 remain unstarted |
 | Scope | Maintained SwiftUI app, current Grok CLI 0.2.118 contract, installed-app acceptance, and every unresolved hole from the Settings/startup/performance/backend-CPR audit |
 | Canonical worktree | /Users/jimmyschmitz/Desktop/Projects/MCP Servers/Grok Build/grok-build-desktop |
 | Canonical branch | codex/warm-glass-ui |
@@ -1708,6 +1708,15 @@ Exit:
 - startup and Settings budgets pass;
 - hidden panes perform no recurring work;
 - settled RSS is bounded across repeated Settings sweeps.
+
+#### Slice 9 implementation receipt — 2026-08-01
+
+- Code is committed at `3b5e1988ef79d8fb0d6b80bfbbcb84259b9399c1` on `codex/warm-glass-ui`; the signed installed bundle is stamped with that clean source commit. Selected-tab-only body hydration, off-main metadata/config parsing, retained Models state, bounded rich-content caching, and visible-only WebKit sizing/teardown were implemented without changing the authenticated v3 lifecycle or continuity contracts.
+- `make test` completed **479 tests with 0 failures** in 14.166 seconds. Focused suites were green: `SettingsTabTests` 14, `SliceNinePerformanceTests` 4, `SessionPersistenceTests` 47, `MarkdownBlockParserTests` 11, and `SessionLifecycleV3Tests` 14, all with 0 failures. One earlier order-sensitive full-suite attempt reported three migration assertions; the succeeding full-suite runs passed without a source change.
+- The installed `/Applications/GrokBuild.app` and `dist/GrokBuild.app` executables both hash to `002ccb8a32f852e64895228afd445aed2f4c7a7cd2d5519d34dc86980d8d529d`; deep/strict signing passes under Team `DD2GCQJVB4`, quarantine is absent, and Gatekeeper remains non-release proof because this Apple Development build is not notarized.
+- Computer Use acceptance restored `GPT-CENTRAL-RESUME-BASE-0731` plus `GPT-CENTRAL-RESUME-FOLLOWUP-0731`, showed the local continuity boundary, and kept Send disabled. Models → Memory → Models retained the three-provider/three-custom-model inventory. Three complete fourteen-pane Settings sweeps passed with no Apply, connection test, provider send, backend resume, browser/helper action, or `grok agent` child.
+- Warm Settings sweeps sampled 0.0% CPU and 83,120–89,152 KB RSS; the exact relaunch sampled 0.0% CPU and settled at 57,088–70,576 KB RSS. Command-Q left no GrokBuild, helper, or agent child. Config remained mode `0600`, 1,852 bytes, SHA-256 `54986189bf364f6abe7a06876425b576f9b02466177b181d4921640d4a62bce4`; the 67-file transcript tree remained digest `b2c7c44d313f6e42ba60b650b51cc524502e5e63cbda31b672873a919e9e3346`; v2 remains 7,902 bytes at SHA-256 `b9d760c004f74f88996d75ee83df5a2f5636ded80c6863a996c63442d5bacad7`.
+- The immediate pre-Slice-9 rollback is `/Users/jimmyschmitz/.Trash/GrokBuild-pre-slice-9-20260801-215323.app`, stamped with the preserved Slice 8 commit `68de2a9d5b774fc98fd5c126247fcd834d316c65`; the named pre-Slice-8 and older rollback bundles remain intact. The app-owned update/last-flush receipt advanced during normal read-only launch/quit, but no Settings Apply or user transcript/config mutation was performed.
 
 ### Slice 10 — accessibility and scroll control
 
