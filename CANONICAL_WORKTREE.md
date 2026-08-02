@@ -62,10 +62,10 @@ changes which application repository owns the workbench.
 
 ## Current accepted installed receipt — 2026-08-01
 
-- Source commit stamped into the bundle: `1856cca4a77cd5ff39bffa23f337714bdd82357d`
-- Build receipt: `personal • codex/warm-glass-ui @ 1856cca4` with `GrokBuildSourceDirty = false`
-- `dist` / installed executable SHA-256: `5371d17205359756d52b56af352631c100c9ce3e77e1d024732d4d4efe95058e`
-- Automated verification: `make test` — **460 tests, 0 failures**; focused Settings/runtime/lifecycle/browser/computer/agent/model suites — **125 tests, 0 failures**
+- Source commit stamped into the bundle: `99a7b1dfa68fe51eeee7d4e37dc3759feba1beb0`
+- Build receipt: `personal • codex/warm-glass-ui @ 99a7b1df` with `GrokBuildSourceDirty = false`
+- `dist` / installed executable SHA-256: `215472a9bd56dbe3f06c7a922e47d1b432f6922e3f7d26198e04ef795278af7f`
+- Automated verification: `make test` — **470 tests, 0 failures**; focused Slice 7 Settings/schema/lifecycle/subprocess suites — **58 tests, 0 failures**
 - Signing: deep/strict pass for the app and bundled helpers under `Apple Development: jhschmitz1993@gmail.com (LS4SUB57QL)`, Team `DD2GCQJVB4`; quarantine absent
-- Recoverable pre-Slice-6 install: `/Users/jimmyschmitz/.Trash/GrokBuild-pre-slice-6-20260801-2025.app`; named pre-Slice-5, pre-Slice-4, and pre-Slice-3 rollback bundles remain intact
-- Installed Computer Use proof: all six priority panes visibly exposed their saved/draft/apply scope. An Agent default draft survived a Settings → App pane change and was reverted without Apply; Models, Permissions, Memory, Browser, and Computer Use each showed the shared honest future-session/current-tab contract. Browser diagnostics remained read-only, and Computer Use showed explicit permission-request buttons; none was invoked. Command-Q followed by exact `/Applications/GrokBuild.app` relaunch visibly reported the stamped personal repository/branch receipt. No provider send, connection test, backend, browser, helper test, or owned child ran.
+- Recoverable pre-Slice-7 install: `/Users/jimmyschmitz/.Trash/GrokBuild-pre-slice-7-20260801-2102.app`; named pre-Slice-6, pre-Slice-5, pre-Slice-4, and pre-Slice-3 rollback bundles remain intact
+- Installed Computer Use proof: MCP Servers, Workflows, Skills, Plugins, Marketplace, Hooks, Compatibility, and App exposed their explicit scopes and honest retained state. A structured MCP name/executable draft survived a pane change and was reverted without Add/Update or persistence. The existing MCP inventory showed only environment names, Marketplace showed source provenance and separate trust gates, Hooks reported a successful empty inventory, Compatibility rendered the 13 current cells with Codex sessions-only, and App kept installed/update identity separate from its Unknown active-session receipt. Command-Q followed by exact `/Applications/GrokBuild.app` relaunch visibly reported the stamped personal receipt. `~/.grok/config.toml` remained mode `0600` and byte-for-byte stable; the v2 rollback payload remained 7,902 bytes at SHA-256 `b9d760c004f74f88996d75ee83df5a2f5636ded80c6863a996c63442d5bacad7`. No provider send, Settings mutation, connection/Doctor/update check, backend, browser, helper, or owned child ran; settled CPU sampled 0.0% three times.
