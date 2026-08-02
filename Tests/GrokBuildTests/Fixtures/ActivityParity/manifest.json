@@ -1,0 +1,21 @@
+{
+  "schemaVersion": 1,
+  "sourceSessionID": "019fc389-b16a-7053-b79e-33017125294b",
+  "fixture": "chicago-evidence-run-redacted.jsonl",
+  "redactions": [
+    "user and worker prompts",
+    "source and artifact bodies",
+    "backend reasoning text",
+    "credential and authorization material",
+    "oversized subagent result bodies"
+  ],
+  "expected": {
+    "spawnedWorkers": 2,
+    "completedWorkers": 2,
+    "failedToolCalls": 5,
+    "writtenArtifacts": 1,
+    "completedParentTurns": 1,
+    "totalTokens": 1276441,
+    "modelCalls": 15
+  }
+}

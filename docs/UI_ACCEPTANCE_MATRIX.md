@@ -447,3 +447,17 @@ This pass completed detached transcript reading, accessibility/focus coverage, a
 | Cross-provider web/tool history | **Known limitation** — after Terra completed a web-search turn, switching that session to Grok made the next prompt fail `Invalid params` before usage or a final response. This is incompatible provider-specific tool-history replay, not OAuth or route substitution. Start a new session before changing provider/model after a web or tool turn. |
 | Final installed identity | **Pass** — PR #2 merged as clean `main` stamp `eea6c9868154a38ab1f4c8ebe6263a2e7b8a5e6a`; App UI reported `Personal • main @ eea6c986`; dist/install executable SHA-256 `cdd16ecda766a2d9497b9db7d6733ad91bf52cc998b4add32f7bb04d9cdfeb6f`; deep/strict Team `DD2GCQJVB4`; quarantine absent. Five settled Models-pane samples were 0.0% CPU at 136,688 KB RSS with no owned child. |
 | Final Settings / rollback | **Pass** — merged-main Settings retained Grok sign-in, OpenRouter OAuth, and all three routed models. The signed pre-merged-main repair bundle and older named rollbacks remain recoverable. |
+
+## Frontend/backend parity Slice 0 — deterministic fixture acceptance (2026-08-02)
+
+Slice 0 is fixture and receipt work only; it intentionally makes no runtime or
+installed-UI claim.
+
+| Check | Result |
+|---|---|
+| Canonical identity | **Pass** — worktree, local `main`, `personal/main`, and installed stamp all resolved to `7ead3abfaa8f3fc5e08c69976b4eb64252b0594b`; bundle ID `com.grokbuild.app`; installed/dist SHA-256 `75118092a3f086589ca3a694b3516b5a9826d9d797e951df79066f4e7aab96eb`. |
+| Dirty baseline | **Pass** — all 19 pre-edit paths were inventoried with SHA-256 and copied into the verified repository-local preservation archive recorded in the parity plan; no stash, checkout, cleanup, or overwrite occurred. |
+| Fixture provenance/redaction | **Pass** — a 30-envelope subset was derived from the exact 100-envelope backend update stream for `019fc389-b16a-7053-b79e-33017125294b`; prompts, reasoning, source/artifact bodies, auth material, live-state paths, and oversized worker results are absent or redacted. |
+| Exact backend truth | **Pass** — bundled-resource tests prove 2 spawned workers, 2 completed workers, 5 failed `web_fetch` calls, 1 completed write to the evidence-packet path, 1 completed parent turn, 1,276,441 total tokens, and 15 model calls. |
+| Automated verification | **Pass** — focused `ActivityParityFixtureTests` 2/2; full `make test` 508/508; `git diff --check` clean. |
+| Runtime boundary | **Pass** — no GrokBuild runtime behavior, bundle, install, provider, live session, config, or user artifact was mutated; Computer Use is deferred because Slice 0 contains no code behavior change. |
