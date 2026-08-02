@@ -66,7 +66,7 @@ can share the same marketing version.
 1. **Stay thin** — UI and local state only; wrap the CLI, don't replace it.
 2. **Reuse services** — extend `GrokProcess`, `GrokCLIService`, `ChatStore`, `WorkspaceStore`, `SessionLayoutStore`, and feature services below.
 3. **Match conventions** — read surrounding code before editing; minimize diff scope.
-4. **Draft vs applied settings** — settings panes edit *draft* keys; live Grok sessions use *applied* keys (see [Settings system](#settings-system)).
+4. **Draft vs applied settings** — migrated panes edit parent-owned `SettingsValueState` drafts; storage changes only at the explicit Apply boundary, and `EffectiveSessionReceipt` separately proves what the current process launched (see [Settings system](#settings-system)).
 5. **Post notifications** — message/turn changes → `.liveSessionMessagesChanged` (titles, transcript save, diff detection); settings that affect MCP → `reloadConfiguration()`.
 6. **Docs + tests with every code change** — run `make test`, add/extend `Tests/GrokBuildTests/`, update this file and other relevant docs in the same session (`.cursor/rules/docs-and-tests.mdc`).
 7. **Commit only when asked** — user rule in this repo.
@@ -382,7 +382,7 @@ Only an intentional tab activation increments `lastActivationOrdinal` and update
 
 **Transcript reconciliation:** Empty, partial, and already-populated tabs with a `grokSessionID` reconcile against exactly one known `~/.grok/sessions/{encoded-cwd}/{grokSessionID}/chat_history.jsonl` only after the continuity relationship is permitted, and again at successful turn completion. `GrokSessionTranscriptImporter` first retains ordered row provenance: backend ID, row index, parent/root/worker relation, agent identity, terminal marker, keyed content tag, and quarantine classification. Synthetic/runtime context, reasoning/tool output, and assistant tool-call preambles remain non-conversational. Known worker output may be retained for display, but binding verification and root identity use only authoritative user/root-final rows; unknown or non-final assistant rows fail closed. `SessionTranscriptReconciler` aligns normalized user prompts occurrence-by-occurrence, preserves local UUIDs, extends prefix answers in place, preserves divergent/newer local text, appends a missing root final or authoritative suffix once, and is idempotent across repeated restore. `SessionMessageStore` also refuses an equal-count partial save that would shorten a completed assistant. `encodeWorkspacePath` matches grok's layout: `%2FUsers%2F…%2Fproject` with **no** trailing `%2F`. The ordinary path reads the exact saved binding; it never scans all histories.
 
-**Eviction:** `enforceConnectionCap()` stops processes for sessions beyond MRU cap (keeps selected + busy sessions).
+**Eviction:** `enforceConnectionCap()` stops processes for sessions beyond MRU cap (keeps selected + busy sessions). It snapshots candidate tab IDs rather than array indices, re-resolves each tab after asynchronous teardown, and accepts a backend receipt only through `SessionProcessLRUPolicy`: local tab, backend, and active process generation must all match. A mismatched process is stopped but its backend ID is never adopted by the tab.
 
 ### Session persistence flow
 
@@ -671,7 +671,7 @@ Opening Models must not synchronously query Keychain on the SwiftUI main actor. 
 
 Ordered config-first (session config → capabilities → grok ecosystem/inspection → app). `.agents` is the default landing tab (generic Settings gear + initial state; `.app` when an update is pending).
 
-The settings chrome uses a persistent grouped **vertical sidebar** (`SettingsView.settingsSidebar`) rather than a horizontal tab strip. `SettingsSection` organizes the fourteen destinations into Grok, Tools, Extensions, Controls, and Application groups (`SettingsTabTests` pins the exact grouping). Visited panes stay mounted in a `ZStack` (`SettingsTabKeepAlive`) so `@State` / `.task` are not reset when switching destinations.
+The settings chrome uses a persistent grouped **vertical sidebar** (`SettingsView.settingsSidebar`) rather than a horizontal tab strip. `SettingsSection` organizes the fourteen destinations into Grok, Tools, Extensions, Controls, and Application groups (`SettingsTabTests` pins the exact grouping). Only the selected pane is mounted. Switching panes removes the old view tree so SwiftUI cancels its `.task`; durable draft state belongs above that tree in `SettingsView`, not in a permanently hidden pane.
 
 | Tab | Pane | Data source |
 |-----|------|-------------|
@@ -692,14 +692,25 @@ The settings chrome uses a persistent grouped **vertical sidebar** (`SettingsVie
 
 ### Draft vs applied pattern
 
-| Feature | Draft keys | Applied keys | When applied |
-|---------|------------|--------------|--------------|
-| Browser | `grokbuild.browser.*` | `grokbuild.browser.applied.*` | **Enable toggle** applies immediately; other fields via **Apply and Restart** |
-| Computer Use | `grokbuild.computerUse.*` | `grokbuild.computerUse.applied.*` | Same pattern |
+`Models/SettingsState.swift` owns the shared contract:
+
+- `SettingsValueState<Value>` keeps draft, persisted, applied, and live values plus validation, restart need, configuration generation, and last operation receipt.
+- `SettingsApplyRequest` declares capability, persistence owner, scope (`externalConfigOnly`, `futureSessions`, `activeTabRestart`, or `allEligibleLiveTabs`), restart/permission requirements, and a redacted pending receipt.
+- `EffectiveSessionReceipt` projects only credential-free `GrokLaunchReceipt` fields and marks older/stopped generations historical.
+- `SettingsApplyReceiptResolver` accepts success only for the exact tab/backend and a newer live generation. A disclosed reconnect fork is `partial`; an undisclosed identity change or stale callback is failure.
+- `SettingsLoadState`, `SettingsPaneStateHeader`, `SettingsApplyBar`, `SettingsLoadStateView`, `SettingsFormRow`, and `SettingsReceiptDisclosure` provide shared checking/content/empty/stale/error, Draft/Saved/Restart required/Live/Unknown, adaptive row, and redacted receipt UI.
+
+Memory is the Slice 5 fixture pane. Its toggle is a parent-owned draft—not `@AppStorage`—and writes `grokbuild.memoryEnabled` only on Apply. It demonstrates Draft → Saved → Restart required → Live without mixing direct actions such as Browse Memory or Remember into the apply receipt. The remaining launch panes migrate to this contract in Slice 6; their older storage behavior is not relabeled as shared draft truth in the interim.
+
+| Feature | Draft owner | Applied owner | When applied |
+|---------|-------------|---------------|--------------|
+| Memory | parent-owned `SettingsValueState<Bool>` | `grokbuild.memoryEnabled` | Explicit Apply; current live tab restarts, inactive tabs use it on next start |
+| Browser | `grokbuild.browser.*` | `grokbuild.browser.applied.*` | Existing pane-specific Apply contract pending Slice 6 migration |
+| Computer Use | `grokbuild.computerUse.*` | `grokbuild.computerUse.applied.*` | Existing pane-specific Apply contract pending Slice 6 migration |
 
 **Live Grok sessions read applied settings only** in `ChatStore.restartProcess` → `BrowserSettingsStore.loadApplied()` / `ComputerUseSettingsStore.loadApplied()`.
 
-Changing settings that affect MCP → call `ChatStore.reloadConfiguration()`. Idle reload captures and resumes `ChatStore.durableGrokSessionID`; streaming reload queues and coalesces with model-runtime changes into one post-turn restart. Layout persistence prefers the same durable store receipt over transient process state. If `session/load` legitimately fails stale, the old backend transcript is reconciled before the new ID becomes usable and one explicit old-ID → new-ID recovery-fork note is persisted.
+`ContentView.handleConfigurationChange(SettingsApplyRequest)` binds active/all-live scopes to the exact `ChatStore.settingsApplyTarget`. `ChatStore` puts legacy general reloads, typed model changes, and Settings applies into one `RuntimeConfigurationReloadQueue`. A streaming turn drains the coalesced batch once after ordered completion (success or failure); multiple waiting Apply callers receive receipts from that one reconnect. An idle Apply captures and resumes `ChatStore.durableGrokSessionID`. A loaded exact backend is success; a legitimate stale-session fallback remains a lossless, visibly `partial` recovery fork; an undisclosed backend/tab/generation change cannot paint the pane Live. Layout persistence continues to prefer durable store truth over transient process state.
 
 Permissions tab (`GrokSettingsKeys`) applies on next `restartProcess` (no separate applied copy). Interactive choices are Ask, Auto, and Always approve; Accept edits, Deny unapproved (CI), and Plan are grouped as advanced modes. The app must not describe `dontAsk` as a prompt-free full-capability mode.
 
@@ -941,6 +952,7 @@ See `BUILDING.md` for signing, notarization, CI workflow.
 | **Memory (cross-session)** | `MemoryStore.swift`, `MemoryBrowserPanel.swift`, settings `.memory`, `GrokMemoryFlag`, `ChatView.memoryStatusPill`, `ChatStore.remember`/`isMemoryEnabled` |
 | **Computer Use** | `ComputerUseService`, `GrokBuildComputerUseMCP/main.swift`, `.computerUse` |
 | **Custom models** | `CustomModelsSettingsViewModel`, `ProviderStore`, `KeychainProviderCredentialStore`, `CustomModelStore`, `GrokConfigRepository`, `~/.grok/config.toml` |
+| **Settings state/apply contract** | `SettingsState`, `SettingsView` shared components, `ContentView.handleConfigurationChange(SettingsApplyRequest)`, `ChatStore.applySettingsRequest` / `RuntimeConfigurationReloadQueue` |
 | **Settings tab** | `SettingsView` — search pane struct by tab |
 | **MCP injection** | `ChatStore.restartProcess` → `browserMCPConfig` / `computerUseMCPConfig` |
 | **Skill install** | `BrowserSkillInstaller`, `ComputerUseSkillInstaller` |
@@ -983,7 +995,8 @@ make test    # Tests/GrokBuildTests/
 | `AcpLineBufferTests.swift` | Byte-wise ACP line framing incl. UTF-8 codepoints split across pipe reads |
 | `ACPClientContractTests.swift` | Terminal lifecycle, bounded UTF-8 output, command compatibility, tool failure parsing, generation-bound model reducer/ACP fixtures, model fallback, composer targets, static progress, off-main settings work, restored-view bottom-follow, updater freshness, and workbench-not-chatbot source contracts |
 | `OpenRouterOAuthTests.swift` | PKCE/authorization/exchange parsing plus real loopback capture and a cancellation-safe timeout |
-| `SettingsTabTests.swift` | Settings destination metadata, ordering, keep-alive behavior, and exact grouped-sidebar coverage |
+| `SettingsTabTests.swift` | Settings destination metadata/grouping, selected-pane-only lifecycle, shared value-state/status/accessibility reducers, adaptive rows, and the Memory explicit-persistence source contract |
+| `LifecycleAndSubprocessTests.swift` | Coalesced streaming Settings reconnects, exact apply/fork receipts, process-LRU identity safety, store/process release, and one-shot subprocess hygiene |
 
 Prefer extending existing test files. Test pure logic without launching real `grok` when possible.
 
@@ -1026,7 +1039,7 @@ The installed-app stress pass established three lifecycle rules that are now arc
 2. **Process teardown cannot erase session identity.** `GrokProcess.shutdown()` clears transient live state, but `SessionIdentityPersistencePolicy` prevents that `nil` from overwriting a previously persisted non-empty `SavedSessionRecord.grokSessionID`. A shutdown callback is not a user-visible conversation mutation.
 3. **Bottom-follow covers both content growth and view reconstruction.** Streaming/final chunks schedule bounded post-layout retries, and `ChatView.onAppear` schedules the same settled scroll because Settings navigation and tab restoration recreate the view around an already-populated transcript.
 
-The kept-alive Settings App pane also observes `.grokBuildUpdateStateChanged`; it must recompute its CLI receipt after an updater run instead of continuing to display the version captured when the pane first appeared.
+The Settings App pane observes `.grokBuildUpdateStateChanged` while mounted and recomputes its CLI receipt after an updater run. Because hidden panes now unmount, re-entering App also starts a fresh load instead of displaying a receipt captured by an old hidden view tree.
 
 The follow-up workbench pass adds five contracts:
 

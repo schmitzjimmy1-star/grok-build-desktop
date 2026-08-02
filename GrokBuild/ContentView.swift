@@ -157,7 +157,8 @@ struct ContentView: View {
                     store: activeStore,
                     selectedTab: $selectedSettingsTab,
                     onBackToChat: { route = .session },
-                    onConfigurationChanged: handleConfigurationChange
+                    onConfigurationChanged: handleConfigurationChange,
+                    onSettingsApplyRequest: handleConfigurationChange
                 )
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
@@ -370,6 +371,59 @@ struct ContentView: View {
             for store in stores {
                 await store.applyConfigurationChange(change)
             }
+        }
+    }
+
+    private func handleConfigurationChange(
+        _ request: SettingsApplyRequest
+    ) async -> SettingsApplyReceipt {
+        switch request.applyScope {
+        case .externalConfigOnly, .futureSessions:
+            return .completed(
+                request: request,
+                status: .success,
+                summary: "Saved for future eligible sessions."
+            )
+
+        case .activeTabRestart:
+            let store = activeStore
+            return await store.applySettingsRequest(
+                request.bound(to: store.settingsApplyTarget)
+            )
+
+        case .allEligibleLiveTabs:
+            let stores = liveSessions.map(\.store).filter {
+                $0.settingsApplyTarget.processGeneration != nil
+            }
+            guard !stores.isEmpty else {
+                return .completed(
+                    request: request,
+                    status: .success,
+                    summary: "Saved; no live tabs require a restart."
+                )
+            }
+            var receipts: [SettingsApplyReceipt] = []
+            for store in stores {
+                receipts.append(await store.applySettingsRequest(
+                    request.bound(to: store.settingsApplyTarget)
+                ))
+            }
+            let status: SettingsApplyReceiptStatus
+            if receipts.allSatisfy({ $0.status == .success }) {
+                status = .success
+            } else if receipts.allSatisfy({ $0.status == .failure }) {
+                status = .failure
+            } else {
+                status = .partial
+            }
+            return .completed(
+                request: request,
+                status: status,
+                summary: "Applied to \(receipts.filter { $0.status == .success }.count) of \(receipts.count) eligible live tabs.",
+                effectiveSession: receipts.first(where: {
+                    $0.effectiveSession?.localTabID == selectedSessionID
+                })?.effectiveSession
+            )
         }
     }
 
@@ -1283,15 +1337,23 @@ struct ContentView: View {
     /// stays bounded. The selected/most-recent sessions and any actively-working session are kept.
     private func enforceConnectionCap() async {
         let keep = Set(recentSessionOrder.prefix(maxConnectedSessions))
-        for index in liveSessions.indices {
+        let evictionCandidates = liveSessions.map(\.id).filter { !keep.contains($0) }
+        for id in evictionCandidates {
+            guard let index = liveSessions.firstIndex(where: { $0.id == id }) else { continue }
             let session = liveSessions[index]
             if keep.contains(session.id) || session.id == selectedSessionID { continue }
             // Skip sessions with no live process, and never interrupt one mid-turn.
             guard session.store.connectionState != .idle,
                   session.store.connectionState != .busy else { continue }
-            // Preserve the grok id so the session can be re-resumed when reopened.
-            liveSessions[index].grokSessionID = session.store.grokSessionId ?? session.grokSessionID
-            await session.store.shutdown()
+            let decision = await session.store.shutdownForLRUEviction(
+                expectedTabID: session.id,
+                persistedBackendID: session.grokSessionID
+            )
+            // Re-resolve after the await: closing or reordering a tab cannot make an
+            // old array index adopt another tab's backend receipt.
+            if let currentIndex = liveSessions.firstIndex(where: { $0.id == id }) {
+                liveSessions[currentIndex].grokSessionID = decision.preservedBackendID
+            }
         }
     }
 

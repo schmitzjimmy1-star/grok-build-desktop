@@ -99,9 +99,16 @@ struct SettingsView: View {
     @Binding var selectedTab: SettingsTab
     var onBackToChat: () -> Void = {}
     var onConfigurationChanged: (ConfigurationChange) -> Void = { _ in }
+    var onSettingsApplyRequest: (SettingsApplyRequest) async -> SettingsApplyReceipt = {
+        $0.receipt
+    }
 
-    /// Tabs opened at least once stay mounted so pane `@State` / `.task` survive revisits.
-    @State private var loadedTabs: Set<SettingsTab> = []
+    /// Shared pane state lives above the selected view tree. Hidden panes unmount and
+    /// cancel their `.task`s without discarding an explicit draft.
+    @State private var memoryValueState = SettingsValueState<Bool>.unloaded(
+        default: GrokPermissionSettings.defaults.memoryEnabled
+    )
+    @State private var memoryLoadState = SettingsLoadState.checking
     @State private var paneLoadInterval: GrokBuildPerformanceInterval?
 
     var body: some View {
@@ -135,11 +142,10 @@ struct SettingsView: View {
         .frame(minWidth: 860, minHeight: 620)
         .background(AppTheme.Palette.canvas)
         .onAppear {
-            SettingsTabKeepAlive.recordVisit(selectedTab, loaded: &loadedTabs)
             measureSelectedPaneLoad()
         }
         .onChange(of: selectedTab) { _, tab in
-            SettingsTabKeepAlive.recordVisit(tab, loaded: &loadedTabs)
+            _ = tab
             measureSelectedPaneLoad()
         }
         .onExitCommand(perform: onBackToChat)
@@ -215,19 +221,12 @@ struct SettingsView: View {
         .accessibilityLabel("Settings navigation")
     }
 
-    /// Keeps visited panes in the hierarchy (hidden when inactive) so state is not reset on tab change.
+    /// Only the selected pane owns a view/task tree. Shared pane value state stays in
+    /// SettingsView, while hidden diagnostics, polling, and subprocess tasks cancel.
     private var settingsContent: some View {
-        ZStack(alignment: .topLeading) {
-            ForEach(SettingsTab.allCases) { tab in
-                if SettingsTabKeepAlive.shouldMount(tab, selected: selectedTab, loaded: loadedTabs) {
-                    settingsPane(for: tab)
-                        .opacity(selectedTab == tab ? 1 : 0)
-                        .allowsHitTesting(selectedTab == tab)
-                        .accessibilityHidden(selectedTab != tab)
-                        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-                }
-            }
-        }
+        settingsPane(for: selectedTab)
+            .id(selectedTab)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
     }
 
     @ViewBuilder
@@ -248,9 +247,13 @@ struct SettingsView: View {
             }
 
         case .memory:
-            MemorySettingsPane {
-                Task { await store.reloadConfiguration() }
-            }
+            MemorySettingsPane(
+                valueState: $memoryValueState,
+                loadState: $memoryLoadState,
+                liveReceipt: store.effectiveSessionReceipt,
+                configurationStatusMessage: store.configurationStatusMessage,
+                onApply: onSettingsApplyRequest
+            )
 
         case .workflows:
             WorkflowsSettingsPane {
@@ -304,14 +307,10 @@ struct SettingsView: View {
     }
 }
 
-/// Pure helpers for Settings pane keep-alive (lazy mount + retain visited tabs).
-enum SettingsTabKeepAlive {
-    static func recordVisit(_ tab: SettingsTab, loaded: inout Set<SettingsTab>) {
-        loaded.insert(tab)
-    }
-
-    static func shouldMount(_ tab: SettingsTab, selected: SettingsTab, loaded: Set<SettingsTab>) -> Bool {
-        tab == selected || loaded.contains(tab)
+/// Hidden panes are absent from the view tree, so SwiftUI cancels their `.task`s.
+enum SettingsPaneLifecycle {
+    static func shouldMount(_ tab: SettingsTab, selected: SettingsTab) -> Bool {
+        tab == selected
     }
 }
 
@@ -346,6 +345,221 @@ private struct SettingsPaneHeader: View {
 
 private func settingsPaneHeader(_ title: String, subtitle: String, systemImage: String) -> SettingsPaneHeader {
     SettingsPaneHeader(title: title, subtitle: subtitle, systemImage: systemImage)
+}
+
+private struct SettingsPaneStateHeader: View {
+    let status: SettingsValueStatus
+
+    private var icon: String {
+        switch status {
+        case .draft: return "pencil"
+        case .saved: return "checkmark"
+        case .restartRequired: return "arrow.clockwise"
+        case .live: return "checkmark.circle"
+        case .unknown: return "questionmark.circle"
+        }
+    }
+
+    var body: some View {
+        Label(status.rawValue, systemImage: icon)
+            .font(.caption.weight(.semibold))
+            .foregroundStyle(.secondary)
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel("Settings state")
+            .accessibilityValue(status.accessibilityValue)
+            .accessibilityHint("Draft, saved, applied, and live process state are reported separately.")
+    }
+}
+
+private struct SettingsLoadStateView: View {
+    let state: SettingsLoadState
+    var retry: (() -> Void)? = nil
+
+    var body: some View {
+        switch state {
+        case .content:
+            EmptyView()
+        case .checking:
+            HStack(spacing: 8) {
+                ProgressView().controlSize(.small)
+                Text("Checking saved and live settings…")
+                    .foregroundStyle(.secondary)
+            }
+            .accessibilityElement(children: .combine)
+            .accessibilityValue("Checking")
+        case .empty(let message), .stale(let message), .error(let message):
+            HStack(alignment: .firstTextBaseline, spacing: 10) {
+                Text(message)
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+                Spacer()
+                if let retry {
+                    Button("Retry", action: retry)
+                }
+            }
+            .accessibilityElement(children: .contain)
+        }
+    }
+}
+
+private struct SettingsFormRow<Control: View>: View {
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+
+    let title: String
+    let subtitle: String?
+    let control: () -> Control
+
+    init(
+        _ title: String,
+        subtitle: String? = nil,
+        @ViewBuilder control: @escaping () -> Control
+    ) {
+        self.title = title
+        self.subtitle = subtitle
+        self.control = control
+    }
+
+    @ViewBuilder
+    var body: some View {
+        if dynamicTypeSize.isAccessibilitySize {
+            verticalRow
+        } else {
+            ViewThatFits(in: .horizontal) {
+                horizontalRow
+                verticalRow
+            }
+        }
+    }
+
+    private var horizontalRow: some View {
+        HStack(alignment: .center, spacing: 14) {
+            copy
+                .frame(maxWidth: 420, alignment: .leading)
+                .layoutPriority(1)
+            Spacer(minLength: 12)
+            control()
+                .frame(minHeight: 44, alignment: .trailing)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private var verticalRow: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            copy
+            control()
+                .frame(minHeight: 44, alignment: .leading)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private var copy: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text(title)
+                .font(.callout.weight(.medium))
+            if let subtitle, !subtitle.isEmpty {
+                Text(subtitle)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+    }
+}
+
+private struct SettingsApplyBar: View {
+    let canApply: Bool
+    let isApplying: Bool
+    let scopeText: String
+    let validationMessage: String?
+    let receipt: SettingsApplyReceipt?
+    let onRevert: () -> Void
+    let onApply: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(alignment: .center, spacing: 12) {
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(isApplying ? "Applying saved changes…" : "Apply changes")
+                        .font(.headline)
+                    Text(validationMessage ?? receipt?.summary ?? scopeText)
+                        .font(.caption)
+                        .foregroundStyle(validationMessage == nil ? .secondary : Color.red)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                Spacer(minLength: 12)
+                Button("Revert", action: onRevert)
+                    .disabled(!canApply || isApplying)
+                Button(isApplying ? "Applying…" : "Apply", action: onApply)
+                    .buttonStyle(.borderedProminent)
+                    .disabled(!canApply || isApplying)
+            }
+
+            if isApplying {
+                ProgressView()
+                    .controlSize(.small)
+                    .accessibilityLabel("Applying Settings")
+            }
+        }
+        .padding(14)
+        .background(
+            RoundedRectangle(cornerRadius: AppTheme.Radius.medium, style: .continuous)
+                .fill(AppTheme.Palette.surface)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: AppTheme.Radius.medium, style: .continuous)
+                .stroke(AppTheme.Palette.glassBorder)
+        )
+        .accessibilityElement(children: .contain)
+        .accessibilityValue(receipt?.accessibilityValue ?? scopeText)
+    }
+}
+
+private struct SettingsReceiptDisclosure: View {
+    let receipt: SettingsApplyReceipt?
+
+    var body: some View {
+        if let receipt {
+            DisclosureGroup {
+                VStack(alignment: .leading, spacing: 5) {
+                    Text("Configuration generation \(receipt.configurationGeneration)")
+                    if let target = receipt.target {
+                        Text("Requested tab \(shortID(target.localTabID?.uuidString)); backend \(shortID(target.backendSessionID)); process \(target.processGeneration.map(String.init) ?? "none")")
+                    }
+                    if let live = receipt.effectiveSession {
+                        Text("Result tab \(shortID(live.localTabID?.uuidString)); backend \(shortID(live.backendSessionID)); process \(live.processGeneration)")
+                        Text("Reconnect outcome: \(live.launchOutcome.rawValue); receipt: \(live.freshness.rawValue)")
+                    }
+                }
+                .font(.system(.caption, design: .monospaced))
+                .foregroundStyle(.secondary)
+                .textSelection(.enabled)
+                .padding(.top, 6)
+            } label: {
+                Label("Apply receipt", systemImage: "doc.text.magnifyingglass")
+                    .font(.caption.weight(.medium))
+            }
+            .accessibilityValue(receipt.accessibilityValue)
+        }
+    }
+
+    private func shortID(_ value: String?) -> String {
+        guard let value, !value.isEmpty else { return "none" }
+        return value.count > 8 ? "…\(value.suffix(8))" : value
+    }
+}
+
+private struct SettingsDestructiveActionRow: View {
+    let title: String
+    let consequence: String
+    let buttonTitle: String
+    let action: () -> Void
+
+    var body: some View {
+        SettingsFormRow(title, subtitle: consequence) {
+            Button(buttonTitle, role: .destructive, action: action)
+        }
+        .accessibilityHint(consequence)
+    }
 }
 
 /// A full-width macOS settings row with a small, consistently aligned switch.
@@ -5058,23 +5272,39 @@ private struct PermissionsSettingsPane: View {
 }
 
 private struct MemorySettingsPane: View {
-    let onConfigurationChanged: () -> Void
+    @Binding var valueState: SettingsValueState<Bool>
+    @Binding var loadState: SettingsLoadState
+    let liveReceipt: EffectiveSessionReceipt?
+    let configurationStatusMessage: String?
+    let onApply: (SettingsApplyRequest) async -> SettingsApplyReceipt
 
-    @AppStorage(GrokSettingsKeys.memoryEnabled) private var memoryEnabled = GrokPermissionSettings.defaults.memoryEnabled
-    @State private var appliedMemoryEnabled = UserDefaults.standard.bool(forKey: GrokSettingsKeys.memoryEnabled)
     @State private var showBrowser = false
     @State private var showRemember = false
     @State private var rememberText = ""
     @State private var statusMessage: String?
-
-    private var hasPendingChanges: Bool { memoryEnabled != appliedMemoryEnabled }
+    @State private var isApplying = false
 
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 18) {
                 header
-                enableCard
-                actionsCard
+                SettingsLoadStateView(state: loadState) {
+                    Task { await loadPersistedState(force: true) }
+                }
+                if valueState.isLoaded {
+                    enableCard
+                    SettingsApplyBar(
+                        canApply: valueState.canApply,
+                        isApplying: isApplying,
+                        scopeText: "Saves for future sessions and restarts only the current live tab.",
+                        validationMessage: valueState.validation.message,
+                        receipt: valueState.lastOperationReceipt,
+                        onRevert: { valueState.revert() },
+                        onApply: { Task { await applyChanges() } }
+                    )
+                    SettingsReceiptDisclosure(receipt: valueState.lastOperationReceipt)
+                    actionsCard
+                }
             }
             .centeredSettingsColumn()
         }
@@ -5086,6 +5316,14 @@ private struct MemorySettingsPane: View {
         .sheet(isPresented: $showRemember) {
             rememberSheet
         }
+        .task {
+            await loadPersistedState(force: false)
+        }
+        .onChange(of: liveReceipt) { _, receipt in
+            valueState.refreshLive(
+                receipt?.freshness == .live ? receipt?.memoryEnabled : nil
+            )
+        }
     }
 
     private var header: some View {
@@ -5095,34 +5333,35 @@ private struct MemorySettingsPane: View {
                 subtitle: "Let Grok recall useful context across sessions.",
                 systemImage: SettingsTab.memory.systemImage
             )
-            Text(memoryEnabled ? "On" : "Off")
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(.secondary)
+            SettingsPaneStateHeader(status: valueState.status)
         }
     }
 
     private var enableCard: some View {
         settingsCard(title: "Cross-Session Memory", systemImage: "brain.head.profile") {
             VStack(alignment: .leading, spacing: 12) {
-                SettingsToggleRow(
+                SettingsFormRow(
                     "Use cross-session memory",
-                    subtitle: "Applies to new and restarted sessions.",
-                    isOn: $memoryEnabled
-                )
+                    subtitle: "The draft stays local until Apply. Existing processes keep their recorded launch value until restart."
+                ) {
+                    Toggle("Use cross-session memory", isOn: memoryDraftBinding)
+                        .labelsHidden()
+                        .toggleStyle(.switch)
+                        .controlSize(.small)
+                        .accessibilityLabel("Use cross-session memory")
+                        .accessibilityValue(valueState.draft ? "Draft on" : "Draft off")
+                }
 
                 Text("Stored locally on this Mac.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
 
-                HStack {
-                    Spacer()
-                    Button("Apply Changes") {
-                        appliedMemoryEnabled = memoryEnabled
-                        onConfigurationChanged()
-                    }
-                    .buttonStyle(.borderedProminent)
-                    .disabled(!hasPendingChanges)
+                if let configurationStatusMessage, isApplying {
+                    Text(configurationStatusMessage)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .accessibilityValue(configurationStatusMessage)
                 }
             }
         }
@@ -5143,7 +5382,6 @@ private struct MemorySettingsPane: View {
                     } label: {
                         Label("Remember…", systemImage: "text.badge.plus")
                     }
-                    .disabled(!memoryEnabled)
                     Spacer()
                 }
 
@@ -5198,6 +5436,65 @@ private struct MemorySettingsPane: View {
             statusMessage = error.localizedDescription
         }
         showRemember = false
+    }
+
+    private var memoryDraftBinding: Binding<Bool> {
+        Binding(
+            get: { valueState.draft },
+            set: { valueState.updateDraft($0) }
+        )
+    }
+
+    @MainActor
+    private func loadPersistedState(force: Bool) async {
+        if valueState.isLoaded, !force {
+            valueState.refreshLive(
+                liveReceipt?.freshness == .live ? liveReceipt?.memoryEnabled : nil
+            )
+            loadState = .content
+            return
+        }
+        loadState = .checking
+        await Task.yield()
+        guard !Task.isCancelled else { return }
+        let saved = UserDefaults.standard.object(forKey: GrokSettingsKeys.memoryEnabled) as? Bool
+            ?? GrokPermissionSettings.defaults.memoryEnabled
+        valueState.load(
+            persisted: saved,
+            applied: saved,
+            live: liveReceipt?.freshness == .live ? liveReceipt?.memoryEnabled : nil
+        )
+        loadState = .content
+    }
+
+    @MainActor
+    private func applyChanges() async {
+        guard valueState.canApply else { return }
+        let newValue = valueState.draft
+        let request = SettingsApplyRequest(
+            configurationGeneration: valueState.configurationGeneration + 1,
+            capability: .memory,
+            persistenceOwner: .userDefaults,
+            applyScope: .activeTabRestart,
+            requiresProcessRestart: true,
+            redactedSummary: "Saved the Memory launch setting; applying it to the current live tab when eligible."
+        )
+
+        // This is the sole persistence boundary. Editing the toggle above never writes
+        // UserDefaults and can be reverted or discarded without changing a launch.
+        UserDefaults.standard.set(newValue, forKey: GrokSettingsKeys.memoryEnabled)
+        valueState.recordSaved(
+            applied: newValue,
+            requiresRestart: liveReceipt?.freshness == .live,
+            receipt: request.receipt
+        )
+        isApplying = true
+        let receipt = await onApply(request)
+        isApplying = false
+        let liveValue = receipt.effectiveSession?.freshness == .live
+            ? receipt.effectiveSession?.memoryEnabled
+            : nil
+        valueState.complete(receipt: receipt, live: liveValue)
     }
 
     private func settingsCard<Content: View>(

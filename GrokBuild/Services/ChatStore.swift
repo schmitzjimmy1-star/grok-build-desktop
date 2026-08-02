@@ -184,6 +184,18 @@ final class ChatStore {
     var durableGrokSessionID: String? { process.sessionId ?? savedGrokSessionID }
     var persistedPendingRecoveryIntent: SessionPendingRecoveryIntent? { pendingRecoveryIntent }
     var effectiveLaunchReceipt: GrokLaunchReceipt? { process.launchReceipt }
+    var effectiveSessionReceipt: EffectiveSessionReceipt? {
+        process.launchReceipt?.effectiveSessionReceipt(
+            activeProcessGeneration: process.activeProcessGeneration
+        )
+    }
+    var settingsApplyTarget: SettingsApplyTarget {
+        SettingsApplyTarget(
+            localTabID: tabSessionID,
+            backendSessionID: durableGrokSessionID,
+            processGeneration: process.activeProcessGeneration
+        )
+    }
     var effectivePermissionMode: GrokPermissionMode {
         process.launchReceipt?.permissionMode ?? .ask
     }
@@ -264,8 +276,10 @@ final class ChatStore {
     private var modelContextTokens: [String: Int] = ["grok-4.5": 500_000]
     private var builtInModelIDs = Set<String>()
     private var customModelsByID: [String: CustomModel] = [:]
-    private var pendingConfigurationChange: ConfigurationChange?
-    private var pendingRuntimeReload = false
+    private var runtimeReloadQueue = RuntimeConfigurationReloadQueue()
+    private var settingsApplyContinuations: [
+        UUID: CheckedContinuation<SettingsApplyReceipt, Never>
+    ] = [:]
 
     /// Set when a streaming turn has produced no ACP events for `turnStallThreshold`.
     /// The UI offers Stop-and-retry; nothing is killed automatically, because a long
@@ -333,7 +347,14 @@ final class ChatStore {
         isStreaming = value
     }
 
-    var pendingRuntimeReloadForTests: Bool { pendingRuntimeReload }
+    var pendingRuntimeReloadForTests: Bool { runtimeReloadQueue.hasPending }
+    var pendingSettingsApplyCountForTests: Int {
+        runtimeReloadQueue.pendingSettingsRequestCount
+    }
+    func applyQueuedRuntimeReloadsForTests() async {
+        isStreaming = false
+        await performCoalescedRuntimeReload()
+    }
     var savedGrokSessionIDForTests: String? { savedGrokSessionID }
 
     // MARK: - Workflow runs (grok `workflow` tools, mirrored by observing ACP tool calls)
@@ -1058,31 +1079,14 @@ final class ChatStore {
 
     func reloadConfiguration() async {
         guard currentWorkspace != nil else { return }
-        // Never kill an in-flight response for a wiring change — queue it like model
-        // changes are queued, and apply it when the turn completes.
+        runtimeReloadQueue.enqueueGeneralReload()
+        // Never kill an in-flight response for a wiring change. Every reload source
+        // joins one queue and drains once at the ordered turn-completion boundary.
         if isStreaming {
-            pendingRuntimeReload = true
             configurationStatusMessage = "Configuration changes will apply after the current response."
             return
         }
-        await performRuntimeReload()
-    }
-
-    /// Restarts with the current grok session resumed, so browser/computer-use/MCP/
-    /// permission wiring changes keep the live conversation context instead of silently
-    /// dropping it with a fresh `session/new`.
-    private func performRuntimeReload() async {
-        pendingRuntimeReload = false
-        if configurationStatusMessage == "Configuration changes will apply after the current response." {
-            configurationStatusMessage = nil
-        }
-        let resumeID = grokSessionId ?? savedGrokSessionID
-        await restartProcess(resumeSessionID: resumeID)
-        if connectionState == .ready {
-            appendSystemNote("Reloaded Grok configuration.")
-        } else {
-            configurationStatusMessage = lastError ?? "Grok configuration could not be reloaded."
-        }
+        await performCoalescedRuntimeReload()
     }
 
     /// Applies a typed config change without restarting unrelated live sessions.
@@ -1095,36 +1099,151 @@ final class ChatStore {
             return
         }
 
+        runtimeReloadQueue.enqueue(change)
         if isStreaming {
-            if var pending = pendingConfigurationChange {
-                pending.affectedModelIDs.formUnion(change.affectedModelIDs)
-                pendingConfigurationChange = pending
-            } else {
-                pendingConfigurationChange = change
-            }
             configurationStatusMessage = "Model changes will apply after the current response."
             return
         }
 
-        await applyRuntimeConfigurationChange()
+        await performCoalescedRuntimeReload()
     }
 
-    private func applyRuntimeConfigurationChange() async {
-        pendingConfigurationChange = nil
-        // One restart applies the whole current launch configuration, so a general
-        // reload queued during the same turn is satisfied here too.
-        pendingRuntimeReload = false
+    /// Applies one pane request to this exact tab. Streaming requests suspend until
+    /// the turn completes, then share one restart with any queued model/general reload.
+    func applySettingsRequest(_ request: SettingsApplyRequest) async -> SettingsApplyReceipt {
+        guard request.requiresProcessRestart,
+              request.applyScope == .activeTabRestart
+                || request.applyScope == .allEligibleLiveTabs else {
+            return .completed(
+                request: request,
+                status: .success,
+                summary: "Saved for future eligible sessions."
+            )
+        }
+        guard currentWorkspace != nil else {
+            return .completed(
+                request: request,
+                status: .success,
+                summary: "Saved; no project session is active."
+            )
+        }
+        guard settingsApplyTargetMatches(request.target) else {
+            return .completed(
+                request: request,
+                status: .failure,
+                summary: "The selected tab or process changed before Apply could start. Nothing was reconnected."
+            )
+        }
+        guard process.activeProcessGeneration != nil else {
+            return .completed(
+                request: request,
+                status: .success,
+                summary: "Saved; this tab has no live process and will use the setting when it starts."
+            )
+        }
+
+        return await withCheckedContinuation { continuation in
+            settingsApplyContinuations[request.id] = continuation
+            runtimeReloadQueue.enqueue(request)
+            if isStreaming {
+                configurationStatusMessage = "Settings saved. Restart queued until the current response finishes."
+            } else {
+                Task { [weak self] in
+                    await self?.performCoalescedRuntimeReload()
+                }
+            }
+        }
+    }
+
+    /// Restarts with the durable backend receipt and resolves every queued Settings
+    /// request against the resulting exact tab/backend/process generation.
+    private func performCoalescedRuntimeReload() async {
+        guard !isStreaming, !isApplyingConfiguration else { return }
+        let batch = runtimeReloadQueue.drain()
+        guard !batch.isEmpty else { return }
+
+        var validSettingsRequests: [SettingsApplyRequest] = []
+        for request in batch.settingsRequests {
+            guard settingsApplyTargetMatches(request.target) else {
+                finishSettingsApply(
+                    request,
+                    with: .completed(
+                        request: request,
+                        status: .failure,
+                        summary: "The tab, backend, or process generation changed while Apply was queued. The live process was left untouched."
+                    )
+                )
+                continue
+            }
+            validSettingsRequests.append(request)
+        }
+
+        let shouldRestart = batch.requestsGeneralReload
+            || !batch.affectedModelIDs.isEmpty
+            || validSettingsRequests.contains { $0.requiresProcessRestart }
+        guard shouldRestart, currentWorkspace != nil else {
+            for request in validSettingsRequests {
+                finishSettingsApply(
+                    request,
+                    with: .completed(
+                        request: request,
+                        status: .success,
+                        summary: "Saved for future eligible sessions."
+                    )
+                )
+            }
+            return
+        }
+
         isApplyingConfiguration = true
-        configurationStatusMessage = "Applying model configuration…"
-        let resumeID = grokSessionId ?? savedGrokSessionID
+        configurationStatusMessage = validSettingsRequests.isEmpty
+            ? "Applying configuration…"
+            : "Applying saved Settings to the current tab…"
+        let resumeID = durableGrokSessionID
         await restartProcess(resumeSessionID: resumeID)
         isApplyingConfiguration = false
-        if connectionState == .ready {
-            configurationStatusMessage = "Model configuration applied."
-            appendSystemNote("Applied updated model configuration.")
-        } else {
-            configurationStatusMessage = lastError ?? "Model configuration could not be applied."
+
+        let liveReceipt = effectiveSessionReceipt
+        for request in validSettingsRequests {
+            finishSettingsApply(
+                request,
+                with: SettingsApplyReceiptResolver.resolve(
+                    request: request,
+                    connectionIsReady: connectionState == .ready,
+                    liveReceipt: liveReceipt
+                )
+            )
         }
+
+        if connectionState == .ready {
+            if liveReceipt?.launchOutcome == .recoveryForked {
+                configurationStatusMessage = "Settings applied after a recovery fork; review the receipt."
+                appendSystemNote("Applied configuration after a disclosed session recovery fork.")
+            } else {
+                configurationStatusMessage = validSettingsRequests.isEmpty
+                    ? "Configuration applied."
+                    : "Settings are live in the current tab."
+                appendSystemNote("Applied updated configuration.")
+            }
+        } else {
+            configurationStatusMessage = lastError ?? "Saved Settings could not be applied to the current tab."
+        }
+
+        if runtimeReloadQueue.hasPending, !isStreaming {
+            await performCoalescedRuntimeReload()
+        }
+    }
+
+    private func settingsApplyTargetMatches(_ target: SettingsApplyTarget?) -> Bool {
+        guard let target else { return false }
+        return target == settingsApplyTarget
+    }
+
+    private func finishSettingsApply(
+        _ request: SettingsApplyRequest,
+        with receipt: SettingsApplyReceipt
+    ) {
+        settingsApplyContinuations.removeValue(forKey: request.id)?.resume(returning: receipt)
     }
 
     func startNewSession() async {
@@ -1826,16 +1945,10 @@ final class ChatStore {
             notifyMessagesChanged()
             activeTurnBackendSessionID = nil
             authoritativeTailAssistantID = nil
-            if pendingConfigurationChange != nil {
+            if runtimeReloadQueue.hasPending {
                 Task { [weak self] in
                     guard let self else { return }
-                    await self.applyRuntimeConfigurationChange()
-                    self.drainPromptQueueIfNeeded()
-                }
-            } else if pendingRuntimeReload {
-                Task { [weak self] in
-                    guard let self else { return }
-                    await self.performRuntimeReload()
+                    await self.performCoalescedRuntimeReload()
                     self.drainPromptQueueIfNeeded()
                 }
             } else {
@@ -1855,6 +1968,11 @@ final class ChatStore {
             messages.remove(at: idx)
         }
         notifyMessagesChanged()
+        if runtimeReloadQueue.hasPending {
+            Task { [weak self] in
+                await self?.performCoalescedRuntimeReload()
+            }
+        }
     }
 
     private func applyTurnSettlementDecision(_ decision: TurnSettlementCoordinator.Decision?) {
@@ -1941,6 +2059,23 @@ final class ChatStore {
         streamingMessageID = nil
         await process.stop()
         connectionState = .idle
+    }
+
+    /// LRU teardown may stop a mismatched process for safety, but it can adopt only
+    /// a receipt whose local tab, backend, and active generation match this store.
+    func shutdownForLRUEviction(
+        expectedTabID: UUID,
+        persistedBackendID: String?
+    ) async -> SessionProcessLRUDecision {
+        let durablePersistedID = savedGrokSessionID ?? persistedBackendID
+        let decision = SessionProcessLRUPolicy.decision(
+            expectedTabID: expectedTabID,
+            persistedBackendID: durablePersistedID,
+            activeProcessGeneration: process.activeProcessGeneration,
+            launchReceipt: process.launchReceipt
+        )
+        await shutdown()
+        return decision
     }
 
     /// Terminal variant of `shutdown()` for a closed tab or app quit: also ends the

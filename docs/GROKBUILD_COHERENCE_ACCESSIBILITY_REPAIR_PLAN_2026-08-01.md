@@ -3,7 +3,7 @@
 | Field | Value |
 |---|---|
 | Prepared | 2026-08-01 |
-| Status | Slices 0–4 implemented and installed-app accepted; Slices 5–11 remain unstarted |
+| Status | Slices 0–4 implemented and installed-app accepted; Slice 5 implemented with automated acceptance complete and installed-app acceptance pending |
 | Scope | Maintained SwiftUI app, current Grok CLI 0.2.118 contract, installed-app acceptance, and every unresolved hole from the Settings/startup/performance/backend-CPR audit |
 | Canonical worktree | /Users/jimmyschmitz/Desktop/Projects/MCP Servers/Grok Build/grok-build-desktop |
 | Canonical branch | codex/warm-glass-ui |
@@ -1588,7 +1588,7 @@ Exit:
 - Acceptance used no backend CPR, provider prompt/send, migrated-backend start, Grok ACP child, browser child, or app-owned Computer Use helper. The installed app had zero owned children and sampled 0.0% CPU across three one-second samples.
 - The v2 payload remains byte-identical at 7,902 bytes and SHA-256 `b9d760c004f74f88996d75ee83df5a2f5636ded80c6863a996c63442d5bacad7`. Authenticated v3 remains schema 3 with 24 records, committed marker, flush receipt, empty live fork ledger, and no live pending recovery choice.
 - Installed and packaged executables match at SHA-256 `d46319b537e40a54fd0de3773dfd58dbd8e205bdef699c03f9182879f34e2039`; deep/strict signing passes under Team `DD2GCQJVB4`, quarantine is absent, the immediate pre-Slice-4 app is recoverable at `/Users/jimmyschmitz/.Trash/GrokBuild-pre-slice-4-20260801-192858.app`, and the named pre-Slice-3 rollback remains at `/Users/jimmyschmitz/.Trash/GrokBuild-pre-slice-3-20260801-1857.app`.
-- Slice 5 remains unauthorized. No Settings apply-contract work was started.
+- Slice 5 was explicitly authorized after this receipt. Its code and automated acceptance are recorded below; the Slice 4 receipt and boundaries remain unchanged.
 
 ### Slice 5 — shared Settings state/apply contract
 
@@ -1607,6 +1607,13 @@ Exit:
 - one fixture pane demonstrates Draft → Saved → Restart required → Live;
 - queued restart is bound to exact tab/generation;
 - no @AppStorage-backed control claims a draft.
+
+#### Slice 5 implementation status — installed acceptance pending
+
+- The shared contract, Memory fixture pane, coalesced reload path, honest reconnect/fork receipt resolver, and process-LRU identity guard are implemented in the current tree.
+- The focused Settings/runtime/lifecycle filter completed 19 tests with 0 failures. `make test` completed 457 tests with 0 failures in 14.137 seconds.
+- The synthetic ACP fixture performs no provider send and proves that two Apply requests queued during streaming share exactly one reconnect while retaining the requested tab, backend, and process-generation identity.
+- Final code SHA, signed installed-app evidence, rollback path, persistence hashes, and publication receipt will be added only after the clean code-bearing commit is built and visibly accepted.
 
 ### Slice 6 — priority launch panes
 

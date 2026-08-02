@@ -71,8 +71,297 @@ final class SessionLifecycleTests: XCTestCase {
     }
 }
 
-/// Slice-5 contracts: one-shot helper subprocesses drain their pipes and cannot wedge
-/// their caller forever.
+final class SettingsRuntimeContractTests: XCTestCase {
+    private func request(
+        id: UUID = UUID(),
+        tabID: UUID,
+        backendID: String = "backend-a",
+        generation: UInt64 = 7
+    ) -> SettingsApplyRequest {
+        SettingsApplyRequest(
+            id: id,
+            configurationGeneration: 3,
+            capability: .memory,
+            persistenceOwner: .userDefaults,
+            applyScope: .activeTabRestart,
+            requiresProcessRestart: true,
+            redactedSummary: "Memory launch setting saved.",
+            target: SettingsApplyTarget(
+                localTabID: tabID,
+                backendSessionID: backendID,
+                processGeneration: generation
+            )
+        )
+    }
+
+    private func liveReceipt(
+        tabID: UUID,
+        backendID: String,
+        generation: UInt64,
+        outcome: GrokLaunchOutcome
+    ) -> EffectiveSessionReceipt {
+        var receipt = GrokLaunchReceipt(
+            options: GrokLaunchOptions(
+                localTabID: tabID,
+                experimentalMemory: true,
+                resumeSessionID: backendID
+            ),
+            workspaceID: UUID(),
+            processIdentifier: 42,
+            processGeneration: generation
+        )
+        receipt.backendSessionID = backendID
+        receipt.outcome = outcome
+        return receipt.effectiveSessionReceipt(activeProcessGeneration: generation)
+    }
+
+    func testRuntimeReloadQueueCoalescesGeneralModelAndSettingsChanges() {
+        let tabID = UUID()
+        let firstID = UUID()
+        var queue = RuntimeConfigurationReloadQueue()
+        queue.enqueueGeneralReload()
+        queue.enqueue(.models(["model-a"]))
+        queue.enqueue(.models(["model-b", "model-a"]))
+        queue.enqueue(request(id: firstID, tabID: tabID))
+        queue.enqueue(request(id: firstID, tabID: tabID))
+        queue.enqueue(request(tabID: tabID))
+
+        XCTAssertTrue(queue.hasPending)
+        let batch = queue.drain()
+        XCTAssertTrue(batch.requestsGeneralReload)
+        XCTAssertEqual(batch.affectedModelIDs, ["model-a", "model-b"])
+        XCTAssertEqual(batch.settingsRequests.count, 2)
+        XCTAssertFalse(queue.hasPending)
+    }
+
+    func testApplyReceiptRequiresExactNewerTabBackendAndGeneration() {
+        let tabID = UUID()
+        let apply = request(tabID: tabID)
+        let accepted = SettingsApplyReceiptResolver.resolve(
+            request: apply,
+            connectionIsReady: true,
+            liveReceipt: liveReceipt(
+                tabID: tabID,
+                backendID: "backend-a",
+                generation: 8,
+                outcome: .loaded
+            )
+        )
+        XCTAssertEqual(accepted.status, .success)
+
+        let wrongTab = SettingsApplyReceiptResolver.resolve(
+            request: apply,
+            connectionIsReady: true,
+            liveReceipt: liveReceipt(
+                tabID: UUID(),
+                backendID: "backend-a",
+                generation: 8,
+                outcome: .loaded
+            )
+        )
+        XCTAssertEqual(wrongTab.status, .failure)
+
+        let wrongBackend = SettingsApplyReceiptResolver.resolve(
+            request: apply,
+            connectionIsReady: true,
+            liveReceipt: liveReceipt(
+                tabID: tabID,
+                backendID: "backend-b",
+                generation: 8,
+                outcome: .loaded
+            )
+        )
+        XCTAssertEqual(wrongBackend.status, .failure)
+
+        let staleGeneration = SettingsApplyReceiptResolver.resolve(
+            request: apply,
+            connectionIsReady: true,
+            liveReceipt: liveReceipt(
+                tabID: tabID,
+                backendID: "backend-a",
+                generation: 7,
+                outcome: .loaded
+            )
+        )
+        XCTAssertEqual(staleGeneration.status, .failure)
+    }
+
+    func testRecoveryForkIsPartialRatherThanFalseSuccess() {
+        let tabID = UUID()
+        let apply = request(tabID: tabID)
+        let forked = SettingsApplyReceiptResolver.resolve(
+            request: apply,
+            connectionIsReady: true,
+            liveReceipt: liveReceipt(
+                tabID: tabID,
+                backendID: "backend-b",
+                generation: 8,
+                outcome: .recoveryForked
+            )
+        )
+        XCTAssertEqual(forked.status, .partial)
+        XCTAssertEqual(forked.effectiveSession?.launchOutcome, .recoveryForked)
+        XCTAssertTrue(forked.accessibilityValue.contains("Partially applied"))
+    }
+
+    func testProcessLRUNeverAdoptsMismatchedIdentity() {
+        let tabID = UUID()
+        var launch = GrokLaunchReceipt(
+            options: GrokLaunchOptions(localTabID: tabID, resumeSessionID: "backend-a"),
+            processGeneration: 9
+        )
+        launch.backendSessionID = "backend-a"
+        launch.outcome = .loaded
+
+        XCTAssertEqual(
+            SessionProcessLRUPolicy.decision(
+                expectedTabID: tabID,
+                persistedBackendID: "backend-a",
+                activeProcessGeneration: 9,
+                launchReceipt: launch
+            ),
+            .evictVerified(preservedBackendID: "backend-a")
+        )
+
+        launch.backendSessionID = "backend-b"
+        XCTAssertEqual(
+            SessionProcessLRUPolicy.decision(
+                expectedTabID: tabID,
+                persistedBackendID: "backend-a",
+                activeProcessGeneration: 9,
+                launchReceipt: launch
+            ),
+            .evictWithoutAdoptingMismatchedReceipt(preservedBackendID: "backend-a")
+        )
+
+        XCTAssertEqual(
+            SessionProcessLRUPolicy.decision(
+                expectedTabID: UUID(),
+                persistedBackendID: "backend-a",
+                activeProcessGeneration: 9,
+                launchReceipt: launch
+            ),
+            .evictWithoutAdoptingMismatchedReceipt(preservedBackendID: "backend-a")
+        )
+    }
+
+    @MainActor
+    func testStreamingSettingsRequestsShareOneExactReconnect() async throws {
+        let fixtureRoot = FileManager.default.temporaryDirectory
+            .appendingPathComponent("grokbuild-settings-reload-\(UUID().uuidString)", isDirectory: true)
+        let grokHome = fixtureRoot.appendingPathComponent("grok-home", isDirectory: true)
+        let workspaceURL = fixtureRoot.appendingPathComponent("workspace", isDirectory: true)
+        try FileManager.default.createDirectory(at: workspaceURL, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: fixtureRoot) }
+
+        let previousGrokHome = GrokSessionTranscriptImporter.grokHomeDirectory
+        GrokSessionTranscriptImporter.grokHomeDirectory = grokHome
+        defer { GrokSessionTranscriptImporter.grokHomeDirectory = previousGrokHome }
+
+        let backendID = "settings-reload-backend"
+        let historyURL = try XCTUnwrap(GrokSessionTranscriptImporter.chatHistoryURL(
+            workspacePath: workspaceURL,
+            grokSessionID: backendID
+        ))
+        try FileManager.default.createDirectory(
+            at: historyURL.deletingLastPathComponent(),
+            withIntermediateDirectories: true
+        )
+        try """
+        {"type":"user","content":"synthetic settings fixture"}
+        {"type":"assistant","content":"synthetic fixture complete"}
+        """.write(to: historyURL, atomically: true, encoding: .utf8)
+
+        let launchLog = fixtureRoot.appendingPathComponent("launches.log")
+        let scriptURL = fixtureRoot.appendingPathComponent("fake-grok")
+        let script = """
+        #!/bin/sh
+        printf '%s\\n' "$*" >> '\(launchLog.path)'
+        while IFS= read -r line; do
+          id=$(printf '%s' "$line" | sed -E 's/.*"id":([0-9]+).*/\\1/')
+          case "$line" in
+            *'"method":"initialize"'*)
+              printf '{"jsonrpc":"2.0","id":%s,"result":{}}\\n' "$id"
+              ;;
+            *'"method":"session/load"'*)
+              printf '{"jsonrpc":"2.0","id":%s,"result":{}}\\n' "$id"
+              ;;
+          esac
+        done
+        """
+        try script.write(to: scriptURL, atomically: true, encoding: .utf8)
+        try FileManager.default.setAttributes(
+            [.posixPermissions: 0o755],
+            ofItemAtPath: scriptURL.path
+        )
+        GrokProcess.cliOverrideForTests = scriptURL
+        defer { GrokProcess.cliOverrideForTests = nil }
+
+        let tabID = UUID()
+        let workspace = Workspace(name: "fixture", path: workspaceURL)
+        let store = ChatStore(continuityKeyOverride: Data(repeating: 0x42, count: 32))
+        store.prepare(workspace: workspace, savedGrokSessionID: backendID)
+        store.restorePersistedMessages([
+            Message(role: .user, content: "synthetic settings fixture"),
+            Message(role: .assistant, content: "synthetic fixture complete"),
+        ])
+        store.bindTabSession(
+            tabID,
+            modelIntent: .inheritProjectDefault,
+            savedGrokSessionID: backendID
+        )
+        await store.start(
+            workspace: workspace,
+            resumeSession: GrokSessionInfo(
+                id: backendID,
+                created: "",
+                updated: "",
+                status: "",
+                summary: ""
+            ),
+            preserveMessages: true
+        )
+        XCTAssertEqual(store.connectionState, .ready)
+        XCTAssertEqual(store.effectiveSessionReceipt?.processGeneration, 1)
+
+        store.setStreamingForTests(true)
+        let first = request(tabID: tabID, backendID: backendID, generation: 1)
+        let second = SettingsApplyRequest(
+            configurationGeneration: 4,
+            capability: .permissions,
+            persistenceOwner: .userDefaults,
+            applyScope: .activeTabRestart,
+            requiresProcessRestart: true,
+            redactedSummary: "Permission launch settings saved.",
+            target: store.settingsApplyTarget
+        )
+        let firstTask = Task { await store.applySettingsRequest(first) }
+        let secondTask = Task { await store.applySettingsRequest(second) }
+        for _ in 0..<100 where store.pendingSettingsApplyCountForTests < 2 {
+            await Task.yield()
+        }
+        XCTAssertEqual(store.pendingSettingsApplyCountForTests, 2)
+        XCTAssertEqual(
+            store.configurationStatusMessage,
+            "Settings saved. Restart queued until the current response finishes."
+        )
+
+        await store.applyQueuedRuntimeReloadsForTests()
+        let receipts = await [firstTask.value, secondTask.value]
+        XCTAssertEqual(receipts.map(\.status), [.success, .success])
+        XCTAssertEqual(store.effectiveSessionReceipt?.processGeneration, 2)
+        XCTAssertEqual(store.effectiveSessionReceipt?.backendSessionID, backendID)
+        XCTAssertEqual(store.effectiveSessionReceipt?.localTabID, tabID)
+
+        let launches = try String(contentsOf: launchLog, encoding: .utf8)
+            .split(whereSeparator: \.isNewline)
+        XCTAssertEqual(launches.count, 2, "two queued Apply requests must share one reconnect")
+        await store.shutdownPermanently()
+    }
+}
+
+/// Earlier subprocess-hygiene contracts: one-shot helpers drain their pipes and cannot
+/// wedge their caller forever. Kept distinct from the coherence plan's Settings Slice 5.
 final class SubprocessHygieneTests: XCTestCase {
     private let bigOutputScript =
         "i=0; while [ $i -lt 300 ]; do printf '%01024d' 0; i=$((i+1)); done"
