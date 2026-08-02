@@ -193,6 +193,75 @@ final class SettingsTabTests: XCTestCase {
         XCTAssertTrue(memory.contains("valueState.canApply"))
         XCTAssertTrue(memory.contains("SettingsReceiptDisclosure"))
     }
+
+    func testSliceSixPanesUseSharedDraftStateAndUnmountCancellation() throws {
+        let repositoryRoot = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        let source = try String(
+            contentsOf: repositoryRoot.appendingPathComponent("GrokBuild/Views/SettingsView.swift"),
+            encoding: .utf8
+        )
+        let paneNames = [
+            "AgentsSettingsPane",
+            "CustomModelsSettingsPane",
+            "PermissionsSettingsPane",
+            "MemorySettingsPane",
+            "BrowserSettingsPane",
+            "ComputerUseSettingsPane",
+        ]
+        for pane in paneNames {
+            let start = try XCTUnwrap(source.range(of: "private struct \(pane)"))
+            let remainder = source[start.lowerBound...]
+            let next = remainder.dropFirst().range(of: "\nprivate struct ")?.lowerBound
+                ?? remainder.endIndex
+            let body = String(remainder[..<next])
+            XCTAssertTrue(body.contains("@Binding var valueState"), "\(pane) must receive parent-owned state")
+            XCTAssertFalse(body.contains("@AppStorage"), "\(pane) must not persist while a control is edited")
+        }
+
+        XCTAssertTrue(source.contains("Hidden panes unmount and"))
+        XCTAssertTrue(source.contains("guard !Task.isCancelled else { return }"))
+    }
+
+    func testPermissionDraftPersistsOnlyAtExplicitBoundary() {
+        let suite = "SettingsTabTests.\(UUID().uuidString)"
+        guard let defaults = UserDefaults(suiteName: suite) else {
+            return XCTFail("Could not create isolated defaults suite")
+        }
+        defer { defaults.removePersistentDomain(forName: suite) }
+
+        var draft = PermissionSettingsDraft.defaults
+        draft.permissionMode = GrokPermissionMode.alwaysApprove.rawValue
+        draft.allowRules = "Bash(git *)"
+        XCTAssertNil(defaults.object(forKey: GrokSettingsKeys.permissionMode))
+        XCTAssertNil(defaults.object(forKey: GrokSettingsKeys.allowRules))
+
+        draft.save(to: defaults)
+        XCTAssertEqual(
+            defaults.string(forKey: GrokSettingsKeys.permissionMode),
+            GrokPermissionMode.alwaysApprove.rawValue
+        )
+        XCTAssertEqual(defaults.string(forKey: GrokSettingsKeys.allowRules), "Bash(git *)")
+    }
+
+    func testComputerUsePaneStateKeepsExternalIntegrationInTheSameDraft() {
+        let original = ComputerUsePaneSettings.defaults
+        var state = SettingsValueState<ComputerUsePaneSettings>.unloaded(default: original)
+        state.load(persisted: original, applied: original, live: nil)
+
+        var changed = original
+        changed.settings.includeScreenshots = true
+        changed.cursorIntegrationEnabled = true
+        state.updateDraft(changed)
+
+        XCTAssertTrue(state.isDirty)
+        XCTAssertTrue(state.canApply)
+        XCTAssertEqual(state.status, .draft)
+        XCTAssertFalse(state.persisted.settings.includeScreenshots)
+        XCTAssertFalse(state.persisted.cursorIntegrationEnabled)
+    }
 }
 
 private extension SettingsValueStatus {

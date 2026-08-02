@@ -109,6 +109,17 @@ struct SettingsView: View {
         default: GrokPermissionSettings.defaults.memoryEnabled
     )
     @State private var memoryLoadState = SettingsLoadState.checking
+    @State private var agentValueState = SettingsValueState<String>.unloaded(default: "")
+    @State private var modelValueState = SettingsValueState<String>.unloaded(default: "")
+    @State private var permissionValueState = SettingsValueState<PermissionSettingsDraft>.unloaded(
+        default: .defaults
+    )
+    @State private var browserValueState = SettingsValueState<BrowserSettings>.unloaded(
+        default: .defaults
+    )
+    @State private var computerUseValueState = SettingsValueState<ComputerUsePaneSettings>.unloaded(
+        default: .defaults
+    )
     @State private var paneLoadInterval: GrokBuildPerformanceInterval?
 
     var body: some View {
@@ -233,18 +244,29 @@ struct SettingsView: View {
     private func settingsPane(for tab: SettingsTab) -> some View {
         switch tab {
         case .agents:
-            AgentsSettingsPane(workspace: store.currentWorkspace) {
-                Task { await store.reloadConfiguration() }
-            }
+            AgentsSettingsPane(
+                workspace: store.currentWorkspace,
+                valueState: $agentValueState,
+                liveReceipt: store.effectiveSessionReceipt,
+                onApply: onSettingsApplyRequest
+            )
             .settingsPaneColumn()
 
         case .models:
-            CustomModelsSettingsPane(onConfigurationChanged: onConfigurationChanged)
+            CustomModelsSettingsPane(
+                valueState: $modelValueState,
+                liveReceipt: store.effectiveSessionReceipt,
+                onApply: onSettingsApplyRequest,
+                onConfigurationChanged: onConfigurationChanged
+            )
 
         case .permissions:
-            PermissionsSettingsPane {
-                Task { await store.reloadConfiguration() }
-            }
+            PermissionsSettingsPane(
+                valueState: $permissionValueState,
+                liveReceipt: store.effectiveSessionReceipt,
+                configurationStatusMessage: store.configurationStatusMessage,
+                onApply: onSettingsApplyRequest
+            )
 
         case .memory:
             MemorySettingsPane(
@@ -261,14 +283,20 @@ struct SettingsView: View {
             }
 
         case .browser:
-            BrowserSettingsPane {
-                Task { await store.reloadConfiguration() }
-            }
+            BrowserSettingsPane(
+                valueState: $browserValueState,
+                liveReceipt: store.effectiveSessionReceipt,
+                configurationStatusMessage: store.configurationStatusMessage,
+                onApply: onSettingsApplyRequest
+            )
 
         case .computerUse:
-            ComputerUseSettingsPane {
-                Task { await store.reloadConfiguration() }
-            }
+            ComputerUseSettingsPane(
+                valueState: $computerUseValueState,
+                liveReceipt: store.effectiveSessionReceipt,
+                configurationStatusMessage: store.configurationStatusMessage,
+                onApply: onSettingsApplyRequest
+            )
 
         case .mcpServers:
             MCPSettingsPane {
@@ -622,16 +650,10 @@ private extension View {
 }
 
 private struct BrowserSettingsPane: View {
-    let onConfigurationChanged: () -> Void
-
-    @AppStorage(BrowserSettingsKeys.enabled) private var enabled = BrowserSettings.defaults.enabled
-    @AppStorage(BrowserSettingsKeys.runtimeMode) private var runtimeMode = BrowserSettings.defaults.runtimeMode.rawValue
-    @AppStorage(BrowserSettingsKeys.cdpURL) private var cdpURL = BrowserSettings.defaults.cdpURL
-    @AppStorage(BrowserSettingsKeys.profileName) private var profileName = BrowserSettings.defaults.profileName
-    @AppStorage(BrowserSettingsKeys.showBrowserWindow) private var showBrowserWindow = BrowserSettings.defaults.showBrowserWindow
-    @AppStorage(BrowserSettingsKeys.externalBrowserAppID) private var externalBrowserAppID = BrowserSettings.defaults.externalBrowserAppID.rawValue
-    @AppStorage(BrowserSettingsKeys.externalBrowserAppPath) private var externalBrowserAppPath = BrowserSettings.defaults.externalBrowserAppPath
-    @AppStorage(BrowserSettingsKeys.autoStartExternalBrowser) private var autoStartExternalBrowser = BrowserSettings.defaults.autoStartExternalBrowser
+    @Binding var valueState: SettingsValueState<BrowserSettings>
+    let liveReceipt: EffectiveSessionReceipt?
+    let configurationStatusMessage: String?
+    let onApply: (SettingsApplyRequest) async -> SettingsApplyReceipt
 
     @State private var status = BrowserBackendStatus.unavailable
     @State private var externalStatus = ExternalBrowserStatus.unavailable(endpoint: "http://127.0.0.1:9222")
@@ -644,7 +666,7 @@ private struct BrowserSettingsPane: View {
     @State private var showQuickPresets = false
     @State private var showDiagnosticsLog = false
     @State private var showRuntimeUninstallConfirmation = false
-    @State private var appliedSettings = BrowserSettingsStore.loadApplied()
+    @State private var isApplying = false
 
     var body: some View {
         ScrollView {
@@ -661,8 +683,18 @@ private struct BrowserSettingsPane: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .background(AppTheme.Palette.canvas)
         .task {
+            await loadPersistedState()
             normalizeExternalBrowserSelection()
             await refreshStatus()
+        }
+        .onChange(of: liveReceipt) { _, receipt in
+            let liveEnabled = receipt?.freshness == .live ? receipt?.browserEnabled : nil
+            let liveSettings = liveEnabled.map { enabled in
+                var settings = valueState.applied
+                settings.enabled = enabled
+                return settings
+            }
+            valueState.refreshLive(liveSettings)
         }
         .alert("Uninstall Managed Browser Runtime?", isPresented: $showRuntimeUninstallConfirmation) {
             Button("Cancel", role: .cancel) {}
@@ -691,7 +723,7 @@ private struct BrowserSettingsPane: View {
                 SettingsToggleRow(
                     "Allow browser control",
                     subtitle: "Available in new and resumed sessions.",
-                    isOn: $enabled
+                    isOn: enabledBinding
                 )
             }
         }
@@ -819,13 +851,7 @@ private struct BrowserSettingsPane: View {
 
     private func applyBrowserPreset(_ preset: BrowserPreset) {
         let applied = preset.applied(to: currentSettings)
-        runtimeMode = applied.runtimeMode.rawValue
-        externalBrowserAppID = applied.externalBrowserAppID.rawValue
-        externalBrowserAppPath = applied.externalBrowserAppPath
-        cdpURL = applied.cdpURL
-        profileName = applied.profileName
-        showBrowserWindow = applied.showBrowserWindow
-        autoStartExternalBrowser = applied.autoStartExternalBrowser
+        valueState.updateDraft(applied)
         normalizeExternalBrowserSelection()
     }
 
@@ -849,12 +875,12 @@ private struct BrowserSettingsPane: View {
                         SettingsToggleRow(
                             "Show browser window while agents work",
                             subtitle: "Opens the managed automation browser visibly instead of keeping it headless. Apply and restart Grok after changing this.",
-                            isOn: $showBrowserWindow
+                            isOn: showBrowserWindowBinding
                         )
 
                         HStack {
                             Button("Use Managed Runtime") {
-                                runtimeMode = BrowserRuntimeMode.managed.rawValue
+                                mutateDraft { $0.runtimeMode = .managed }
                             }
                             .disabled(selectedRuntimeMode == .managed)
 
@@ -904,7 +930,7 @@ private struct BrowserSettingsPane: View {
                             .foregroundStyle(.secondary)
 
                         settingRow("Browser app") {
-                            Picker("", selection: $externalBrowserAppID) {
+                            Picker("", selection: externalBrowserAppIDBinding) {
                                 ForEach(externalBrowserChoices) { app in
                                     Text(app.displayName).tag(app.rawValue)
                                 }
@@ -922,7 +948,7 @@ private struct BrowserSettingsPane: View {
                         if selectedExternalBrowserApp == .custom {
                             settingRow("Custom app") {
                                 HStack {
-                                    TextField("Path to Chromium .app", text: $externalBrowserAppPath)
+                                    TextField("Path to Chromium .app", text: externalBrowserAppPathBinding)
                                         .textFieldStyle(.roundedBorder)
                                     Button("Choose...") {
                                         chooseExternalBrowserApp()
@@ -934,11 +960,11 @@ private struct BrowserSettingsPane: View {
                         SettingsToggleRow(
                             "Start this browser automatically when Grok starts",
                             subtitle: "Uses a separate GrokBuild profile, not your normal logged-in browser profile.",
-                            isOn: $autoStartExternalBrowser
+                            isOn: autoStartExternalBrowserBinding
                         )
 
                         settingRow("CDP URL") {
-                            TextField("For the command below: http://127.0.0.1:9222", text: $cdpURL)
+                            TextField("For the command below: http://127.0.0.1:9222", text: cdpURLBinding)
                                 .textFieldStyle(.roundedBorder)
                         }
 
@@ -961,15 +987,21 @@ private struct BrowserSettingsPane: View {
 
                         HStack {
                             Button("Use Existing Browser") {
-                                runtimeMode = BrowserRuntimeMode.external.rawValue
-                                cdpURL = defaultCDPURL
-                                autoStartExternalBrowser = true
+                                mutateDraft {
+                                    $0.runtimeMode = .external
+                                    $0.cdpURL = defaultCDPURL
+                                    $0.autoStartExternalBrowser = true
+                                }
                             }
 
                             Button(isStartingExternalBrowser ? "Starting..." : "Start Browser Now") {
                                 Task { await startExternalBrowser() }
                             }
-                            .disabled(isStartingExternalBrowser)
+                            .disabled(
+                                isStartingExternalBrowser
+                                    || valueState.isDirty
+                                    || appliedSettings.runtimeMode != .external
+                            )
 
                             Button("Check Status") {
                                 Task { await refreshExternalBrowserStatus() }
@@ -998,7 +1030,7 @@ private struct BrowserSettingsPane: View {
                             .foregroundStyle(.secondary)
 
                         settingRow("Session name") {
-                            TextField("Optional named browser session", text: $profileName)
+                            TextField("Optional named browser session", text: profileNameBinding)
                                 .textFieldStyle(.roundedBorder)
                         }
                     }
@@ -1012,40 +1044,36 @@ private struct BrowserSettingsPane: View {
     }
 
     private var applyCard: some View {
-        HStack {
-            VStack(alignment: .leading, spacing: 3) {
-                Text("Apply changes")
-                    .font(.headline)
-                Text(hasPendingBrowserChanges ? "Restarts the active Grok connection." : "Browser settings are current.")
+        VStack(alignment: .leading, spacing: 10) {
+            SettingsApplyBar(
+                canApply: valueState.canApply,
+                isApplying: isApplying,
+                scopeText: "Saves Browser settings and restarts only the current live tab. Diagnostics remain read-only.",
+                validationMessage: valueState.validation.message,
+                receipt: valueState.lastOperationReceipt,
+                onRevert: { valueState.revert() },
+                onApply: { Task { await applyChanges() } }
+            )
+            SettingsReceiptDisclosure(receipt: valueState.lastOperationReceipt)
+            if let configurationStatusMessage, isApplying {
+                Text(configurationStatusMessage)
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
-            Spacer()
-            Button("Apply Changes") {
-                appliedSettings = currentSettings
-                BrowserSettingsStore.saveApplied(currentSettings)
-                onConfigurationChanged()
-            }
-            .buttonStyle(.borderedProminent)
-            .disabled(!hasPendingBrowserChanges)
         }
-        .padding(14)
-        .background(
-            RoundedRectangle(cornerRadius: AppTheme.Radius.medium, style: .continuous)
-                .fill(hasPendingBrowserChanges ? AppTheme.Palette.surfaceHover : AppTheme.Palette.surface)
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: AppTheme.Radius.medium, style: .continuous)
-                .stroke(hasPendingBrowserChanges ? AppTheme.Palette.glassBorderStrong : AppTheme.Palette.glassBorder)
-        )
     }
 
     @MainActor
     private func refreshStatus() async {
         isChecking = true
         defer { isChecking = false }
-        status = await AgentBrowserService.status()
-        externalStatus = await AgentBrowserService.externalBrowserStatus(settings: currentSettings)
+        async let browserStatus = AgentBrowserService.status()
+        async let browserExternalStatus = AgentBrowserService.externalBrowserStatus(settings: appliedSettings)
+        let resolvedStatus = await browserStatus
+        let resolvedExternalStatus = await browserExternalStatus
+        guard !Task.isCancelled else { return }
+        status = resolvedStatus
+        externalStatus = resolvedExternalStatus
     }
 
     @MainActor
@@ -1074,20 +1102,16 @@ private struct BrowserSettingsPane: View {
 
     @MainActor
     private func startExternalBrowser() async {
-        runtimeMode = BrowserRuntimeMode.external.rawValue
-        if cdpURL.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            cdpURL = defaultCDPURL
-        }
         isStartingExternalBrowser = true
         externalBrowserOutput = "Starting \(selectedExternalBrowserApp.displayName) with a separate GrokBuild automation profile..."
         defer { isStartingExternalBrowser = false }
 
         do {
-            externalStatus = try await AgentBrowserService.launchExternalBrowser(settings: currentSettings)
+            externalStatus = try await AgentBrowserService.launchExternalBrowser(settings: appliedSettings)
             externalBrowserOutput = externalStatus.diagnostic
         } catch {
             externalBrowserOutput = error.localizedDescription
-            externalStatus = await AgentBrowserService.externalBrowserStatus(settings: currentSettings)
+            externalStatus = await AgentBrowserService.externalBrowserStatus(settings: appliedSettings)
         }
     }
 
@@ -1095,7 +1119,7 @@ private struct BrowserSettingsPane: View {
     private func refreshExternalBrowserStatus() async {
         isChecking = true
         defer { isChecking = false }
-        externalStatus = await AgentBrowserService.externalBrowserStatus(settings: currentSettings)
+        externalStatus = await AgentBrowserService.externalBrowserStatus(settings: appliedSettings)
     }
 
     private func chooseExternalBrowserApp() {
@@ -1108,13 +1132,15 @@ private struct BrowserSettingsPane: View {
         panel.canChooseFiles = true
 
         if panel.runModal() == .OK, let url = panel.url {
-            externalBrowserAppID = ExternalBrowserAppID.custom.rawValue
-            externalBrowserAppPath = url.path
+            mutateDraft {
+                $0.externalBrowserAppID = .custom
+                $0.externalBrowserAppPath = url.path
+            }
         }
     }
 
     private var statusBadge: some View {
-        let text = enabled ? (status.isReady ? "Ready" : "Setup needed") : "Disabled"
+        let text = appliedSettings.enabled ? (status.isReady ? "Ready" : "Setup needed") : "Disabled"
 
         return Text(text)
             .font(.caption.weight(.semibold))
@@ -1122,11 +1148,11 @@ private struct BrowserSettingsPane: View {
     }
 
     private var selectedExternalBrowserApp: ExternalBrowserAppID {
-        ExternalBrowserAppID(rawValue: externalBrowserAppID) ?? BrowserSettings.defaults.externalBrowserAppID
+        currentSettings.externalBrowserAppID
     }
 
     private var selectedRuntimeMode: BrowserRuntimeMode {
-        BrowserRuntimeMode(rawValue: runtimeMode) ?? BrowserSettings.defaults.runtimeMode
+        currentSettings.runtimeMode
     }
 
     private var installedKnownExternalBrowsers: [ExternalBrowserAppID] {
@@ -1141,7 +1167,7 @@ private struct BrowserSettingsPane: View {
 
     private func normalizeExternalBrowserSelection() {
         guard !externalBrowserChoices.contains(selectedExternalBrowserApp) else { return }
-        externalBrowserAppID = installedKnownExternalBrowsers.first?.rawValue ?? ExternalBrowserAppID.custom.rawValue
+        mutateDraft { $0.externalBrowserAppID = installedKnownExternalBrowsers.first ?? .custom }
     }
 
     private var externalBrowserLaunchCommand: String {
@@ -1153,7 +1179,7 @@ private struct BrowserSettingsPane: View {
             return externalStatus.browserName.map { "External browser running: \($0)" }
                 ?? "External browser running at \(externalStatus.endpoint)"
         }
-        if selectedExternalBrowserApp == .custom && externalBrowserAppPath.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+        if selectedExternalBrowserApp == .custom && currentSettings.externalBrowserAppPath.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             return "Choose a Chromium app to start automatically"
         }
         return "External browser not running yet"
@@ -1173,22 +1199,93 @@ private struct BrowserSettingsPane: View {
         return "Install agent-browser CLI first"
     }
 
-    private var currentSettings: BrowserSettings {
-        BrowserSettings(
-            enabled: enabled,
-            runtimeMode: selectedRuntimeMode,
-            cdpURL: cdpURL,
-            profileName: profileName,
-            showBrowserWindow: showBrowserWindow,
-            externalBrowserAppID: ExternalBrowserAppID(rawValue: externalBrowserAppID)
-                ?? BrowserSettings.defaults.externalBrowserAppID,
-            externalBrowserAppPath: externalBrowserAppPath,
-            autoStartExternalBrowser: autoStartExternalBrowser
+    private var currentSettings: BrowserSettings { valueState.draft }
+    private var appliedSettings: BrowserSettings { valueState.applied }
+
+    private func mutateDraft(_ body: (inout BrowserSettings) -> Void) {
+        var draft = valueState.draft
+        body(&draft)
+        valueState.updateDraft(draft)
+    }
+
+    private func binding<Value>(_ keyPath: WritableKeyPath<BrowserSettings, Value>) -> Binding<Value> {
+        Binding(
+            get: { valueState.draft[keyPath: keyPath] },
+            set: { newValue in
+                mutateDraft { $0[keyPath: keyPath] = newValue }
+            }
         )
     }
 
+    private var enabledBinding: Binding<Bool> { binding(\.enabled) }
+    private var cdpURLBinding: Binding<String> { binding(\.cdpURL) }
+    private var profileNameBinding: Binding<String> { binding(\.profileName) }
+    private var showBrowserWindowBinding: Binding<Bool> { binding(\.showBrowserWindow) }
+    private var externalBrowserAppIDBinding: Binding<String> {
+        Binding(
+            get: { valueState.draft.externalBrowserAppID.rawValue },
+            set: { raw in
+                mutateDraft {
+                    $0.externalBrowserAppID = ExternalBrowserAppID(rawValue: raw)
+                        ?? BrowserSettings.defaults.externalBrowserAppID
+                }
+            }
+        )
+    }
+    private var externalBrowserAppPathBinding: Binding<String> { binding(\.externalBrowserAppPath) }
+    private var autoStartExternalBrowserBinding: Binding<Bool> { binding(\.autoStartExternalBrowser) }
+
+    @MainActor
+    private func loadPersistedState() async {
+        guard !valueState.isLoaded else { return }
+        await Task.yield()
+        guard !Task.isCancelled else { return }
+        let saved = BrowserSettingsStore.load()
+        let applied = BrowserSettingsStore.loadApplied()
+        let liveEnabled = liveReceipt?.freshness == .live ? liveReceipt?.browserEnabled : nil
+        let live = liveEnabled.map { enabled in
+            var settings = applied
+            settings.enabled = enabled
+            return settings
+        }
+        valueState.load(persisted: saved, applied: applied, live: live)
+    }
+
+    @MainActor
+    private func applyChanges() async {
+        guard valueState.canApply else { return }
+        let draft = valueState.draft
+        let request = SettingsApplyRequest(
+            configurationGeneration: valueState.configurationGeneration + 1,
+            capability: .browser,
+            persistenceOwner: .userDefaults,
+            applyScope: .activeTabRestart,
+            requiresProcessRestart: true,
+            redactedSummary: "Saved Browser settings; applying them to the current live tab when eligible."
+        )
+        BrowserSettingsStore.save(draft)
+        BrowserSettingsStore.saveApplied(draft)
+        valueState.recordSaved(
+            applied: draft,
+            requiresRestart: liveReceipt?.freshness == .live,
+            receipt: request.receipt
+        )
+        isApplying = true
+        let receipt = await onApply(request)
+        isApplying = false
+        guard !Task.isCancelled else { return }
+        let live = receipt.effectiveSession?.freshness == .live
+            ? receipt.effectiveSession.map { receipt in
+                var settings = draft
+                settings.enabled = receipt.browserEnabled
+                return settings
+            }
+            : nil
+        valueState.complete(receipt: receipt, live: live)
+    }
+
     private var hasPendingBrowserChanges: Bool {
-        currentSettings != appliedSettings
+        valueState.isDirty
     }
 
     private var browserStatusTitle: String {
@@ -2052,11 +2149,11 @@ private struct SkillsSettingsPane: View {
 
 private struct AgentsSettingsPane: View {
     let workspace: Workspace?
-    let onConfigurationChanged: () -> Void
+    @Binding var valueState: SettingsValueState<String>
+    let liveReceipt: EffectiveSessionReceipt?
+    let onApply: (SettingsApplyRequest) async -> SettingsApplyReceipt
 
     private let service = GrokCLIService()
-    @AppStorage(GrokSettingsKeys.selectedAgent) private var selectedAgent = ""
-    @State private var appliedAgent = UserDefaults.standard.string(forKey: GrokSettingsKeys.selectedAgent) ?? ""
     @State private var agents: [GrokAgentInfo] = []
     @State private var isLoading = false
     @State private var errorMessage: String?
@@ -2066,8 +2163,6 @@ private struct AgentsSettingsPane: View {
     @State private var editingRole: SubagentRole?
     @State private var isAddingRole = false
     @State private var roleError: String?
-
-    private var hasPendingChanges: Bool { selectedAgent != appliedAgent }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -2095,7 +2190,15 @@ private struct AgentsSettingsPane: View {
                     .textSelection(.enabled)
             }
         }
-        .task(id: workspace?.path) { await refresh() }
+        .task(id: workspace?.path) {
+            await loadPersistedState()
+            await refresh()
+        }
+        .onChange(of: liveReceipt) { _, receipt in
+            valueState.refreshLive(
+                receipt?.freshness == .live ? receipt?.requestedAgentID : nil
+            )
+        }
     }
 
     private var discoveredAgentsSection: some View {
@@ -2154,7 +2257,7 @@ private struct AgentsSettingsPane: View {
                 Text("Default agent for new sessions")
                     .font(.subheadline.weight(.semibold))
                 Spacer()
-                Picker("", selection: $selectedAgent) {
+                Picker("", selection: selectedAgentBinding) {
                     ForEach(GrokAgentProfiles.builtInOptions) { option in
                         Text(option.title).tag(option.id)
                     }
@@ -2184,23 +2287,22 @@ private struct AgentsSettingsPane: View {
 
             HStack {
                 Spacer()
-                Button("Save Default") {
-                    appliedAgent = selectedAgent
-                    onConfigurationChanged()
-                }
+                Button("Apply Default") { Task { await applyDefaultAgent() } }
                 .buttonStyle(.borderedProminent)
-                .disabled(!hasPendingChanges)
+                .disabled(!valueState.canApply)
             }
+            SettingsPaneStateHeader(status: valueState.status)
+            SettingsReceiptDisclosure(receipt: valueState.lastOperationReceipt)
         }
         .padding(14)
         .background(
             RoundedRectangle(cornerRadius: AppTheme.Radius.medium, style: .continuous)
-                .fill(hasPendingChanges ? AppTheme.Palette.surfaceHover : AppTheme.Palette.surface)
+                .fill(valueState.isDirty ? AppTheme.Palette.surfaceHover : AppTheme.Palette.surface)
         )
         .overlay(
             RoundedRectangle(cornerRadius: AppTheme.Radius.medium, style: .continuous)
                 .stroke(
-                    hasPendingChanges
+                    valueState.isDirty
                         ? AppTheme.Palette.glassBorderStrong
                         : AppTheme.Palette.glassBorder
                 )
@@ -2340,7 +2442,16 @@ private struct AgentsSettingsPane: View {
             roleError = nil
             roles = SubagentRoleStore.load()
             NotificationCenter.default.post(name: .subagentRolesChanged, object: nil)
-            onConfigurationChanged()
+            Task {
+                _ = await onApply(SettingsApplyRequest(
+                    configurationGeneration: valueState.configurationGeneration,
+                    capability: .agents,
+                    persistenceOwner: .grokConfig,
+                    applyScope: .futureSessions,
+                    requiresProcessRestart: false,
+                    redactedSummary: "Saved custom agent roles for future sessions."
+                ))
+            }
         } catch {
             roleError = "Could not save subagents: \(error.localizedDescription)"
         }
@@ -2368,6 +2479,48 @@ private struct AgentsSettingsPane: View {
             errorMessage = error.localizedDescription
         }
         isLoading = false
+    }
+
+    @MainActor
+    private func loadPersistedState() async {
+        guard !valueState.isLoaded else { return }
+        await Task.yield()
+        guard !Task.isCancelled else { return }
+        let saved = UserDefaults.standard.string(forKey: GrokSettingsKeys.selectedAgent) ?? ""
+        valueState.load(
+            persisted: saved,
+            applied: saved,
+            live: liveReceipt?.freshness == .live ? liveReceipt?.requestedAgentID : nil
+        )
+    }
+
+    private var selectedAgentBinding: Binding<String> {
+        Binding(
+            get: { valueState.draft },
+            set: { valueState.updateDraft($0) }
+        )
+    }
+
+    @MainActor
+    private func applyDefaultAgent() async {
+        guard valueState.canApply else { return }
+        let selected = valueState.draft
+        let request = SettingsApplyRequest(
+            configurationGeneration: valueState.configurationGeneration + 1,
+            capability: .agents,
+            persistenceOwner: .userDefaults,
+            applyScope: .futureSessions,
+            requiresProcessRestart: false,
+            redactedSummary: "Saved the default agent for future tabs; existing tab overrides were preserved."
+        )
+        UserDefaults.standard.set(selected, forKey: GrokSettingsKeys.selectedAgent)
+        valueState.recordSaved(applied: selected, requiresRestart: false, receipt: request.receipt)
+        let receipt = await onApply(request)
+        guard !Task.isCancelled else { return }
+        valueState.complete(
+            receipt: receipt,
+            live: liveReceipt?.freshness == .live ? liveReceipt?.requestedAgentID : nil
+        )
     }
 
     private func sourceLabel(for agent: GrokAgentInfo) -> String {
@@ -2491,15 +2644,10 @@ private struct SubagentRoleEditor: View {
 }
 
 private struct ComputerUseSettingsPane: View {
-    let onConfigurationChanged: () -> Void
-
-    @AppStorage(ComputerUseSettingsKeys.enabled) private var enabled = ComputerUseSettings.defaults.enabled
-    @AppStorage(ComputerUseSettingsKeys.backend) private var backend = ComputerUseSettings.defaults.backend.rawValue
-    @AppStorage(ComputerUseSettingsKeys.permissionPolicy) private var permissionPolicy = ComputerUseSettings.defaults.permissionPolicy.rawValue
-    @AppStorage(ComputerUseSettingsKeys.commandTimeoutSeconds) private var commandTimeoutSeconds = ComputerUseSettings.defaults.commandTimeoutSeconds
-    @AppStorage(ComputerUseSettingsKeys.includeScreenshots) private var includeScreenshots = ComputerUseSettings.defaults.includeScreenshots
-    @AppStorage(ComputerUseSettingsKeys.cursorIntegrationEnabled) private var cursorIntegrationEnabled = false
-    @AppStorage(ComputerUseSettingsKeys.appliedCursorIntegrationEnabled) private var appliedCursorIntegrationEnabled = false
+    @Binding var valueState: SettingsValueState<ComputerUsePaneSettings>
+    let liveReceipt: EffectiveSessionReceipt?
+    let configurationStatusMessage: String?
+    let onApply: (SettingsApplyRequest) async -> SettingsApplyReceipt
 
     @State private var backendStatus = ComputerUseBackendStatus.unavailable
     @State private var cursorInstallStatus = ComputerUseCursorInstallStatus.unavailable
@@ -2509,7 +2657,7 @@ private struct ComputerUseSettingsPane: View {
     @State private var grokBuildSRGranted = false
     @State private var isRunningEndToEndTest = false
     @State private var endToEndResult: ComputerUseService.EndToEndTestResult?
-    @State private var appliedSettings = ComputerUseSettingsStore.loadApplied()
+    @State private var isApplying = false
     @State private var isChecking = false
     @State private var isRequestingPermissions = false
     @State private var permissionOutput: String?
@@ -2536,11 +2684,20 @@ private struct ComputerUseSettingsPane: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .background(AppTheme.Palette.canvas)
         .task {
-            appliedSettings = ComputerUseSettingsStore.loadApplied()
+            await loadPersistedState()
             await refreshStatus()
             // Deliberately no Cursor config sync here: ~/.cursor/mcp.json is
             // the user's file, and merely opening Settings must not rewrite
             // it. Writes happen on explicit Install/Update/Apply only.
+        }
+        .onChange(of: liveReceipt) { _, receipt in
+            let liveEnabled = receipt?.freshness == .live ? receipt?.computerUseEnabled : nil
+            let live = liveEnabled.map { enabled in
+                var settings = valueState.applied
+                settings.settings.enabled = enabled
+                return settings
+            }
+            valueState.refreshLive(live)
         }
     }
 
@@ -2561,12 +2718,8 @@ private struct ComputerUseSettingsPane: View {
                 SettingsToggleRow(
                     "Allow computer control",
                     subtitle: "Available in new and resumed sessions.",
-                    isOn: $enabled
+                    isOn: enabledBinding
                 )
-                .onChange(of: enabled) { _, newValue in
-                    guard newValue != appliedSettings.enabled else { return }
-                    Task { await applyEnabledChange(to: newValue) }
-                }
             }
         }
     }
@@ -2654,7 +2807,7 @@ private struct ComputerUseSettingsPane: View {
     }
 
     private var permissionsCard: some View {
-        computerSettingsCard(title: "macOS Permissions", systemImage: permissionStatus.isReady(includeScreenshots: includeScreenshots) ? "lock.open" : "lock.shield") {
+        computerSettingsCard(title: "macOS Permissions", systemImage: permissionStatus.isReady(includeScreenshots: appliedSettings.includeScreenshots) ? "lock.open" : "lock.shield") {
             VStack(alignment: .leading, spacing: 12) {
                 Text("Accessibility is required for UI actions. Screen Recording is needed only for screenshots.")
                     .foregroundStyle(.secondary)
@@ -2685,12 +2838,12 @@ private struct ComputerUseSettingsPane: View {
                         permissionRow(
                             title: "agent-desktop",
                             state: permissionProbe.map { $0.agentDesktopGranted ? "granted" : "denied" } ?? "unknown",
-                            help: ComputerUseService.usesBundledAgentDesktop(settings: currentSettings)
+                            help: ComputerUseService.usesBundledAgentDesktop(settings: appliedSettings)
                                 ? "The acting binary. Bundled copies share the app's signing identity, so one grant covers all three."
                                 : "The acting binary. External copies have their own identity — this grant is the one that matters."
                         )
-                        if !ComputerUseService.usesBundledAgentDesktop(settings: currentSettings),
-                           let agentDesktopPath = ComputerUseService.executableURL(settings: currentSettings)?.path {
+                        if !ComputerUseService.usesBundledAgentDesktop(settings: appliedSettings),
+                           let agentDesktopPath = ComputerUseService.executableURL(settings: appliedSettings)?.path {
                             Text("agent-desktop path: \(agentDesktopPath)")
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
@@ -2758,7 +2911,7 @@ private struct ComputerUseSettingsPane: View {
                     .foregroundStyle(.secondary)
 
                 settingRow("Actions") {
-                    Picker("", selection: $permissionPolicy) {
+                    Picker("", selection: permissionPolicyBinding) {
                         ForEach(ComputerUsePermissionPolicy.allCases) { policy in
                             Text(policy.displayName).tag(policy.rawValue)
                         }
@@ -2771,23 +2924,19 @@ private struct ComputerUseSettingsPane: View {
                 SettingsToggleRow(
                     "Allow screenshot tool",
                     subtitle: "Use screenshots only when Accessibility snapshots are not enough. Requires Screen Recording permission.",
-                    isOn: $includeScreenshots
+                    isOn: includeScreenshotsBinding
                 )
-                .onChange(of: includeScreenshots) { _, isEnabled in
-                    // Enabling the tool is the moment Screen Recording starts
-                    // mattering, and asking is the only way GrokBuild ever
-                    // appears in that Privacy pane.
-                    guard ComputerUseService.shouldRequestScreenRecording(
-                        includeScreenshots: isEnabled,
-                        granted: ComputerUseService.localScreenRecordingGranted()
-                    ) else { return }
-                    Task {
+                if appliedSettings.includeScreenshots,
+                   !ComputerUseService.localScreenRecordingGranted() {
+                    Button("Request Screen Recording") {
+                        // macOS only receives a permission prompt from this explicit user
+                        // action, never from opening the pane or editing a draft toggle.
                         ComputerUseService.requestScreenRecordingAccess()
-                        await refreshStatus()
+                        Task { await refreshStatus() }
                     }
                 }
 
-                Stepper("Command timeout: \(commandTimeoutSeconds)s", value: $commandTimeoutSeconds, in: 5...180, step: 5)
+                Stepper("Command timeout: \(currentSettings.commandTimeoutSeconds)s", value: commandTimeoutBinding, in: 5...180, step: 5)
             }
         }
     }
@@ -2801,7 +2950,7 @@ private struct ComputerUseSettingsPane: View {
                 SettingsToggleRow(
                     "Use Computer Control in Cursor",
                     subtitle: "Adds GrokBuild's computer tools to Cursor Agent across projects.",
-                    isOn: $cursorIntegrationEnabled
+                    isOn: cursorIntegrationBinding
                 )
 
                 if cursorInstallStatus.isInstalled {
@@ -2855,47 +3004,104 @@ private struct ComputerUseSettingsPane: View {
     }
 
     private var applyCard: some View {
-        HStack {
-            VStack(alignment: .leading, spacing: 3) {
-                Text("Apply changes")
-                    .font(.headline)
-                Text(hasPendingChanges
-                    ? "Restarts the active Grok connection."
-                    : "Computer Use settings are current.")
+        VStack(alignment: .leading, spacing: 10) {
+            SettingsApplyBar(
+                canApply: valueState.canApply,
+                isApplying: isApplying,
+                scopeText: "Saves Computer Use and Cursor integration settings, then restarts only the current live tab. macOS permissions are requested only by their explicit buttons.",
+                validationMessage: valueState.validation.message,
+                receipt: valueState.lastOperationReceipt,
+                onRevert: { valueState.revert() },
+                onApply: { Task { await applyChanges() } }
+            )
+            SettingsReceiptDisclosure(receipt: valueState.lastOperationReceipt)
+            if let configurationStatusMessage, isApplying {
+                Text(configurationStatusMessage)
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
-            Spacer()
-            Button("Apply Changes") {
-                apply()
-            }
-            .buttonStyle(.borderedProminent)
-            .disabled(!hasPendingChanges)
         }
-        .padding(14)
-        .background(
-            RoundedRectangle(cornerRadius: AppTheme.Radius.medium, style: .continuous)
-                .fill(hasPendingChanges ? AppTheme.Palette.surfaceHover : AppTheme.Palette.surface)
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: AppTheme.Radius.medium, style: .continuous)
-                .stroke(hasPendingChanges ? AppTheme.Palette.glassBorderStrong : AppTheme.Palette.glassBorder)
+    }
+
+    private var currentSettings: ComputerUseSettings { valueState.draft.settings }
+    private var appliedSettings: ComputerUseSettings { valueState.applied.settings }
+    private var cursorIntegrationEnabled: Bool { valueState.draft.cursorIntegrationEnabled }
+    private var appliedCursorIntegrationEnabled: Bool { valueState.applied.cursorIntegrationEnabled }
+
+    private func mutateDraft(_ body: (inout ComputerUsePaneSettings) -> Void) {
+        var draft = valueState.draft
+        body(&draft)
+        valueState.updateDraft(draft)
+    }
+
+    private var enabledBinding: Binding<Bool> {
+        Binding(
+            get: { valueState.draft.settings.enabled },
+            set: { enabled in mutateDraft { $0.settings.enabled = enabled } }
         )
     }
 
-    private var currentSettings: ComputerUseSettings {
-        ComputerUseSettings(
-            enabled: enabled,
-            backend: ComputerUseBackendID(rawValue: backend) ?? ComputerUseSettings.defaults.backend,
-            permissionPolicy: ComputerUsePermissionPolicy(rawValue: permissionPolicy)
-                ?? ComputerUseSettings.defaults.permissionPolicy,
-            commandTimeoutSeconds: commandTimeoutSeconds,
-            includeScreenshots: includeScreenshots
+    private var permissionPolicyBinding: Binding<String> {
+        Binding(
+            get: { valueState.draft.settings.permissionPolicy.rawValue },
+            set: { raw in
+                mutateDraft {
+                    $0.settings.permissionPolicy = ComputerUsePermissionPolicy(rawValue: raw)
+                        ?? ComputerUseSettings.defaults.permissionPolicy
+                }
+            }
         )
+    }
+
+    private var includeScreenshotsBinding: Binding<Bool> {
+        Binding(
+            get: { valueState.draft.settings.includeScreenshots },
+            set: { enabled in mutateDraft { $0.settings.includeScreenshots = enabled } }
+        )
+    }
+
+    private var commandTimeoutBinding: Binding<Int> {
+        Binding(
+            get: { valueState.draft.settings.commandTimeoutSeconds },
+            set: { timeout in mutateDraft { $0.settings.commandTimeoutSeconds = timeout } }
+        )
+    }
+
+    private var cursorIntegrationBinding: Binding<Bool> {
+        Binding(
+            get: { valueState.draft.cursorIntegrationEnabled },
+            set: { enabled in mutateDraft { $0.cursorIntegrationEnabled = enabled } }
+        )
+    }
+
+    @MainActor
+    private func loadPersistedState() async {
+        guard !valueState.isLoaded else { return }
+        await Task.yield()
+        guard !Task.isCancelled else { return }
+        let persisted = ComputerUsePaneSettings(
+            settings: ComputerUseSettingsStore.load(),
+            cursorIntegrationEnabled: UserDefaults.standard.bool(
+                forKey: ComputerUseSettingsKeys.cursorIntegrationEnabled
+            )
+        )
+        let applied = ComputerUsePaneSettings(
+            settings: ComputerUseSettingsStore.loadApplied(),
+            cursorIntegrationEnabled: UserDefaults.standard.bool(
+                forKey: ComputerUseSettingsKeys.appliedCursorIntegrationEnabled
+            )
+        )
+        let liveEnabled = liveReceipt?.freshness == .live ? liveReceipt?.computerUseEnabled : nil
+        let live = liveEnabled.map { enabled in
+            var pane = applied
+            pane.settings.enabled = enabled
+            return pane
+        }
+        valueState.load(persisted: persisted, applied: applied, live: live)
     }
 
     private var hasPendingChanges: Bool {
-        currentSettings != appliedSettings || cursorIntegrationEnabled != appliedCursorIntegrationEnabled
+        valueState.isDirty
     }
 
     private var statusBadge: some View {
@@ -2938,42 +3144,57 @@ private struct ComputerUseSettingsPane: View {
         return parts.joined(separator: "\n\n")
     }
 
-    private func apply() {
-        let settings = currentSettings
-        let shouldInstallCursor = cursorIntegrationEnabled
-        let shouldUninstallCursor = appliedCursorIntegrationEnabled && !cursorIntegrationEnabled
+    @MainActor
+    private func applyChanges() async {
+        guard valueState.canApply else { return }
+        let draft = valueState.draft
+        let priorCursorIntegrationEnabled = valueState.applied.cursorIntegrationEnabled
+        let request = SettingsApplyRequest(
+            configurationGeneration: valueState.configurationGeneration + 1,
+            capability: .computerUse,
+            persistenceOwner: .userDefaults,
+            applyScope: .activeTabRestart,
+            requiresProcessRestart: true,
+            requiresPermissionOrTrust: false,
+            redactedSummary: "Saved Computer Use launch settings; macOS permission state is checked separately."
+        )
+        ComputerUseSettingsStore.save(draft.settings)
+        ComputerUseSettingsStore.saveApplied(draft.settings)
+        UserDefaults.standard.set(
+            draft.cursorIntegrationEnabled,
+            forKey: ComputerUseSettingsKeys.cursorIntegrationEnabled
+        )
+        UserDefaults.standard.set(
+            draft.cursorIntegrationEnabled,
+            forKey: ComputerUseSettingsKeys.appliedCursorIntegrationEnabled
+        )
+        valueState.recordSaved(
+            applied: draft,
+            requiresRestart: liveReceipt?.freshness == .live,
+            receipt: request.receipt
+        )
 
-        ComputerUseSettingsStore.save(settings)
-        ComputerUseSettingsStore.saveApplied(settings)
-        appliedSettings = settings
-        appliedCursorIntegrationEnabled = cursorIntegrationEnabled
-        syncCursorConfiguration(showErrorsOnly: true)
-
-        if shouldInstallCursor {
-            Task {
-                await installForCursor(showErrorsOnly: false)
-                onConfigurationChanged()
-            }
-        } else if shouldUninstallCursor {
-            Task {
-                await removeCursorIntegration()
-                onConfigurationChanged()
-            }
+        if draft.cursorIntegrationEnabled && !priorCursorIntegrationEnabled {
+            await installForCursor(showErrorsOnly: false)
+        } else if !draft.cursorIntegrationEnabled && priorCursorIntegrationEnabled {
+            await removeCursorIntegration()
         } else {
-            onConfigurationChanged()
+            syncCursorConfiguration(showErrorsOnly: true)
         }
-    }
 
-    private func applyEnabledChange(to newValue: Bool) async {
-        let result = await ComputerUseService.applyEnabled(newValue, settings: currentSettings) {
-            onConfigurationChanged()
-        }
-        if case .needsSetup = result {
-            enabled = appliedSettings.enabled
-        } else {
-            appliedSettings = ComputerUseSettingsStore.loadApplied()
-            await refreshStatus()
-        }
+        isApplying = true
+        let receipt = await onApply(request)
+        isApplying = false
+        guard !Task.isCancelled else { return }
+        let live = receipt.effectiveSession?.freshness == .live
+            ? receipt.effectiveSession.map { receipt in
+                var pane = draft
+                pane.settings.enabled = receipt.computerUseEnabled
+                return pane
+            }
+            : nil
+        valueState.complete(receipt: receipt, live: live)
+        await refreshStatus()
     }
 
     private func syncCursorConfiguration(showErrorsOnly: Bool = false) {
@@ -2984,7 +3205,6 @@ private struct ComputerUseSettingsPane: View {
                     cursorInstallOutput = message
                 }
             }
-            appliedSettings = ComputerUseSettingsStore.loadApplied()
             cursorInstallStatus = ComputerUseCursorInstaller.status()
         } catch {
             if !showErrorsOnly {
@@ -2996,11 +3216,13 @@ private struct ComputerUseSettingsPane: View {
     private func refreshStatus() async {
         isChecking = true
         defer { isChecking = false }
-        let settings = currentSettings
+        let settings = appliedSettings
         async let status = ComputerUseService.status(settings: settings)
         async let overview = ComputerUseService.permissionOverview(settings: settings)
-        backendStatus = await status
+        let resolvedStatus = await status
         let resolvedOverview = await overview
+        guard !Task.isCancelled else { return }
+        backendStatus = resolvedStatus
         permissionStatus = resolvedOverview.resolved
         permissionProbe = resolvedOverview.probe
         grokBuildAXGranted = resolvedOverview.grokBuildAccessibilityGranted
@@ -3011,7 +3233,7 @@ private struct ComputerUseSettingsPane: View {
     private func runEndToEndTest() async {
         isRunningEndToEndTest = true
         defer { isRunningEndToEndTest = false }
-        endToEndResult = await ComputerUseService.runEndToEndTest(settings: currentSettings)
+        endToEndResult = await ComputerUseService.runEndToEndTest(settings: appliedSettings)
     }
 
     private func installForCursor(showErrorsOnly: Bool = true) async {
@@ -3036,8 +3258,7 @@ private struct ComputerUseSettingsPane: View {
 
         do {
             cursorInstallOutput = try ComputerUseCursorInstaller.uninstall()
-            cursorIntegrationEnabled = false
-            appliedCursorIntegrationEnabled = false
+            mutateDraft { $0.cursorIntegrationEnabled = false }
             cursorInstallStatus = ComputerUseCursorInstaller.status()
         } catch {
             cursorInstallOutput = error.localizedDescription
@@ -3050,7 +3271,7 @@ private struct ComputerUseSettingsPane: View {
         defer { isRequestingPermissions = false }
 
         do {
-            permissionOutput = try await ComputerUseService.requestPermissions(settings: currentSettings)
+            permissionOutput = try await ComputerUseService.requestPermissions(settings: appliedSettings)
             await refreshStatus()
         } catch {
             permissionOutput = error.localizedDescription
@@ -3159,6 +3380,9 @@ private struct ComputerUseSettingsPane: View {
 }
 
 private struct CustomModelsSettingsPane: View {
+    @Binding var valueState: SettingsValueState<String>
+    let liveReceipt: EffectiveSessionReceipt?
+    let onApply: (SettingsApplyRequest) async -> SettingsApplyReceipt
     let onConfigurationChanged: (ConfigurationChange) -> Void
 
     @State private var viewModel = CustomModelsSettingsViewModel()
@@ -3209,12 +3433,12 @@ private struct CustomModelsSettingsPane: View {
         nonmutating set { viewModel.models = newValue }
     }
     private var defaultModelID: String {
-        get { viewModel.defaultModelID }
-        nonmutating set { viewModel.defaultModelID = newValue }
+        get { valueState.draft }
+        nonmutating set { valueState.updateDraft(newValue) }
     }
     private var persistedDefaultModelID: String {
-        get { viewModel.persistedDefaultModelID }
-        nonmutating set { viewModel.persistedDefaultModelID = newValue }
+        get { valueState.persisted }
+        nonmutating set { _ = newValue }
     }
     private var errorMessage: String? {
         get { viewModel.errorMessage }
@@ -3280,7 +3504,7 @@ private struct CustomModelsSettingsPane: View {
     /// finishes or cancels the current edit before starting another action.
     private var isAnyEditorOpen: Bool { showingProviderEditor || showingModelEditor }
     private var isAtModelLimit: Bool { models.count >= CustomModelStore.maxModels }
-    private var isDefaultModelDirty: Bool { defaultModelID != persistedDefaultModelID }
+    private var isDefaultModelDirty: Bool { valueState.isDirty }
 
     private var defaultModelOptions: [DefaultModelOption] {
         var options = builtInDefaultModels
@@ -3378,7 +3602,15 @@ private struct CustomModelsSettingsPane: View {
         }
         .task {
             await reload()
-            builtInModels = await GrokModelCatalog.shared.models()
+            guard !Task.isCancelled else { return }
+            let catalog = await GrokModelCatalog.shared.models()
+            guard !Task.isCancelled else { return }
+            builtInModels = catalog
+        }
+        .onChange(of: liveReceipt) { _, receipt in
+            valueState.refreshLive(
+                receipt?.freshness == .live ? receipt?.requestedModelID : nil
+            )
         }
         .alert("Remove Model?", isPresented: $showModelRemovalConfirmation) {
             Button("Cancel", role: .cancel) {
@@ -3417,11 +3649,14 @@ private struct CustomModelsSettingsPane: View {
     private let modelEditorAnchor = "model-editor"
 
     private var header: some View {
-        settingsPaneHeader(
-            "Models",
-            subtitle: "Add OpenAI-compatible providers and choose the models available to Grok.",
-            systemImage: SettingsTab.models.systemImage
-        )
+        HStack(alignment: .top, spacing: 14) {
+            settingsPaneHeader(
+                "Models",
+                subtitle: "Add OpenAI-compatible providers and choose the models available to Grok.",
+                systemImage: SettingsTab.models.systemImage
+            )
+            SettingsPaneStateHeader(status: valueState.status)
+        }
     }
 
     private var migrationIssueCard: some View {
@@ -3458,13 +3693,15 @@ private struct CustomModelsSettingsPane: View {
 
                     Spacer()
 
-                    Button("Save Default") {
-                        persist(change: .defaultModel)
-                    }
+                    Button("Apply Default") { Task { await applyDefaultModel() } }
                     .buttonStyle(.borderedProminent)
                     .controlSize(.small)
                     .disabled(!isDefaultModelDirty)
                 }
+                Text("Applies to future inherited tabs only; existing tab choices and live process receipts are unchanged.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                SettingsReceiptDisclosure(receipt: valueState.lastOperationReceipt)
             }
         }
     }
@@ -4440,12 +4677,17 @@ private struct CustomModelsSettingsPane: View {
                 (ProviderStore.loadResult(), CustomModelStore.load())
             }
         }
+        guard !Task.isCancelled else { return }
         let providerLoad = loaded.0
         let snapshot = loaded.1
         providers = providerLoad.providers
         migrationIssues = providerLoad.migrationIssues
-        defaultModelID = snapshot.defaultModelID ?? ""
-        persistedDefaultModelID = defaultModelID
+        let savedDefault = snapshot.defaultModelID ?? ""
+        valueState.load(
+            persisted: savedDefault,
+            applied: savedDefault,
+            live: liveReceipt?.freshness == .live ? liveReceipt?.requestedModelID : nil
+        )
         // Repair a missing sidecar provider link only when the endpoint identifies exactly one
         // provider. Then re-resolve the
         // endpoint/credential from the provider so a model reflects a key added to its provider
@@ -4790,18 +5032,53 @@ private struct CustomModelsSettingsPane: View {
     private func persist(change: ConfigurationChange) {
         do {
             let resolvedModels = models.map { $0.resolved(using: providers) }
-            let selectedDefault = defaultModelID.trimmingCharacters(in: .whitespacesAndNewlines)
+            let selectedDefault = valueState.persisted.trimmingCharacters(in: .whitespacesAndNewlines)
             try CustomModelStore.save(
                 models: resolvedModels,
                 defaultModelID: selectedDefault.isEmpty ? nil : selectedDefault
             )
             statusMessage = "Saved to ~/.grok/config.toml."
             errorMessage = nil
-            persistedDefaultModelID = defaultModelID
             onConfigurationChanged(change)
         } catch {
             errorMessage = "Failed to save config.toml: \(error.localizedDescription)"
             statusMessage = nil
+        }
+    }
+
+    @MainActor
+    private func applyDefaultModel() async {
+        guard valueState.canApply else { return }
+        let selectedDefault = valueState.draft.trimmingCharacters(in: .whitespacesAndNewlines)
+        do {
+            try CustomModelStore.save(
+                models: models.map { $0.resolved(using: providers) },
+                defaultModelID: selectedDefault.isEmpty ? nil : selectedDefault
+            )
+            let request = SettingsApplyRequest(
+                configurationGeneration: valueState.configurationGeneration + 1,
+                capability: .models,
+                persistenceOwner: .grokConfig,
+                applyScope: .futureSessions,
+                requiresProcessRestart: false,
+                redactedSummary: "Saved the default model for future inherited tabs."
+            )
+            valueState.recordSaved(
+                applied: selectedDefault,
+                requiresRestart: false,
+                receipt: request.receipt
+            )
+            let receipt = await onApply(request)
+            guard !Task.isCancelled else { return }
+            valueState.complete(
+                receipt: receipt,
+                live: liveReceipt?.freshness == .live ? liveReceipt?.requestedModelID : nil
+            )
+            statusMessage = "Saved default model for future inherited tabs."
+            errorMessage = nil
+            onConfigurationChanged(.defaultModel)
+        } catch {
+            errorMessage = error.localizedDescription
         }
     }
 
@@ -5049,15 +5326,11 @@ private struct MCPSettingsPane: View {
 }
 
 private struct PermissionsSettingsPane: View {
-    let onConfigurationChanged: () -> Void
-
-    @AppStorage(GrokSettingsKeys.permissionMode) private var permissionMode = GrokPermissionSettings.defaults.permissionMode
-    @AppStorage(GrokSettingsKeys.sandboxProfile) private var sandboxProfile = GrokPermissionSettings.defaults.sandboxProfile
-    @AppStorage(GrokSettingsKeys.reasoningEffort) private var reasoningEffort = GrokPermissionSettings.defaults.reasoningEffort
-    @AppStorage(GrokSettingsKeys.disableWebSearch) private var disableWebSearch = GrokPermissionSettings.defaults.disableWebSearch
-    @AppStorage(GrokSettingsKeys.noSubagents) private var noSubagents = GrokPermissionSettings.defaults.noSubagents
-    @AppStorage(GrokSettingsKeys.allowRules) private var allowRules = GrokPermissionSettings.defaults.allowRules
-    @AppStorage(GrokSettingsKeys.denyRules) private var denyRules = GrokPermissionSettings.defaults.denyRules
+    @Binding var valueState: SettingsValueState<PermissionSettingsDraft>
+    let liveReceipt: EffectiveSessionReceipt?
+    let configurationStatusMessage: String?
+    let onApply: (SettingsApplyRequest) async -> SettingsApplyReceipt
+    @State private var isApplying = false
 
     var body: some View {
         ScrollView {
@@ -5072,8 +5345,12 @@ private struct PermissionsSettingsPane: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .background(AppTheme.Palette.canvas)
-        .onAppear {
-            permissionMode = GrokPermissionMode.normalizedStoredValue(permissionMode)
+        .task {
+            await loadPersistedState()
+        }
+        .onChange(of: liveReceipt) { _, receipt in
+            valueState.refreshLive(nil)
+            _ = receipt
         }
     }
 
@@ -5084,9 +5361,7 @@ private struct PermissionsSettingsPane: View {
                 subtitle: "Control how Grok asks for approval and accesses your project.",
                 systemImage: SettingsTab.permissions.systemImage
             )
-            Text(permissionModeChoice.displayName)
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(.secondary)
+            SettingsPaneStateHeader(status: valueState.status)
         }
     }
 
@@ -5094,7 +5369,7 @@ private struct PermissionsSettingsPane: View {
         settingsCard(title: "Launch Behavior", systemImage: "slider.horizontal.3") {
             VStack(alignment: .leading, spacing: 14) {
                 settingRow("Permission mode", description: permissionModeChoice.explanation) {
-                    Picker("", selection: $permissionMode) {
+                    Picker("", selection: permissionModeBinding) {
                         Section("Interactive") {
                             ForEach(GrokPermissionMode.interactiveChoices) { mode in
                                 Text(mode.displayName).tag(mode.rawValue)
@@ -5129,7 +5404,7 @@ private struct PermissionsSettingsPane: View {
                 }
 
                 settingRow("Sandbox", description: "Limits file system and command access for Grok.") {
-                    Picker("", selection: $sandboxProfile) {
+                    Picker("", selection: sandboxProfileBinding) {
                         Text("Default").tag("")
                         Text("Workspace").tag("workspace")
                         Text("Read-only").tag("read-only")
@@ -5141,7 +5416,7 @@ private struct PermissionsSettingsPane: View {
                 }
 
                 settingRow("Default reasoning effort", description: "Reasoning budget for new projects. Each project keeps its own effort — change the current chat from the composer's model menu.") {
-                    Picker("", selection: $reasoningEffort) {
+                    Picker("", selection: reasoningEffortBinding) {
                         ForEach(ReasoningEffortLevel.menuCases) { level in
                             Text(level.displayName).tag(level.rawValue)
                         }
@@ -5156,9 +5431,9 @@ private struct PermissionsSettingsPane: View {
     private var safetyTogglesCard: some View {
         settingsCard(title: "Session Capabilities", systemImage: "switch.2") {
             VStack(alignment: .leading, spacing: 12) {
-                permissionToggle("Disable web search tools", subtitle: "Prevent Grok from using web search in new sessions.", isOn: $disableWebSearch)
+                permissionToggle("Disable web search tools", subtitle: "Prevent Grok from using web search in new sessions.", isOn: disableWebSearchBinding)
                 Divider()
-                permissionToggle("Disable subagents", subtitle: "Keep work inside the main Grok agent only.", isOn: $noSubagents)
+                permissionToggle("Disable subagents", subtitle: "Keep work inside the main Grok agent only.", isOn: noSubagentsBinding)
             }
         }
     }
@@ -5171,41 +5446,88 @@ private struct PermissionsSettingsPane: View {
                     .foregroundStyle(.secondary)
 
                 HStack(alignment: .top, spacing: 14) {
-                    ruleEditor(title: "Allow Rules", text: $allowRules)
-                    ruleEditor(title: "Deny Rules", text: $denyRules)
+                    ruleEditor(title: "Allow Rules", text: allowRulesBinding)
+                    ruleEditor(title: "Deny Rules", text: denyRulesBinding)
                 }
             }
         }
     }
 
     private var applyCard: some View {
-        HStack {
-            VStack(alignment: .leading, spacing: 3) {
-                Text("Apply changes")
-                    .font(.headline)
-                Text("Restarts the active Grok connection.")
+        VStack(alignment: .leading, spacing: 10) {
+            SettingsApplyBar(
+                canApply: valueState.canApply,
+                isApplying: isApplying,
+                scopeText: "Saves the launch policy and restarts only the current live tab. Permission cards keep the old launch receipt until that restart succeeds.",
+                validationMessage: valueState.validation.message,
+                receipt: valueState.lastOperationReceipt,
+                onRevert: { valueState.revert() },
+                onApply: { Task { await applyChanges() } }
+            )
+            SettingsReceiptDisclosure(receipt: valueState.lastOperationReceipt)
+            if let configurationStatusMessage, isApplying {
+                Text(configurationStatusMessage)
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
-            Spacer()
-            Button("Apply Changes") {
-                onConfigurationChanged()
-            }
-            .buttonStyle(.borderedProminent)
         }
-        .padding(14)
-        .background(
-            RoundedRectangle(cornerRadius: AppTheme.Radius.medium, style: .continuous)
-                .fill(AppTheme.Palette.surface)
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: AppTheme.Radius.medium, style: .continuous)
-                .stroke(AppTheme.Palette.glassBorder)
-        )
     }
 
     private var permissionModeChoice: GrokPermissionMode {
-        GrokPermissionMode(storedValue: permissionMode)
+        GrokPermissionMode(storedValue: valueState.draft.permissionMode)
+    }
+
+    private func binding<Value>(_ keyPath: WritableKeyPath<PermissionSettingsDraft, Value>) -> Binding<Value> {
+        Binding(
+            get: { valueState.draft[keyPath: keyPath] },
+            set: { newValue in
+                var draft = valueState.draft
+                draft[keyPath: keyPath] = newValue
+                valueState.updateDraft(draft, validation: draft.validation)
+            }
+        )
+    }
+
+    private var permissionModeBinding: Binding<String> { binding(\.permissionMode) }
+    private var sandboxProfileBinding: Binding<String> { binding(\.sandboxProfile) }
+    private var reasoningEffortBinding: Binding<String> { binding(\.reasoningEffort) }
+    private var disableWebSearchBinding: Binding<Bool> { binding(\.disableWebSearch) }
+    private var noSubagentsBinding: Binding<Bool> { binding(\.noSubagents) }
+    private var allowRulesBinding: Binding<String> { binding(\.allowRules) }
+    private var denyRulesBinding: Binding<String> { binding(\.denyRules) }
+
+    @MainActor
+    private func loadPersistedState() async {
+        guard !valueState.isLoaded else { return }
+        await Task.yield()
+        guard !Task.isCancelled else { return }
+        let saved = PermissionSettingsDraft.load()
+        valueState.load(persisted: saved, applied: saved, live: nil)
+    }
+
+    @MainActor
+    private func applyChanges() async {
+        guard valueState.canApply else { return }
+        let draft = valueState.draft
+        let request = SettingsApplyRequest(
+            configurationGeneration: valueState.configurationGeneration + 1,
+            capability: .permissions,
+            persistenceOwner: .userDefaults,
+            applyScope: .activeTabRestart,
+            requiresProcessRestart: true,
+            redactedSummary: "Saved the permission launch policy; rules remain local and are excluded from receipts."
+        )
+        draft.save()
+        valueState.recordSaved(
+            applied: draft,
+            requiresRestart: liveReceipt?.freshness == .live,
+            receipt: request.receipt
+        )
+        isApplying = true
+        let receipt = await onApply(request)
+        isApplying = false
+        guard !Task.isCancelled else { return }
+        valueState.complete(receipt: receipt, live: nil)
     }
 
     private func settingsCard<Content: View>(

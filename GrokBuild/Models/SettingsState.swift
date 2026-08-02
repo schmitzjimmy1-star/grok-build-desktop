@@ -299,6 +299,78 @@ enum SettingsValueStatus: String, Sendable {
     }
 }
 
+/// The launch-affecting part of Settings → Permissions. Keep this narrower than
+/// `GrokPermissionSettings`: agent and memory each own their independent Apply
+/// boundaries, so saving a permission draft can never overwrite either value.
+struct PermissionSettingsDraft: Equatable, Sendable {
+    var permissionMode: String
+    var sandboxProfile: String
+    var reasoningEffort: String
+    var disableWebSearch: Bool
+    var noSubagents: Bool
+    var allowRules: String
+    var denyRules: String
+
+    static let defaults = PermissionSettingsDraft(
+        permissionMode: GrokPermissionSettings.defaults.permissionMode,
+        sandboxProfile: GrokPermissionSettings.defaults.sandboxProfile,
+        reasoningEffort: GrokPermissionSettings.defaults.reasoningEffort,
+        disableWebSearch: GrokPermissionSettings.defaults.disableWebSearch,
+        noSubagents: GrokPermissionSettings.defaults.noSubagents,
+        allowRules: GrokPermissionSettings.defaults.allowRules,
+        denyRules: GrokPermissionSettings.defaults.denyRules
+    )
+
+    static func load(from defaults: UserDefaults = .standard) -> PermissionSettingsDraft {
+        PermissionSettingsDraft(
+            permissionMode: GrokPermissionMode.normalizedStoredValue(
+                defaults.string(forKey: GrokSettingsKeys.permissionMode) ?? Self.defaults.permissionMode
+            ),
+            sandboxProfile: defaults.string(forKey: GrokSettingsKeys.sandboxProfile) ?? Self.defaults.sandboxProfile,
+            reasoningEffort: defaults.string(forKey: GrokSettingsKeys.reasoningEffort) ?? Self.defaults.reasoningEffort,
+            disableWebSearch: defaults.object(forKey: GrokSettingsKeys.disableWebSearch) as? Bool ?? Self.defaults.disableWebSearch,
+            noSubagents: defaults.object(forKey: GrokSettingsKeys.noSubagents) as? Bool ?? Self.defaults.noSubagents,
+            allowRules: defaults.string(forKey: GrokSettingsKeys.allowRules) ?? Self.defaults.allowRules,
+            denyRules: defaults.string(forKey: GrokSettingsKeys.denyRules) ?? Self.defaults.denyRules
+        )
+    }
+
+    /// Persists only after an explicit pane Apply. Rule text stays out of receipts.
+    func save(to defaults: UserDefaults = .standard) {
+        defaults.set(GrokPermissionMode.normalizedStoredValue(permissionMode), forKey: GrokSettingsKeys.permissionMode)
+        defaults.set(sandboxProfile, forKey: GrokSettingsKeys.sandboxProfile)
+        defaults.set(reasoningEffort, forKey: GrokSettingsKeys.reasoningEffort)
+        defaults.set(disableWebSearch, forKey: GrokSettingsKeys.disableWebSearch)
+        defaults.set(noSubagents, forKey: GrokSettingsKeys.noSubagents)
+        defaults.set(allowRules, forKey: GrokSettingsKeys.allowRules)
+        defaults.set(denyRules, forKey: GrokSettingsKeys.denyRules)
+    }
+
+    var validation: SettingsValidationResult {
+        let invalidRule = (allowRules + "\n" + denyRules)
+            .split(separator: "\n")
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .first { $0.contains("\u{0}") }
+        if invalidRule != nil {
+            return .invalid("Permission rules cannot contain a null character.")
+        }
+        return .valid
+    }
+}
+
+/// Computer Use has one launch setting plus an optional external Cursor MCP
+/// integration. Keeping them in one pane draft prevents an accidental write to
+/// either destination while the user is still reviewing the other.
+struct ComputerUsePaneSettings: Equatable, Sendable {
+    var settings: ComputerUseSettings
+    var cursorIntegrationEnabled: Bool
+
+    static let defaults = ComputerUsePaneSettings(
+        settings: .defaults,
+        cursorIntegrationEnabled: false
+    )
+}
+
 /// Shared four-layer value state used by editable Settings panes. `draft` is never
 /// storage-backed; panes write `persisted`/`applied` only from their explicit Apply action.
 struct SettingsValueState<Value: Equatable & Sendable>: Equatable, Sendable {
