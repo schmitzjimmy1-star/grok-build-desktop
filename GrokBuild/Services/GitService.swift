@@ -31,11 +31,14 @@ enum GitService {
     enum GitError: LocalizedError {
         case notARepository
         case commandFailed(String)
+        case timedOut(String)
 
         var errorDescription: String? {
             switch self {
             case .notARepository: return "This folder is not a git repository."
             case .commandFailed(let message): return message
+            case .timedOut(let command):
+                return "`\(command)` did not finish in time and was terminated."
             }
         }
     }
@@ -46,33 +49,35 @@ enum GitService {
     }
 
     @discardableResult
-    static func runExecutable(_ executable: String, args: [String], in directory: URL) async throws -> String {
-        try await withCheckedThrowingContinuation { continuation in
-            let process = Process()
-            process.executableURL = URL(fileURLWithPath: executable)
-            process.arguments = args
-            process.currentDirectoryURL = directory
+    static func runExecutable(
+        _ executable: String,
+        args: [String],
+        in directory: URL,
+        timeout: TimeInterval? = 300
+    ) async throws -> String {
+        // BoundedProcess drains incrementally (reading only after termination deadlocks
+        // once output exceeds the ~64 KiB pipe buffer — large diffs/status) and bounds
+        // the wait.
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: executable)
+        process.arguments = args
+        process.currentDirectoryURL = directory
+        let stdout = Pipe()
+        let stderr = Pipe()
+        process.standardOutput = stdout
+        process.standardError = stderr
 
-            let stdout = Pipe()
-            let stderr = Pipe()
-            process.standardOutput = stdout
-            process.standardError = stderr
-            process.terminationHandler = { process in
-                let out = String(decoding: stdout.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self)
-                let err = String(decoding: stderr.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self)
-                if process.terminationStatus == 0 {
-                    continuation.resume(returning: out)
-                } else {
-                    continuation.resume(throwing: GitError.commandFailed(err.isEmpty ? out : err))
-                }
-            }
+        let outcome = try await BoundedProcess.run(process, stdout: stdout, stderr: stderr, timeout: timeout)
 
-            do {
-                try process.run()
-            } catch {
-                continuation.resume(throwing: error)
-            }
+        if outcome.timedOut {
+            throw GitError.timedOut("\(URL(fileURLWithPath: executable).lastPathComponent) \(args.joined(separator: " "))")
         }
+        let out = String(decoding: outcome.stdout, as: UTF8.self)
+        let err = String(decoding: outcome.stderr, as: UTF8.self)
+        if outcome.status == 0 {
+            return out
+        }
+        throw GitError.commandFailed(err.isEmpty ? out : err)
     }
 
     @discardableResult

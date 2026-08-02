@@ -1,6 +1,7 @@
 import AppKit
 import ApplicationServices
 import Foundation
+import GrokBuildComputerUseCore
 import Security
 
 struct ComputerUseBackendStatus: Sendable, Equatable {
@@ -32,8 +33,14 @@ struct ComputerUsePermissionStatus: Sendable, Equatable {
         guidance: nil
     )
 
-    var isReady: Bool {
-        accessibility == "granted"
+    /// Ready to act. Accessibility must be granted; when screenshots are
+    /// enabled, a *known* Screen Recording denial also blocks readiness
+    /// (unknown/not-reported does not, to avoid hard-blocking older
+    /// agent-desktop versions that cannot report it).
+    func isReady(includeScreenshots: Bool) -> Bool {
+        guard accessibility == "granted" else { return false }
+        if includeScreenshots && screenRecording == "denied" { return false }
+        return true
     }
 }
 
@@ -46,7 +53,7 @@ struct AccessibilityTrustProbe: Sendable, Equatable {
 }
 
 enum ComputerUseService {
-    private struct CommandResult: Sendable {
+    struct CommandResult: Sendable {
         var output: String
         var exitCode: Int32
     }
@@ -66,12 +73,6 @@ enum ComputerUseService {
     }
 
     static func executableURL(settings: ComputerUseSettings = ComputerUseSettingsStore.load()) -> URL? {
-        let configured = settings.agentDesktopPath.trimmingCharacters(in: .whitespacesAndNewlines)
-        if !configured.isEmpty {
-            let url = URL(fileURLWithPath: (configured as NSString).expandingTildeInPath)
-            if FileManager.default.isExecutableFile(atPath: url.path) { return url }
-        }
-
         if let bundled = bundledAgentDesktopURL() {
             return bundled
         }
@@ -139,17 +140,16 @@ enum ComputerUseService {
             return nil
         }
 
+        // Exactly the set the helper reads, via the shared contract constants;
+        // an env-parity test keeps app and helper in sync.
         var env: [String: String] = [
-            "GROKBUILD_COMPUTER_USE_POLICY": settings.permissionPolicy.rawValue,
-            "GROKBUILD_COMPUTER_USE_TIMEOUT": String(settings.commandTimeoutSeconds),
-            "GROKBUILD_COMPUTER_USE_MAX_STEPS": String(settings.maxSteps),
-            "GROKBUILD_COMPUTER_USE_SCREENSHOTS": settings.includeScreenshots ? "true" : "false",
-            "GROKBUILD_COMPUTER_USE_ALLOW_PHYSICAL_MOUSE": settings.allowPhysicalMouse ? "true" : "false",
-            "GROKBUILD_COMPUTER_USE_SESSION": normalizedSessionName(settings.sessionName)
+            ComputerUseHelperEnvironment.policy: settings.permissionPolicy.rawValue,
+            ComputerUseHelperEnvironment.timeout: String(settings.commandTimeoutSeconds),
+            ComputerUseHelperEnvironment.screenshots: settings.includeScreenshots ? "true" : "false"
         ]
 
         if let executable = agentDesktopOverride ?? executableURL(settings: settings) {
-            env["AGENT_DESKTOP_PATH"] = executable.path
+            env[ComputerUseHelperEnvironment.agentDesktopPath] = executable.path
         }
 
         return MCPServerConfig(
@@ -181,7 +181,7 @@ enum ComputerUseService {
                 return .needsSetup
             }
             let permissions = await permissionStatus(settings: settings)
-            guard permissions.isReady else {
+            guard permissions.isReady(includeScreenshots: settings.includeScreenshots) else {
                 return .needsSetup
             }
         }
@@ -233,10 +233,29 @@ enum ComputerUseService {
         )
     }
 
-    static func permissionStatus(settings: ComputerUseSettings = ComputerUseSettingsStore.load()) async -> ComputerUsePermissionStatus {
-        guard executableURL(settings: settings) != nil else { return .unavailable }
+    /// The resolved status plus the raw per-process signals it was derived
+    /// from, so the UI can show a truthful per-binary breakdown instead of a
+    /// single merged verdict.
+    struct PermissionOverview: Sendable {
+        var resolved: ComputerUsePermissionStatus
+        var probe: AccessibilityTrustProbe?
+        var grokBuildAccessibilityGranted: Bool
+        var grokBuildScreenRecordingGranted: Bool
+    }
 
+    static func permissionOverview(settings: ComputerUseSettings = ComputerUseSettingsStore.load()) async -> PermissionOverview {
         let grokBuildGranted = localAccessibilityGranted()
+        let screenGranted = localScreenRecordingGranted()
+
+        guard executableURL(settings: settings) != nil else {
+            return PermissionOverview(
+                resolved: .unavailable,
+                probe: nil,
+                grokBuildAccessibilityGranted: grokBuildGranted,
+                grokBuildScreenRecordingGranted: screenGranted
+            )
+        }
+
         let probe = await helperAccessibilityProbe(settings: settings)
         var cliStatus: ComputerUsePermissionStatus
 
@@ -258,16 +277,52 @@ enum ComputerUseService {
             cliStatus = .unavailable
         }
 
-        return resolvePermissionStatus(
+        let resolved = resolvePermissionStatus(
             cliStatus: cliStatus,
             grokBuildGranted: grokBuildGranted,
             probe: probe,
-            settings: settings
+            settings: settings,
+            grokBuildScreenRecordingGranted: screenGranted
         )
+        return PermissionOverview(
+            resolved: resolved,
+            probe: probe,
+            grokBuildAccessibilityGranted: grokBuildGranted,
+            grokBuildScreenRecordingGranted: screenGranted
+        )
+    }
+
+    static func permissionStatus(settings: ComputerUseSettings = ComputerUseSettingsStore.load()) async -> ComputerUsePermissionStatus {
+        await permissionOverview(settings: settings).resolved
     }
 
     static func localAccessibilityGranted() -> Bool {
         AXIsProcessTrusted()
+    }
+
+    /// Screen Recording preflight for this process. Meaningful for the
+    /// bundled agent-desktop (same signing identity); an external copy has
+    /// its own TCC identity and must report for itself.
+    static func localScreenRecordingGranted() -> Bool {
+        CGPreflightScreenCaptureAccess()
+    }
+
+    /// Ask macOS for Screen Recording. Until an app *requests* capture it
+    /// never appears in Privacy & Security → Screen & System Audio
+    /// Recording at all, so there is no row for the user to enable — this
+    /// call is what creates it.
+    ///
+    /// macOS shows the prompt only once per app; afterwards this is a no-op
+    /// and the user must toggle the (now existing) row themselves.
+    @discardableResult
+    static func requestScreenRecordingAccess() -> Bool {
+        CGRequestScreenCaptureAccess()
+    }
+
+    /// Requesting is worth doing only when screenshots are enabled and the
+    /// permission is not already granted.
+    static func shouldRequestScreenRecording(includeScreenshots: Bool, granted: Bool) -> Bool {
+        includeScreenshots && !granted
     }
 
     static var runningExecutablePath: String {
@@ -330,17 +385,24 @@ enum ComputerUseService {
         cliStatus: ComputerUsePermissionStatus,
         grokBuildGranted: Bool,
         probe: AccessibilityTrustProbe?,
-        settings: ComputerUseSettings = ComputerUseSettingsStore.load()
+        settings: ComputerUseSettings = ComputerUseSettingsStore.load(),
+        grokBuildScreenRecordingGranted: Bool = localScreenRecordingGranted()
     ) -> ComputerUsePermissionStatus {
         let helperGranted = probe?.helperGranted ?? false
         let agentDesktopGranted = probe?.agentDesktopGranted ?? false
         let cliGranted = cliStatus.accessibility == "granted"
-        // Bundled agent-desktop is signed with the app bundle id; GrokBuild access is enough.
+        let bundled = usesBundledAgentDesktop(settings: settings)
+
         let granted: Bool
-        if usesBundledAgentDesktop(settings: settings) {
+        if bundled {
+            // All three binaries are signed with the app's bundle id, so any
+            // grant proves the shared TCC identity is trusted.
             granted = grokBuildGranted || helperGranted || agentDesktopGranted || cliGranted
         } else {
-            granted = agentDesktopGranted || grokBuildGranted || helperGranted || cliGranted
+            // An external agent-desktop has its own TCC identity. Only its
+            // own grant (probe or direct report) counts — GrokBuild's or the
+            // helper's trust must not mask a denied actuator.
+            granted = agentDesktopGranted || cliGranted
         }
 
         var resolved = cliStatus
@@ -350,6 +412,11 @@ enum ComputerUseService {
         } else {
             resolved.guidance = accessibilityGuidance(probe: probe, settings: settings)
         }
+        // Screen Recording: for the bundled copy this process's preflight is
+        // authoritative (same identity); an external copy keeps its own report.
+        if bundled && grokBuildScreenRecordingGranted {
+            resolved.screenRecording = "granted"
+        }
         resolved.diagnostic = permissionDiagnosticText(
             cliStatus: cliStatus,
             grokBuildGranted: grokBuildGranted,
@@ -357,17 +424,6 @@ enum ComputerUseService {
             settings: settings
         )
         return resolved
-    }
-
-    static func mergedPermissionStatus(
-        _ status: ComputerUsePermissionStatus,
-        localAccessibilityGranted: Bool
-    ) -> ComputerUsePermissionStatus {
-        resolvePermissionStatus(
-            cliStatus: status,
-            grokBuildGranted: localAccessibilityGranted,
-            probe: nil
-        )
     }
 
     static func accessibilityGuidance(
@@ -476,6 +532,18 @@ enum ComputerUseService {
             "GrokBuild accessibility: \(grokBuildGranted ? "granted" : "not granted yet")"
         ]
 
+        if shouldRequestScreenRecording(
+            includeScreenshots: settings.includeScreenshots,
+            granted: localScreenRecordingGranted()
+        ) {
+            let granted = await MainActor.run { requestScreenRecordingAccess() }
+            lines.append(
+                granted
+                    ? "Screen Recording: granted."
+                    : "Screen Recording: requested — approve the macOS prompt, then enable GrokBuild in Privacy & Security → Screen & System Audio Recording (the entry exists now) and relaunch."
+            )
+        }
+
         if usesBundledAgentDesktop(settings: settings) {
             if !grokBuildGranted {
                 await MainActor.run { openAccessibilitySettings() }
@@ -509,6 +577,170 @@ enum ComputerUseService {
         }
 
         return lines.joined(separator: "\n")
+    }
+
+    // MARK: - End-to-end self test
+
+    struct EndToEndTestResult: Sendable, Equatable {
+        var success: Bool
+        var summary: String
+        var detail: String
+    }
+
+    /// Proves the whole chain the way grok uses it: spawn the helper over
+    /// stdio JSON-RPC with the exported env, `initialize`, then call
+    /// `computer_list_apps` through agent-desktop. Every green light in the
+    /// pane is inference; this is evidence.
+    static func runEndToEndTest(settings: ComputerUseSettings = ComputerUseSettingsStore.load()) async -> EndToEndTestResult {
+        guard let helper = helperURL() else {
+            return EndToEndTestResult(
+                success: false,
+                summary: "Helper missing",
+                detail: "GrokBuildComputerUseMCP was not found next to the app executable. Rebuild the app (make run)."
+            )
+        }
+        guard let agentDesktop = executableURL(settings: settings) else {
+            return EndToEndTestResult(
+                success: false,
+                summary: "agent-desktop missing",
+                detail: "Install it with `npm install -g agent-desktop`, then rebuild so packaging bundles it."
+            )
+        }
+
+        var env = ProcessInfo.processInfo.environment
+        env[ComputerUseHelperEnvironment.agentDesktopPath] = agentDesktop.path
+        env[ComputerUseHelperEnvironment.policy] = settings.permissionPolicy.rawValue
+        env[ComputerUseHelperEnvironment.timeout] = String(settings.commandTimeoutSeconds)
+        env[ComputerUseHelperEnvironment.screenshots] = settings.includeScreenshots ? "true" : "false"
+
+        do {
+            let responses = try await runHelperRPC(
+                helper: helper,
+                environment: env,
+                requests: [
+                    #"{"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}"#,
+                    #"{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"computer_list_apps","arguments":{}}}"#,
+                ],
+                finalID: 2,
+                timeout: 20
+            )
+            guard let final = responses[2] else {
+                return EndToEndTestResult(
+                    success: false,
+                    summary: "No response",
+                    detail: "The helper started but never answered computer_list_apps."
+                )
+            }
+            if let error = final["error"] as? [String: Any] {
+                return EndToEndTestResult(
+                    success: false,
+                    summary: "Tool call failed",
+                    detail: error["message"] as? String ?? "Unknown helper error."
+                )
+            }
+            let text = (((final["result"] as? [String: Any])?["content"] as? [[String: Any]])?
+                .first?["text"] as? String) ?? ""
+            let trimmed = text.count > 700 ? String(text.prefix(700)) + "…" : text
+            return EndToEndTestResult(
+                success: true,
+                summary: "Computer Use responded end to end",
+                detail: trimmed.isEmpty ? "computer_list_apps returned no text." : trimmed
+            )
+        } catch {
+            return EndToEndTestResult(success: false, summary: "Test failed", detail: error.localizedDescription)
+        }
+    }
+
+    /// Internal (not private) so the RPC plumbing stays under test against a
+    /// scripted fake helper.
+    static func runHelperRPC(
+        helper: URL,
+        environment: [String: String],
+        requests: [String],
+        finalID: Int,
+        timeout: TimeInterval
+    ) async throws -> [Int: [String: Any]] {
+        try await withCheckedThrowingContinuation { continuation in
+            let process = Process()
+            process.executableURL = helper
+            process.environment = environment
+
+            let stdinPipe = Pipe()
+            let stdoutPipe = Pipe()
+            let stderrPipe = Pipe()
+            process.standardInput = stdinPipe
+            process.standardOutput = stdoutPipe
+            process.standardError = stderrPipe
+
+            final class RPCBox: @unchecked Sendable {
+                let lock = NSLock()
+                var buffer = Data()
+                var responses: [Int: [String: Any]] = [:]
+                var didResume = false
+            }
+            let box = RPCBox()
+
+            @Sendable
+            func finish(_ result: Result<[Int: [String: Any]], Error>) {
+                box.lock.lock()
+                guard !box.didResume else {
+                    box.lock.unlock()
+                    return
+                }
+                box.didResume = true
+                box.lock.unlock()
+                stdoutPipe.fileHandleForReading.readabilityHandler = nil
+                try? stdinPipe.fileHandleForWriting.close()
+                if process.isRunning {
+                    process.terminate()
+                }
+                continuation.resume(with: result)
+            }
+
+            stdoutPipe.fileHandleForReading.readabilityHandler = { handle in
+                let chunk = handle.availableData
+                if chunk.isEmpty {
+                    handle.readabilityHandler = nil
+                    return
+                }
+                box.lock.lock()
+                let lines = AcpLineBuffer.drainLines(buffer: &box.buffer, appending: chunk)
+                for line in lines {
+                    guard let data = line.data(using: .utf8),
+                          let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                          let id = json["id"] as? Int else { continue }
+                    box.responses[id] = json
+                }
+                let snapshot = box.responses
+                box.lock.unlock()
+                if snapshot[finalID] != nil {
+                    finish(.success(snapshot))
+                }
+            }
+
+            do {
+                try process.run()
+            } catch {
+                finish(.failure(error))
+                return
+            }
+
+            let payload = requests.map { $0 + "\n" }.joined()
+            stdinPipe.fileHandleForWriting.write(Data(payload.utf8))
+
+            Task {
+                try? await Task.sleep(nanoseconds: UInt64(timeout * 1_000_000_000))
+                finish(.failure(NSError(
+                    domain: "ComputerUseService",
+                    code: 4,
+                    userInfo: [NSLocalizedDescriptionKey: "Computer Use test timed out after \(Int(timeout))s."]
+                )))
+                try? await Task.sleep(nanoseconds: 2_000_000_000)
+                if process.isRunning {
+                    kill(process.processIdentifier, SIGKILL)
+                }
+            }
+        }
     }
 
     static var appBundlePath: String {
@@ -575,11 +807,6 @@ enum ComputerUseService {
 
     static func commandPreview(_ args: [String], settings: ComputerUseSettings = ComputerUseSettingsStore.load()) -> [String] {
         [executableURL(settings: settings)?.path ?? "agent-desktop"] + args
-    }
-
-    static func normalizedSessionName(_ raw: String) -> String {
-        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
-        return trimmed.isEmpty ? ComputerUseSettings.defaults.sessionName : trimmed
     }
 
     static func parseVersion(_ output: String) -> String? {
@@ -694,7 +921,8 @@ enum ComputerUseService {
         return result.output
     }
 
-    private static func runResult(
+    /// Internal (not private) so the pipe-drain behavior stays under test.
+    static func runResult(
         _ command: [String],
         timeout: TimeInterval,
         environment: [String: String]? = nil
@@ -718,8 +946,31 @@ enum ComputerUseService {
             final class ResumeBox: @unchecked Sendable {
                 let lock = NSLock()
                 var didResume = false
+                var stdoutData = Data()
+                var stderrData = Data()
             }
             let box = ResumeBox()
+
+            // Drain while the child runs — output beyond the ~64 KiB pipe
+            // buffer would otherwise block the child in write(2) until the
+            // timeout (same bug as the helper's runAgentDesktop had).
+            let drainGroup = DispatchGroup()
+            drainGroup.enter()
+            DispatchQueue.global(qos: .utility).async {
+                let data = stdout.fileHandleForReading.readDataToEndOfFile()
+                box.lock.lock()
+                box.stdoutData = data
+                box.lock.unlock()
+                drainGroup.leave()
+            }
+            drainGroup.enter()
+            DispatchQueue.global(qos: .utility).async {
+                let data = stderr.fileHandleForReading.readDataToEndOfFile()
+                box.lock.lock()
+                box.stderrData = data
+                box.lock.unlock()
+                drainGroup.leave()
+            }
 
             @Sendable
             func finish(_ result: Result<CommandResult, Error>) {
@@ -734,8 +985,11 @@ enum ComputerUseService {
             }
 
             process.terminationHandler = { process in
-                let out = String(decoding: stdout.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self)
-                let err = String(decoding: stderr.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self)
+                _ = drainGroup.wait(timeout: .now() + 5)
+                box.lock.lock()
+                let out = String(decoding: box.stdoutData, as: UTF8.self)
+                let err = String(decoding: box.stderrData, as: UTF8.self)
+                box.lock.unlock()
                 finish(.success(CommandResult(output: out.isEmpty ? err : out, exitCode: process.terminationStatus)))
             }
 
@@ -748,13 +1002,18 @@ enum ComputerUseService {
 
             Task {
                 try? await Task.sleep(nanoseconds: UInt64(timeout * 1_000_000_000))
+                guard process.isRunning else { return }
+                process.terminate()
+                // Resume the caller with the timeout right away; the
+                // dedupe box makes the (later) terminationHandler a no-op.
+                finish(.failure(NSError(
+                    domain: "ComputerUseService",
+                    code: 3,
+                    userInfo: [NSLocalizedDescriptionKey: "agent-desktop command timed out."]
+                )))
+                try? await Task.sleep(nanoseconds: 2_000_000_000)
                 if process.isRunning {
-                    process.terminate()
-                    finish(.failure(NSError(
-                        domain: "ComputerUseService",
-                        code: 3,
-                        userInfo: [NSLocalizedDescriptionKey: "agent-desktop command timed out."]
-                    )))
+                    kill(process.processIdentifier, SIGKILL)
                 }
             }
         }

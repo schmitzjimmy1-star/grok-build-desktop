@@ -1,6 +1,6 @@
 import Foundation
 
-struct SlashCommand: Identifiable, Hashable, Sendable {
+struct SlashCommand: Identifiable, Hashable, Codable, Sendable {
     var id: String { name }
     let name: String
     let description: String
@@ -21,6 +21,27 @@ struct SlashCommand: Identifiable, Hashable, Sendable {
         let path = (dict["_meta"] as? [String: Any])?["path"] as? String ?? ""
         let isSkill = path.hasSuffix("SKILL.md") || path.contains("/skills/")
         return SlashCommand(name: name, description: description, inputHint: hint, isSkill: isSkill)
+    }
+}
+
+/// Last known command inventory shared by lazy fresh tabs. A new tab deliberately does
+/// not spawn grok until its first prompt, but its hammer menu should not become a dead
+/// control while command discovery is unavailable.
+enum GrokCommandCatalog {
+    private static let cacheKey = "grokbuild.slashCommands.v1"
+
+    static func cached(defaults: UserDefaults = .standard) -> [SlashCommand] {
+        guard let data = defaults.data(forKey: cacheKey),
+              let commands = try? JSONDecoder().decode([SlashCommand].self, from: data) else {
+            return []
+        }
+        return commands
+    }
+
+    static func record(_ commands: [SlashCommand], defaults: UserDefaults = .standard) {
+        guard !commands.isEmpty,
+              let data = try? JSONEncoder().encode(commands) else { return }
+        defaults.set(data, forKey: cacheKey)
     }
 }
 
@@ -252,24 +273,24 @@ struct QuickStartPrompt: Identifiable, Hashable, Sendable {
 
     static let defaults: [QuickStartPrompt] = [
         QuickStartPrompt(
-            icon: "doc.text.magnifyingglass",
-            title: "Explain this project",
-            prompt: "Give me a high-level overview of this project: its purpose, structure, and how the main pieces fit together."
+            icon: "magnifyingglass",
+            title: "Map project architecture",
+            prompt: "Inspect this project and map its purpose, structure, entry points, data flow, build system, tests, and current working-tree state."
+        ),
+        QuickStartPrompt(
+            icon: "hammer",
+            title: "Implement a scoped change",
+            prompt: "Plan and implement a scoped change in this project, verify it with the relevant build and tests, and summarize the exact files changed."
+        ),
+        QuickStartPrompt(
+            icon: "arrow.triangle.2.circlepath",
+            title: "Review the working tree",
+            prompt: "Review the uncommitted working tree for correctness, regressions, test gaps, accidental files, and release risk without changing anything."
         ),
         QuickStartPrompt(
             icon: "ladybug",
-            title: "Find & fix a bug",
-            prompt: "Help me track down a bug. Ask me what I'm seeing, then investigate the relevant code and propose a fix."
-        ),
-        QuickStartPrompt(
-            icon: "checkmark.seal",
-            title: "Add tests",
-            prompt: "Add tests for the recent changes in this project, following the existing testing conventions."
-        ),
-        QuickStartPrompt(
-            icon: "arrow.triangle.branch",
-            title: "Review my changes",
-            prompt: "Review my uncommitted changes for correctness, style, and potential issues."
+            title: "Diagnose build or test failures",
+            prompt: "Reproduce the current build or test failure, trace the root cause, implement the smallest safe repair, and rerun the affected verification."
         ),
     ]
 }
@@ -419,13 +440,9 @@ enum SessionTitle {
 
     static func auto(from messages: [Message]) -> String? {
         guard let raw = messages.first(where: { $0.role == .user })?.content else { return nil }
-        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else { return nil }
-
-        let collapsed = trimmed
-            .replacingOccurrences(of: "\n", with: " ")
-            .replacingOccurrences(of: "\\s+", with: " ", options: .regularExpression)
-        let parts = collapsed.split(separator: " ")
+        // One pass collapses runs of any whitespace (spaces, newlines, tabs)
+        // without compiling an ICU regex per call.
+        let parts = raw.split(whereSeparator: \.isWhitespace)
         guard !parts.isEmpty else { return nil }
 
         let preview = parts.prefix(maxWords).joined(separator: " ")

@@ -1,11 +1,50 @@
 import CoreGraphics
+import Foundation
 
 /// Shared main-window size policy for SwiftUI `WindowGroup` and AppKit reopen path.
 enum MainWindowLayout {
-    /// Comfortable floor so sidebar + composer + status pills stay readable.
+    /// Comfortable floor so the sidebar and composer controls stay readable.
     static let minimumSize = CGSize(width: 1100, height: 720)
-    static let defaultSize = CGSize(width: 1200, height: 800)
+    /// Matches the default logical canvas of a 13-inch Apple Silicon MacBook Air.
+    /// AppDelegate clamps this to the current screen's available frame.
+    static let defaultSize = CGSize(width: 1440, height: 900)
 
-    /// Composer fills the chat column (no artificial mid-width cap).
-    static let composerMaxWidth: CGFloat = .infinity
+    /// Launch as a proper primary workspace rather than a small floating utility.
+    /// Applied only when no saved window frame exists; a user-resized frame is
+    /// restored instead (see `AppDelegate.openMainWindow`).
+    ///
+    /// On displays smaller than `minimumSize` the frame is clamped up to the
+    /// minimum with its top edge pinned to the visible area, so the title bar
+    /// stays reachable even when the window must exceed the screen.
+    static func screenFillingFrame(
+        visibleFrame: CGRect,
+        minimumSize: CGSize = minimumSize
+    ) -> CGRect {
+        let width = max(visibleFrame.width, minimumSize.width)
+        let height = max(visibleFrame.height, minimumSize.height)
+        return CGRect(
+            x: visibleFrame.minX,
+            y: visibleFrame.maxY - height,
+            width: width,
+            height: height
+        )
+    }
+}
+
+enum SidebarVisibility {
+    static let storageKey = "grokbuild.sidebarVisible"
+    static let defaultVisible = true
+
+    /// Settings owns its own navigation and should use the full window instead of
+    /// stacking a second sidebar beside the project sidebar.
+    static func shouldShow(preference: Bool, settingsPresented: Bool) -> Bool {
+        preference && !settingsPresented
+    }
+
+    /// The persisted preference as ContentView's `@AppStorage` sees it: a
+    /// missing key means the default, not `false`. Used by the View menu.
+    static func currentPreference(defaults: UserDefaults = .standard) -> Bool {
+        guard defaults.object(forKey: storageKey) != nil else { return defaultVisible }
+        return defaults.bool(forKey: storageKey)
+    }
 }

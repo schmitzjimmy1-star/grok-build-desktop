@@ -2,6 +2,24 @@ import XCTest
 @testable import GrokBuild
 
 final class ComposerWorkflowTests: XCTestCase {
+    func testGrokCommandCatalogKeepsLazyFreshTabsInteractive() {
+        let suite = "grokbuild.tests.commands.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suite)!
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let commands = [
+            SlashCommand(name: "design", description: "Design", isSkill: true),
+            SlashCommand(name: "deep-research", description: "Research")
+        ]
+
+        XCTAssertTrue(GrokCommandCatalog.cached(defaults: defaults).isEmpty)
+        GrokCommandCatalog.record(commands, defaults: defaults)
+        XCTAssertEqual(GrokCommandCatalog.cached(defaults: defaults), commands)
+
+        // A transient empty discovery snapshot must not erase the last known menu.
+        GrokCommandCatalog.record([], defaults: defaults)
+        XCTAssertEqual(GrokCommandCatalog.cached(defaults: defaults), commands)
+    }
+
     func testSkillSlashCommandsFilterPreservesCuratedOrder() {
         let available = [
             SlashCommand(name: "review", description: "Review"),

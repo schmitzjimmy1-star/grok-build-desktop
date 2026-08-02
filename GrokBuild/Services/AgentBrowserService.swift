@@ -312,7 +312,8 @@ enum AgentBrowserService {
             )
         }
 
-        return try await run([executable.path, "install"], allowFailure: false)
+        // Runtime install downloads a browser — give it a long, but still bounded, window.
+        return try await run([executable.path, "install"], allowFailure: false, timeout: 600)
     }
 
     static var managedRuntimeDirectory: URL {
@@ -361,44 +362,48 @@ enum AgentBrowserService {
     }
 
     @discardableResult
-    static func run(_ command: [String], allowFailure: Bool = false) async throws -> String {
-        try await runResult(command, allowFailure: allowFailure).output
+    static func run(_ command: [String], allowFailure: Bool = false, timeout: TimeInterval = 60) async throws -> String {
+        try await runResult(command, allowFailure: allowFailure, timeout: timeout).output
     }
 
-    private static func runResult(_ command: [String], allowFailure: Bool = false) async throws -> CommandResult {
+    private static func runResult(
+        _ command: [String],
+        allowFailure: Bool = false,
+        timeout: TimeInterval = 60
+    ) async throws -> CommandResult {
         guard let executable = command.first else { return CommandResult(output: "", exitCode: 0) }
-        return try await withCheckedThrowingContinuation { continuation in
-            let process = Process()
-            process.executableURL = URL(fileURLWithPath: executable)
-            process.arguments = Array(command.dropFirst())
-            process.environment = ProcessInfo.processInfo.environment
 
-            let stdout = Pipe()
-            let stderr = Pipe()
-            process.standardOutput = stdout
-            process.standardError = stderr
+        // BoundedProcess drains incrementally and bounds the wait — a hung
+        // `agent-browser` run must not suspend the awaiting Settings task forever.
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: executable)
+        process.arguments = Array(command.dropFirst())
+        process.environment = ProcessInfo.processInfo.environment
+        let stdout = Pipe()
+        let stderr = Pipe()
+        process.standardOutput = stdout
+        process.standardError = stderr
 
-            process.terminationHandler = { process in
-                let out = String(decoding: stdout.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self)
-                let err = String(decoding: stderr.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self)
-                let output = out.isEmpty ? err : out
-                if process.terminationStatus == 0 || allowFailure {
-                    continuation.resume(returning: CommandResult(output: output, exitCode: process.terminationStatus))
-                } else {
-                    continuation.resume(throwing: NSError(
-                        domain: "AgentBrowser",
-                        code: Int(process.terminationStatus),
-                        userInfo: [NSLocalizedDescriptionKey: output]
-                    ))
-                }
-            }
+        let outcome = try await BoundedProcess.run(process, stdout: stdout, stderr: stderr, timeout: timeout)
 
-            do {
-                try process.run()
-            } catch {
-                continuation.resume(throwing: error)
-            }
+        if outcome.timedOut {
+            throw NSError(
+                domain: "AgentBrowser",
+                code: 124,
+                userInfo: [NSLocalizedDescriptionKey: "`\(command.joined(separator: " "))` did not finish within \(Int(timeout))s and was terminated."]
+            )
         }
+        let out = String(decoding: outcome.stdout, as: UTF8.self)
+        let err = String(decoding: outcome.stderr, as: UTF8.self)
+        let output = out.isEmpty ? err : out
+        if outcome.status == 0 || allowFailure {
+            return CommandResult(output: output, exitCode: outcome.status)
+        }
+        throw NSError(
+            domain: "AgentBrowser",
+            code: Int(outcome.status),
+            userInfo: [NSLocalizedDescriptionKey: output]
+        )
     }
 }
 

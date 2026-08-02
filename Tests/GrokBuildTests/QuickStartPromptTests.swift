@@ -25,4 +25,21 @@ final class QuickStartPromptTests: XCTestCase {
             XCTAssertFalse(item.prompt.hasPrefix("/"), "\(item.title) should not start with a slash command")
         }
     }
+
+    func testDefaultsDescribeBuildWorkbenchJobs() {
+        XCTAssertEqual(
+            QuickStartPrompt.defaults.map(\.title),
+            [
+                "Map project architecture",
+                "Implement a scoped change",
+                "Review the working tree",
+                "Diagnose build or test failures",
+            ]
+        )
+        XCTAssertTrue(QuickStartPrompt.defaults.allSatisfy { prompt in
+            ["project", "working tree", "build", "test"].contains { keyword in
+                prompt.prompt.localizedCaseInsensitiveContains(keyword)
+            }
+        })
+    }
 }

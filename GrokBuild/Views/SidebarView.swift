@@ -5,7 +5,26 @@ struct SidebarSession: Identifiable, Hashable {
     let id: UUID
     let workspaceID: Workspace.ID
     let title: String
+    let modelName: String
+    let lastAccessed: Date?
     let isRunning: Bool
+}
+
+enum SessionSidebarMetadata {
+    static func helpText(for session: SidebarSession) -> String {
+        let activity = session.lastAccessed.map {
+            "Last used \($0.formatted(date: .abbreviated, time: .shortened))"
+        } ?? "New session"
+        return "\(session.title)\n\(session.modelName) · \(activity)"
+    }
+
+    static func accessibilityLabel(for session: SidebarSession) -> String {
+        let state = session.isRunning ? "working" : "idle"
+        let activity = session.lastAccessed.map {
+            "last used \($0.formatted(date: .abbreviated, time: .shortened))"
+        } ?? "new session"
+        return "Session: \(session.title), \(session.modelName), \(state), \(activity)"
+    }
 }
 
 struct SidebarView: View {
@@ -34,9 +53,9 @@ struct SidebarView: View {
     var onCreateWorktree: (Workspace) -> Void = { _ in }
     var onSessionDisclosureChanged: () -> Void = {}
     var onOpenSettings: () -> Void
-    var isSettingsSelected: Bool = false
 
     @State private var filter = ""
+    @State private var isFilterVisible = false
     @State private var renamingSessionID: UUID?
     @State private var renameText = ""
 
@@ -73,16 +92,50 @@ struct SidebarView: View {
         VStack(spacing: 0) {
             HStack(spacing: 8) {
                 Button(action: onAddWorkspace) {
-                    Label("Add Project", systemImage: "plus")
+                    Label("New Project", systemImage: "plus")
                         .labelStyle(.titleAndIcon)
+                        .font(.callout.weight(.medium))
                 }
-                .buttonStyle(.bordered)
+                .buttonStyle(.plain)
                 .controlSize(.small)
+                .foregroundStyle(.primary)
                 Spacer()
+                Button {
+                    withAnimation(.easeInOut(duration: 0.16)) {
+                        isFilterVisible.toggle()
+                        if !isFilterVisible {
+                            filter = ""
+                        }
+                    }
+                } label: {
+                    Image(systemName: isFilterVisible ? "xmark" : "magnifyingglass")
+                        .frame(width: 20, height: 20)
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(isFilterVisible ? Color.primary : Color.secondary)
+                .help(isFilterVisible ? "Hide project filter" : "Filter projects")
             }
             .padding(.horizontal, 10)
             .padding(.top, 8)
             .padding(.bottom, 6)
+
+            if isFilterVisible {
+                TextField("Filter projects", text: $filter)
+                    .textFieldStyle(.plain)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 7)
+                    .background(
+                        AppTheme.Palette.glassTint,
+                        in: RoundedRectangle(cornerRadius: AppTheme.Radius.small, style: .continuous)
+                    )
+                    .overlay {
+                        RoundedRectangle(cornerRadius: AppTheme.Radius.small, style: .continuous)
+                            .stroke(AppTheme.Palette.glassBorder, lineWidth: 1)
+                    }
+                    .padding(.horizontal, 10)
+                    .padding(.bottom, 6)
+                    .transition(.move(edge: .top).combined(with: .opacity))
+            }
 
             List {
                 Section {
@@ -130,25 +183,26 @@ struct SidebarView: View {
 
                             let hidden = hiddenCount(for: ws.id, loadedSessions: projectSessions, isExpanded: isExpanded)
                             if hidden > 0 || isExpanded {
-                                HStack(spacing: 6) {
-                                    Text(isExpanded ? "Show less" : "Show more")
-                                        .font(.caption.weight(.medium))
-                                    Image(systemName: isExpanded ? "chevron.up" : "chevron.down")
-                                        .font(.caption2.weight(.semibold))
-                                    Spacer()
-                                }
-                                .foregroundStyle(.secondary)
-                                .frame(maxWidth: .infinity, alignment: .leading)
-                                .contentShape(Rectangle())
-                                .onTapGesture {
+                                Button {
                                     if isExpanded {
                                         expandedSessionWorkspaceIDs.remove(ws.id)
                                     } else {
                                         expandedSessionWorkspaceIDs.insert(ws.id)
                                     }
                                     onSessionDisclosureChanged()
+                                } label: {
+                                    HStack(spacing: 6) {
+                                        Text(isExpanded ? "Show less" : "Show more")
+                                            .font(.caption.weight(.medium))
+                                        Image(systemName: isExpanded ? "chevron.up" : "chevron.down")
+                                            .font(.caption2.weight(.semibold))
+                                        Spacer()
+                                    }
+                                    .foregroundStyle(.secondary)
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+                                    .contentShape(Rectangle())
                                 }
-                                .accessibilityAddTraits(.isButton)
+                                .buttonStyle(.plain)
                                 .listRowInsets(EdgeInsets(top: 2, leading: 34, bottom: 6, trailing: 10))
                                 .listRowBackground(Color.clear)
 
@@ -171,7 +225,8 @@ struct SidebarView: View {
                 }
             }
             .listStyle(.sidebar)
-            .searchable(text: $filter, prompt: "Filter projects")
+            .scrollContentBackground(.hidden)
+            .background(AppTheme.Palette.sidebar)
 
             Divider()
 
@@ -181,13 +236,17 @@ struct SidebarView: View {
                     .padding(.horizontal, 14)
                     .padding(.vertical, 10)
                     .contentShape(Rectangle())
-                    .background(isSettingsSelected ? Color.primary.opacity(0.10) : Color.clear, in: RoundedRectangle(cornerRadius: 8))
+                    .background(
+                        Color.clear,
+                        in: RoundedRectangle(cornerRadius: AppTheme.Radius.small)
+                    )
             }
             .buttonStyle(.plain)
-            .foregroundStyle(.secondary)
+            .foregroundStyle(Color.secondary)
             .padding(.horizontal, 8)
             .padding(.vertical, 8)
         }
+        .background(AppTheme.Palette.sidebar)
         .navigationTitle("GrokBuild")
         .alert("Rename Session", isPresented: renameAlertPresented) {
             TextField("Session name", text: $renameText)
@@ -223,7 +282,12 @@ struct SidebarView: View {
         SessionSidebarRow(
             session: session,
             isSelected: selectedSessionID == session.id,
-            onSelect: { onSelectSession(session.id) }
+            onSelect: { onSelectSession(session.id) },
+            onRename: {
+                renamingSessionID = session.id
+                renameText = session.title
+            },
+            onClose: { onCloseSession(session.id) }
         )
         .listRowInsets(EdgeInsets(top: 2, leading: 18, bottom: 2, trailing: 10))
         .listRowBackground(Color.clear)
@@ -269,81 +333,25 @@ struct SidebarView: View {
             onRemoveWorkspace(ws)
         }
     }
-
-    private var finderURL: URL {
-        URL(fileURLWithPath: "/System/Library/CoreServices/Finder.app")
-    }
-
-    @ViewBuilder
-    private func openProjectButton(
-        title: String,
-        appURL: URL,
-        projectURL: URL,
-        fallbackSystemImage: String,
-        action: (() -> Void)? = nil
-    ) -> some View {
-        Button {
-            if let action {
-                action()
-            } else {
-                open(projectURL, with: appURL)
-            }
-        } label: {
-            Label {
-                Text(title)
-            } icon: {
-                appIcon(for: appURL, fallbackSystemImage: fallbackSystemImage)
-            }
-        }
-    }
-
-    private func appIcon(for appURL: URL, fallbackSystemImage: String) -> Image {
-        if FileManager.default.fileExists(atPath: appURL.path) {
-            let icon = NSWorkspace.shared.icon(forFile: appURL.path)
-            icon.size = NSSize(width: 16, height: 16)
-            return Image(nsImage: icon)
-        }
-        return Image(systemName: fallbackSystemImage)
-    }
-
-    private func installedApp(bundleIdentifiers: [String], appNames: [String]) -> URL? {
-        for bundleIdentifier in bundleIdentifiers {
-            if let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: bundleIdentifier) {
-                return url
-            }
-        }
-
-        for appName in appNames {
-            for directory in ["/Applications", "\(NSHomeDirectory())/Applications"] {
-                let candidate = URL(fileURLWithPath: directory).appendingPathComponent("\(appName).app")
-                if FileManager.default.fileExists(atPath: candidate.path) {
-                    return candidate
-                }
-            }
-        }
-
-        return nil
-    }
-
-    private func open(_ url: URL, with applicationURL: URL) {
-        let configuration = NSWorkspace.OpenConfiguration()
-        NSWorkspace.shared.open([url], withApplicationAt: applicationURL, configuration: configuration)
-    }
 }
 
 private struct SessionSidebarRow: View {
     let session: SidebarSession
     let isSelected: Bool
     var onSelect: () -> Void
+    var onRename: () -> Void
+    var onClose: () -> Void
+    @State private var isHovered = false
 
     var body: some View {
-        Button(action: onSelect) {
-            HStack(spacing: 8) {
+        HStack(spacing: 4) {
+            Button(action: onSelect) {
+                HStack(spacing: 8) {
                 ZStack {
                     Circle()
-                        .fill(Color.blue)
+                        .fill(session.isRunning ? Color.green : AppTheme.Palette.textMuted)
                         .frame(width: 6, height: 6)
-                        .opacity(isSelected ? 1 : 0)
+                        .opacity(isSelected || session.isRunning ? 1 : 0)
                 }
                 .frame(width: 10)
 
@@ -352,16 +360,33 @@ private struct SessionSidebarRow: View {
                     .lineLimit(1)
                     .foregroundStyle(isSelected ? .primary : .secondary)
                 Spacer()
+                }
+                .padding(.horizontal, 8)
+                .padding(.vertical, 5)
+                .contentShape(Rectangle())
+                .background(
+                    isSelected ? AppTheme.Palette.accentSoft : Color.clear,
+                    in: RoundedRectangle(cornerRadius: AppTheme.Radius.small)
+                )
             }
-            .padding(.horizontal, 8)
-            .padding(.vertical, 5)
-            .contentShape(Rectangle())
-            .background(
-                isSelected ? Color.primary.opacity(0.10) : Color.clear,
-                in: RoundedRectangle(cornerRadius: 8)
-            )
+            .buttonStyle(.plain)
+            .accessibilityLabel(SessionSidebarMetadata.accessibilityLabel(for: session))
+
+            Menu {
+                Button("Rename…", action: onRename)
+                Button("Close Session", role: .destructive, action: onClose)
+            } label: {
+                Image(systemName: "ellipsis")
+                    .frame(width: 20, height: 20)
+                    .contentShape(Rectangle())
+            }
+            .menuStyle(.borderlessButton)
+            .help("Session actions")
+            .accessibilityLabel("Session actions for \(session.title)")
+            .opacity(isHovered || isSelected ? 1 : 0)
         }
-        .buttonStyle(.plain)
+        .onHover { isHovered = $0 }
+        .help(SessionSidebarMetadata.helpText(for: session))
     }
 }
 
@@ -376,7 +401,7 @@ private struct WorkspaceRow: View {
     var body: some View {
         HStack(spacing: 10) {
             Image(systemName: isPinned ? "pin.fill" : "folder")
-                .foregroundStyle(isPinned ? .orange : .secondary)
+                .foregroundStyle(isPinned || isSelected ? Color.primary : .secondary)
             VStack(alignment: .leading, spacing: 1) {
                 HStack(spacing: 6) {
                     Text(workspace.displayName)
@@ -397,7 +422,7 @@ private struct WorkspaceRow: View {
                     }
                 }
                 Text(workspace.path.path)
-                    .font(.caption2.monospaced())
+                    .font(.caption2)
                     .foregroundStyle(isSelected ? .secondary : .tertiary)
                     .lineLimit(1)
                     .truncationMode(.middle)
@@ -408,8 +433,8 @@ private struct WorkspaceRow: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .contentShape(Rectangle())
         .background(
-            isSelected ? Color.primary.opacity(0.10) : Color.clear,
-            in: RoundedRectangle(cornerRadius: 8)
+            isSelected ? AppTheme.Palette.accentSoft : Color.clear,
+            in: RoundedRectangle(cornerRadius: AppTheme.Radius.small)
         )
     }
 }

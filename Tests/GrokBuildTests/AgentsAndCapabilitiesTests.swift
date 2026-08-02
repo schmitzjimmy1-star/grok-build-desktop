@@ -52,6 +52,111 @@ final class AgentsAndCapabilitiesTests: XCTestCase {
         XCTAssertEqual(GrokPermissionSettings.defaults.selectedAgent, "")
     }
 
+    func testInteractivePermissionModesMapToTruthfulCLIArguments() {
+        XCTAssertEqual(GrokPermissionMode(storedValue: "default").displayName, "Ask")
+        XCTAssertEqual(GrokPermissionMode(storedValue: "auto").displayName, "Auto")
+        XCTAssertEqual(
+            GrokPermissionMode(storedValue: "dontAsk").displayName,
+            "Deny unapproved (CI)"
+        )
+        XCTAssertEqual(
+            GrokPermissionMode(storedValue: "bypassPermissions"),
+            .alwaysApprove
+        )
+
+        XCTAssertEqual(GrokPermissionLaunchArguments.arguments(for: "default"), [])
+        XCTAssertEqual(
+            GrokPermissionLaunchArguments.arguments(for: "auto"),
+            ["--permission-mode", "auto"]
+        )
+        XCTAssertEqual(
+            GrokPermissionLaunchArguments.arguments(for: "dontAsk"),
+            ["--permission-mode", "dontAsk"]
+        )
+        XCTAssertEqual(
+            GrokPermissionLaunchArguments.arguments(for: "alwaysApprove"),
+            ["--always-approve"]
+        )
+        XCTAssertEqual(
+            GrokPermissionLaunchArguments.arguments(for: "bypassPermissions"),
+            ["--always-approve"]
+        )
+    }
+
+    func testLaunchReceiptIsRedactedAndCapturesEffectivePolicy() {
+        let receipt = GrokLaunchReceipt(options: GrokLaunchOptions(
+            permissionMode: "alwaysApprove",
+            sandboxProfile: "default",
+            disableWebSearch: false,
+            noSubagents: false,
+            allowRules: ["terminal:*"],
+            denyRules: ["terminal:rm"],
+            resumeSessionID: "019f-resume"
+        ))
+
+        XCTAssertEqual(receipt.permissionMode, .alwaysApprove)
+        XCTAssertEqual(receipt.permissionArguments, ["--always-approve"])
+        XCTAssertEqual(receipt.sandboxProfile, "default")
+        XCTAssertTrue(receipt.webSearchEnabled)
+        XCTAssertTrue(receipt.subagentsEnabled)
+        XCTAssertEqual(receipt.resumeSessionID, "019f-resume")
+        XCTAssertFalse(String(describing: receipt).contains("terminal:rm"))
+    }
+
+    func testPermissionRequestsFollowEffectiveLivePolicy() {
+        let options = [
+            PermissionOption(id: "allow-once", kind: "allow_once", name: "Allow"),
+            PermissionOption(id: "reject-once", kind: "reject_once", name: "Reject"),
+        ]
+
+        XCTAssertEqual(
+            PermissionRequestPolicy.disposition(mode: .alwaysApprove, isYolo: false, options: options),
+            .allow(optionID: "allow-once")
+        )
+        XCTAssertEqual(
+            PermissionRequestPolicy.disposition(mode: .denyUnapproved, isYolo: false, options: options),
+            .deny(optionID: "reject-once")
+        )
+        XCTAssertEqual(
+            PermissionRequestPolicy.disposition(mode: .ask, isYolo: false, options: options),
+            .prompt
+        )
+        XCTAssertEqual(
+            PermissionRequestPolicy.disposition(mode: .auto, isYolo: false, options: options),
+            .prompt
+        )
+        XCTAssertEqual(
+            PermissionRequestPolicy.disposition(mode: .ask, isYolo: true, options: options),
+            .allow(optionID: "allow-once")
+        )
+        XCTAssertEqual(
+            PermissionRequestPolicy.disposition(
+                mode: .alwaysApprove,
+                isYolo: false,
+                options: [options[1]]
+            ),
+            .deny(optionID: "reject-once")
+        )
+    }
+
+    func testPermissionApprovalNeverExecutesToolClientSide() throws {
+        let repositoryRoot = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        let source = try String(
+            contentsOf: repositoryRoot.appendingPathComponent("GrokBuild/Services/ChatStore.swift"),
+            encoding: .utf8
+        )
+
+        let start = try XCTUnwrap(source.range(of: "func respondToPermission"))
+        let end = try XCTUnwrap(source.range(of: "private func denyPermission", range: start.upperBound..<source.endIndex))
+        let body = String(source[start.lowerBound..<end.lowerBound])
+        XCTAssertTrue(body.contains("process.respondToPermission"))
+        XCTAssertFalse(body.contains("write(to:"))
+        XCTAssertFalse(body.contains("createDirectory"))
+    }
+
     // MARK: - Memory launch flag
 
     func testMemoryEnabledDefaultsOff() {
@@ -194,5 +299,25 @@ final class AgentsAndCapabilitiesTests: XCTestCase {
         ])
         XCTAssertTrue(updated.contains("[subagents.roles.helper]"))
         XCTAssertFalse(updated.contains("model ="), "empty model must be omitted so the role inherits the session model")
+    }
+}
+
+extension AgentsAndCapabilitiesTests {
+    func testLegacyNoMemoryKeyMigratesOnceIntoMemoryEnabled() {
+        let suite = "grokbuild.tests.migration.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suite)!
+        defer { defaults.removePersistentDomain(forName: suite) }
+
+        // Old install that explicitly enabled memory (noMemory == false).
+        defaults.set(false, forKey: GrokSettingsKeys.noMemory)
+        LegacySettingsMigration.run(defaults: defaults)
+        XCTAssertEqual(defaults.object(forKey: GrokSettingsKeys.memoryEnabled) as? Bool, true)
+        XCTAssertNil(defaults.object(forKey: GrokSettingsKeys.noMemory))
+
+        // A later explicit choice must never be overwritten.
+        defaults.set(false, forKey: GrokSettingsKeys.memoryEnabled)
+        defaults.set(false, forKey: GrokSettingsKeys.noMemory)
+        LegacySettingsMigration.run(defaults: defaults)
+        XCTAssertEqual(defaults.object(forKey: GrokSettingsKeys.memoryEnabled) as? Bool, false)
     }
 }

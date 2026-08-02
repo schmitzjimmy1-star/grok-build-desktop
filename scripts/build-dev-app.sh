@@ -6,6 +6,8 @@ set -euo pipefail
 # entries from System Settings apply to `make run` launches.
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "$SCRIPT_DIR/build-identity.sh"
 APP_NAME="GrokBuild"
 EXECUTABLE_NAME="GrokBuild"
 APP_VERSION="$(tr -d '[:space:]' < "$ROOT_DIR/VERSION")"
@@ -47,7 +49,7 @@ if [ -d "$ROOT_DIR/GrokBuild/Resources/Skills" ]; then
 fi
 
 # Copy the Grok brand mark so GrokBrandIcon.mark() resolves it in the dev bundle
-# (menu bar icon + welcome state). Without this the app falls back to an SF Symbol.
+# (brand mark + welcome state). Without this the app falls back to an SF Symbol.
 ICONSET_DIR="$ROOT_DIR/GrokBuild/Resources/Assets.xcassets/MenuBarIcon.imageset"
 for icon in MenuBarIcon.png MenuBarIcon@2x.png MenuBarIcon@3x.png; do
     if [ -f "$ICONSET_DIR/$icon" ]; then
@@ -55,9 +57,15 @@ for icon in MenuBarIcon.png MenuBarIcon@2x.png MenuBarIcon@3x.png; do
     fi
 done
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 chmod +x "$SCRIPT_DIR/bundle-agent-desktop.sh" "$SCRIPT_DIR/codesign-app-bundle.sh"
-"$SCRIPT_DIR/bundle-agent-desktop.sh" "$APP_BUNDLE/Contents/MacOS" || true
+# Computer Use is a first-class feature: a build without agent-desktop is
+# broken, so bundling failures fail the build unless explicitly waived.
+if [ "${GROKBUILD_ALLOW_MISSING_AGENT_DESKTOP:-0}" = "1" ]; then
+    "$SCRIPT_DIR/bundle-agent-desktop.sh" "$APP_BUNDLE/Contents/MacOS" \
+        || echo "WARNING: continuing WITHOUT agent-desktop — Computer Use will not work in this build."
+else
+    "$SCRIPT_DIR/bundle-agent-desktop.sh" "$APP_BUNDLE/Contents/MacOS"
+fi
 
 cat > "$APP_BUNDLE/Contents/Info.plist" << EOF
 <?xml version="1.0" encoding="UTF-8"?>
@@ -76,6 +84,16 @@ cat > "$APP_BUNDLE/Contents/Info.plist" << EOF
     <string>$APP_VERSION</string>
     <key>CFBundleVersion</key>
     <string>$APP_VERSION</string>
+    <key>GrokBuildBuildChannel</key>
+    <string>$GROKBUILD_BUILD_CHANNEL_XML</string>
+    <key>GrokBuildSourceRepository</key>
+    <string>$GROKBUILD_SOURCE_REPOSITORY_XML</string>
+    <key>GrokBuildSourceBranch</key>
+    <string>$GROKBUILD_SOURCE_BRANCH_XML</string>
+    <key>GrokBuildSourceCommit</key>
+    <string>$GROKBUILD_SOURCE_COMMIT_XML</string>
+    <key>GrokBuildSourceDirty</key>
+    <$GROKBUILD_SOURCE_DIRTY/>
     <key>LSMinimumSystemVersion</key>
     <string>26.0</string>
     <key>NSMicrophoneUsageDescription</key>
@@ -86,5 +104,8 @@ cat > "$APP_BUNDLE/Contents/Info.plist" << EOF
 </plist>
 EOF
 
-"$SCRIPT_DIR/codesign-app-bundle.sh" "$APP_BUNDLE"
+# Sign with SIGN_IDENTITY from .env when present. Ad-hoc signatures get a new
+# CDHash on every build, so macOS drops Accessibility/Screen Recording grants
+# after each `make run`; a stable identity makes those grants persist.
+"$SCRIPT_DIR/codesign-app-bundle.sh" "$APP_BUNDLE" "${SIGN_IDENTITY:--}"
 echo "Dev app ready: $APP_BUNDLE"

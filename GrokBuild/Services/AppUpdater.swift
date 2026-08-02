@@ -37,6 +37,9 @@ final class AppUpdater {
     }
 
     func downloadAndVerify(release: UpdateChecker.AppRelease) async {
+        // A second tap while a download/verify/install is already in flight must not
+        // stack a concurrent attempt on the same state machine.
+        guard !isBusy else { return }
 #if DEBUG
         if UpdateDebugSimulator.isAppSimulationActive
             || UpdateDebugSimulator.isSimulatedAppRelease(release) {
@@ -74,6 +77,11 @@ final class AppUpdater {
             phase = .readyToInstall(extractedAppURL: extractedApp, version: release.latestVersion)
             notifyPhaseChanged()
         } catch {
+            // reset() cancels the download; keep the phase it chose instead of
+            // overwriting .idle with a failure for our own cancellation.
+            if error is CancellationError || (error as? URLError)?.code == .cancelled {
+                return
+            }
             phase = .failed(error.localizedDescription)
             notifyPhaseChanged()
         }
@@ -102,6 +110,18 @@ final class AppUpdater {
             return
         }
 
+        // Run a temp copy of the helper: the bundled script lives inside the very
+        // bundle being replaced, and overwriting a script mid-execution is only
+        // accidentally safe (bash holds the old inode).
+        let stagedHelper: URL
+        do {
+            stagedHelper = try Self.stageHelperCopy(of: helper)
+        } catch {
+            phase = .failed("Could not stage the install helper: \(error.localizedDescription)")
+            notifyPhaseChanged()
+            return
+        }
+
         phase = .installing
         notifyPhaseChanged()
 
@@ -110,7 +130,7 @@ final class AppUpdater {
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/bin/bash")
         process.arguments = [
-            helper.path,
+            stagedHelper.path,
             "--target", targetURL.path,
             "--new-app", extractedAppURL.path,
             "--pid", String(getpid()),
@@ -142,6 +162,8 @@ final class AppUpdater {
         try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
             let session = URLSession(configuration: .ephemeral)
             let task = session.downloadTask(with: url) { [weak self] tempURL, _, error in
+                // One-shot session — invalidate so each download attempt doesn't leak one.
+                session.finishTasksAndInvalidate()
                 Task { @MainActor in
                     self?.downloadObservation?.invalidate()
                     self?.downloadObservation = nil
@@ -195,24 +217,16 @@ final class AppUpdater {
         }
         try FileManager.default.createDirectory(at: extractRoot, withIntermediateDirectories: true)
 
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: "/usr/bin/ditto")
-        process.arguments = ["-xk", zipURL.path, extractRoot.path]
-        let pipe = Pipe()
-        process.standardError = pipe
-        try process.run()
-        process.waitUntilExit()
-
-        if process.terminationStatus != 0 {
-            let detail = String(data: pipe.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) ?? ""
-            throw Self.updaterError("Could not extract update archive.\n\(detail)")
+        let extract = try await Self.runCommand("/usr/bin/ditto", ["-xk", zipURL.path, extractRoot.path])
+        if extract.exitCode != 0 {
+            throw Self.updaterError("Could not extract update archive.\n\(extract.output)")
         }
 
         guard let appURL = Self.findAppBundle(in: extractRoot) else {
             throw Self.updaterError("Downloaded archive did not contain GrokBuild.app.")
         }
 
-        try Self.verifySignature(for: appURL)
+        try await Self.verifySignature(for: appURL)
         return appURL
     }
 
@@ -236,28 +250,43 @@ final class AppUpdater {
         return entries.first(where: { $0.pathExtension == "app" })
     }
 
-    private static func verifySignature(for appURL: URL) throws {
-        let codesign = try runCommand("/usr/bin/codesign", ["--verify", "--deep", "--strict", "--verbose=2", appURL.path])
+    private static func verifySignature(for appURL: URL) async throws {
+        let codesign = try await runCommand("/usr/bin/codesign", ["--verify", "--deep", "--strict", "--verbose=2", appURL.path])
         if codesign.exitCode != 0 {
             throw updaterError("Update failed code signature verification.\n\(codesign.output)")
         }
 
-        let spctl = try runCommand("/usr/sbin/spctl", ["-a", "-t", "exec", "-vv", appURL.path])
+        let spctl = try await runCommand("/usr/sbin/spctl", ["-a", "-t", "exec", "-vv", appURL.path])
         if spctl.exitCode != 0 {
             throw updaterError("Update failed Gatekeeper assessment.\n\(spctl.output)")
         }
 
-        if let installedTeamID = teamIdentifier(for: Bundle.main.bundleURL),
-           !installedTeamID.isEmpty,
-           let updateTeamID = teamIdentifier(for: appURL),
-           !updateTeamID.isEmpty,
-           installedTeamID != updateTeamID {
-            throw updaterError("Update was signed by a different developer (\(updateTeamID)) than the installed app (\(installedTeamID)).")
+        let installedTeam = await teamIdentifier(for: Bundle.main.bundleURL)
+        let updateTeam = await teamIdentifier(for: appURL)
+        if let issue = teamPolicyIssue(installedTeam: installedTeam, updateTeam: updateTeam) {
+            throw updaterError(issue)
         }
     }
 
-    static func teamIdentifier(for appURL: URL) -> String? {
-        guard let result = try? runCommand("/usr/bin/codesign", ["-dv", "--verbose=4", appURL.path]) else {
+    /// Fail-closed publisher continuity. nil = acceptable; otherwise the reason to block.
+    /// Previously the team check was silently skipped when either side lacked a TeamID,
+    /// so a dev/ad-hoc-signed install would accept a validly notarized update from any
+    /// developer.
+    nonisolated static func teamPolicyIssue(installedTeam: String?, updateTeam: String?) -> String? {
+        guard let updateTeam, !updateTeam.isEmpty else {
+            return "The update does not declare a signing team, so its publisher cannot be verified. Update manually from the releases page."
+        }
+        guard let installedTeam, !installedTeam.isEmpty else {
+            return "The installed copy of GrokBuild has no signing team (development build), so publisher continuity cannot be verified against the update (signed by team \(updateTeam)). Download the release from GitHub and replace the app manually, or install a signed build first."
+        }
+        if installedTeam != updateTeam {
+            return "Update was signed by a different developer (\(updateTeam)) than the installed app (\(installedTeam))."
+        }
+        return nil
+    }
+
+    static func teamIdentifier(for appURL: URL) async -> String? {
+        guard let result = try? await runCommand("/usr/bin/codesign", ["-dv", "--verbose=4", appURL.path]) else {
             return nil
         }
         for line in result.output.components(separatedBy: .newlines) {
@@ -291,6 +320,15 @@ final class AppUpdater {
         return nil
     }
 
+    static func stageHelperCopy(of helper: URL) throws -> URL {
+        let staged = FileManager.default.temporaryDirectory
+            .appendingPathComponent("grokbuild-install-update-\(ProcessInfo.processInfo.processIdentifier)")
+        try? FileManager.default.removeItem(at: staged)
+        try FileManager.default.copyItem(at: helper, to: staged)
+        try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: staged.path)
+        return staged
+    }
+
     static func updatesDirectory() -> URL {
         FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
             .appendingPathComponent("GrokBuild", isDirectory: true)
@@ -322,18 +360,19 @@ final class AppUpdater {
         }
     }
 
-    private static func runCommand(_ launchPath: String, _ arguments: [String]) throws -> (exitCode: Int32, output: String) {
+    // Async (via BoundedProcess) so ditto/codesign/spctl no longer block the main actor
+    // mid-"Verifying…" (the spinner could not even animate); merged stdout+stderr through
+    // one pipe with incremental drain.
+    private static func runCommand(_ launchPath: String, _ arguments: [String]) async throws -> (exitCode: Int32, output: String) {
         let process = Process()
         process.executableURL = URL(fileURLWithPath: launchPath)
         process.arguments = arguments
         let pipe = Pipe()
         process.standardOutput = pipe
         process.standardError = pipe
-        try process.run()
-        process.waitUntilExit()
-        let data = pipe.fileHandleForReading.readDataToEndOfFile()
-        let output = String(data: data, encoding: .utf8) ?? ""
-        return (process.terminationStatus, output)
+
+        let outcome = try await BoundedProcess.run(process, stdout: pipe, stderr: nil, timeout: nil)
+        return (outcome.status, String(decoding: outcome.stdout, as: UTF8.self))
     }
 
     private static func updaterError(_ message: String) -> NSError {

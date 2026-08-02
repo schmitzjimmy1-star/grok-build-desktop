@@ -15,16 +15,28 @@ final class VoiceInputService {
 
     private(set) var state: State = .idle
     private var recognizer: SFSpeechRecognizer?
+    private var recognizerLoaded = false
     private var request: SFSpeechAudioBufferRecognitionRequest?
     private var task: SFSpeechRecognitionTask?
-    private let audioEngine = AVAudioEngine()
+    // Construction must stay trivial: a fresh instance is created every time
+    // ChatView's struct is initialized (its @State default expression), which
+    // happens far more often than voice input is used. The engine and the
+    // speech-daemon connection are created on first start() instead.
+    private var loadedAudioEngine: AVAudioEngine?
 
-    init() {
-        recognizer = SFSpeechRecognizer(locale: Locale(identifier: "en-US"))
+    private var audioEngine: AVAudioEngine {
+        if let loadedAudioEngine { return loadedAudioEngine }
+        let engine = AVAudioEngine()
+        loadedAudioEngine = engine
+        return engine
     }
 
     func start(onPartial: @escaping (String) -> Void, onFinal: @escaping (String) -> Void) {
         guard state == .idle else { return }
+        if !recognizerLoaded {
+            recognizerLoaded = true
+            recognizer = SFSpeechRecognizer(locale: Locale(identifier: "en-US"))
+        }
         guard let recognizer, recognizer.isAvailable else {
             state = .unavailable("Speech recognition unavailable")
             return
@@ -46,9 +58,9 @@ final class VoiceInputService {
         task = nil
         request?.endAudio()
         request = nil
-        if audioEngine.isRunning {
-            audioEngine.stop()
-            audioEngine.inputNode.removeTap(onBus: 0)
+        if let engine = loadedAudioEngine, engine.isRunning {
+            engine.stop()
+            engine.inputNode.removeTap(onBus: 0)
         }
         if state == .listening || state == .transcribing {
             state = .idle

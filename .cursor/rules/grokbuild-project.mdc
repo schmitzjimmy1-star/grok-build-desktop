@@ -5,25 +5,28 @@ alwaysApply: true
 
 # GrokBuild project
 
-SwiftPM macOS menu-bar app — UI for `grok agent stdio`, not a replacement for the CLI.
+SwiftPM windowed macOS app — UI for `grok agent stdio`, not a replacement for the CLI.
 
 ## Key facts
 
-- Target: `GrokBuild/` executable, entry `main.swift` + `AppDelegate` (not `GrokBuildApp.swift` @main).
+- Canonical worktree/remote/retired-line identity: `CANONICAL_WORKTREE.md` (run its preflight first).
 - Version: `VERSION` file → `AppVersion.display`.
+- Installed provenance: `AppBuildIdentity` reads the repository, branch, commit, channel, and dirty state stamped into `Info.plist` by `scripts/build-identity.sh`.
 - Build: `make run`, `make test`, `make app`, `make release` (see `BUILDING.md`).
 - Full reference: `ARCHITECTURE.md`, agent entry: `AGENTS.md`.
 
 ## When editing
 
 - Keep changes focused; reuse existing services and notification names.
+- Stop if the worktree is the retired `/Users/jimmyschmitz/Documents/Grok Builf` line.
 - Do not add an Xcode project; stay on SwiftPM + Makefile scripts.
-- Menu bar icon: `GrokBuild/Resources/Assets.xcassets/MenuBarIcon.imageset/`.
+- Brand mark: `GrokBuild/Resources/Assets.xcassets/MenuBarIcon.imageset/` (legacy imageset name).
 - **Docs + tests + Computer Use required** with every code change — see `.cursor/rules/docs-and-tests.mdc`.
 - Only commit when the user explicitly asks.
 
 ## Key docs
 
+- `CANONICAL_WORKTREE.md` — maintained path/remotes/branch and retired duplicate stop rule
 - `ARCHITECTURE.md` — canonical app map (update when structure/flow changes)
 - `AGENTS.md` — agent entry
 - `BUILDING.md` — build, sign, release

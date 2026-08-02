@@ -1,117 +1,18 @@
 import SwiftUI
 
-struct ChatSessionRow: Identifiable, Hashable {
-    enum Status: Hashable {
-        case idle
-        case working
-        case needsYou
-        case unread
-        case error
-    }
-
-    let id: UUID
-    let title: String
-    let subtitle: String
-    let status: Status
-    var grokSessionID: String?
-}
-
-struct SessionStatusDot: View {
-    let status: ChatSessionRow.Status
-
-    var body: some View {
-        Circle()
-            .fill(color)
-            .frame(width: 8, height: 8)
-    }
-
-    private var color: Color {
-        switch status {
-        case .idle: return Color.secondary.opacity(0.45)
-        case .working: return .blue
-        case .needsYou: return .yellow
-        case .unread: return .green
-        case .error: return .red
-        }
-    }
-}
-
-struct SessionGearPopover: View {
-    @Bindable var store: ChatStore
-    var onOpenSettings: () -> Void
-    var onReasoningEffortChange: (String) -> Void
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text("Model")
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(.secondary)
-
-            Picker("Model", selection: Binding(
-                get: { store.currentModel },
-                set: { store.setModel($0) }
-            )) {
-                ForEach(store.availableModels, id: \.self) { modelId in
-                    Text(store.modelDisplayName(modelId)).tag(modelId)
-                }
-            }
-            .labelsHidden()
-
-            Picker("Reasoning effort", selection: Binding(
-                get: { store.currentReasoningEffort },
-                set: { onReasoningEffortChange($0) }
-            )) {
-                ForEach(ReasoningEffortLevel.menuCases) { level in
-                    Text(level.displayName).tag(level.rawValue)
-                }
-            }
-            .labelsHidden()
-
-            Divider()
-
-            Button("Compact conversation") {
-                Task { _ = await store.send("/compact") }
-            }
-
-            Button("Settings…", action: onOpenSettings)
-
-            Divider()
-
-            Text(store.currentModelContextLabel)
-                .font(.caption.monospacedDigit())
-                .foregroundStyle(.secondary)
-        }
-        .padding(14)
-        .frame(width: 240)
-    }
-}
-
 struct GrokkingIndicator: View {
-    /// When the current turn started; used to show elapsed time and a "warming up" hint.
+    /// Retained for call-site compatibility and future non-animated diagnostics.
     var startedAt: Date?
 
     var body: some View {
-        TimelineView(.periodic(from: .now, by: 0.45)) { context in
-            let phase = Int(context.date.timeIntervalSince1970 / 0.45) % 3
-            let elapsed = startedAt.map { max(0, context.date.timeIntervalSince($0)) }
-            HStack(spacing: 4) {
-                Text("Grokking")
-                Text(String(repeating: ".", count: phase + 1))
-                    .frame(width: 16, alignment: .leading)
-                if let elapsed, elapsed >= 3 {
-                    Text("· \(Int(elapsed))s")
-                        .monospacedDigit()
-                        .foregroundStyle(.tertiary)
-                    // Local models can take a while to load on first use.
-                    if elapsed >= 8 {
-                        Text("· warming up the model may take a moment")
-                            .foregroundStyle(.tertiary)
-                    }
-                }
-            }
+        // A TimelineView here used to tick inside the transcript's LazyVStack every
+        // 450 ms. When a provider stayed silent, each tick forced another full layout;
+        // on a long transcript SwiftUI never caught up and pinned a core at 100%.
+        Text("Agent working…")
             .font(.subheadline)
             .foregroundStyle(.secondary)
-        }
+            .accessibilityLabel("Build agent is working")
+            .accessibilityValue("Waiting for the next result")
     }
 }
 
@@ -123,28 +24,31 @@ struct ThinkingBlock: View {
     var onToggle: () -> Void
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
+        VStack(alignment: .leading, spacing: 5) {
             Button(action: onToggle) {
                 HStack(spacing: 6) {
                     Image(systemName: isExpanded ? "chevron.down" : "chevron.right")
-                        .font(.caption2.weight(.semibold))
+                        .font(AppTheme.Typography.badge)
                     Text(headerTitle)
-                        .font(.caption.weight(.medium))
-                        .foregroundStyle(.secondary)
+                        .font(AppTheme.Typography.label)
+                        .foregroundStyle(.tertiary)
                 }
             }
             .buttonStyle(.plain)
+            .accessibilityLabel(isExpanded ? "Hide thinking" : "Show thinking")
+            .accessibilityValue("\(headerTitle). \(isExpanded ? "Expanded" : "Collapsed")")
+            .accessibilityHint("Reveals or hides the agent's reasoning summary.")
 
             if isExpanded, !text.isEmpty {
                 Text(text)
-                    .font(.caption)
-                    .italic()
-                    .foregroundStyle(.secondary)
+                    .font(AppTheme.Typography.caption)
+                    .lineSpacing(2)
+                    .foregroundStyle(.tertiary)
                     .textSelection(.enabled)
                     .frame(maxWidth: .infinity, alignment: .leading)
             }
         }
-        .padding(.vertical, 4)
+        .padding(.bottom, 3)
     }
 
     private var headerTitle: String {
@@ -158,34 +62,105 @@ struct ThinkingBlock: View {
 }
 
 struct ToolCallRow: View {
-    let title: String
-    let kind: String
+    let tool: ChatStore.LiveToolCall
+    @State private var isExpanded = false
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
+        VStack(alignment: .leading, spacing: 5) {
+            if tool.detail == nil {
+                rowLabel
+            } else {
+                Button {
+                    if reduceMotion {
+                        isExpanded.toggle()
+                    } else {
+                        withAnimation(.easeOut(duration: 0.14)) { isExpanded.toggle() }
+                    }
+                } label: {
+                    rowLabel
+                }
+                .buttonStyle(.plain)
+                .help(isExpanded ? "Hide tool details" : "Show tool details")
+            }
+
+            if isExpanded, let detail = tool.detail {
+                Text(detail)
+                    .font(.system(.caption2, design: .monospaced))
+                    .foregroundStyle(tool.isFailed ? Color.red : Color.secondary)
+                    .textSelection(.enabled)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(.leading, 22)
+                    .padding(.trailing, 4)
+                    .accessibilityLabel("Tool details: \(detail)")
+            }
+        }
+        .padding(.vertical, 2)
+    }
+
+    private var rowLabel: some View {
         HStack(spacing: 8) {
             Image(systemName: iconName)
                 .font(.caption)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(tool.isFailed ? Color.red : Color.secondary)
                 .frame(width: 14)
-            Text(title)
+            Text(tool.title)
                 .font(.system(.caption, design: .monospaced))
-                .foregroundStyle(.secondary)
+                .foregroundStyle(tool.isFailed ? Color.primary : Color.secondary)
                 .lineLimit(1)
             Spacer()
-            Text(kind)
-                .font(.caption2)
-                .foregroundStyle(.tertiary)
+            if let statusLabel {
+                Label(statusLabel, systemImage: statusIconName)
+                    .labelStyle(.titleAndIcon)
+                    .font(.caption2.weight(.semibold))
+                    .foregroundStyle(statusColor)
+            } else {
+                Text(tool.kind)
+                    .font(.caption2)
+                    .foregroundStyle(.tertiary)
+            }
+            if tool.detail != nil {
+                Image(systemName: isExpanded ? "chevron.up" : "chevron.down")
+                    .font(.system(size: 8, weight: .semibold))
+                    .foregroundStyle(.tertiary)
+            }
         }
-        .padding(.vertical, 3)
+        .frame(maxWidth: .infinity, minHeight: ComposerControlMetrics.minimumHitTarget, alignment: .leading)
+        .contentShape(Rectangle())
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("\(tool.title), \(statusLabel ?? tool.kind)")
+        .accessibilityValue(tool.detail == nil ? "No additional details" : (isExpanded ? "Details expanded" : "Details collapsed"))
+        .accessibilityHint(tool.detail == nil ? "Tool activity status." : "Reveals or hides tool details.")
     }
 
     private var iconName: String {
-        let k = kind.lowercased()
+        let k = tool.kind.lowercased()
         if k.contains("browser") { return "globe" }
         if k.contains("read") { return "doc.text" }
         if k.contains("edit") || k.contains("write") { return "pencil" }
         if k.contains("exec") || k.contains("run") || k.contains("terminal") { return "terminal" }
         return "wrench"
+    }
+
+    private var statusLabel: String? {
+        guard let status = tool.status?.lowercased() else { return nil }
+        if tool.isFailed { return "Failed" }
+        if tool.isComplete { return "Done" }
+        if status == "in_progress" || status == "running" { return "Running" }
+        if status == "pending" { return "Pending" }
+        return status.replacingOccurrences(of: "_", with: " ").capitalized
+    }
+
+    private var statusIconName: String {
+        if tool.isFailed { return "exclamationmark.triangle.fill" }
+        if tool.isComplete { return "checkmark.circle.fill" }
+        return "circle.dotted"
+    }
+
+    private var statusColor: Color {
+        if tool.isFailed { return .red }
+        if tool.isComplete { return .green }
+        return .secondary
     }
 }
 
@@ -219,14 +194,18 @@ struct ToolActivityGroup: View {
                         .font(.caption2.monospacedDigit())
                         .foregroundStyle(.tertiary)
                 }
+                .frame(minHeight: ComposerControlMetrics.minimumHitTarget)
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
+            .accessibilityLabel(isExpanded ? "Hide tool activity" : "Show tool activity")
+            .accessibilityValue("\(summaryTitle), \(tools.count) \(tools.count == 1 ? "item" : "items")")
+            .accessibilityHint("Reveals or hides the individual tool events.")
 
             if isExpanded {
                 VStack(alignment: .leading, spacing: 0) {
                     ForEach(tools) { tool in
-                        ToolCallRow(title: tool.title, kind: tool.kind)
+                        ToolCallRow(tool: tool)
                     }
                 }
                 .padding(.leading, 20)
@@ -236,6 +215,10 @@ struct ToolActivityGroup: View {
     }
 
     private var summaryTitle: String {
+        let failures = tools.filter(\.isFailed).count
+        if failures > 0 {
+            return "Tool activity · \(failures) failed"
+        }
         if tools.count == 1, let tool = tools.first {
             return tool.title
         }
@@ -257,44 +240,27 @@ struct ToolActivityGroup: View {
     }
 }
 
-struct WindowTrafficLights: View {
+/// Plain graphite close affordance for in-window panels. Sheets have no real
+/// traffic lights on macOS, so the previous one-live-two-dead fake lights
+/// read as a broken window and carried the app's only saturated red.
+struct PanelCloseButton: View {
     var onClose: () -> Void
 
-    @State private var isCloseHovered = false
-
-    private let closeColor = Color(red: 1.0, green: 0.37, blue: 0.34)
-    private let inactiveColor = Color(white: 0.38)
+    @State private var isHovered = false
 
     var body: some View {
-        HStack(spacing: 8) {
-            Button(action: onClose) {
-                ZStack {
-                    Circle()
-                        .fill(closeColor)
-                        .frame(width: 12, height: 12)
-                    if isCloseHovered {
-                        Image(systemName: "xmark")
-                            .font(.system(size: 7, weight: .heavy))
-                            .foregroundStyle(Color(red: 0.24, green: 0.16, blue: 0.14))
-                    }
-                }
-                .frame(width: 16, height: 16)
+        Button(action: onClose) {
+            Image(systemName: "xmark")
+                .font(AppTheme.Typography.section)
+                .foregroundStyle(isHovered ? Color.primary : AppTheme.Palette.textMuted)
+                .frame(width: 22, height: 22)
+                .background(Circle().fill(isHovered ? AppTheme.Palette.surfaceHover : Color.clear))
                 .contentShape(Rectangle())
-            }
-            .buttonStyle(.plain)
-            .onHover { isCloseHovered = $0 }
-            .help("Close")
-
-            inactiveTrafficLight
-            inactiveTrafficLight
         }
-        .padding(.vertical, 2)
-    }
-
-    private var inactiveTrafficLight: some View {
-        Circle()
-            .fill(inactiveColor)
-            .frame(width: 12, height: 12)
-            .frame(width: 16, height: 16)
+        .buttonStyle(.plain)
+        .onHover { isHovered = $0 }
+        .help("Close")
+        .accessibilityLabel("Close")
+        .keyboardShortcut(.cancelAction)
     }
 }

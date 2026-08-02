@@ -1,0 +1,24 @@
+{
+  "stdio": {
+    "name": "synthetic-stdio",
+    "transport": "stdio",
+    "scope": "project",
+    "command": "/usr/bin/env",
+    "args": ["python3", "-m", "synthetic server", "--empty=", "--literal=$VALUE"],
+    "environmentNames": ["SYNTHETIC_MODE", "EMPTY_VALUE"]
+  },
+  "http": {
+    "name": "synthetic-http",
+    "transport": "http",
+    "scope": "user",
+    "url": "https://example.invalid/mcp",
+    "headerNames": ["Authorization", "X-Synthetic-Trace"]
+  },
+  "sse": {
+    "name": "synthetic-sse",
+    "transport": "sse",
+    "scope": "user",
+    "url": "https://example.invalid/events",
+    "headerNames": []
+  }
+}

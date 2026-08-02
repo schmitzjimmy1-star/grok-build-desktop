@@ -41,6 +41,20 @@ Full checklist: `.cursor/rules/docs-and-tests.mdc`.
 | DMG | `make dmg` |
 | Clean | `make clean` |
 | Unit tests | `make test` |
+| Lifecycle v3 / true-MRU tests | `swift test --filter 'Session(LifecycleV3|Persistence)Tests'` |
+| Slice 3 continuity / send-gate tests | `swift test --filter 'GrokSessionTranscriptImporterTests|SessionLifecycleV3Tests|ACPClientContractTests/testSavedBackendCannotStartOrSendBeforeContinuityGateAllowsIt'` |
+| Slice 4 provenance / explicit recovery tests | `swift test --filter 'GrokSessionTranscriptImporterTests|SessionLifecycleV3Tests|ACPClientContractTests'` |
+| Slice 5 Settings apply / reload / LRU tests | `swift test --filter 'SettingsTabTests|SettingsRuntimeContractTests|SessionLifecycleTests'` |
+| Slice 7 Settings extensions / schema / cancellation tests | `swift test --filter 'SettingsExtensionContractTests|SettingsTabTests|CompatConfigTests|WorkflowRunTests|SessionLifecycleTests|SubprocessHygieneTests'` |
+| Slice 0 synthetic fixtures | `Tests/GrokBuildTests/Fixtures/CoherenceRepair/` |
+
+## Coherence profiling
+
+The redacted `OSSignposter` contract lives in `PerformanceInstrumentation.swift` under subsystem `com.grokbuild.app`, category `Performance`. Capture the named lanes with Instruments → Points of Interest; never add prompts, rendered content, credentials, headers, environment values, raw histories, or absolute private paths as signpost metadata. Use `docs/GROKBUILD_SLICE_0_BASELINE_2026-08-01.md` as the pre-repair corpus/baseline and keep Computer Use transport time separate from product signpost duration.
+
+Session lifecycle changes must run both the focused filter above and `make test`. Migration tests use isolated UserDefaults suites plus the pinned synthetic HMAC/CLI fixtures; do not point tests at the installed app's preference domain. Recovery fixtures must retain row provenance (root, worker, unknown/non-final) and prove that startup performs no candidate scan, a common prompt is review-only, Relink re-verifies an exact choice, and Continue as New starts no process before a real send.
+
+Settings apply changes must keep `ConfigurationChange` narrow, route launch-affecting panes through `SettingsApplyRequest`, and run the Slice 5 filter plus `make test`. The fake ACP reconnect fixture is synthetic and provider-send-free; it must continue to prove that two streaming Applies share one restart and one exact tab/backend identity.
 
 ## grok CLI dependency
 
@@ -50,6 +64,6 @@ App requires `grok` on PATH or at `~/.grok/bin/grok`. User must run `grok login`
 
 - Process: `GrokProcess` + `ChatStore`
 - Workspaces: `WorkspaceStore` + `SessionLayoutStore`
-- Menu bar: `StatusBarController` + `AppDelegate`
+- Application menus and window lifecycle: `AppDelegate`
 - Full map: `ARCHITECTURE.md`
 - Do not commit unless the user asks.

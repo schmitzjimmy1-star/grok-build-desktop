@@ -1,0 +1,20 @@
+{
+  "externalCompat": {
+    "remoteSettingsLoaded": false,
+    "cells": [
+      {"vendor":"cursor","surface":"skills","enabled":false,"source":"config"},
+      {"vendor":"cursor","surface":"rules","enabled":false,"source":"config"},
+      {"vendor":"cursor","surface":"agents","enabled":false,"source":"config"},
+      {"vendor":"cursor","surface":"mcps","enabled":false,"source":"config"},
+      {"vendor":"cursor","surface":"hooks","enabled":false,"source":"config"},
+      {"vendor":"cursor","surface":"sessions","enabled":false,"source":"config"},
+      {"vendor":"claude","surface":"skills","enabled":false,"source":"config"},
+      {"vendor":"claude","surface":"rules","enabled":false,"source":"config"},
+      {"vendor":"claude","surface":"agents","enabled":false,"source":"config"},
+      {"vendor":"claude","surface":"mcps","enabled":false,"source":"config"},
+      {"vendor":"claude","surface":"hooks","enabled":false,"source":"config"},
+      {"vendor":"claude","surface":"sessions","enabled":false,"source":"config"},
+      {"vendor":"codex","surface":"sessions","enabled":false,"source":"config"}
+    ]
+  }
+}

@@ -72,7 +72,6 @@ final class GrokCLIUpdater {
         switch postcheck.state {
         case .upToDate(let info):
             phase = .success(version: info.current)
-            NotificationCenter.default.post(name: .grokBuildCLIUpdated, object: nil)
             NotificationCenter.default.post(name: .grokBuildUpdateStateChanged, object: nil)
             notifyPhaseChanged()
         case .updateAvailable(let info):
@@ -122,7 +121,6 @@ final class GrokCLIUpdater {
         UpdateScheduler.setCachedCLIStatus(UpdateDebugSimulator.simulatedCLIUpToDateStatus())
 
         phase = .success(version: simulatedVersion)
-        NotificationCenter.default.post(name: .grokBuildCLIUpdated, object: nil)
         NotificationCenter.default.post(name: .grokBuildUpdateStateChanged, object: nil)
         notifyPhaseChanged()
     }

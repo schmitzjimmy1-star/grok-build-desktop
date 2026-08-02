@@ -1,0 +1,5 @@
+{"type":"system","content":"Synthetic bootstrap row"}
+{"type":"user","content":"Coordinate two synthetic workers."}
+{"type":"assistant","content":"Worker alpha evidence.","agent":"explore","parent_id":"synthetic-root","tool_calls":[]}
+{"type":"assistant","content":"Worker beta evidence.","agent":"general-purpose","parent_id":"synthetic-root","tool_calls":[]}
+{"type":"assistant","content":"Parent synthesis for the synthetic fixture.","agent":"root","parent_id":null,"is_final":true,"tool_calls":[]}

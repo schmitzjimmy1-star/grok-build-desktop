@@ -35,6 +35,14 @@ swift build -c release
 
 `make run` uses `scripts/build-dev-app.sh` for a lightweight `.app` wrapper; `make app` produces a full `dist/GrokBuild.app` for distribution.
 
+Both builders source `scripts/build-identity.sh` and stamp the bundle with
+`GrokBuildBuildChannel`, `GrokBuildSourceRepository`,
+`GrokBuildSourceBranch`, `GrokBuildSourceCommit`, and
+`GrokBuildSourceDirty`. About and Settings → App display the same receipt.
+Build from a clean committed checkout for an acceptance artifact; a dirty build
+is labeled `(dirty)` and cannot masquerade as the settled personal line. The
+canonical/retired repository contract lives in `CANONICAL_WORKTREE.md`.
+
 ## For Development (Recommended)
 
 If you're going to edit the SwiftUI code, install the **full Xcode** IDE from the App Store.
@@ -54,7 +62,7 @@ Then select the `GrokBuild` scheme.
 
 ### Testing update UI locally
 
-Debug builds (`make run-debug`) include a menu-bar **Simulate Updates** submenu (`#if DEBUG` — absent from release/`make run`/`make app` binaries). Use it to exercise the banner and update panel without publishing GitHub releases. Simulated app install relaunches GrokBuild (no binary swap); simulated CLI updates never run `grok update`.
+Debug builds (`make run-debug`) include **GrokBuild → Simulate Updates** (`#if DEBUG` — absent from release/`make run`/`make app` binaries). Use it to exercise the banner and update panel without publishing GitHub releases. Simulated app install relaunches GrokBuild (no binary swap); simulated CLI updates never run `grok update`.
 
 To test real update flows:
 - **CLI:** `grok update --version <older>` then **Check for Updates…** → click **Updates Available** on the banner → **Update grok CLI**
@@ -74,10 +82,11 @@ Output:
 GitHub release assets use versioned names, e.g. `GrokBuild-v0.1.10.app.zip` and `GrokBuild-v0.1.10-macOS.dmg`.
 
 The build script (`scripts/build-macos-app.sh`) also:
-- Copies menu bar icon assets into `Contents/Resources/`
+- Copies Grok brand-mark assets into `Contents/Resources/`
+- Stamps the personal repository, branch, exact git commit, channel, and dirty state into `Contents/Info.plist`
 - Bundles `Resources/Skills/` into the app
 - Copies `scripts/grokbuild-install-update.sh` → `Contents/Resources/grokbuild-install-update` (in-app upgrade helper)
-- Bundles `agent-desktop` into `Contents/MacOS/` when present on the build machine (CI installs it via npm)
+- Bundles `agent-desktop` into `Contents/MacOS/` and verifies the copy runs (`agent-desktop version`). **Packaging fails if agent-desktop is missing** — install it with `npm install -g agent-desktop` (CI does), or set `AGENT_DESKTOP_PATH`, or knowingly waive the requirement for a build with non-functional Computer Use via `GROKBUILD_ALLOW_MISSING_AGENT_DESKTOP=1`
 
 ## Scripts
 
@@ -130,10 +139,15 @@ Or run the script directly:
 ### What the signing step does
 - Builds with `swift build -c release`
 - Assembles a proper `.app` bundle structure
-- Runs `codesign --force --deep --options runtime`
+- Signs each nested executable (`GrokBuild`, `GrokBuildComputerUseMCP`, `agent-desktop`)
+  with the shared identifier `com.grokbuild.app`, hardened runtime, and a secure
+  timestamp (`agent-desktop` additionally gets JIT/unsigned-executable-memory
+  entitlements for its embedded JavaScript runtime), then signs the outer bundle with
+  `--options runtime` — deliberately **without** `--deep`, which would re-sign the
+  helpers with filename-derived identifiers and break the shared Accessibility grant
 
 ### Notes on entitlements
-The current bundle uses a minimal entitlement for unsigned executable memory (needed by some Swift runtime features). For full notarization you may want to review and expand the entitlements.
+The main app carries the minimal unsigned-executable-memory entitlement needed for Swift runtime compatibility. The lifecycle HMAC key uses the standard macOS login Keychain so local SwiftPM builds do not require a provisioning profile; Keychain access stays off the main thread. `agent-desktop` separately receives the JIT entitlements required by its embedded JavaScript runtime.
 
 ## Notarization
 
@@ -316,21 +330,22 @@ The tag is derived from `VERSION` (e.g. `0.1.4` → `v0.1.4`). If a release for 
 
 | Target | Output |
 |--------|--------|
-| `GrokBuild` | Main menu-bar app |
+| `GrokBuild` | Main windowed macOS app |
+| `GrokBuildComputerUseCore` | Shared Computer Use contract library (app + helper + tests) |
 | `GrokBuildComputerUseMCP` | Stdio MCP bridge → `agent-desktop` (bundled/copied at app build) |
 | `GrokBuildTests` | Unit tests |
 
 Platform: macOS 26+ (`Package.swift`).
 
-## Icon
+## Brand mark
 
-The menu bar icon lives in the asset catalog:
+The Grok mark lives in the asset catalog. The imageset keeps its legacy filename for packaging compatibility:
 
 - `GrokBuild/Resources/Assets.xcassets/MenuBarIcon.imageset/MenuBarIcon.png`
 - `GrokBuild/Resources/Assets.xcassets/MenuBarIcon.imageset/MenuBarIcon@2x.png` (recommended)
 - `...@3x.png` (also supported)
 
-The build script copies these into `Contents/Resources/`. No need to duplicate PNGs at the project root.
+The build script copies these into `Contents/Resources/` for the welcome state and app-icon fallback. No need to duplicate PNGs at the project root.
 
 ## Related docs
 

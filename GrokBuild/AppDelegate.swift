@@ -2,11 +2,17 @@ import AppKit
 import SwiftUI
 import Darwin   // POSIX: open, O_EXCL, close, write, kill, getpid
 
-class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
-    private var statusBarController: StatusBarController?
+class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMenuDelegate {
+    private weak var updateCheckItem: NSMenuItem?
+    private weak var sidebarToggleItem: NSMenuItem?
+    /// Guards against concurrent update checks: the menu item's disable alone
+    /// is not enough because menu tracking re-fires the action.
+    private var isCheckingForUpdates = false
     private var lockFd: Int32 = -1   // fd that holds the flock for the lifetime of the process
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        let launchInterval = GrokBuildPerformance.begin(.appLaunchToWindow)
+        defer { launchInterval.end() }
         // Enforce single instance with flock (advisory lock held by open fd).
         // This is race-free even for rapid `make run ; make run`.
         let support = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
@@ -47,19 +53,44 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         let pidStr = "\(getpid())\n"
         _ = pidStr.withCString { write(fd, $0, pidStr.utf8.count) }
 
-        // Normal app (shows in Dock, supports windows + menu bar icon)
+        // Normal windowed app: Dock + standard application menus, without a
+        // redundant status item in the system menu bar.
         NSApp.setActivationPolicy(.regular)
         setupMainMenu()
         if let appIcon = AppIconProvider.image() {
             NSApp.applicationIconImage = appIcon
         }
 
-        statusBarController = StatusBarController()
+        LegacySettingsMigration.run()
+        GrokBuildAppearance.apply(GrokBuildAppearance.load())
+        do {
+            try GrokConfigLegacyMigration.run()
+        } catch {
+            NSLog("GrokBuild could not sanitize the Grok CLI configuration: %@", error.localizedDescription)
+        }
         UpdateScheduler.start()
+        DistributedNotificationCenter.default.addObserver(
+            self,
+            selector: #selector(handleExternalShowMainWindow),
+            name: NSNotification.Name("com.grokbuild.showMainWindow"),
+            object: nil
+        )
         NotificationCenter.default.addObserver(
             self,
-            selector: #selector(openMainWindowRequested),
-            name: .showMainWindowRequested,
+            selector: #selector(updateMenuStateChanged),
+            name: .grokBuildUpdateAvailable,
+            object: nil
+        )
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(updateMenuStateChanged),
+            name: .grokBuildUpdateStateChanged,
+            object: nil
+        )
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(sessionTeardownCompleted),
+            name: .grokBuildShutdownComplete,
             object: nil
         )
 
@@ -67,8 +98,34 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         openMainWindow()
     }
 
-    func applicationWillTerminate(_ notification: Notification) {
+    private var sessionTeardownComplete = false
+    private var terminationReplyPending = false
+
+    @objc private func sessionTeardownCompleted() {
+        sessionTeardownComplete = true
+    }
+
+    func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
+        // Give live grok sessions a bounded window to close cleanly. The previous
+        // fire-and-forget shutdown raced process exit, so SIGTERM frequently lost and
+        // children were left to die on stdin EOF instead.
+        guard !terminationReplyPending else { return .terminateNow }
+        terminationReplyPending = true
+        sessionTeardownComplete = false
         NotificationCenter.default.post(name: .grokBuildPrepareForShutdown, object: nil)
+        Task { @MainActor in
+            let deadline = ContinuousClock.now.advanced(by: .seconds(3))
+            while !sessionTeardownComplete, ContinuousClock.now < deadline {
+                try? await Task.sleep(for: .milliseconds(50))
+            }
+            sender.reply(toApplicationShouldTerminate: true)
+        }
+        return .terminateLater
+    }
+
+    func applicationWillTerminate(_ notification: Notification) {
+        DistributedNotificationCenter.default.removeObserver(self)
+        NotificationCenter.default.removeObserver(self)
         // Closing the fd releases the flock.
         // We also clean the PID file only if we are the owner.
         if lockFd != -1 {
@@ -122,23 +179,39 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             defer: false
         )
         window.title = "GrokBuild"
+        window.titleVisibility = .hidden
+        window.titlebarAppearsTransparent = true
+        window.titlebarSeparatorStyle = .none
+        window.appearance = GrokBuildAppearance.load().nsAppearance
+        window.backgroundColor = NSColor.windowBackgroundColor
         window.delegate = self
         window.contentViewController = hosting
+        // Restore the user's saved frame when one exists; fill the screen only
+        // on first launch. Restore must run before setFrameAutosaveName so the
+        // decision is explicit rather than relying on AppKit's implicit restore.
+        let restoredSavedFrame = window.setFrameUsingName("MainWindow")
         window.setFrameAutosaveName("MainWindow")
-        presentMainWindow(window)
+        presentMainWindow(window, fillAvailableScreen: !restoredSavedFrame)
     }
 
-    private func presentMainWindow(_ window: NSWindow) {
+    private func presentMainWindow(_ window: NSWindow, fillAvailableScreen: Bool = false) {
         window.minSize = Self.mainWindowMinimumSize
-        normalizeMainWindowFrame(window)
+        normalizeMainWindowFrame(window, fillAvailableScreen: fillAvailableScreen)
         window.deminiaturize(nil)
         window.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
     }
 
-    private func normalizeMainWindowFrame(_ window: NSWindow) {
+    private func normalizeMainWindowFrame(_ window: NSWindow, fillAvailableScreen: Bool = false) {
         let minSize = Self.mainWindowMinimumSize
         var frame = window.frame
+
+        if fillAvailableScreen, let screen = window.screen ?? NSScreen.main {
+            let screenFrame = MainWindowLayout.screenFillingFrame(visibleFrame: screen.visibleFrame)
+            window.setFrame(screenFrame, display: false)
+            window.saveFrame(usingName: window.frameAutosaveName)
+            return
+        }
 
         if frame.width < minSize.width || frame.height < minSize.height {
             frame.size = Self.mainWindowDefaultSize
@@ -161,6 +234,9 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         let mainMenu = NSMenu()
 
         let appMenu = NSMenu()
+        // Manual enablement so the update item can stay disabled while a check
+        // runs; every other item in this menu is always valid.
+        appMenu.autoenablesItems = false
         let appItem = NSMenuItem()
         appItem.submenu = appMenu
         mainMenu.addItem(appItem)
@@ -171,6 +247,18 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         let settings = NSMenuItem(title: "Settings…", action: #selector(openSettings), keyEquivalent: ",")
         settings.target = self
         appMenu.addItem(settings)
+        let updates = NSMenuItem(title: AppMenuCopy.updateMenuTitle(hasActionableUpdate: false), action: #selector(checkForUpdates), keyEquivalent: "")
+        updates.target = self
+        updateCheckItem = updates
+        appMenu.addItem(updates)
+#if DEBUG
+        appMenu.addItem(makeSimulateUpdatesMenuItem())
+#endif
+        appMenu.addItem(.separator())
+        let viewUsage = NSMenuItem(title: AppMenuCopy.viewUsageTitle, action: #selector(openUsagePage), keyEquivalent: "")
+        viewUsage.target = self
+        appMenu.addItem(viewUsage)
+        appMenu.addItem(.separator())
         appMenu.addItem(NSMenuItem(title: "Hide GrokBuild", action: #selector(NSApplication.hide(_:)), keyEquivalent: "h"))
         appMenu.addItem(.separator())
         appMenu.addItem(NSMenuItem(title: "Quit GrokBuild", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q"))
@@ -188,6 +276,21 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         editMenu.addItem(NSMenuItem(title: "Copy", action: #selector(NSText.copy(_:)), keyEquivalent: "c"))
         editMenu.addItem(NSMenuItem(title: "Paste", action: #selector(NSText.paste(_:)), keyEquivalent: "v"))
         editMenu.addItem(NSMenuItem(title: "Select All", action: #selector(NSText.selectAll(_:)), keyEquivalent: "a"))
+
+        let viewMenu = NSMenu(title: "View")
+        viewMenu.delegate = self
+        let viewItem = NSMenuItem()
+        viewItem.submenu = viewMenu
+        mainMenu.addItem(viewItem)
+        let toggleSidebar = NSMenuItem(
+            title: AppMenuCopy.sidebarMenuTitle(isVisible: SidebarVisibility.currentPreference()),
+            action: #selector(toggleSidebarFromMenu),
+            keyEquivalent: "s"
+        )
+        toggleSidebar.keyEquivalentModifierMask = [.command, .control]
+        toggleSidebar.target = self
+        viewMenu.addItem(toggleSidebar)
+        sidebarToggleItem = toggleSidebar
 
         let projectMenu = NSMenu(title: "Project")
         let projectItem = NSMenuItem()
@@ -227,7 +330,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         NSApp.mainMenu = mainMenu
     }
 
-    @objc private func openMainWindowRequested() {
+    @objc private func handleExternalShowMainWindow(_ notification: Notification) {
         openMainWindow()
     }
 
@@ -264,9 +367,130 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         NotificationCenter.default.post(name: .focusInputRequested, object: nil)
     }
 
+    @objc private func checkForUpdates() {
+        guard !isCheckingForUpdates else { return }
+        isCheckingForUpdates = true
+        updateCheckItem?.isEnabled = false
+        updateCheckItem?.title = "Checking for Updates…"
+
+        Task { @MainActor [weak self] in
+            await UpdateScheduler.checkNow()
+            await UpdateUI.presentUpdatePanel(refresh: false) { [weak self] in
+                self?.refreshUpdateMenuItem()
+            }
+            self?.isCheckingForUpdates = false
+            self?.refreshUpdateMenuItem()
+        }
+    }
+
+    @objc private func updateMenuStateChanged() {
+        Task { @MainActor [weak self] in
+            self?.refreshUpdateMenuItem()
+        }
+    }
+
+    @MainActor
+    private func refreshUpdateMenuItem() {
+        // Keep the "Checking…" state intact while a check is in flight, even
+        // when background update notifications arrive mid-check.
+        guard !isCheckingForUpdates else {
+            updateCheckItem?.isEnabled = false
+            return
+        }
+        updateCheckItem?.title = AppMenuCopy.updateMenuTitle(
+            hasActionableUpdate: UpdateScheduler.hasAnyActionableUpdate
+        )
+        updateCheckItem?.isEnabled = true
+    }
+
+    @objc private func openUsagePage() {
+        if let url = URL(string: "https://grok.com/?_s=usage") {
+            NSWorkspace.shared.open(url)
+        }
+    }
+
+    @objc private func toggleSidebarFromMenu() {
+        openMainWindow()
+        NotificationCenter.default.post(name: .toggleSidebarRequested, object: nil)
+    }
+
+    func menuWillOpen(_ menu: NSMenu) {
+        guard let item = sidebarToggleItem, item.menu === menu else { return }
+        item.title = AppMenuCopy.sidebarMenuTitle(isVisible: SidebarVisibility.currentPreference())
+    }
+
+#if DEBUG
+    private func makeSimulateUpdatesMenuItem() -> NSMenuItem {
+        let submenu = NSMenu()
+
+        for (title, action) in [
+            ("App Update Available", #selector(simulateAppUpdate)),
+            ("grok CLI Update Available", #selector(simulateCLIUpdate)),
+            ("Both Updates Available", #selector(simulateBothUpdates)),
+        ] {
+            let item = NSMenuItem(title: title, action: action, keyEquivalent: "")
+            item.target = self
+            submenu.addItem(item)
+        }
+
+        submenu.addItem(.separator())
+        let clearItem = NSMenuItem(
+            title: "Clear Simulation",
+            action: #selector(clearSimulatedUpdates),
+            keyEquivalent: ""
+        )
+        clearItem.target = self
+        submenu.addItem(clearItem)
+
+        let item = NSMenuItem(title: "Simulate Updates", action: nil, keyEquivalent: "")
+        item.submenu = submenu
+        return item
+    }
+
+    @objc private func simulateAppUpdate() {
+        Task { @MainActor [weak self] in
+            UpdateDebugSimulator.apply(.app)
+            self?.refreshUpdateMenuItem()
+        }
+    }
+
+    @objc private func simulateCLIUpdate() {
+        Task { @MainActor [weak self] in
+            UpdateDebugSimulator.apply(.cli)
+            self?.refreshUpdateMenuItem()
+        }
+    }
+
+    @objc private func simulateBothUpdates() {
+        Task { @MainActor [weak self] in
+            UpdateDebugSimulator.apply(.both)
+            self?.refreshUpdateMenuItem()
+        }
+    }
+
+    @objc private func clearSimulatedUpdates() {
+        Task { @MainActor [weak self] in
+            await UpdateDebugSimulator.clear()
+            self?.refreshUpdateMenuItem()
+        }
+    }
+#endif
+
     func windowShouldClose(_ sender: NSWindow) -> Bool {
         // Hide instead of miniaturize so frame autosave does not persist a dock-icon-sized frame.
         sender.orderOut(nil)
         return false
+    }
+}
+
+enum AppMenuCopy {
+    static let viewUsageTitle = "View Usage on grok.com…"
+
+    static func updateMenuTitle(hasActionableUpdate: Bool) -> String {
+        hasActionableUpdate ? "Updates Available…" : "Check for Updates…"
+    }
+
+    static func sidebarMenuTitle(isVisible: Bool) -> String {
+        isVisible ? "Hide Sidebar" : "Show Sidebar"
     }
 }

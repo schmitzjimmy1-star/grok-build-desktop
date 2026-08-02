@@ -1,5 +1,6 @@
 import XCTest
 @testable import GrokBuild
+@testable import GrokBuildComputerUseCore
 
 final class ComputerUseIntegrationTests: XCTestCase {
     private var savedValues: [String: Any?] = [:]
@@ -22,14 +23,9 @@ final class ComputerUseIntegrationTests: XCTestCase {
         let settings = ComputerUseSettings(
             enabled: true,
             backend: .agentDesktop,
-            agentDesktopPath: "/opt/homebrew/bin/agent-desktop",
             permissionPolicy: .auto,
-            maxSteps: 42,
             commandTimeoutSeconds: 90,
-            screenshotMode: .screenshotsAllowed,
-            includeScreenshots: true,
-            allowPhysicalMouse: true,
-            sessionName: "project-a"
+            includeScreenshots: true
         )
 
         ComputerUseSettingsStore.save(settings)
@@ -37,30 +33,27 @@ final class ComputerUseIntegrationTests: XCTestCase {
         XCTAssertEqual(ComputerUseSettingsStore.load(), settings)
     }
 
+    /// The removed "ask" policy (never enforced by the helper) must decode as
+    /// auto so upgrading users keep working settings.
+    func testLegacyAskPolicyFallsBackToAuto() {
+        UserDefaults.standard.set("ask", forKey: ComputerUseSettingsKeys.permissionPolicy)
+        XCTAssertEqual(ComputerUseSettingsStore.load().permissionPolicy, .auto)
+    }
+
     func testAppliedComputerUseSettingsRoundTripSeparately() {
         let current = ComputerUseSettings(
             enabled: true,
             backend: .agentDesktop,
-            agentDesktopPath: "/tmp/current-agent-desktop",
-            permissionPolicy: .ask,
-            maxSteps: 12,
+            permissionPolicy: .auto,
             commandTimeoutSeconds: 30,
-            screenshotMode: .accessibilityFirst,
-            includeScreenshots: false,
-            allowPhysicalMouse: false,
-            sessionName: "current"
+            includeScreenshots: false
         )
         let applied = ComputerUseSettings(
             enabled: false,
             backend: .agentDesktop,
-            agentDesktopPath: "/tmp/applied-agent-desktop",
             permissionPolicy: .deny,
-            maxSteps: 4,
             commandTimeoutSeconds: 15,
-            screenshotMode: .screenshotsAllowed,
-            includeScreenshots: true,
-            allowPhysicalMouse: true,
-            sessionName: "applied"
+            includeScreenshots: true
         )
 
         ComputerUseSettingsStore.save(current)
@@ -76,14 +69,9 @@ final class ComputerUseIntegrationTests: XCTestCase {
         let settings = ComputerUseSettings(
             enabled: true,
             backend: .agentDesktop,
-            agentDesktopPath: "",
             permissionPolicy: .auto,
-            maxSteps: 10,
             commandTimeoutSeconds: 25,
-            screenshotMode: .accessibilityFirst,
-            includeScreenshots: true,
-            allowPhysicalMouse: false,
-            sessionName: "test-session"
+            includeScreenshots: true
         )
 
         let config = try XCTUnwrap(ComputerUseService.computerUseMCPConfig(
@@ -105,6 +93,32 @@ final class ComputerUseIntegrationTests: XCTestCase {
         XCTAssertTrue(env.contains { $0["name"] == "GROKBUILD_COMPUTER_USE_SCREENSHOTS" && $0["value"] == "true" })
     }
 
+    /// The app must send exactly the env the helper reads (main.swift):
+    /// AGENT_DESKTOP_PATH + POLICY + TIMEOUT + SCREENSHOTS. A key on either
+    /// side that the other does not know is a dead control or a dead read.
+    func testMCPConfigEnvMatchesHelperReadSet() throws {
+        let settings = ComputerUseSettings(
+            enabled: true,
+            backend: .agentDesktop,
+            permissionPolicy: .deny,
+            commandTimeoutSeconds: 45,
+            includeScreenshots: false
+        )
+        let config = try XCTUnwrap(ComputerUseService.computerUseMCPConfig(
+            settings: settings,
+            helperOverride: URL(fileURLWithPath: "/tmp/GrokBuildComputerUseMCP"),
+            agentDesktopOverride: URL(fileURLWithPath: "/tmp/agent-desktop")
+        ))
+        let env = try XCTUnwrap(config.jsonObject["env"] as? [[String: String]])
+        let keys = Set(env.compactMap { $0["name"] })
+        XCTAssertEqual(keys, [
+            "AGENT_DESKTOP_PATH",
+            "GROKBUILD_COMPUTER_USE_POLICY",
+            "GROKBUILD_COMPUTER_USE_TIMEOUT",
+            "GROKBUILD_COMPUTER_USE_SCREENSHOTS",
+        ])
+    }
+
     func testComputerUseMCPConfigDisabledReturnsNil() {
         let settings = ComputerUseSettings.defaults
 
@@ -114,22 +128,6 @@ final class ComputerUseIntegrationTests: XCTestCase {
         ))
     }
 
-    func testAgentDesktopDiscoveryUsesConfiguredExecutablePath() throws {
-        let executable = temporaryExecutableURL()
-        defer { try? FileManager.default.removeItem(at: executable.deletingLastPathComponent()) }
-        try FileManager.default.createDirectory(
-            at: executable.deletingLastPathComponent(),
-            withIntermediateDirectories: true
-        )
-        FileManager.default.createFile(atPath: executable.path, contents: Data("#!/bin/sh\n".utf8))
-        try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: executable.path)
-
-        var settings = ComputerUseSettings.defaults
-        settings.agentDesktopPath = executable.path
-
-        XCTAssertEqual(ComputerUseService.executableURL(settings: settings), executable)
-    }
-
     func testPermissionDiagnosticsParseStructuredJSON() {
         let status = ComputerUseService.parsePermissions("""
         {"accessibility":{"state":"granted"},"screen_recording":{"state":"denied"}}
@@ -137,7 +135,8 @@ final class ComputerUseIntegrationTests: XCTestCase {
 
         XCTAssertEqual(status.accessibility, "granted")
         XCTAssertEqual(status.screenRecording, "denied")
-        XCTAssertTrue(status.isReady)
+        XCTAssertTrue(status.isReady(includeScreenshots: false))
+        XCTAssertFalse(status.isReady(includeScreenshots: true))
     }
 
     func testPermissionDiagnosticsParseAgentDesktopEnvelope() {
@@ -147,7 +146,8 @@ final class ComputerUseIntegrationTests: XCTestCase {
 
         XCTAssertEqual(status.accessibility, "granted")
         XCTAssertEqual(status.screenRecording, "denied")
-        XCTAssertTrue(status.isReady)
+        XCTAssertTrue(status.isReady(includeScreenshots: false))
+        XCTAssertFalse(status.isReady(includeScreenshots: true))
     }
 
     func testPermissionDiagnosticsParseAgentDesktopV1GrantedFlag() {
@@ -157,7 +157,7 @@ final class ComputerUseIntegrationTests: XCTestCase {
 
         XCTAssertEqual(status.accessibility, "granted")
         XCTAssertEqual(status.screenRecording, "not reported")
-        XCTAssertTrue(status.isReady)
+        XCTAssertTrue(status.isReady(includeScreenshots: false))
     }
 
     func testPermissionDiagnosticsParseAgentDesktopV1DeniedFlag() {
@@ -167,7 +167,7 @@ final class ComputerUseIntegrationTests: XCTestCase {
 
         XCTAssertEqual(status.accessibility, "denied")
         XCTAssertEqual(status.screenRecording, "not reported")
-        XCTAssertFalse(status.isReady)
+        XCTAssertFalse(status.isReady(includeScreenshots: false))
         XCTAssertEqual(
             status.guidance,
             "Open System Settings → Privacy & Security → Accessibility and enable \(ComputerUseService.hostAppName)."
@@ -187,7 +187,11 @@ final class ComputerUseIntegrationTests: XCTestCase {
         )
     }
 
-    func testMergedPermissionStatusUsesLocalAccessibilityWhenGranted() {
+    /// With an EXTERNAL agent-desktop (no bundled copy in the test bundle),
+    /// GrokBuild's own Accessibility grant must NOT mask the actuator's
+    /// denial — the old OR-chain reported "Ready" here and the first real
+    /// click failed.
+    func testExternalAgentDesktopDenialIsNotMaskedByGrokBuildGrant() {
         let cliStatus = ComputerUsePermissionStatus(
             accessibility: "denied",
             screenRecording: "not reported",
@@ -195,15 +199,22 @@ final class ComputerUseIntegrationTests: XCTestCase {
             guidance: "Enable GrokBuild."
         )
 
-        let merged = ComputerUseService.mergedPermissionStatus(cliStatus, localAccessibilityGranted: true)
+        let resolved = ComputerUseService.resolvePermissionStatus(
+            cliStatus: cliStatus,
+            grokBuildGranted: true,
+            probe: nil,
+            grokBuildScreenRecordingGranted: false
+        )
 
-        XCTAssertEqual(merged.accessibility, "granted")
-        XCTAssertTrue(merged.isReady)
-        XCTAssertNil(merged.guidance)
-        XCTAssertTrue(merged.diagnostic.contains("GrokBuild Accessibility: granted"))
+        XCTAssertEqual(resolved.accessibility, "denied")
+        XCTAssertFalse(resolved.isReady(includeScreenshots: false))
+        XCTAssertNotNil(resolved.guidance)
+        XCTAssertTrue(resolved.diagnostic.contains("GrokBuild Accessibility: granted"))
     }
 
-    func testResolvePermissionStatusUsesHelperAccessibility() {
+    /// Helper trust is diagnostic only: the helper never touches AX APIs
+    /// itself, so its grant cannot make an external agent-desktop ready.
+    func testExternalAgentDesktopDenialIsNotMaskedByHelperGrant() {
         let cliStatus = ComputerUsePermissionStatus(
             accessibility: "denied",
             screenRecording: "not reported",
@@ -221,12 +232,34 @@ final class ComputerUseIntegrationTests: XCTestCase {
         let resolved = ComputerUseService.resolvePermissionStatus(
             cliStatus: cliStatus,
             grokBuildGranted: false,
-            probe: probe
+            probe: probe,
+            grokBuildScreenRecordingGranted: false
         )
 
-        XCTAssertEqual(resolved.accessibility, "granted")
-        XCTAssertTrue(resolved.isReady)
+        XCTAssertEqual(resolved.accessibility, "denied")
+        XCTAssertFalse(resolved.isReady(includeScreenshots: false))
         XCTAssertTrue(resolved.diagnostic.contains("Helper Accessibility: granted"))
+    }
+
+    /// Screenshots enabled + known Screen Recording denial blocks readiness
+    /// even when Accessibility is granted; unknown state does not block.
+    func testReadinessAccountsForScreenRecordingWhenScreenshotsEnabled() {
+        let denied = ComputerUsePermissionStatus(
+            accessibility: "granted",
+            screenRecording: "denied",
+            diagnostic: "",
+            guidance: nil
+        )
+        XCTAssertTrue(denied.isReady(includeScreenshots: false))
+        XCTAssertFalse(denied.isReady(includeScreenshots: true))
+
+        let unknown = ComputerUsePermissionStatus(
+            accessibility: "granted",
+            screenRecording: "not reported",
+            diagnostic: "",
+            guidance: nil
+        )
+        XCTAssertTrue(unknown.isReady(includeScreenshots: true))
     }
 
     func testResolvePermissionStatusUsesAgentDesktopAccessibility() {
@@ -247,11 +280,12 @@ final class ComputerUseIntegrationTests: XCTestCase {
         let resolved = ComputerUseService.resolvePermissionStatus(
             cliStatus: cliStatus,
             grokBuildGranted: false,
-            probe: probe
+            probe: probe,
+            grokBuildScreenRecordingGranted: false
         )
 
         XCTAssertEqual(resolved.accessibility, "granted")
-        XCTAssertTrue(resolved.isReady)
+        XCTAssertTrue(resolved.isReady(includeScreenshots: false))
     }
 
     func testParseAccessibilityTrustProbeReadsHelperJSON() {
@@ -264,7 +298,7 @@ final class ComputerUseIntegrationTests: XCTestCase {
         XCTAssertEqual(probe?.helperExecutablePath, "/tmp/helper")
     }
 
-    func testMergedPermissionStatusKeepsCLIDenialWhenLocalAccessibilityMissing() {
+    func testResolvedStatusKeepsCLIDenialWhenNothingIsGranted() {
         let cliStatus = ComputerUsePermissionStatus(
             accessibility: "denied",
             screenRecording: "not reported",
@@ -272,12 +306,17 @@ final class ComputerUseIntegrationTests: XCTestCase {
             guidance: "Enable GrokBuild."
         )
 
-        let merged = ComputerUseService.mergedPermissionStatus(cliStatus, localAccessibilityGranted: false)
+        let resolved = ComputerUseService.resolvePermissionStatus(
+            cliStatus: cliStatus,
+            grokBuildGranted: false,
+            probe: nil,
+            grokBuildScreenRecordingGranted: false
+        )
 
-        XCTAssertEqual(merged.accessibility, "denied")
-        XCTAssertFalse(merged.isReady)
-        XCTAssertNotNil(merged.guidance)
-        XCTAssertTrue(merged.guidance?.localizedCaseInsensitiveContains("accessibility") ?? false)
+        XCTAssertEqual(resolved.accessibility, "denied")
+        XCTAssertFalse(resolved.isReady(includeScreenshots: false))
+        XCTAssertNotNil(resolved.guidance)
+        XCTAssertTrue(resolved.guidance?.localizedCaseInsensitiveContains("accessibility") ?? false)
     }
 
     func testVersionParserUsesAgentDesktopDataVersion() {
@@ -327,7 +366,6 @@ final class ComputerUseIntegrationTests: XCTestCase {
         var settings = ComputerUseSettings.defaults
         settings.permissionPolicy = .auto
         settings.includeScreenshots = true
-        settings.sessionName = "cursor"
 
         let output = try ComputerUseCursorInstaller.install(
             settings: settings,
@@ -353,7 +391,7 @@ final class ComputerUseIntegrationTests: XCTestCase {
         XCTAssertEqual(env["AGENT_DESKTOP_PATH"], status.agentDesktopPath)
         XCTAssertEqual(env["GROKBUILD_COMPUTER_USE_POLICY"], "auto")
         XCTAssertEqual(env["GROKBUILD_COMPUTER_USE_SCREENSHOTS"], "true")
-        XCTAssertEqual(env["GROKBUILD_COMPUTER_USE_SESSION"], "cursor")
+        XCTAssertNil(env["GROKBUILD_COMPUTER_USE_SESSION"], "removed control must not be exported")
     }
 
     func testCursorInstallerMergePreservesExistingMCPServers() throws {
@@ -442,8 +480,7 @@ final class ComputerUseIntegrationTests: XCTestCase {
     func testSaveAppliedCursorEnvironmentUpdatesAppliedPrefixOnly() {
         var current = ComputerUseSettings.defaults
         current.includeScreenshots = true
-        current.allowPhysicalMouse = true
-        current.maxSteps = 17
+        current.commandTimeoutSeconds = 45
         ComputerUseSettingsStore.save(current)
         ComputerUseSettingsStore.saveApplied(.defaults)
 
@@ -451,11 +488,14 @@ final class ComputerUseIntegrationTests: XCTestCase {
 
         XCTAssertEqual(ComputerUseSettingsStore.load().includeScreenshots, true)
         XCTAssertEqual(ComputerUseSettingsStore.loadApplied().includeScreenshots, true)
-        XCTAssertEqual(ComputerUseSettingsStore.loadApplied().maxSteps, 17)
+        XCTAssertEqual(ComputerUseSettingsStore.loadApplied().commandTimeoutSeconds, 45)
         XCTAssertEqual(ComputerUseSettingsStore.loadApplied().enabled, false)
     }
 
-    func testCursorInstallerUpdateConfigurationChangesEnvWithoutReinstallingBinaries() throws {
+    /// Update must refresh the installed binary copies: they are snapshots
+    /// from install time, and Cursor would otherwise keep running a stale
+    /// helper/agent-desktop forever after a GrokBuild update.
+    func testCursorInstallerUpdateConfigurationRefreshesEnvAndBinaries() throws {
         let root = temporaryInstallRootURL()
         let mcpURL = root.appendingPathComponent("mcp.json")
         defer { try? FileManager.default.removeItem(at: root) }
@@ -478,18 +518,22 @@ final class ComputerUseIntegrationTests: XCTestCase {
             agentDesktopOverride: agentDesktop
         )
 
-        let helperBefore = try Data(contentsOf: installRoot.appendingPathComponent("GrokBuildComputerUseMCP"))
+        // Simulate an app update: the source helper changes on disk.
+        try Data("#!/bin/sh\n# updated helper\n".utf8).write(to: helper)
         settings.includeScreenshots = true
         settings.permissionPolicy = .auto
         let output = try ComputerUseCursorInstaller.updateConfiguration(
             settings: settings,
             installRoot: installRoot,
-            cursorMCPConfigURL: mcpURL
+            cursorMCPConfigURL: mcpURL,
+            helperOverride: helper,
+            agentDesktopOverride: agentDesktop
         )
 
         XCTAssertTrue(output.contains("Updated Cursor MCP configuration"))
-        let helperAfter = try Data(contentsOf: installRoot.appendingPathComponent("GrokBuildComputerUseMCP"))
-        XCTAssertEqual(helperBefore, helperAfter)
+        XCTAssertTrue(output.contains("refreshed the installed binaries"))
+        let installedHelper = try Data(contentsOf: installRoot.appendingPathComponent("GrokBuildComputerUseMCP"))
+        XCTAssertEqual(installedHelper, try Data(contentsOf: helper))
 
         let entry = try XCTUnwrap(ComputerUseCursorInstaller.mcpEntry(in: mcpURL))
         let env = try XCTUnwrap(entry["env"] as? [String: String])
@@ -501,24 +545,14 @@ final class ComputerUseIntegrationTests: XCTestCase {
         [
             ComputerUseSettingsKeys.enabled,
             ComputerUseSettingsKeys.backend,
-            ComputerUseSettingsKeys.agentDesktopPath,
             ComputerUseSettingsKeys.permissionPolicy,
-            ComputerUseSettingsKeys.maxSteps,
             ComputerUseSettingsKeys.commandTimeoutSeconds,
-            ComputerUseSettingsKeys.screenshotMode,
             ComputerUseSettingsKeys.includeScreenshots,
-            ComputerUseSettingsKeys.allowPhysicalMouse,
-            ComputerUseSettingsKeys.sessionName,
             ComputerUseSettingsKeys.appliedEnabled,
             ComputerUseSettingsKeys.appliedBackend,
-            ComputerUseSettingsKeys.appliedAgentDesktopPath,
             ComputerUseSettingsKeys.appliedPermissionPolicy,
-            ComputerUseSettingsKeys.appliedMaxSteps,
             ComputerUseSettingsKeys.appliedCommandTimeoutSeconds,
-            ComputerUseSettingsKeys.appliedScreenshotMode,
-            ComputerUseSettingsKeys.appliedIncludeScreenshots,
-            ComputerUseSettingsKeys.appliedAllowPhysicalMouse,
-            ComputerUseSettingsKeys.appliedSessionName
+            ComputerUseSettingsKeys.appliedIncludeScreenshots
         ]
     }
 
@@ -535,6 +569,120 @@ final class ComputerUseIntegrationTests: XCTestCase {
             .appendingPathComponent("GrokBuildTests")
             .appendingPathComponent(UUID().uuidString)
             .appendingPathComponent("agent-desktop")
+    }
+
+    // MARK: - Process runner (pipe drain + timeout)
+
+    /// 256 KiB of child output deadlocked the old runner: nothing read the
+    /// pipe until exit, so the child blocked in write(2) at ~64 KiB and the
+    /// call surfaced as a bogus timeout. The runner must drain while running.
+    func testRunResultDrainsOutputLargerThanPipeBuffer() async throws {
+        let result = try await ComputerUseService.runResult(
+            ["/bin/sh", "-c", "/usr/bin/head -c 262144 /dev/zero | /usr/bin/tr '\\0' 'a'"],
+            timeout: 10
+        )
+        XCTAssertEqual(result.exitCode, 0)
+        XCTAssertEqual(result.output.count, 262_144)
+    }
+
+    /// The Test Computer Use button drives the helper over stdio JSON-RPC;
+    /// prove the RPC plumbing against a scripted fake helper.
+    func testRunHelperRPCCollectsResponsesFromScriptedHelper() async throws {
+        let directory = temporaryInstallRootURL()
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+
+        let fake = directory.appendingPathComponent("fake-helper")
+        let script = """
+        #!/bin/sh
+        read line
+        printf '%s\\n' '{"jsonrpc":"2.0","id":1,"result":{}}'
+        read line
+        printf '%s\\n' '{"jsonrpc":"2.0","id":2,"result":{"content":[{"type":"text","text":"fake-apps"}]}}'
+        """
+        FileManager.default.createFile(atPath: fake.path, contents: Data(script.utf8))
+        try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: fake.path)
+
+        let responses = try await ComputerUseService.runHelperRPC(
+            helper: fake,
+            environment: ProcessInfo.processInfo.environment,
+            requests: [
+                #"{"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}"#,
+                #"{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{}}"#,
+            ],
+            finalID: 2,
+            timeout: 10
+        )
+
+        XCTAssertNotNil(responses[1])
+        let result = try XCTUnwrap(responses[2]?["result"] as? [String: Any])
+        let content = try XCTUnwrap(result["content"] as? [[String: Any]])
+        XCTAssertEqual(content.first?["text"] as? String, "fake-apps")
+    }
+
+    func testRealHelperAnchorsSnapshotAndMapsExplicitCloseAppForce() async throws {
+        let repositoryRoot = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        let helper = repositoryRoot.appendingPathComponent(".build/debug/GrokBuildComputerUseMCP")
+        XCTAssertTrue(FileManager.default.isExecutableFile(atPath: helper.path))
+
+        let directory = temporaryInstallRootURL()
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let logURL = directory.appendingPathComponent("agent-argv.log")
+        let fakeAgent = directory.appendingPathComponent("agent-desktop")
+        let script = """
+        #!/bin/sh
+        printf '%s\\n' "$*" >> '\(logURL.path)'
+        if [ "$1" = "list-windows" ]; then
+          printf '%s\\n' '{"ok":true,"data":{"windows":[{"id":"w-hidden","title":"Calculator","visible":false,"bounds":{"width":1440,"height":30}},{"id":"w-helper","title":"Window","visible":true,"bounds":{"width":66,"height":20}},{"id":"w-main","title":"Calculator","visible":true,"bounds":{"width":230,"height":408}}]}}'
+        else
+          printf '%s\\n' '{"ok":true,"data":{"requested":true}}'
+        fi
+        """
+        try script.write(to: fakeAgent, atomically: true, encoding: .utf8)
+        try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: fakeAgent.path)
+
+        var environment = ProcessInfo.processInfo.environment
+        environment[ComputerUseHelperEnvironment.agentDesktopPath] = fakeAgent.path
+        environment[ComputerUseHelperEnvironment.policy] = "auto"
+        environment[ComputerUseHelperEnvironment.timeout] = "10"
+        environment[ComputerUseHelperEnvironment.screenshots] = "false"
+        let responses = try await ComputerUseService.runHelperRPC(
+            helper: helper,
+            environment: environment,
+            requests: [
+                #"{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2024-11-05"}}"#,
+                #"{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"computer_snapshot","arguments":{"app":"Calculator"}}}"#,
+                #"{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"computer_close_app","arguments":{"app":"Calculator","force":true}}}"#,
+            ],
+            finalID: 3,
+            timeout: 10
+        )
+
+        XCTAssertNotNil(responses[2]?["result"])
+        XCTAssertNotNil(responses[3]?["result"])
+        XCTAssertEqual(
+            try String(contentsOf: logURL, encoding: .utf8).split(whereSeparator: \.isNewline).map(String.init),
+            [
+                "list-windows --app Calculator",
+                "snapshot --app Calculator --window-id w-main --compact",
+                "close-app Calculator --force",
+            ]
+        )
+    }
+
+    func testRunResultTimesOutAndTerminatesTheChild() async {
+        let started = Date()
+        do {
+            _ = try await ComputerUseService.runResult(["/bin/sleep", "30"], timeout: 1)
+            XCTFail("Expected a timeout")
+        } catch {
+            XCTAssertTrue(error.localizedDescription.contains("timed out"))
+        }
+        XCTAssertLessThan(Date().timeIntervalSince(started), 8)
     }
 
     private func temporarySkillsRootURL() -> URL {

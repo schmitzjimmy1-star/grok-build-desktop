@@ -2,6 +2,12 @@ import XCTest
 @testable import GrokBuild
 
 final class SessionPersistenceTests: XCTestCase {
+    private struct StaticIntegrityKeyProvider: SessionLifecycleIntegrityKeyProviding {
+        let key = Data(repeating: 0xA5, count: 32)
+        func existingKey() -> Data? { key }
+        func existingOrCreateKey() -> Data { key }
+    }
+
     private let sessionLayoutKey = "GrokBuild.sessionLayout.v2"
     private let workspaceLayoutKey = "GrokBuild.workspaceLayout.v1"
     private let sessionNameKey = "grokbuild.sessionNames.v1"
@@ -28,6 +34,90 @@ final class SessionPersistenceTests: XCTestCase {
             defaults.removeObject(forKey: sessionNameKey)
         }
         super.tearDown()
+    }
+
+    @MainActor
+    func testBindingRestoredTabReassertsSavedBackendSessionIdentity() {
+        let store = ChatStore()
+        let restoredID = "019f-restored-gpt-session"
+
+        store.bindTabSession(
+            UUID(),
+            savedModel: "gpt-5.6-terra",
+            savedGrokSessionID: restoredID
+        )
+
+        let actualID = store.savedGrokSessionIDForTests
+        XCTAssertEqual(actualID, restoredID)
+    }
+
+    func testPopulatedRestoredTabUsesSavedBackendIdentityWhenRestartRequestOmitsIt() {
+        XCTAssertEqual(
+            ChatStore.resolvedResumeSessionID(
+                requested: nil,
+                saved: "019f-saved-gpt-session",
+                hasUserMessages: true
+            ),
+            "019f-saved-gpt-session"
+        )
+        XCTAssertNil(
+            ChatStore.resolvedResumeSessionID(
+                requested: nil,
+                saved: "019f-saved-gpt-session",
+                hasUserMessages: false
+            )
+        )
+        XCTAssertEqual(
+            ChatStore.resolvedResumeSessionID(
+                requested: "019f-explicit-session",
+                saved: "019f-saved-gpt-session",
+                hasUserMessages: true
+            ),
+            "019f-explicit-session"
+        )
+    }
+
+    func testProcessTeardownCannotErasePersistedBackendSessionIdentity() {
+        XCTAssertFalse(SessionIdentityPersistencePolicy.shouldPersistChangedSessionID(nil))
+        XCTAssertFalse(SessionIdentityPersistencePolicy.shouldPersistChangedSessionID("  "))
+        XCTAssertTrue(
+            SessionIdentityPersistencePolicy.shouldPersistChangedSessionID(
+                "019f-durable-backend-session"
+            )
+        )
+    }
+
+    func testSidebarSessionMetadataExposesFullTitleModelAndStatus() {
+        let session = SidebarSession(
+            id: UUID(),
+            workspaceID: UUID(),
+            title: "Implement the persistent workflow dashboard with recovery",
+            modelName: "GPT 5.6 Terra",
+            lastAccessed: Date(timeIntervalSince1970: 1_719_000_000),
+            isRunning: true
+        )
+
+        let help = SessionSidebarMetadata.helpText(for: session)
+        let accessibility = SessionSidebarMetadata.accessibilityLabel(for: session)
+        XCTAssertTrue(help.contains(session.title))
+        XCTAssertTrue(help.contains("GPT 5.6 Terra"))
+        XCTAssertTrue(accessibility.contains("working"))
+        XCTAssertTrue(accessibility.contains(session.title))
+    }
+
+    func testSidebarSessionMetadataCallsUnpersistedTabNewSession() {
+        let session = SidebarSession(
+            id: UUID(),
+            workspaceID: UUID(),
+            title: "New chat",
+            modelName: "Grok 4.5",
+            lastAccessed: nil,
+            isRunning: false
+        )
+
+        XCTAssertTrue(SessionSidebarMetadata.helpText(for: session).contains("New session"))
+        XCTAssertTrue(SessionSidebarMetadata.accessibilityLabel(for: session).contains("new session"))
+        XCTAssertFalse(SessionSidebarMetadata.accessibilityLabel(for: session).contains("last used"))
     }
 
     func testSessionTitleUsesFirstUserMessageOnly() {
@@ -105,6 +195,9 @@ final class SessionPersistenceTests: XCTestCase {
     }
 
     func testSessionLayoutStoreRoundTripsSnapshot() {
+        let suiteName = "SessionPersistenceTests.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defaults.removePersistentDomain(forName: suiteName)
         let workspaceID = UUID()
         let sessionID = UUID()
         let snapshot = SessionLayoutSnapshot(
@@ -125,9 +218,17 @@ final class SessionPersistenceTests: XCTestCase {
             hiddenSessionWorkspaceIDs: [UUID()]
         )
 
-        SessionLayoutStore.saveSessions(snapshot)
-        let loaded = SessionLayoutStore.loadSessions()
+        let receipt = SessionLayoutStore.saveSessions(
+            snapshot,
+            defaults: defaults,
+            keyProvider: StaticIntegrityKeyProvider()
+        )
+        let loaded = SessionLayoutStore.loadSessionsResult(
+            defaults: defaults,
+            keyProvider: StaticIntegrityKeyProvider()
+        ).snapshot
 
+        XCTAssertTrue(receipt.committed)
         XCTAssertEqual(loaded.records, snapshot.records)
         XCTAssertEqual(loaded.sessionOrderByWorkspace, snapshot.sessionOrderByWorkspace)
         XCTAssertEqual(loaded.selectedSessionID, snapshot.selectedSessionID)
@@ -229,6 +330,194 @@ final class SessionPersistenceTests: XCTestCase {
         XCTAssertTrue(SessionMessageStore.messages(for: sessionID).isEmpty)
     }
 
+    func testFileBackedTranscriptUsesMetadataAndDirtyGenerations() throws {
+        let root = temporaryTranscriptRoot()
+        defer { try? FileManager.default.removeItem(at: root.deletingLastPathComponent()) }
+        let sessionID = UUID()
+        let first = [
+            Message(role: .user, content: "first"),
+            Message(role: .assistant, content: "answer"),
+        ]
+
+        let initial = try XCTUnwrap(SessionMessageStore.save(first, for: sessionID, rootURL: root))
+        XCTAssertEqual(initial.storageVersion, SessionMessageStore.storageVersion)
+        XCTAssertEqual(initial.generation, 1)
+        XCTAssertEqual(initial.messageCount, 2)
+        XCTAssertEqual(initial.restorableMessageCount, 2)
+        XCTAssertEqual(SessionMessageStore.messageCount(for: sessionID, rootURL: root), 2)
+        XCTAssertEqual(SessionMessageStore.storedTranscriptCount(rootURL: root), 1)
+
+        let unchanged = try XCTUnwrap(SessionMessageStore.save(first, for: sessionID, rootURL: root))
+        XCTAssertEqual(unchanged.generation, initial.generation, "clean writes must be skipped")
+
+        let changed = first + [Message(role: .user, content: "second")]
+        let updated = try XCTUnwrap(SessionMessageStore.save(changed, for: sessionID, rootURL: root))
+        XCTAssertEqual(updated.generation, initial.generation + 1)
+        XCTAssertEqual(SessionMessageStore.messageCount(for: sessionID, rootURL: root), 3)
+        XCTAssertEqual(SessionMessageStore.messages(for: sessionID, rootURL: root), changed)
+
+        let fileManager = FileManager.default
+        let directoryPermissions = try XCTUnwrap(
+            fileManager.attributesOfItem(atPath: root.path)[.posixPermissions] as? NSNumber
+        ).intValue & 0o777
+        let transcriptURL = root.appendingPathComponent("\(sessionID.uuidString).json")
+        let transcriptPermissions = try XCTUnwrap(
+            fileManager.attributesOfItem(atPath: transcriptURL.path)[.posixPermissions] as? NSNumber
+        ).intValue & 0o777
+        XCTAssertEqual(directoryPermissions, 0o700)
+        XCTAssertEqual(transcriptPermissions, 0o600)
+    }
+
+    func testLegacyTranscriptMigrationCopiesVerifiesAndRetainsRollbackDictionary() throws {
+        let root = temporaryTranscriptRoot()
+        let suiteName = "SessionPersistenceTests.transcriptMigration.\(UUID().uuidString)"
+        let defaults = isolatedTranscriptDefaults(suiteName)
+        defer {
+            try? FileManager.default.removeItem(at: root.deletingLastPathComponent())
+            defaults.removePersistentDomain(forName: suiteName)
+        }
+        let first = UUID()
+        let second = UUID()
+        let fractionalTimestamp = Date(timeIntervalSince1970: 1_722_000_000.1234567)
+        let legacy: [String: Data] = [
+            first.uuidString: try JSONEncoder().encode([
+                Message(role: .user, content: "one", timestamp: fractionalTimestamp)
+            ]),
+            second.uuidString: try JSONEncoder().encode([
+                Message(role: .user, content: "two", timestamp: fractionalTimestamp),
+                Message(role: .assistant, content: "answer", timestamp: fractionalTimestamp),
+            ]),
+        ]
+        defaults.set(legacy, forKey: SessionMessageStore.legacyStorageKey)
+
+        let result = SessionMessageStore.migrateLegacyIfNeeded(
+            defaults: defaults,
+            rootURL: root,
+            keyProvider: StaticIntegrityKeyProvider()
+        )
+        XCTAssertEqual(result, .migrated(transcriptCount: 2))
+        XCTAssertTrue(SessionMessageStore.migrationMarkerExists(rootURL: root))
+        XCTAssertEqual(defaults.dictionary(forKey: SessionMessageStore.legacyStorageKey) as? [String: Data], legacy)
+        XCTAssertEqual(SessionMessageStore.messages(for: first, rootURL: root).map(\.content), ["one"])
+        XCTAssertEqual(SessionMessageStore.messageCount(for: second, rootURL: root), 2)
+        XCTAssertEqual(SessionMessageStore.storedTranscriptCount(rootURL: root), 2)
+        XCTAssertEqual(
+            SessionMessageStore.migrateLegacyIfNeeded(
+                defaults: defaults,
+                rootURL: root,
+                keyProvider: StaticIntegrityKeyProvider()
+            ),
+            .alreadyVerified
+        )
+    }
+
+    func testMigrationFailureKeepsEntireLegacyDictionaryAndWritesNoMarker() throws {
+        let parent = FileManager.default.temporaryDirectory
+            .appendingPathComponent("grokbuild-transcript-failure-\(UUID().uuidString)")
+        let blockedRoot = parent.appendingPathComponent("blocked")
+        let suiteName = "SessionPersistenceTests.transcriptMigrationFailure.\(UUID().uuidString)"
+        let defaults = isolatedTranscriptDefaults(suiteName)
+        defer {
+            try? FileManager.default.removeItem(at: parent)
+            defaults.removePersistentDomain(forName: suiteName)
+        }
+        try FileManager.default.createDirectory(at: parent, withIntermediateDirectories: true)
+        try Data("not a directory".utf8).write(to: blockedRoot)
+        let sessionID = UUID()
+        let legacy = [sessionID.uuidString: try JSONEncoder().encode([Message(role: .user, content: "keep me")])]
+        defaults.set(legacy, forKey: SessionMessageStore.legacyStorageKey)
+
+        XCTAssertEqual(
+            SessionMessageStore.migrateLegacyIfNeeded(
+                defaults: defaults,
+                rootURL: blockedRoot,
+                keyProvider: StaticIntegrityKeyProvider()
+            ),
+            .failed
+        )
+        XCTAssertEqual(defaults.dictionary(forKey: SessionMessageStore.legacyStorageKey) as? [String: Data], legacy)
+        XCTAssertFalse(SessionMessageStore.migrationMarkerExists(rootURL: blockedRoot))
+    }
+
+    func testSerializedWriterLeavesACompleteTranscriptUnderConcurrentDirtySaves() throws {
+        let root = temporaryTranscriptRoot()
+        defer { try? FileManager.default.removeItem(at: root.deletingLastPathComponent()) }
+        let sessionID = UUID()
+        let messageID = UUID()
+
+        DispatchQueue.concurrentPerform(iterations: 24) { revision in
+            _ = SessionMessageStore.save(
+                [Message(id: messageID, role: .user, content: "revision \(revision)")],
+                for: sessionID,
+                rootURL: root
+            )
+        }
+
+        let saved = SessionMessageStore.messages(for: sessionID, rootURL: root)
+        XCTAssertEqual(saved.count, 1)
+        XCTAssertEqual(saved.first?.id, messageID)
+        XCTAssertTrue(saved.first?.content.hasPrefix("revision ") == true)
+        XCTAssertNotNil(SessionMessageStore.metadata(for: sessionID, rootURL: root))
+    }
+
+    func testThousandMessageDirtyWriteTouchesOnlyItsOwnTranscriptAndFeedsV3Integrity() throws {
+        let root = temporaryTranscriptRoot()
+        let suiteName = "SessionPersistenceTests.transcriptV3.\(UUID().uuidString)"
+        let defaults = isolatedTranscriptDefaults(suiteName)
+        defer {
+            try? FileManager.default.removeItem(at: root.deletingLastPathComponent())
+            defaults.removePersistentDomain(forName: suiteName)
+        }
+        let largeID = UUID()
+        let untouchedID = UUID()
+        let workspaceID = UUID()
+        var messages = (0..<1_000).map { index in
+            Message(role: index.isMultiple(of: 2) ? .user : .assistant, content: "row \(index)")
+        }
+        _ = SessionMessageStore.save(messages, for: largeID, rootURL: root)
+        let untouched = try XCTUnwrap(SessionMessageStore.save(
+            [Message(role: .user, content: "do not rewrite")],
+            for: untouchedID,
+            rootURL: root
+        ))
+
+        messages[messages.count - 1] = Message(
+            id: messages[messages.count - 1].id,
+            role: .assistant,
+            content: "row 999 revised"
+        )
+        let started = Date()
+        let large = try XCTUnwrap(SessionMessageStore.save(messages, for: largeID, rootURL: root))
+        XCTAssertLessThan(Date().timeIntervalSince(started), 0.25, "1,000-message dirty write exceeded the local budget")
+        XCTAssertEqual(SessionMessageStore.metadata(for: untouchedID, rootURL: root)?.generation, untouched.generation)
+        XCTAssertEqual(large.messageCount, 1_000)
+
+        let snapshot = SessionLayoutSnapshot(
+            records: [SavedSessionRecord(
+                id: largeID,
+                workspaceID: workspaceID,
+                lastAccessed: .now,
+                transcriptGeneration: large.generation,
+                transcriptStorageVersion: large.storageVersion
+            )],
+            sessionOrderByWorkspace: [workspaceID: [largeID]],
+            selectedSessionID: largeID,
+            selectedWorkspaceID: workspaceID
+        )
+        XCTAssertTrue(SessionLayoutStore.saveSessions(
+            snapshot,
+            defaults: defaults,
+            keyProvider: StaticIntegrityKeyProvider()
+        ).committed)
+        let reloaded = SessionLayoutStore.loadSessionsResult(
+            defaults: defaults,
+            keyProvider: StaticIntegrityKeyProvider()
+        )
+        XCTAssertEqual(reloaded.authority, .v3Committed)
+        XCTAssertEqual(reloaded.snapshot.records.first?.transcriptGeneration, large.generation)
+        XCTAssertEqual(reloaded.snapshot.records.first?.transcriptStorageVersion, SessionMessageStore.storageVersion)
+    }
+
     func testSessionMessageStoreSkipsLegacyResumeNotes() {
         let sessionID = UUID()
         let messages = [
@@ -293,7 +582,7 @@ final class SessionPersistenceTests: XCTestCase {
         XCTAssertEqual(SessionRestorePolicy.recentSessionOrder(from: records), [newer, older])
     }
 
-    func testPreferredSessionIDHonorsSavedSelectionEvenWhenEmpty() {
+    func testPreferredSessionIDSkipsRememberedEmptySession() {
         let workspaceID = UUID()
         let emptySession = UUID()
         let contentSession = UUID()
@@ -315,7 +604,7 @@ final class SessionPersistenceTests: XCTestCase {
             hasContent: { $0 == contentSession }
         )
 
-        XCTAssertEqual(preferred, emptySession)
+        XCTAssertEqual(preferred, contentSession)
     }
 
     func testRestoreSelectedSessionIDSkipsEmptySavedSelection() {
@@ -442,6 +731,44 @@ final class SessionPersistenceTests: XCTestCase {
         XCTAssertEqual(loaded.filter { $0.role == .system }.first?.content, "note")
 
         SessionMessageStore.remove(for: sessionID)
+    }
+
+    @MainActor
+    func testPostStartRecoveryRehydratesOnlyAnEmptyStore() {
+        let sessionID = UUID()
+        let workspace = Workspace(
+            name: "Post-start recovery",
+            path: URL(fileURLWithPath: NSTemporaryDirectory(), isDirectory: true)
+        )
+        let persisted = [
+            Message(role: .user, content: "persisted prompt"),
+            Message(role: .assistant, content: "persisted answer")
+        ]
+        SessionMessageStore.save(persisted, for: sessionID)
+        defer { SessionMessageStore.remove(for: sessionID) }
+
+        let store = ChatStore()
+        XCTAssertTrue(store.messages.isEmpty)
+        XCTAssertTrue(store.recoverPersistedMessagesAfterStartIfEmpty(
+            for: sessionID,
+            grokSessionID: nil,
+            workspace: workspace
+        ))
+        XCTAssertEqual(store.messages, persisted)
+
+        store.restorePersistedMessages([
+            Message(role: .user, content: "newer visible prompt"),
+            Message(role: .assistant, content: "newer visible answer")
+        ])
+        XCTAssertFalse(store.recoverPersistedMessagesAfterStartIfEmpty(
+            for: sessionID,
+            grokSessionID: nil,
+            workspace: workspace
+        ))
+        XCTAssertEqual(store.messages.map(\.content), [
+            "newer visible prompt",
+            "newer visible answer"
+        ])
     }
 
     // MARK: - Stale grok session load
@@ -608,6 +935,26 @@ final class SessionPersistenceTests: XCTestCase {
         XCTAssertEqual(store.effectiveAgentDisplayName, "researcher")
     }
 
+    @MainActor
+    func testChatStoreV3IntentBindingPreservesInheritanceAndLegacyUnknown() {
+        let store = ChatStore()
+        store.bindTabSession(
+            UUID(),
+            modelIntent: .inheritProjectDefault,
+            agentIntent: .inheritGlobalDefault
+        )
+        XCTAssertEqual(store.persistedModelIntent, .inheritProjectDefault)
+        XCTAssertEqual(store.persistedAgentIntent, .inheritGlobalDefault)
+
+        store.bindTabSession(
+            UUID(),
+            modelIntent: .legacyUnknown("grok-4.5"),
+            agentIntent: .explicit("researcher")
+        )
+        XCTAssertEqual(store.persistedModelIntent, .legacyUnknown("grok-4.5"))
+        XCTAssertEqual(store.persistedAgentIntent, .explicit("researcher"))
+    }
+
     func testSessionTabModelPolicyPrefersTabOverWorkspaceDefault() {
         XCTAssertEqual(
             SessionTabModelPolicy.resolvedModel(
@@ -641,5 +988,17 @@ final class SessionPersistenceTests: XCTestCase {
         } else {
             UserDefaults.standard.removeObject(forKey: key)
         }
+    }
+
+    private func temporaryTranscriptRoot() -> URL {
+        FileManager.default.temporaryDirectory
+            .appendingPathComponent("grokbuild-transcripts-\(UUID().uuidString)")
+            .appendingPathComponent("Transcripts")
+    }
+
+    private func isolatedTranscriptDefaults(_ suiteName: String) -> UserDefaults {
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defaults.removePersistentDomain(forName: suiteName)
+        return defaults
     }
 }

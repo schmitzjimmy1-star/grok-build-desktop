@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Build GrokBuild macOS menu bar app from the command line.
+# Build the GrokBuild macOS app from the command line.
 # Uses Swift Package Manager (SPM) by default.
 # Adapted from: https://github.com/Gitlawb/node/blob/main/scripts/build-macos-app.sh
 #
@@ -18,6 +18,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(dirname "$SCRIPT_DIR")"
+source "$SCRIPT_DIR/build-identity.sh"
 
 APP_NAME="GrokBuild"
 EXECUTABLE_NAME="GrokBuild"
@@ -101,9 +102,16 @@ if [ -f "$ROOT_DIR/Package.swift" ]; then
     fi
 
     chmod +x "$SCRIPT_DIR/bundle-agent-desktop.sh" "$SCRIPT_DIR/codesign-app-bundle.sh"
-    "$SCRIPT_DIR/bundle-agent-desktop.sh" "$APP_BUNDLE/Contents/MacOS" || true
+    # Computer Use is a first-class feature: a build without agent-desktop is
+    # broken, so bundling failures fail the build unless explicitly waived.
+    if [ "${GROKBUILD_ALLOW_MISSING_AGENT_DESKTOP:-0}" = "1" ]; then
+        "$SCRIPT_DIR/bundle-agent-desktop.sh" "$APP_BUNDLE/Contents/MacOS" \
+            || echo "WARNING: continuing WITHOUT agent-desktop — Computer Use will not work in this build."
+    else
+        "$SCRIPT_DIR/bundle-agent-desktop.sh" "$APP_BUNDLE/Contents/MacOS"
+    fi
 
-    # Copy menu bar icon
+    # Copy the Grok brand mark (the imageset keeps its legacy filename).
     # Looks in these locations (in order):
     #   1. Project root (MenuBarIcon.png / @2x.png) — legacy / docs
     #   2. Asset catalog imageset (recommended location, already in place)
@@ -114,7 +122,7 @@ if [ -f "$ROOT_DIR/Package.swift" ]; then
         local dst="$2"
         if [ -f "$src" ]; then
             cp "$src" "$APP_BUNDLE/Contents/Resources/$dst"
-            echo "==> Copied menu bar icon: $(basename "$src") -> $dst"
+            echo "==> Copied brand mark: $(basename "$src") -> $dst"
         fi
     }
 
@@ -167,14 +175,14 @@ if [ -f "$ROOT_DIR/Package.swift" ]; then
     elif [ -f "$ROOT_DIR/AppIcon1024.png" ]; then
         generate_app_icon "$ROOT_DIR/AppIcon1024.png"
     else
-        # Fallback using the menu bar icon source (will be low-res; provide AppIcon.png for best results)
+        # Fallback using the brand-mark source (will be low-res; provide AppIcon.png for best results)
         if [ -f "$ICONSET_DIR/MenuBarIcon@3x.png" ]; then
             echo "==> Using MenuBarIcon as fallback AppIcon (add a 1024x1024 AppIcon.png in project root for proper quality)"
             generate_app_icon "$ICONSET_DIR/MenuBarIcon@3x.png"
         fi
     fi
 
-    # Info.plist for a normal app (with Dock presence + menu bar icon)
+    # Info.plist for a normal windowed app with Dock presence.
     cat > "$APP_BUNDLE/Contents/Info.plist" << EOF
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -192,6 +200,16 @@ if [ -f "$ROOT_DIR/Package.swift" ]; then
     <string>$APP_VERSION</string>
     <key>CFBundleVersion</key>
     <string>$APP_VERSION</string>
+    <key>GrokBuildBuildChannel</key>
+    <string>$GROKBUILD_BUILD_CHANNEL_XML</string>
+    <key>GrokBuildSourceRepository</key>
+    <string>$GROKBUILD_SOURCE_REPOSITORY_XML</string>
+    <key>GrokBuildSourceBranch</key>
+    <string>$GROKBUILD_SOURCE_BRANCH_XML</string>
+    <key>GrokBuildSourceCommit</key>
+    <string>$GROKBUILD_SOURCE_COMMIT_XML</string>
+    <key>GrokBuildSourceDirty</key>
+    <$GROKBUILD_SOURCE_DIRTY/>
     <key>CFBundleIconFile</key>
     <string>AppIcon</string>
     <key>LSMinimumSystemVersion</key>

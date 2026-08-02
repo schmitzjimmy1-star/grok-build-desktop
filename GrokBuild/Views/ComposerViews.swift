@@ -35,6 +35,8 @@ private struct FileChipView: View {
                     .font(.caption2)
             }
             .buttonStyle(.plain)
+            .help(attachment.isHidden ? "Include in prompt" : "Exclude from prompt")
+            .accessibilityLabel(attachment.isHidden ? "Include attachment in prompt" : "Exclude attachment from prompt")
 
             Text(attachment.relativePath.split(separator: "/").last.map(String.init) ?? attachment.relativePath)
                 .font(.caption)
@@ -45,6 +47,8 @@ private struct FileChipView: View {
                     .font(.caption2)
             }
             .buttonStyle(.plain)
+            .help("Remove attachment")
+            .accessibilityLabel("Remove attachment")
         }
         .padding(.horizontal, 8)
         .padding(.vertical, 4)
@@ -54,55 +58,6 @@ private struct FileChipView: View {
 }
 
 // MARK: - Workflow chips
-
-struct WorkflowChipBar: View {
-    let commands: [SlashCommand]
-    var isDisabled: Bool = false
-    var onSelect: (SlashCommand) -> Void
-
-    var body: some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 6) {
-                ForEach(commands) { command in
-                    WorkflowChip(command: command, isDisabled: isDisabled) {
-                        onSelect(command)
-                    }
-                }
-            }
-        }
-    }
-}
-
-private struct WorkflowChip: View {
-    let command: SlashCommand
-    var isDisabled: Bool
-    var onSelect: () -> Void
-
-    @State private var isHovered = false
-
-    var body: some View {
-        Button(action: onSelect) {
-            Text(displayName)
-                .font(.caption.weight(.medium))
-                .lineLimit(1)
-                .padding(.horizontal, 10)
-                .padding(.vertical, 5)
-                .background(
-                    Color.primary.opacity(isHovered && !isDisabled ? 0.10 : 0.06),
-                    in: Capsule()
-                )
-        }
-        .buttonStyle(.plain)
-        .disabled(isDisabled)
-        .opacity(isDisabled ? 0.45 : 1)
-        .onHover { isHovered = $0 }
-        .help(command.description.isEmpty ? SkillSlashCommands.slashText(for: command) : command.description)
-    }
-
-    private var displayName: String {
-        command.name.replacingOccurrences(of: "-", with: " ")
-    }
-}
 
 // MARK: - Goal banner
 
@@ -170,9 +125,9 @@ struct GoalBanner: View {
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 8)
-        .background(Color.accentColor.opacity(0.08), in: RoundedRectangle(cornerRadius: 8))
+        .background(Color.accentColor.opacity(0.08), in: RoundedRectangle(cornerRadius: AppTheme.Radius.large))
         .overlay(
-            RoundedRectangle(cornerRadius: 8)
+            RoundedRectangle(cornerRadius: AppTheme.Radius.large)
                 .stroke(Color.accentColor.opacity(0.2), lineWidth: 1)
         )
     }
@@ -195,11 +150,13 @@ struct SetGoalSheet: View {
             HStack {
                 Spacer()
                 Button("Cancel") { dismiss() }
+                    .keyboardShortcut(.cancelAction)
                 Button("Set Goal") {
                     let budget = Int(budgetText.trimmingCharacters(in: .whitespacesAndNewlines))
                     onSubmit(objective, budget)
                     dismiss()
                 }
+                .keyboardShortcut(.defaultAction)
                 .buttonStyle(.borderedProminent)
                 .disabled(objective.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
             }
@@ -225,6 +182,8 @@ struct BtwAsideBanner: View {
                     Image(systemName: "xmark.circle.fill")
                 }
                 .buttonStyle(.plain)
+                .help("Dismiss aside")
+                .accessibilityLabel("Dismiss aside")
                 .foregroundStyle(.secondary)
             }
             Text(text)
@@ -235,9 +194,9 @@ struct BtwAsideBanner: View {
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 8)
-        .background(Color.orange.opacity(0.08), in: RoundedRectangle(cornerRadius: 8))
+        .background(Color.orange.opacity(0.08), in: RoundedRectangle(cornerRadius: AppTheme.Radius.large))
         .overlay(
-            RoundedRectangle(cornerRadius: 8)
+            RoundedRectangle(cornerRadius: AppTheme.Radius.large)
                 .stroke(Color.orange.opacity(0.2), lineWidth: 1)
         )
     }
@@ -285,9 +244,9 @@ struct PlanReviewCard: View {
             }
         }
         .padding(12)
-        .background(Color.blue.opacity(0.08), in: RoundedRectangle(cornerRadius: 10))
+        .background(Color.blue.opacity(0.08), in: RoundedRectangle(cornerRadius: AppTheme.Radius.large))
         .overlay(
-            RoundedRectangle(cornerRadius: 10)
+            RoundedRectangle(cornerRadius: AppTheme.Radius.large)
                 .stroke(Color.blue.opacity(0.35), lineWidth: 1)
         )
     }
@@ -347,9 +306,9 @@ struct QuestionCard: View {
             }
         }
         .padding(12)
-        .background(Color.green.opacity(0.08), in: RoundedRectangle(cornerRadius: 10))
+        .background(Color.green.opacity(0.08), in: RoundedRectangle(cornerRadius: AppTheme.Radius.large))
         .overlay(
-            RoundedRectangle(cornerRadius: 10)
+            RoundedRectangle(cornerRadius: AppTheme.Radius.large)
                 .stroke(Color.green.opacity(0.35), lineWidth: 1)
         )
         .onAppear {
@@ -412,7 +371,7 @@ private struct QuestionBlock: View {
                                 selection.contains(option.label)
                                     ? Color.accentColor.opacity(0.1)
                                     : Color.primary.opacity(0.04),
-                                in: RoundedRectangle(cornerRadius: 8)
+                                in: RoundedRectangle(cornerRadius: AppTheme.Radius.large)
                             )
                         }
                         .buttonStyle(.plain)
@@ -434,6 +393,8 @@ struct MicButton: View {
         Button(action: toggle) {
             Image(systemName: iconName)
                 .foregroundStyle(iconColor)
+                .frame(width: ComposerControlMetrics.minimumHitTarget, height: ComposerControlMetrics.minimumHitTarget)
+                .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         .help(helpText)
