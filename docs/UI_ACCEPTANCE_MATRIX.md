@@ -403,3 +403,29 @@ This pass completed detached transcript reading, accessibility/focus coverage, a
 | Provider / v3 isolation | **Pass** — no Send, Test Connection, backend resume, `grok agent`, browser/helper action, or provider child ran. The authenticated v3 snapshot, commit marker, and last-flush receipt remained present; only normal lifecycle receipts advanced. |
 | User state / rollback | **Pass** — config stayed mode `0600`, 1,852 bytes, SHA-256 `54986189bf364f6abe7a06876425b576f9b02466177b181d4921640d4a62bce4`; the 67-file transcript tree stayed digest `b2c7c44d313f6e42ba60b650b51cc524502e5e63cbda31b672873a919e9e3346`; preserved v2 stayed 7,902 bytes at SHA-256 `b9d760c004f74f88996d75ee83df5a2f5636ded80c6863a996c63442d5bacad7`. Slice 9, reproduced-crash, and pre-checkmark bundles remain recoverable under `/Users/jimmyschmitz/.Trash/`. |
 | Signing / artifact parity | **Pass** — deep/strict signing passed under `Apple Development: jhschmitz1993@gmail.com (LS4SUB57QL)` / Team `DD2GCQJVB4`; quarantine is absent; `dist` and installed executable SHA-256 both equal `05114763add8d07f5fc390e2ff57d139b0f984d009126f663dcefc1d0d136d8d`. `spctl` rejection is expected for this non-notarized development-signed build. |
+
+## Coherence repair Slice 11 — installed matrix and release-readiness acceptance (2026-08-01)
+
+| Check | Installed-app result |
+|---|---|
+| Settings / accessibility | **Pass** — all fourteen panes completed fresh AX-tree round trips; Marketplace's “Sentry error monitoring” copy was correctly distinguished from an actual error. No Apply, permission prompt, extension mutation, or provider request ran. |
+| Three-tab / three-model matrix | **Pass** — existing saved tabs covered Grok 4.5 and `deepseek/deepseek-v4-flash-0731`; a third saved tab was temporarily selected as `gpt-5.6-terra`, verified through the saved-model receipt, then restored to Grok 4.5 before quit. |
+| Continuity / relaunch | **Pass** — exact quit left no process; relaunch restored the saved DeepSeek tab, local-only boundary, empty composer, disabled Send, and existing sidebar layout. |
+| Ten-minute soak | **Pass** — 61 samples, max CPU 0.0%, RSS bounded from 22,096–114,544 KB and declining, zero children. |
+| State / rollback | **Pass** — config and 67-file transcript digests remained unchanged. The signed predecessor is `/Users/jimmyschmitz/.Trash/GrokBuild-pre-slice-12-20260801-232458.app`. |
+| Release warning closure | **Pass** — the previously observed order-dependent migration failure was reproduced, traced to non-canonical JSON fingerprints plus exact `Date` equality, repaired, and held through repeated full-suite passes. |
+
+## Slice 12 — Grok, OpenRouter, and provider authentication acceptance (2026-08-01)
+
+| Check | Installed-app result |
+|---|---|
+| Grok sign-in | **Pass** — Models displayed **Signed in** from a send-free `grok models` probe. The UI exposes the resolved CLI's `login --oauth` command but keeps no Grok password/session token. |
+| Existing credentials | **Pass** — OpenAI, Kimi, and OpenRouter loaded as masked, Keychain-backed API-key credentials; UserDefaults contains only non-secret provenance and passed the installed secret scan. Config stayed owner-only. |
+| Live provider validation | **Pass** — catalog-only Test connection returned OpenAI 125, Kimi 12, and OpenRouter 337 models. No completion prompt or backend session ran. |
+| OpenRouter OAuth UI | **Pass** — installed editor exposed Connect with OpenRouter, masked paste-key, Cancel, Disconnect locally, and separate remote-key management. No new live grant was issued or existing key rotated. |
+| OAuth security fixtures | **Pass** — exact-path loopback, wrong-path 404, S256 request/exchange, timeout, cancellation, and previous-credential preservation are deterministic tests; no secret enters source, logs, diagnostics, or receipts. |
+| Provider matrix | **Pass** — all ten presets have exact endpoint, authentication-header, backend, catalog, and connection-method fixtures. Ollama is explicitly keyless; OpenRouter is OAuth-or-key; remaining remote presets are API-key based. |
+| Automated verification | **Pass** — final `make test` completed **490 tests with 0 failures** in 14.404 seconds. |
+| Installed performance | **Pass** — a dynamic relative validation label reproduced ~14% Models-pane CPU; the final static checked-at label settled at 0.1% CPU, ~60 MB resident, and zero owned children after live validation. |
+| Installed identity / parity | **Pass** — clean stamp `4bffc490cb1c8b43650b2b918db007203cdbf992`; App UI reported `Personal • codex/warm-glass-ui @ 4bffc490`; dist/install executable SHA-256 both equal `2899c861fd0edd70ea1a301911278906faff8059f72e775ee17854b263066b4e`; deep/strict signing passed and quarantine is absent. |
+| Final continuity / rollback | **Pass** — exact quit/relaunch restored the saved DeepSeek/local-only state. Config and transcript digests remained unchanged; immediate rollback is the signed pre-Slice-12 bundle above. |

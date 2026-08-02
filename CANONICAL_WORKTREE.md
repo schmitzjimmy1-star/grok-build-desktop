@@ -60,7 +60,22 @@ git diff --quiet <stamped-commit>..HEAD -- \
 A model provider selected *inside* GrokBuild (Grok, GPT, OpenRouter, Kimi) never
 changes which application repository owns the workbench.
 
-## Current accepted installed receipt — Slice 10 — 2026-08-01
+## Current accepted installed receipt — Slices 11–12 — 2026-08-01
+
+- Source commit stamped into the bundle: `4bffc490cb1c8b43650b2b918db007203cdbf992`
+- Build receipt: `Personal • codex/warm-glass-ui @ 4bffc490` with `GrokBuildSourceDirty = false`; installed version remains `0.1.20` and the repository receipt points to `schmitzjimmy1-star/grok-build-desktop`.
+- `dist` / installed executable SHA-256: `2899c861fd0edd70ea1a301911278906faff8059f72e775ee17854b263066b4e`
+- Automated verification: final `make test` — **490 tests, 0 failures** in 14.404 seconds. The former order-sensitive legacy-transcript migration now uses sorted-key fingerprints and sub-millisecond `Date` equivalence; three consecutive pre-install full runs plus the final suite passed.
+- Slice 11 installed acceptance: all fourteen Settings panes completed fresh AX round trips. Three saved tabs covered Grok 4.5, `deepseek/deepseek-v4-flash-0731`, and a temporary `gpt-5.6-terra` selection that was restored before quit. Exact relaunch recovered the saved DeepSeek/local-only state. The ten-minute soak collected 61 samples with max CPU 0.0%, RSS 22,096–114,544 KB, and zero children.
+- Slice 12 authentication acceptance: Models reported the existing Grok CLI session **Signed in** through grok.com without inference. Existing Keychain-backed provider credentials migrated to non-secret **API key** provenance. Live catalog-only tests passed for OpenAI (**125** models), Kimi (**12**), and OpenRouter (**337**); no completion/provider prompt was sent. The installed OpenRouter editor exposed S256 browser connection, masked paste-key, local disconnect, remote-key management, and device-only Keychain disclosure without exposing the key.
+- OAuth security/fixture receipt: the listener binds `127.0.0.1` on an ephemeral port, requires its random exact path, rejects a wrong path with 404, is cancellation/timeout bounded, exchanges only over HTTPS, and preserves the previous credential on failure. A new remote OAuth grant was intentionally not manufactured because it would rotate persistent account access; the real API-key route and all local OAuth/error contracts were accepted.
+- Performance closeout: after one final installed OpenAI catalog validation, the Models pane settled at 0.1% CPU and about 60 MB resident with no owned child. The old dynamic relative-time label had reproduced roughly 14% CPU and was replaced by a static checked-at snapshot before the final build.
+- Signing: deep/strict verification passes for `dist` and `/Applications/GrokBuild.app` under `Apple Development: jhschmitz1993@gmail.com (LS4SUB57QL)`, Team `DD2GCQJVB4`; quarantine is absent. This development build is not notarized and is not a public release artifact.
+- Continuity/user state: exact final quit left no GrokBuild process; relaunch restored the saved DeepSeek tab, local messages, empty composer, and disabled Send. `~/.grok/config.toml` remains mode `0600`, 1,852 bytes, SHA-256 `54986189bf364f6abe7a06876425b576f9b02466177b181d4921640d4a62bce4`; the 67-file transcript digest remains `b2c7c44d313f6e42ba60b650b51cc524502e5e63cbda31b672873a919e9e3346`; preserved v2 remains 7,902 bytes at SHA-256 `b9d760c004f74f88996d75ee83df5a2f5636ded80c6863a996c63442d5bacad7`. Authenticated v3 authority remained present; only normal launch/validation metadata advanced.
+- Immediate rollback: `/Users/jimmyschmitz/.Trash/GrokBuild-pre-slice-12-20260801-232458.app` is the deep/strict-verified installed Slice 10 predecessor. Every older named rollback remains recoverable.
+- Release decision: Slices 11–12 are ready for the existing draft PR. No merge, tag, notarization, or public release was performed.
+
+## Previous accepted installed receipt — Slice 10 — 2026-08-01
 
 - Source commit stamped into the bundle: `22e95f31d9986d89129164477f5026fafd792174`
 - Build receipt: `personal • codex/warm-glass-ui @ 22e95f31` with `GrokBuildSourceDirty = false`

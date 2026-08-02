@@ -2,7 +2,7 @@
 
 Date: 2026-07-31
 
-Status: Slice 12 provider-auth implementation complete; installed acceptance pending
+Status: Slice 12 provider-auth implementation and installed acceptance complete
 
 Default product decision: **Grok-first, ACP-open; OpenRouter is optional routing, never a silent fallback**
 
