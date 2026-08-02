@@ -23,7 +23,12 @@ struct GrokLaunchOptions: Sendable {
     var experimentalMemory: Bool = false  // maps to `--experimental-memory` (mutually exclusive with noMemory)
     var permissionMode: String? = nil
     var reasoningEffort: String? = nil   // passed to `grok agent --reasoning-effort X stdio`
-    var model: String? = nil             // e.g. model name like "gpt-5.5-extra-high" or grok variant
+    var model: String? = nil             // launch hint plus exact ACP confirmation before ready
+    /// The provider-facing model ID Grok may report for a custom `[model.<id>]`
+    /// table. `model` remains the config-table selector sent to Grok; this value
+    /// only defines the exact alternate readback that is allowed to satisfy the
+    /// pre-send confirmation gate.
+    var expectedEffectiveModelID: String? = nil
     var sandboxProfile: String? = nil
     var disableWebSearch: Bool = false
     var noSubagents: Bool = false
@@ -671,6 +676,12 @@ final class GrokProcess: @unchecked Sendable {
                 launchOutcome = .new
             }
             guard activeProcessGeneration == launchGeneration else { return }
+            try await confirmRequestedLaunchModel(
+                options.model,
+                expectedEffectiveModelID: options.expectedEffectiveModelID,
+                processGeneration: launchGeneration
+            )
+            guard activeProcessGeneration == launchGeneration else { return }
             settleLaunchModelReceipt(identity: launchIdentity)
             updateLaunchReceipt(outcome: launchOutcome, backendSessionID: sessionId)
             state = .ready
@@ -678,7 +689,7 @@ final class GrokProcess: @unchecked Sendable {
             guard activeProcessGeneration == launchGeneration else { return }
             let stderrDetails = startupStderrSnapshot()
             let suffix = stderrDetails.isEmpty ? "" : "\n\(stderrDetails)"
-            state = .failed("ACP initialize failed: \(error.localizedDescription)\(suffix)")
+            state = .failed("ACP startup failed: \(error.localizedDescription)\(suffix)")
             await cleanupProcess(setIdle: false)
             rejectLaunchModelReceipt(identity: launchIdentity)
             updateLaunchReceipt(outcome: .failed, backendSessionID: nil)
@@ -777,6 +788,57 @@ final class GrokProcess: @unchecked Sendable {
                 state: &modelExecutionState
             )
         }
+    }
+
+    /// grok 0.2.118 accepts `--model` for `agent stdio`, but `session/new` can still
+    /// report and use the default Grok model. Reassert an explicit launch selection over
+    /// ACP and require an exact readback before the process becomes sendable. This keeps a
+    /// custom-provider tab from silently billing the default provider.
+    private func confirmRequestedLaunchModel(
+        _ requestedModelID: String?,
+        expectedEffectiveModelID: String?,
+        processGeneration: UInt64
+    ) async throws {
+        let requested = requestedModelID?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        let expected = expectedEffectiveModelID?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !requested.isEmpty else { return }
+        var acceptedReadbacks: Set<String> = [requested]
+        if let expected, !expected.isEmpty {
+            acceptedReadbacks.insert(expected)
+        }
+        guard !acceptedReadbacks.contains(currentModelId ?? "") else { return }
+        guard let sid = sessionId else {
+            throw NSError(
+                domain: "ACP",
+                code: -4,
+                userInfo: [NSLocalizedDescriptionKey: "Grok did not create a session for the requested model."]
+            )
+        }
+
+        let result = try await sendRequestWithTimeout(
+            method: "session/set_model",
+            params: ["sessionId": sid, "modelId": requested],
+            seconds: 12
+        ) as? [String: Any]
+        guard activeProcessGeneration == processGeneration else { return }
+        guard let effective = Self.effectiveModelID(from: result) else {
+            currentModelId = nil
+            throw NSError(
+                domain: "ACP",
+                code: -4,
+                userInfo: [NSLocalizedDescriptionKey: "Grok accepted the model request without confirming the live model."]
+            )
+        }
+        guard acceptedReadbacks.contains(effective) else {
+            currentModelId = effective
+            throw NSError(
+                domain: "ACP",
+                code: -4,
+                userInfo: [NSLocalizedDescriptionKey: "Grok confirmed \(effective) instead of the requested model \(requested)."]
+            )
+        }
+        currentModelId = effective
     }
 
     private func rejectLaunchModelReceipt(identity: ModelRequestIdentity) {
