@@ -3,7 +3,7 @@
 | Field | Value |
 |---|---|
 | Prepared | 2026-08-01 |
-| Status | Slices 0–4 implemented and installed-app accepted; Slice 5 implemented with automated acceptance complete and installed-app acceptance pending |
+| Status | Slices 0–5 implemented and installed-app accepted; Slices 6–11 remain unstarted |
 | Scope | Maintained SwiftUI app, current Grok CLI 0.2.118 contract, installed-app acceptance, and every unresolved hole from the Settings/startup/performance/backend-CPR audit |
 | Canonical worktree | /Users/jimmyschmitz/Desktop/Projects/MCP Servers/Grok Build/grok-build-desktop |
 | Canonical branch | codex/warm-glass-ui |
@@ -1608,12 +1608,18 @@ Exit:
 - queued restart is bound to exact tab/generation;
 - no @AppStorage-backed control claims a draft.
 
-#### Slice 5 implementation status — installed acceptance pending
+#### Slice 5 implementation receipt — 2026-08-01
 
-- The shared contract, Memory fixture pane, coalesced reload path, honest reconnect/fork receipt resolver, and process-LRU identity guard are implemented in the current tree.
-- The focused Settings/runtime/lifecycle filter completed 19 tests with 0 failures. `make test` completed 457 tests with 0 failures in 14.137 seconds.
-- The synthetic ACP fixture performs no provider send and proves that two Apply requests queued during streaming share exactly one reconnect while retaining the requested tab, backend, and process-generation identity.
-- Final code SHA, signed installed-app evidence, rollback path, persistence hashes, and publication receipt will be added only after the clean code-bearing commit is built and visibly accepted.
+- Slice 5 code and governing documentation are committed on `codex/warm-glass-ui` at `734e5050b5b49203d90e2ac9bc36245fdf725b09`. The signed installed bundle was rebuilt from that clean code-bearing commit and visibly reports `Personal • codex/warm-glass-ui @ 734e5050`; this acceptance receipt is documentation-only.
+- `SettingsValueState` separates draft, persisted, applied, and live values. `SettingsApplyRequest` declares capability, persistence owner, scope, restart/trust requirements, exact tab/backend/process target, and a redacted receipt. The Memory fixture writes UserDefaults only on explicit Apply and uses the shared checking/status/apply/receipt/adaptive-row components.
+- Only the selected Settings pane mounts. Switching away cancels its view-owned `.task`, while the parent-owned Memory draft survives the round trip. Accessibility text sizes force vertical form rows; narrow widths fall back through `ViewThatFits`.
+- General, model, and Settings reloads share one `RuntimeConfigurationReloadQueue`. Streaming requests drain once after ordered turn completion, exact newer tab/backend/generation receipts alone become success, disclosed recovery forks remain partial, and a mismatched receipt fails without painting Live.
+- The process LRU snapshots tab IDs, re-resolves after asynchronous shutdown, and never adopts a backend receipt unless tab, durable backend, and active process generation all match. A mismatch is still stopped safely while the prior persisted identity is retained.
+- Focused Settings/runtime/lifecycle verification completed 19 tests with 0 failures in 1.838 seconds. `make test` completed 457 tests with 0 failures in 14.137 seconds. A synthetic fake ACP process proves that two Apply requests queued during streaming share exactly one reconnect and preserve exact identity; the full Draft → Saved → Restart required → Live state chain, partial fork, stale receipt, and LRU mismatch are deterministic provider-send-free fixtures.
+- Installed Computer Use opened Settings → App and verified the personal `734e5050` receipt. Memory loaded Saved/on, moved to Draft/off, retained that draft across App → Memory while the hidden pane unmounted, then Revert restored Saved/on without persistence. Explicit Apply saved off and disclosed configuration generation 1 with the exact local tab plus `backend none; process none`; the pane stayed Saved rather than claiming Live.
+- Graceful quit/relaunch proved the applied off value. The original on value was then restored through the same explicit Apply boundary and proved after another clean relaunch. No provider send, backend CPR, Grok ACP child, browser child, app-owned Computer Use helper, new binding, or recovery fork ran; the settled app had zero owned children and sampled 0.0% CPU across three one-second samples.
+- v2 remains byte-identical at 7,902 bytes and SHA-256 `b9d760c004f74f88996d75ee83df5a2f5636ded80c6863a996c63442d5bacad7`. Authenticated v3 remains schema 3 with 24 records, committed marker, flush receipt, empty live fork ledger, and no pending recovery intent.
+- Installed and packaged executables match at SHA-256 `b9e65137fa311fb763c81f00f478b71ae4761f47512e6ff966dbaaa3f815c996`; deep/strict signing passes under Team `DD2GCQJVB4`, quarantine is absent, and the immediate pre-Slice-5 app is recoverable at `/Users/jimmyschmitz/.Trash/GrokBuild-pre-slice-5-20260801-195738.app`. The named pre-Slice-4 and pre-Slice-3 rollback bundles remain intact.
 
 ### Slice 6 — priority launch panes
 

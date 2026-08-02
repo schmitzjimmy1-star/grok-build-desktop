@@ -310,3 +310,25 @@ This pass implemented provenance-rich row import and explicit recovery only. `ma
 | Rollback | **Pass** — immediate pre-Slice-4 app at `/Users/jimmyschmitz/.Trash/GrokBuild-pre-slice-4-20260801-192858.app`; named pre-Slice-3 rollback still present at `/Users/jimmyschmitz/.Trash/GrokBuild-pre-slice-3-20260801-1857.app` |
 
 The installed pass intentionally did not click Continue as New or confirm Relink against a real profile. Those state transitions are deterministic authenticated fixtures; the installed proof covers the settled UI, explicit review boundary, preserved real state, Settings/relaunch behavior, and the no-provider-send/no-backend-process contract.
+
+## Coherence repair Slice 5 — shared Settings apply-contract acceptance (2026-08-01)
+
+This pass implemented the common Settings state/apply contract, Memory fixture pane, coalesced runtime reloads, reconnect truth, and process-LRU identity safety. `make test` completed **457 tests with 0 failures** in 14.137 seconds; the focused Settings/runtime/lifecycle suites completed **19 tests with 0 failures** in 1.838 seconds. Acceptance sent no provider prompt and started no backend.
+
+| Check | Installed-app result |
+|---|---|
+| Shared value truth | **Pass** — Memory loaded as Saved/on, toggled to Draft/off, and exposed distinct accessible Draft and Saved descriptions; Revert returned to Saved/on without writing the preference |
+| Hidden-pane lifecycle | **Pass** — App replaced Memory in the mounted tree; returning to Memory retained the parent-owned Draft/off value while hidden view-owned tasks had been cancelled |
+| Apply boundary | **Pass** — Apply was disabled until the draft differed, then wrote only at the explicit action. The settled receipt reported configuration generation 1 and the selected local tab with `backend none; process none` |
+| Applied versus live honesty | **Pass** — because the selected tab had no live process, Apply reported `Saved; this tab has no live process and will use the setting when it starts` and stayed Saved rather than manufacturing Live |
+| Persistence round trip | **Pass** — graceful quit/relaunch restored the applied off value. The original on value was restored through Apply and a second relaunch visibly returned the Memory session control with `Cross-session memory is on` |
+| Adaptive/accessibility rows | **Pass / source + fixture** — the installed toggle, status, Apply/Revert controls, and receipt are independently reachable; `ViewThatFits` stacks narrow rows and accessibility text sizes force the vertical form, covered by the focused reducer/source contract |
+| Queued/coalesced reload | **Pass / fake ACP** — two Settings Apply requests queued during one synthetic streaming turn suspend until ordered completion and share exactly one reconnect with the same tab/backend and a newer process generation |
+| Reconnect/fork truth | **Pass / fixture** — exact newer identity succeeds; wrong tab/backend/stale generation fails; a disclosed recovery fork is partial and never false green |
+| Process-LRU identity | **Pass / fixture** — asynchronous eviction re-resolves the tab by UUID and refuses to adopt a mismatched tab/backend/generation receipt while still stopping the unsafe process |
+| Backend isolation | **Pass** — no provider send, CPR, Grok ACP/browser/helper child, app-owned Computer Use process, binding change, or recovery fork ran; the settled app had zero owned children and sampled 0.0% CPU three times |
+| Data integrity | **Pass** — v2 remains 7,902 bytes at SHA-256 `b9d760c004f74f88996d75ee83df5a2f5636ded80c6863a996c63442d5bacad7`; v3 remains schema 3 with 24 records, committed marker, flush receipt, empty fork ledger, and no pending recovery intent |
+| Installed identity / parity | **Pass** — Settings → App reported `Personal • codex/warm-glass-ui @ 734e5050`; clean full commit `734e5050b5b49203d90e2ac9bc36245fdf725b09`; dist/install executables both SHA-256 `b9e65137fa311fb763c81f00f478b71ae4761f47512e6ff966dbaaa3f815c996` |
+| Signing / rollback | **Pass** — deep/strict signing passed under Team `DD2GCQJVB4`, quarantine is absent, immediate pre-Slice-5 rollback is `/Users/jimmyschmitz/.Trash/GrokBuild-pre-slice-5-20260801-195738.app`, and the named pre-Slice-4/pre-Slice-3 bundles remain intact |
+
+The installed pass deliberately exercised the honest no-process result instead of starting a real provider-backed session merely to obtain a Live label. The full Restart required → Live transition and the one-reconnect streaming queue are proven by the synthetic ACP fixtures against exact process generations.

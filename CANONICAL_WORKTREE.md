@@ -62,10 +62,10 @@ changes which application repository owns the workbench.
 
 ## Current accepted installed receipt — 2026-08-01
 
-- Source commit stamped into the bundle: `760281c3d136ffe14ac911206b3a5bb79e140610`
-- Build receipt: `personal • codex/warm-glass-ui @ 760281c3` with `GrokBuildSourceDirty = false`
-- `dist` / installed executable SHA-256: `d46319b537e40a54fd0de3773dfd58dbd8e205bdef699c03f9182879f34e2039`
-- Automated verification: `make test` — **448 tests, 0 failures**; focused provenance/lifecycle/source-contract suites — **69 tests, 0 failures**
-- Signing: deep/strict pass for app and helpers, Team `DD2GCQJVB4`; quarantine absent
-- Recoverable pre-Slice-4 install: `/Users/jimmyschmitz/.Trash/GrokBuild-pre-slice-4-20260801-192858.app`; the named pre-Slice-3 rollback remains at `/Users/jimmyschmitz/.Trash/GrokBuild-pre-slice-3-20260801-1857.app`
-- Installed Computer Use proof: the missing-backend surface visibly exposed **Continue as New** and **Relink…**, candidate review remained read-only, Settings → App showed the personal repository/branch/`760281c3` receipt, and graceful quit/relaunch preserved readable local work with zero owned backend/helper children
+- Source commit stamped into the bundle: `734e5050b5b49203d90e2ac9bc36245fdf725b09`
+- Build receipt: `personal • codex/warm-glass-ui @ 734e5050` with `GrokBuildSourceDirty = false`
+- `dist` / installed executable SHA-256: `b9e65137fa311fb763c81f00f478b71ae4761f47512e6ff966dbaaa3f815c996`
+- Automated verification: `make test` — **457 tests, 0 failures**; focused Settings/runtime/lifecycle suites — **19 tests, 0 failures**
+- Signing: deep/strict pass for app and helpers under Team `DD2GCQJVB4`; quarantine absent
+- Recoverable pre-Slice-5 install: `/Users/jimmyschmitz/.Trash/GrokBuild-pre-slice-5-20260801-195738.app`; the named pre-Slice-4 and pre-Slice-3 rollback bundles remain at `/Users/jimmyschmitz/.Trash/GrokBuild-pre-slice-4-20260801-192858.app` and `/Users/jimmyschmitz/.Trash/GrokBuild-pre-slice-3-20260801-1857.app`
+- Installed Computer Use proof: Settings → App visibly showed the personal repository/branch/`734e5050` receipt. Memory moved Saved → Draft, retained the draft while its hidden pane was unmounted, reverted without persistence, and produced an honest Saved/no-live-process apply receipt. Quit/relaunch proved persistence; the original enabled value was restored and re-proven after a final relaunch. No provider send or owned backend/helper child ran.
