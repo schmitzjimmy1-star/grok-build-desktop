@@ -48,6 +48,10 @@ struct ContentView: View {
     @State private var restoreStatusText = "Restoring sessions..."
     @State private var sessionListRevision = 0
     @State private var cachedSessionTitles: [UUID: String] = [:]
+    /// Metadata is loaded in one background snapshot during restore. Keeping it in memory lets
+    /// layout persistence answer counts/generations without touching transcript files on the
+    /// main actor or decoding any unselected body.
+    @State private var transcriptMetadataByID: [UUID: SessionMessageStore.Metadata] = [:]
     @State private var sessionLayout = SessionLayoutSnapshot(
         records: [],
         sessionOrderByWorkspace: [:],
@@ -622,7 +626,10 @@ struct ContentView: View {
     }
 
     private func sessionHasPersistedContent(_ sessionID: UUID) -> Bool {
-        SessionRestorePolicy.sessionHasPersistedContent(sessionID)
+        if let metadata = transcriptMetadataByID[sessionID] {
+            return metadata.restorableMessageCount > 0
+        }
+        return SessionRestorePolicy.sessionHasPersistedContent(sessionID)
     }
 
     private func sessionHasContent(_ session: LiveSession) -> Bool {
@@ -630,7 +637,10 @@ struct ContentView: View {
             hasUserMessages: session.store.hasUserMessages,
             liveGrokSessionID: session.store.grokSessionId,
             savedGrokSessionID: session.grokSessionID,
-            sessionID: session.id
+            sessionID: session.id,
+            hasPersistedContent: transcriptMetadataByID[session.id].map {
+                $0.restorableMessageCount > 0
+            }
         )
     }
 
@@ -763,6 +773,7 @@ struct ContentView: View {
                 dirtyIDs.contains(session.id) ? (session.id, session.store.messages) : nil
             })
             let saved = SessionMessageStore.saveAll(dirtyMessages)
+            transcriptMetadataByID.merge(saved) { _, new in new }
             dirtyTranscriptIDs.subtract(saved.keys)
         }
         var records: [SavedSessionRecord] = []
@@ -832,10 +843,10 @@ struct ContentView: View {
                     lastActivationOrdinal: pendingActivationOrdinals[session.id]
                         ?? existing?.lastActivationOrdinal
                         ?? 0,
-                    transcriptGeneration: SessionMessageStore.metadata(for: session.id)?.generation
+                    transcriptGeneration: transcriptMetadataByID[session.id]?.generation
                         ?? existing?.transcriptGeneration
                         ?? 0,
-                    transcriptStorageVersion: SessionMessageStore.metadata(for: session.id)?.storageVersion
+                    transcriptStorageVersion: transcriptMetadataByID[session.id]?.storageVersion
                         ?? existing?.transcriptStorageVersion
                         ?? 1,
                     forkLedgerReference: latestForkEntry?.id.uuidString
@@ -911,10 +922,10 @@ struct ContentView: View {
         isRestoringSessions = true
         restoreStatusText = "Loading saved sessions..."
         Task {
-            let loaded = await Task.detached(priority: .userInitiated) {
+            let loaded = await GrokBuildBackgroundWork.run({
                 _ = SessionMessageStore.migrateLegacyIfNeeded()
                 return SessionLayoutStore.loadSessionsResult()
-            }.value
+            })
             sessionLayout = loaded.snapshot
             sessionLayoutAuthority = loaded.authority
             sessionLayoutFailure = loaded.failure
@@ -951,8 +962,12 @@ struct ContentView: View {
             restoreStatusText = "Restoring sessions..."
         }
 
-        var titleCacheByWorkspace: [Workspace.ID: [String: String]] = [:]
-        let cli = GrokCLIService()
+        let restoreMetadata = await GrokBuildBackgroundWork.run({
+            Dictionary(uniqueKeysWithValues: restorableRecords.compactMap { record in
+                SessionMessageStore.metadata(for: record.id).map { (record.id, $0) }
+            })
+        }, priority: .utility)
+        transcriptMetadataByID.merge(restoreMetadata) { _, new in new }
         var restoreCandidates: [SessionRestoreCandidate] = []
 
         // Lazy restore: only rebuild lightweight session state here (no grok process spawn).
@@ -963,14 +978,9 @@ struct ContentView: View {
             restoreStatusText = "Restoring \(workspace.displayName)"
 
             let store = ChatStore()
-            let transcriptMetadata = SessionMessageStore.metadata(for: record.id)
+            let transcriptMetadata = restoreMetadata[record.id]
             let durableGrokID = record.grokSessionID
-            let title = await restoredTitle(
-                for: record,
-                workspace: workspace,
-                cache: &titleCacheByWorkspace,
-                cli: cli
-            )
+            let title = restoredTitle(for: record)
             store.prepare(workspace: workspace, savedGrokSessionID: durableGrokID)
             store.bindTabSession(
                 record.id,
@@ -1051,12 +1061,7 @@ struct ContentView: View {
         }
     }
 
-    private func restoredTitle(
-        for record: SavedSessionRecord,
-        workspace: Workspace,
-        cache: inout [Workspace.ID: [String: String]],
-        cli: GrokCLIService
-    ) async -> String {
+    private func restoredTitle(for record: SavedSessionRecord) -> String {
         if let title = record.title?.trimmingCharacters(in: .whitespacesAndNewlines),
            !title.isEmpty {
             return title
@@ -1065,19 +1070,6 @@ struct ContentView: View {
         guard let grokID = record.grokSessionID else {
             return SessionTitle.defaultTitle
         }
-
-        if cache[workspace.id] == nil {
-            let sessions = (try? await cli.listSessions(limit: 50, cwd: workspace.path)) ?? []
-            cache[workspace.id] = Dictionary(
-                uniqueKeysWithValues: sessions.map { ($0.id, $0.summary) }
-            )
-        }
-
-        if let summary = cache[workspace.id]?[grokID]?.trimmingCharacters(in: .whitespacesAndNewlines),
-           !summary.isEmpty {
-            return summary
-        }
-
         return "Session \(grokID.prefix(8))"
     }
 
@@ -1242,19 +1234,10 @@ struct ContentView: View {
             switchInterval.end()
             return
         }
-        if session.store.messages.isEmpty {
-            // Backend history is not continuity authority. Restore only the local durable
-            // transcript here; Slice 3 imports/reconciles the exact backend after its
-            // keyed comparison permits the relationship.
-            session.store.restorePersistedMessages(SessionMessageStore.messages(for: id))
-        } else if reconcilePersistedTranscript,
-                  session.store.continuityPermitsAuthoritativeReconciliation {
-            session.store.reconcilePersistedMessages(
-                for: id,
-                grokSessionID: session.grokSessionID,
-                workspace: session.workspace
-            )
-        }
+        let needsHydration = session.store.messages.isEmpty
+        let needsReconciliation = !needsHydration
+            && reconcilePersistedTranscript
+            && session.store.continuityPermitsAuthoritativeReconciliation
         purgeEmptySessions(in: session.workspace.id, keeping: id)
         let savedRecord = sessionLayout.records.first(where: { $0.id == id })
         // Selection can happen while the restored tab's lazy process is still starting.
@@ -1282,6 +1265,44 @@ struct ContentView: View {
             noteSessionUsed(id)
         }
         Task {
+            if needsHydration || needsReconciliation {
+                let localMessages = await GrokBuildBackgroundWork.run({
+                    SessionMessageStore.messages(for: id)
+                }, priority: .utility)
+                guard !Task.isCancelled, selectedSessionID == id else {
+                    switchInterval.end()
+                    return
+                }
+
+                if needsHydration {
+                    // Backend history is not continuity authority. Restore only the local
+                    // durable transcript here; Slice 3 imports/reconciles the exact backend
+                    // after its keyed comparison permits the relationship.
+                    session.store.restorePersistedMessages(localMessages)
+                } else if needsReconciliation {
+                    // Preserve the v3 selection path's ordering: disk is merged into the
+                    // already-live transcript before authenticated continuity reconciliation.
+                    // Only the file read and recovery parser leave the main actor.
+                    session.store.mergePersistedMessages(localMessages)
+                    let reconciliationMessages = session.store.messages
+                    let recovered = await GrokBuildBackgroundWork.run({
+                        SessionTranscriptRecovery.recoverIfNeeded(
+                            sessionID: id,
+                            grokSessionID: session.grokSessionID,
+                            workspacePath: session.workspace.path,
+                            currentMessages: reconciliationMessages
+                        )
+                    }, priority: .utility)
+                    guard !Task.isCancelled, selectedSessionID == id else {
+                        switchInterval.end()
+                        return
+                    }
+                    if let recovered {
+                        session.store.restorePersistedMessages(recovered)
+                    }
+                }
+                autoSelectLatestDiffMessage()
+            }
             // Slice 3 verifies the exact bound history before any resume. The old
             // defer flag now means "verify before start", not "wait until Send and
             // blindly resume"; a failed check leaves the process stopped.
@@ -1338,11 +1359,38 @@ struct ContentView: View {
             // shown and can leave the in-memory store empty. The persisted tab transcript
             // remains authoritative for this bounded recovery; never overwrite a non-empty
             // store after the live process starts.
-            liveSessions[idx].store.recoverPersistedMessagesAfterStartIfEmpty(
-                for: id,
-                grokSessionID: liveSessions[idx].grokSessionID,
-                workspace: liveSessions[idx].workspace
-            )
+            if selectedSessionID == id, liveSessions[idx].store.messages.isEmpty {
+                let hasRestorableTranscript: Bool
+                if let metadata = transcriptMetadataByID[id] {
+                    hasRestorableTranscript = metadata.restorableMessageCount > 0
+                } else {
+                    hasRestorableTranscript = await GrokBuildBackgroundWork.run({
+                        SessionMessageStore.hasRestorableTranscript(for: id)
+                    }, priority: .utility)
+                }
+                if hasRestorableTranscript,
+                   let currentIndex = liveSessions.firstIndex(where: { $0.id == id }) {
+                    let recoveryGrokSessionID = liveSessions[currentIndex].grokSessionID
+                    let recoveryWorkspacePath = liveSessions[currentIndex].workspace.path
+                    let saved = await GrokBuildBackgroundWork.run({
+                        SessionMessageStore.messages(for: id)
+                    }, priority: .utility)
+                    let recovered = await GrokBuildBackgroundWork.run({
+                        SessionTranscriptRecovery.recoverIfNeeded(
+                            sessionID: id,
+                            grokSessionID: recoveryGrokSessionID,
+                            workspacePath: recoveryWorkspacePath,
+                            currentMessages: saved
+                        )
+                    }, priority: .utility)
+                    if selectedSessionID == id,
+                       let currentIndex = liveSessions.firstIndex(where: { $0.id == id }),
+                       liveSessions[currentIndex].store.messages.isEmpty {
+                        liveSessions[currentIndex].store.restorePersistedMessages(recovered ?? saved)
+                        autoSelectLatestDiffMessage()
+                    }
+                }
+            }
         }
         persistSessionLayout()
     }

@@ -111,6 +111,9 @@ struct SettingsView: View {
     @State private var memoryLoadState = SettingsLoadState.checking
     @State private var agentValueState = SettingsValueState<String>.unloaded(default: "")
     @State private var modelValueState = SettingsValueState<String>.unloaded(default: "")
+    /// The Models pane's loaded catalog and provider state outlive the selected view tree.
+    /// Its view can unmount when another pane is selected without discarding expensive state.
+    @State private var retainedCustomModelsViewModel = CustomModelsSettingsViewModel()
     @State private var permissionValueState = SettingsValueState<PermissionSettingsDraft>.unloaded(
         default: .defaults
     )
@@ -269,6 +272,7 @@ struct SettingsView: View {
         case .models:
             CustomModelsSettingsPane(
                 valueState: $modelValueState,
+                viewModel: retainedCustomModelsViewModel,
                 liveReceipt: store.effectiveSessionReceipt,
                 onApply: onSettingsApplyRequest,
                 onConfigurationChanged: onConfigurationChanged
@@ -1313,8 +1317,12 @@ private struct BrowserSettingsPane: View {
         guard !valueState.isLoaded else { return }
         await Task.yield()
         guard !Task.isCancelled else { return }
-        let saved = BrowserSettingsStore.load()
-        let applied = BrowserSettingsStore.loadApplied()
+        let loaded = await SettingsBackgroundLoader.run {
+            (saved: BrowserSettingsStore.load(), applied: BrowserSettingsStore.loadApplied())
+        }
+        guard !Task.isCancelled else { return }
+        let saved = loaded.saved
+        let applied = loaded.applied
         let liveEnabled = liveReceipt?.freshness == .live ? liveReceipt?.browserEnabled : nil
         let live = liveEnabled.map { enabled in
             var settings = applied
@@ -2486,6 +2494,7 @@ private struct AgentsSettingsPane: View {
     @State private var showDiscoveredAgents = false
 
     @State private var roles: [SubagentRole] = []
+    @State private var customModelIDs: [String] = []
     @State private var editingRole: SubagentRole?
     @State private var isAddingRole = false
     @State private var roleError: String?
@@ -2739,8 +2748,8 @@ private struct AgentsSettingsPane: View {
     /// Model ids available in the role editor picker (built-ins + custom models from config.toml).
     private var modelOptions: [String] {
         var options = ["grok-build"]
-        for model in CustomModelStore.load().models where !options.contains(model.id) {
-            options.append(model.id)
+        for modelID in customModelIDs where !options.contains(modelID) {
+            options.append(modelID)
         }
         return options
     }
@@ -2797,7 +2806,15 @@ private struct AgentsSettingsPane: View {
     private func refresh() async {
         isLoading = true
         errorMessage = nil
-        roles = SubagentRoleStore.load()
+        let loaded = await SettingsBackgroundLoader.run {
+            (
+                roles: SubagentRoleStore.load(),
+                modelIDs: CustomModelStore.load().models.map(\.id)
+            )
+        }
+        guard !Task.isCancelled else { return }
+        roles = loaded.roles
+        customModelIDs = loaded.modelIDs
         do {
             agents = try await service.listAgents(cwd: workspace?.path)
         } catch {
@@ -2812,7 +2829,10 @@ private struct AgentsSettingsPane: View {
         guard !valueState.isLoaded else { return }
         await Task.yield()
         guard !Task.isCancelled else { return }
-        let saved = UserDefaults.standard.string(forKey: GrokSettingsKeys.selectedAgent) ?? ""
+        let saved = await SettingsBackgroundLoader.run {
+            UserDefaults.standard.string(forKey: GrokSettingsKeys.selectedAgent) ?? ""
+        }
+        guard !Task.isCancelled else { return }
         valueState.load(
             persisted: saved,
             applied: saved,
@@ -3405,18 +3425,25 @@ private struct ComputerUseSettingsPane: View {
         guard !valueState.isLoaded else { return }
         await Task.yield()
         guard !Task.isCancelled else { return }
-        let persisted = ComputerUsePaneSettings(
-            settings: ComputerUseSettingsStore.load(),
-            cursorIntegrationEnabled: UserDefaults.standard.bool(
-                forKey: ComputerUseSettingsKeys.cursorIntegrationEnabled
+        let loaded = await SettingsBackgroundLoader.run {
+            (
+                persisted: ComputerUsePaneSettings(
+                    settings: ComputerUseSettingsStore.load(),
+                    cursorIntegrationEnabled: UserDefaults.standard.bool(
+                        forKey: ComputerUseSettingsKeys.cursorIntegrationEnabled
+                    )
+                ),
+                applied: ComputerUsePaneSettings(
+                    settings: ComputerUseSettingsStore.loadApplied(),
+                    cursorIntegrationEnabled: UserDefaults.standard.bool(
+                        forKey: ComputerUseSettingsKeys.appliedCursorIntegrationEnabled
+                    )
+                )
             )
-        )
-        let applied = ComputerUsePaneSettings(
-            settings: ComputerUseSettingsStore.loadApplied(),
-            cursorIntegrationEnabled: UserDefaults.standard.bool(
-                forKey: ComputerUseSettingsKeys.appliedCursorIntegrationEnabled
-            )
-        )
+        }
+        guard !Task.isCancelled else { return }
+        let persisted = loaded.persisted
+        let applied = loaded.applied
         let liveEnabled = liveReceipt?.freshness == .live ? liveReceipt?.computerUseEnabled : nil
         let live = liveEnabled.map { enabled in
             var pane = applied
@@ -3707,11 +3734,11 @@ private struct ComputerUseSettingsPane: View {
 
 private struct CustomModelsSettingsPane: View {
     @Binding var valueState: SettingsValueState<String>
+    @Bindable var viewModel: CustomModelsSettingsViewModel
     let liveReceipt: EffectiveSessionReceipt?
     let onApply: (SettingsApplyRequest) async -> SettingsApplyReceipt
     let onConfigurationChanged: (ConfigurationChange) -> Void
 
-    @State private var viewModel = CustomModelsSettingsViewModel()
     @State private var editingID: String?
     @State private var draft = CustomModel(id: "", model: "", baseURL: "")
     @State private var revealKey = false
@@ -6147,7 +6174,8 @@ private struct PermissionsSettingsPane: View {
         guard !valueState.isLoaded else { return }
         await Task.yield()
         guard !Task.isCancelled else { return }
-        let saved = PermissionSettingsDraft.load()
+        let saved = await SettingsBackgroundLoader.run { PermissionSettingsDraft.load() }
+        guard !Task.isCancelled else { return }
         valueState.load(persisted: saved, applied: saved, live: nil)
     }
 
@@ -6425,8 +6453,11 @@ private struct MemorySettingsPane: View {
         loadState = .checking
         await Task.yield()
         guard !Task.isCancelled else { return }
-        let saved = UserDefaults.standard.object(forKey: GrokSettingsKeys.memoryEnabled) as? Bool
-            ?? GrokPermissionSettings.defaults.memoryEnabled
+        let saved = await SettingsBackgroundLoader.run {
+            UserDefaults.standard.object(forKey: GrokSettingsKeys.memoryEnabled) as? Bool
+                ?? GrokPermissionSettings.defaults.memoryEnabled
+        }
+        guard !Task.isCancelled else { return }
         valueState.load(
             persisted: saved,
             applied: saved,
@@ -7033,7 +7064,8 @@ private struct AppUpdatesSettingsPane: View {
         guard !valueState.isLoaded else { return }
         await Task.yield()
         guard !Task.isCancelled else { return }
-        let saved = UpdateSettingsStore.autoCheckEnabled
+        let saved = await SettingsBackgroundLoader.run { UpdateSettingsStore.autoCheckEnabled }
+        guard !Task.isCancelled else { return }
         valueState.load(persisted: saved, applied: saved, live: nil)
     }
 

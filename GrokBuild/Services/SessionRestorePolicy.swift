@@ -50,12 +50,13 @@ enum SessionRestorePolicy {
         hasUserMessages: Bool,
         liveGrokSessionID: String?,
         savedGrokSessionID: String?,
-        sessionID: UUID
+        sessionID: UUID,
+        hasPersistedContent: Bool? = nil
     ) -> Bool {
         hasUserMessages
             || liveGrokSessionID != nil
             || savedGrokSessionID != nil
-            || sessionHasPersistedContent(sessionID)
+            || (hasPersistedContent ?? sessionHasPersistedContent(sessionID))
     }
 
     /// Stable MRU: activation ordinal wins, wall-clock time is display/fallback data, and

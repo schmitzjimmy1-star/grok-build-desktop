@@ -43,7 +43,7 @@ struct MessageBubble: View {
                             .lineSpacing(3)
                             .frame(maxWidth: .infinity, alignment: .leading)
                     } else {
-                        RichMessageView(text: message.content)
+                        RichMessageView(text: message.content, messageID: message.id)
                             .frame(maxWidth: .infinity, alignment: .leading)
                     }
                 }

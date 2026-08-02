@@ -1,7 +1,13 @@
 import SwiftUI
 import WebKit
+import CryptoKit
 
-enum MarkdownBlock: Identifiable, Hashable {
+enum RichContentWidthClass: String, Hashable, Sendable {
+    case regular
+    case narrow
+}
+
+enum MarkdownBlock: Identifiable, Hashable, Sendable {
     case text(String)
     case mermaid(String)
     case latex(String, display: Bool)
@@ -12,6 +18,234 @@ enum MarkdownBlock: Identifiable, Hashable {
         case .mermaid(let s): return "m-\(s.hashValue)"
         case .latex(let s, let d): return "l-\(d)-\(s.hashValue)"
         }
+    }
+}
+
+/// Bounded, process-local rich content cache. Transcript bodies remain the source of truth;
+/// this cache is disposable render work only and never crosses launches or gets persisted.
+enum RichContentCache {
+    static let renderVersion = 1
+    static let maximumEntries = 64
+
+    struct Key: Hashable, Sendable {
+        let messageID: UUID?
+        let contentDigest: String
+        let widthClass: RichContentWidthClass
+        let renderVersion: Int
+    }
+
+    struct TextKey: Hashable, Sendable {
+        let contentDigest: String
+        let renderVersion: Int
+    }
+
+    enum WebContentKind: String, Sendable {
+        case mermaid
+        case latex
+    }
+
+    struct Stats: Equatable, Sendable {
+        let blockHits: Int
+        let blockMisses: Int
+        let textHits: Int
+        let textMisses: Int
+        let webHeightHits: Int
+        let webHeightMisses: Int
+        let entryCount: Int
+    }
+
+    private struct BlockEntry {
+        let blocks: [MarkdownBlock]
+        var lastUsed: UInt64
+    }
+
+    private struct TextEntry {
+        let blocks: [MarkdownTextBlock]
+        var lastUsed: UInt64
+    }
+
+    private final class Storage: @unchecked Sendable {
+        let lock = NSLock()
+        var sequence: UInt64 = 0
+        var blockEntries: [String: BlockEntry] = [:]
+        var textEntries: [String: TextEntry] = [:]
+        var webHeights: [String: CGFloat] = [:]
+        var blockHits = 0
+        var blockMisses = 0
+        var textHits = 0
+        var textMisses = 0
+        var webHeightHits = 0
+        var webHeightMisses = 0
+    }
+
+    private static let storage = Storage()
+
+    static func key(
+        messageID: UUID?,
+        text: String,
+        widthClass: RichContentWidthClass = .regular
+    ) -> Key {
+        Key(
+            messageID: messageID,
+            contentDigest: digest(text),
+            widthClass: widthClass,
+            renderVersion: renderVersion
+        )
+    }
+
+    static func textKey(_ text: String) -> TextKey {
+        TextKey(contentDigest: digest(text), renderVersion: renderVersion)
+    }
+
+    static func blocks(for key: Key) -> [MarkdownBlock]? {
+        withLock { storage in
+            let rawKey = blockStorageKey(key)
+            guard let entry = storage.blockEntries[rawKey] else {
+                storage.blockMisses += 1
+                return nil
+            }
+            storage.blockHits += 1
+            storage.sequence &+= 1
+            storage.blockEntries[rawKey]?.lastUsed = storage.sequence
+            return entry.blocks
+        }
+    }
+
+    static func store(_ blocks: [MarkdownBlock], for key: Key) {
+        withLock { storage in
+            storage.sequence &+= 1
+            storage.blockEntries[blockStorageKey(key)] = BlockEntry(
+                blocks: blocks,
+                lastUsed: storage.sequence
+            )
+            evictIfNeeded(storage)
+        }
+    }
+
+    static func textBlocks(for key: TextKey) -> [MarkdownTextBlock]? {
+        withLock { storage in
+            let rawKey = textStorageKey(key)
+            guard let entry = storage.textEntries[rawKey] else {
+                storage.textMisses += 1
+                return nil
+            }
+            storage.textHits += 1
+            storage.sequence &+= 1
+            storage.textEntries[rawKey]?.lastUsed = storage.sequence
+            return entry.blocks
+        }
+    }
+
+    static func store(_ blocks: [MarkdownTextBlock], for key: TextKey) {
+        withLock { storage in
+            storage.sequence &+= 1
+            storage.textEntries[textStorageKey(key)] = TextEntry(
+                blocks: blocks,
+                lastUsed: storage.sequence
+            )
+            evictIfNeeded(storage)
+        }
+    }
+
+    static func cachedWebHeight(
+        kind: WebContentKind,
+        source: String,
+        displayMode: Bool = false
+    ) -> CGFloat? {
+        withLock { storage in
+            let key = webStorageKey(kind: kind, source: source, displayMode: displayMode)
+            guard let height = storage.webHeights[key] else {
+                storage.webHeightMisses += 1
+                return nil
+            }
+            storage.webHeightHits += 1
+            return height
+        }
+    }
+
+    static func storeWebHeight(
+        _ height: CGFloat,
+        kind: WebContentKind,
+        source: String,
+        displayMode: Bool = false
+    ) {
+        guard height > 0 else { return }
+        withLock { storage in
+            storage.webHeights[webStorageKey(kind: kind, source: source, displayMode: displayMode)] = height
+            evictIfNeeded(storage)
+        }
+    }
+
+    static var stats: Stats {
+        withLock { storage in
+            Stats(
+                blockHits: storage.blockHits,
+                blockMisses: storage.blockMisses,
+                textHits: storage.textHits,
+                textMisses: storage.textMisses,
+                webHeightHits: storage.webHeightHits,
+                webHeightMisses: storage.webHeightMisses,
+                entryCount: storage.blockEntries.count + storage.textEntries.count + storage.webHeights.count
+            )
+        }
+    }
+
+    static func resetForTests() {
+        withLock { storage in
+            storage.sequence = 0
+            storage.blockEntries.removeAll()
+            storage.textEntries.removeAll()
+            storage.webHeights.removeAll()
+            storage.blockHits = 0
+            storage.blockMisses = 0
+            storage.textHits = 0
+            storage.textMisses = 0
+            storage.webHeightHits = 0
+            storage.webHeightMisses = 0
+        }
+    }
+
+    private static func digest(_ text: String) -> String {
+        SHA256.hash(data: Data(text.utf8)).map { String(format: "%02x", $0) }.joined()
+    }
+
+    private static func blockStorageKey(_ key: Key) -> String {
+        "block|\(key.messageID?.uuidString ?? "none")|\(key.contentDigest)|\(key.widthClass.rawValue)|\(key.renderVersion)"
+    }
+
+    private static func textStorageKey(_ key: TextKey) -> String {
+        "text|\(key.contentDigest)|\(key.renderVersion)"
+    }
+
+    private static func webStorageKey(
+        kind: WebContentKind,
+        source: String,
+        displayMode: Bool
+    ) -> String {
+        "web|\(kind.rawValue)|\(digest(source))|\(displayMode)|\(renderVersion)"
+    }
+
+    private static func evictIfNeeded(_ storage: Storage) {
+        while storage.blockEntries.count + storage.textEntries.count + storage.webHeights.count > maximumEntries {
+            let oldestBlock = storage.blockEntries.min { $0.value.lastUsed < $1.value.lastUsed }
+            let oldestText = storage.textEntries.min { $0.value.lastUsed < $1.value.lastUsed }
+            if let oldestBlock,
+               oldestText == nil || oldestBlock.value.lastUsed <= oldestText!.value.lastUsed {
+                storage.blockEntries.removeValue(forKey: oldestBlock.key)
+            } else if let oldestText {
+                storage.textEntries.removeValue(forKey: oldestText.key)
+            } else if let oldestWeb = storage.webHeights.keys.first {
+                storage.webHeights.removeValue(forKey: oldestWeb)
+            } else {
+                break
+            }
+        }
+    }
+
+    private static func withLock<Value>(_ body: (Storage) -> Value) -> Value {
+        storage.lock.lock()
+        defer { storage.lock.unlock() }
+        return body(storage)
     }
 }
 
@@ -303,8 +537,8 @@ private extension View {
     }
 }
 
-struct MarkdownTextBlock: Identifiable, Hashable {
-    enum Content: Hashable {
+struct MarkdownTextBlock: Identifiable, Hashable, Sendable {
+    enum Content: Hashable, Sendable {
         case paragraph(String)
         case heading(level: Int, text: String)
         case unorderedList([String])
@@ -525,34 +759,118 @@ enum MarkdownTextBlockParser {
 
 struct RichMessageView: View {
     let text: String
+    let messageID: UUID?
+    private let cacheKey: RichContentCache.Key
+    @State private var parsedBlocks: [MarkdownBlock]?
+    @State private var parsedKey: RichContentCache.Key?
+
+    init(
+        text: String,
+        messageID: UUID? = nil,
+        widthClass: RichContentWidthClass = .regular
+    ) {
+        self.text = text
+        self.messageID = messageID
+        let key = RichContentCache.key(messageID: messageID, text: text, widthClass: widthClass)
+        cacheKey = key
+        let cached = RichContentCache.blocks(for: key)
+        _parsedBlocks = State(initialValue: cached)
+        _parsedKey = State(initialValue: cached == nil ? nil : key)
+    }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            ForEach(MarkdownBlockParser.parse(text)) { block in
-                switch block {
-                case .text(let chunk):
-                    MarkdownTextView(text: chunk)
-                case .mermaid(let source):
-                    SizedMermaidWebView(source: source)
-                case .latex(let expr, let display):
-                    SizedLaTeXWebView(latex: expr, displayMode: display)
+        let blocks = parsedKey == cacheKey ? parsedBlocks : nil
+        Group {
+            if let blocks {
+                VStack(alignment: .leading, spacing: 12) {
+                    ForEach(blocks) { block in
+                        switch block {
+                        case .text(let chunk):
+                            MarkdownTextView(text: chunk)
+                        case .mermaid(let source):
+                            SizedMermaidWebView(source: source)
+                        case .latex(let expr, let display):
+                            SizedLaTeXWebView(latex: expr, displayMode: display)
+                        }
+                    }
                 }
+            } else {
+                Text(text)
+                    .font(AppTheme.Typography.body)
+                    .lineSpacing(4)
+                    .textSelection(.enabled)
+                    .frame(maxWidth: .infinity, alignment: .leading)
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
+        .task(id: cacheKey) {
+            if let cached = RichContentCache.blocks(for: cacheKey) {
+                parsedBlocks = cached
+                parsedKey = cacheKey
+                return
+            }
+            let source = text
+            let parsed = await GrokBuildBackgroundWork.run(
+                { MarkdownBlockParser.parse(source) },
+                priority: .utility
+            )
+            guard !Task.isCancelled else { return }
+            RichContentCache.store(parsed, for: cacheKey)
+            parsedBlocks = parsed
+            parsedKey = cacheKey
+        }
     }
 }
 
 private struct MarkdownTextView: View {
     let text: String
+    private let cacheKey: RichContentCache.TextKey
+    @State private var parsedBlocks: [MarkdownTextBlock]?
+    @State private var parsedKey: RichContentCache.TextKey?
+
+    init(text: String) {
+        self.text = text
+        let key = RichContentCache.textKey(text)
+        cacheKey = key
+        let cached = RichContentCache.textBlocks(for: key)
+        _parsedBlocks = State(initialValue: cached)
+        _parsedKey = State(initialValue: cached == nil ? nil : key)
+    }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            ForEach(MarkdownTextBlockParser.parse(text)) { block in
-                blockView(block.content)
+        let blocks = parsedKey == cacheKey ? parsedBlocks : nil
+        Group {
+            if let blocks {
+                VStack(alignment: .leading, spacing: 12) {
+                    ForEach(blocks) { block in
+                        blockView(block.content)
+                    }
+                }
+            } else {
+                Text(text)
+                    .font(AppTheme.Typography.body)
+                    .lineSpacing(4)
+                    .textSelection(.enabled)
+                    .frame(maxWidth: .infinity, alignment: .leading)
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
+        .task(id: cacheKey) {
+            if let cached = RichContentCache.textBlocks(for: cacheKey) {
+                parsedBlocks = cached
+                parsedKey = cacheKey
+                return
+            }
+            let source = text
+            let parsed = await GrokBuildBackgroundWork.run(
+                { MarkdownTextBlockParser.parse(source) },
+                priority: .utility
+            )
+            guard !Task.isCancelled else { return }
+            RichContentCache.store(parsed, for: cacheKey)
+            parsedBlocks = parsed
+            parsedKey = cacheKey
+        }
     }
 
     @ViewBuilder
@@ -714,20 +1032,47 @@ private struct MarkdownTextView: View {
 private struct SizedMermaidWebView: View {
     let source: String
     private let minHeight: CGFloat = 120
-    @State private var height: CGFloat = 120
+    @State private var height: CGFloat
+    @State private var isMounted = false
+
+    init(source: String) {
+        self.source = source
+        _height = State(
+            initialValue: max(
+                RichContentCache.cachedWebHeight(kind: .mermaid, source: source) ?? 120,
+                120
+            )
+        )
+    }
 
     var body: some View {
-        MermaidWebView(source: source) { newHeight in
-            // Never shrink below the fallback: a premature/small scrollHeight
-            // (mermaid renders after didFinish) must not collapse the block.
-            let clamped = max(newHeight, minHeight)
-            if abs(clamped - height) > 1 {
-                height = clamped
+        Group {
+            if isMounted {
+                MermaidWebView(source: source) { newHeight in
+                    // Never shrink below the fallback: a premature/small scrollHeight
+                    // (mermaid renders after didFinish) must not collapse the block.
+                    let clamped = max(newHeight, minHeight)
+                    RichContentCache.storeWebHeight(
+                        clamped,
+                        kind: .mermaid,
+                        source: source
+                    )
+                    if abs(clamped - height) > 1 {
+                        height = clamped
+                    }
+                }
+            } else {
+                Text("Diagram preview loads when visible.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .frame(maxWidth: .infinity, alignment: .leading)
             }
         }
         .frame(height: height)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel("Diagram: \(source)")
+        .onAppear { isMounted = true }
+        .onDisappear { isMounted = false }
     }
 }
 
@@ -736,25 +1081,52 @@ private struct SizedLaTeXWebView: View {
     let displayMode: Bool
     private let minHeight: CGFloat
     @State private var height: CGFloat
+    @State private var isMounted = false
 
     init(latex: String, displayMode: Bool) {
         self.latex = latex
         self.displayMode = displayMode
         let floorHeight: CGFloat = displayMode ? 48 : 28
         self.minHeight = floorHeight
-        _height = State(initialValue: floorHeight)
+        _height = State(
+            initialValue: max(
+                RichContentCache.cachedWebHeight(
+                    kind: .latex,
+                    source: latex,
+                    displayMode: displayMode
+                ) ?? floorHeight,
+                floorHeight
+            )
+        )
     }
 
     var body: some View {
-        LaTeXWebView(latex: latex, displayMode: displayMode) { newHeight in
-            let clamped = max(newHeight, minHeight)
-            if abs(clamped - height) > 1 {
-                height = clamped
+        Group {
+            if isMounted {
+                LaTeXWebView(latex: latex, displayMode: displayMode) { newHeight in
+                    let clamped = max(newHeight, minHeight)
+                    RichContentCache.storeWebHeight(
+                        clamped,
+                        kind: .latex,
+                        source: latex,
+                        displayMode: displayMode
+                    )
+                    if abs(clamped - height) > 1 {
+                        height = clamped
+                    }
+                }
+            } else {
+                Text(MathAccessibility.spokenDescription(latex))
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .frame(maxWidth: .infinity, alignment: .leading)
             }
         }
         .frame(height: height)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(MathAccessibility.spokenDescription(latex))
+        .onAppear { isMounted = true }
+        .onDisappear { isMounted = false }
     }
 }
 
@@ -771,6 +1143,15 @@ private struct MermaidWebView: NSViewRepresentable {
         view.setValue(false, forKey: "drawsBackground")
         view.navigationDelegate = context.coordinator
         return view
+    }
+
+    static func dismantleNSView(_ view: WKWebView, coordinator: Coordinator) {
+        coordinator.renderInterval?.end()
+        coordinator.renderInterval = nil
+        view.navigationDelegate = nil
+        view.uiDelegate = nil
+        view.stopLoading()
+        view.loadHTMLString("", baseURL: nil)
     }
 
     func updateNSView(_ view: WKWebView, context: Context) {
@@ -848,6 +1229,13 @@ private struct LaTeXWebView: NSViewRepresentable {
         view.setValue(false, forKey: "drawsBackground")
         view.navigationDelegate = context.coordinator
         return view
+    }
+
+    static func dismantleNSView(_ view: WKWebView, coordinator: Coordinator) {
+        view.navigationDelegate = nil
+        view.uiDelegate = nil
+        view.stopLoading()
+        view.loadHTMLString("", baseURL: nil)
     }
 
     func updateNSView(_ view: WKWebView, context: Context) {
