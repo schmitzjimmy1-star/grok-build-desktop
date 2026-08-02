@@ -62,10 +62,10 @@ changes which application repository owns the workbench.
 
 ## Current accepted installed receipt — 2026-08-01
 
-- Source commit stamped into the bundle: `f7cb31837bd48685fe5338342ef489ffb6b313e9`
-- Build receipt: `personal • codex/warm-glass-ui @ f7cb3183` with `GrokBuildSourceDirty = false`
-- `dist` / installed executable SHA-256: `464e2cd2bdcfa7e1ba2b94a3b442ca35677e25a00a7cab8b10fd09b78f84ccd8`
-- Automated verification: `make test` — **413 tests, 0 failures**; identity filter — **4 tests, 0 failures**
+- Source commit stamped into the bundle: `760281c3d136ffe14ac911206b3a5bb79e140610`
+- Build receipt: `personal • codex/warm-glass-ui @ 760281c3` with `GrokBuildSourceDirty = false`
+- `dist` / installed executable SHA-256: `d46319b537e40a54fd0de3773dfd58dbd8e205bdef699c03f9182879f34e2039`
+- Automated verification: `make test` — **448 tests, 0 failures**; focused provenance/lifecycle/source-contract suites — **69 tests, 0 failures**
 - Signing: deep/strict pass for app and helpers, Team `DD2GCQJVB4`; quarantine absent
-- Recoverable pre-tattoo install: `/Users/jimmyschmitz/.Trash/GrokBuild-pre-canonical-identity-20260801-162643.app`
-- Installed Computer Use proof: About and Settings → App both visibly show the personal repository, branch, and `f7cb3183` receipt
+- Recoverable pre-Slice-4 install: `/Users/jimmyschmitz/.Trash/GrokBuild-pre-slice-4-20260801-192858.app`; the named pre-Slice-3 rollback remains at `/Users/jimmyschmitz/.Trash/GrokBuild-pre-slice-3-20260801-1857.app`
+- Installed Computer Use proof: the missing-backend surface visibly exposed **Continue as New** and **Relink…**, candidate review remained read-only, Settings → App showed the personal repository/branch/`760281c3` receipt, and graceful quit/relaunch preserved readable local work with zero owned backend/helper children

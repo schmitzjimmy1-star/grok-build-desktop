@@ -288,4 +288,25 @@ This pass implemented the bounded exact-backend verifier and fail-closed Send bo
 | Installed identity / parity | **Pass** — Settings → App visibly reported `Personal • codex/warm-glass-ui @ e1be34b3`; `Info.plist` records full clean commit `e1be34b337e5e823d40daba6a59ee3fc8afdc01b`, and dist/install executables both hash to `970557b2f3b2393a575ce5fead7b44de5b186f90d1603c50b931d9209a28f848` |
 | Signing / rollback | **Pass** — deep/strict signing passed under Team `DD2GCQJVB4`, quarantine is absent, and the immediate prior clean Slice 2 bundle is recoverable at `/Users/jimmyschmitz/.Trash/GrokBuild-pre-slice-3-20260801-1857.app` |
 
-Verified exact/prefix/backend-only histories and every blocked classification are deterministic fixture proof so the installed no-provider-send boundary stays honest. Slice 4 recovery actions—candidate review, **Continue as New**, and **Relink**—remain intentionally unimplemented and unauthorized.
+Verified exact/prefix/backend-only histories and every blocked classification are deterministic fixture proof so the installed no-provider-send boundary stays honest. Slice 4 recovery actions were implemented and accepted separately below.
+
+## Coherence repair Slice 4 — provenance-safe recovery acceptance (2026-08-01)
+
+This pass implemented provenance-rich row import and explicit recovery only. `make test` completed **448 tests with 0 failures** in 13.427 seconds; focused importer/lifecycle/ACP source-contract suites completed **69 tests with 0 failures**. Acceptance sent no prompt, started no Grok backend, and changed no real binding.
+
+| Check | Installed-app result |
+|---|---|
+| Row provenance | **Pass / fixture** — imported rows retain backend ID, row order, parent/root/worker relationship, agent, terminal marker, and keyed content tag; unknown and explicitly non-final assistant rows quarantine and fail closed |
+| Root versus worker identity | **Pass / fixture** — worker output remains displayable but cannot prove root continuity or suppress a root final; exact-binding reconciliation appends the authoritative display suffix once and is idempotent |
+| Explicit recovery controls | **Pass** — a real missing-backend card exposed keyboard-reachable **Continue as New** and **Relink…** with Send still accessibility-disabled; the readable local transcript remained beneath the card |
+| Candidate review | **Pass** — Relink opened `Review candidate histories`, stated candidates are read-only until explicit Relink, and returned `No provenance-safe candidates`; startup still performs no candidate scan and one common prompt remains review-only |
+| Continue as New | **Pass / fixture** — the action clears the binding, persists an authenticated predecessor intent, survives store relaunch, starts no process, and records the successor exactly once only after a later real send |
+| Relink | **Pass / fixture** — only an explicitly selected relinkable candidate is accepted; the exact history is re-read/re-verified, display rows reconcile once, the explicit-relink ledger entry persists, and no process starts |
+| Settings round trip | **Pass** — Settings → App visibly reported `Personal • codex/warm-glass-ui @ 760281c3` and the personal repository; returning to Session preserved the blocked card, actions, transcript, Unknown model receipt, and disabled Send |
+| Graceful quit/relaunch | **Pass** — Command-Q exited cleanly; exact installed relaunch restored a safe local-only transcript with `No active process`. Authenticated pending-choice relaunch is fixture-proven without altering a real user binding |
+| Backend isolation | **Pass** — no provider send, CPR, Grok ACP/browser/helper child, or app-owned Computer Use process ran; the app had zero owned children and sampled 0.0% CPU across three one-second samples |
+| Data integrity | **Pass** — the acceptance-only tab was closed; v3 returned to schema 3 with 24 records, committed marker, flush receipt, empty live fork ledger, and no live pending recovery intent; v2 remains 7,902 bytes at SHA-256 `b9d760c004f74f88996d75ee83df5a2f5636ded80c6863a996c63442d5bacad7` |
+| Installed identity / parity | **Pass** — clean stamped commit `760281c3d136ffe14ac911206b3a5bb79e140610`; dist/install executables both SHA-256 `d46319b537e40a54fd0de3773dfd58dbd8e205bdef699c03f9182879f34e2039`; deep/strict signing passed under Team `DD2GCQJVB4`; quarantine absent |
+| Rollback | **Pass** — immediate pre-Slice-4 app at `/Users/jimmyschmitz/.Trash/GrokBuild-pre-slice-4-20260801-192858.app`; named pre-Slice-3 rollback still present at `/Users/jimmyschmitz/.Trash/GrokBuild-pre-slice-3-20260801-1857.app` |
+
+The installed pass intentionally did not click Continue as New or confirm Relink against a real profile. Those state transitions are deterministic authenticated fixtures; the installed proof covers the settled UI, explicit review boundary, preserved real state, Settings/relaunch behavior, and the no-provider-send/no-backend-process contract.
