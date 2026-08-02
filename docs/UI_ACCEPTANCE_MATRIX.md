@@ -332,3 +332,21 @@ This pass implemented the common Settings state/apply contract, Memory fixture p
 | Signing / rollback | **Pass** — deep/strict signing passed under Team `DD2GCQJVB4`, quarantine is absent, immediate pre-Slice-5 rollback is `/Users/jimmyschmitz/.Trash/GrokBuild-pre-slice-5-20260801-195738.app`, and the named pre-Slice-4/pre-Slice-3 bundles remain intact |
 
 The installed pass deliberately exercised the honest no-process result instead of starting a real provider-backed session merely to obtain a Live label. The full Restart required → Live transition and the one-reconnect streaming queue are proven by the synthetic ACP fixtures against exact process generations.
+
+## Coherence repair Slice 6 — priority Settings panes acceptance (2026-08-01)
+
+This pass migrated Agents, Models, Permissions, Memory, Browser, and Computer Use to the shared settings contract. The focused Settings/runtime/lifecycle/browser/computer/agent/model command completed **125 tests with 0 failures** in 2.223 seconds; `make test` completed **460 tests with 0 failures** in 14.715 seconds. The signed installed pass deliberately made no provider send or connection test.
+
+| Check | Installed-app result |
+|---|---|
+| Agents / hidden-pane lifecycle | **Pass** — the initial `general-purpose` default showed Saved for future eligible sessions. Selecting `explore` exposed the Draft state and enabled Apply Default; switching to App and back retained that parent-owned draft. Selecting `general-purpose` again restored Saved without Apply or persistence. |
+| Models / off-main catalog boundary | **Pass / source + settled UI** — Models showed Saved for future eligible sessions and no override to apply. Provider/keychain/config/catalog loading uses the detached loader with cancellation guards; no Test connection action was invoked. |
+| Permissions / explicit restart scope | **Pass** — the pane visibly stated that Apply saves the launch policy and restarts only the current live tab, while permission cards retain their old launch receipt until that restart succeeds. Rule text remains redacted from receipts. |
+| Memory | **Pass** — Memory visibly showed the common Settings state description, Saved for future eligible sessions, a local draft, and the current-live-tab restart scope. |
+| Browser / applied-only diagnostics | **Pass** — Browser visibly stated that diagnostics remain read-only and its clean Apply/Revert controls were disabled. No runtime setup, diagnostics, browser launch, or external browser action was invoked. |
+| Computer Use / action-gated permissions | **Pass** — Computer Use visibly separated granted Accessibility and Screen Recording status from explicit `Request Permissions` controls, and stated that macOS permissions are requested only by those buttons. No prompt, helper test, or Cursor action was invoked. |
+| Installed identity / relaunch | **Pass** — Command-Q left no GrokBuild-owned process; exact `/Applications/GrokBuild.app` relaunch restored the safe local transcript. Settings → App visibly reported `Personal • codex/warm-glass-ui @ 1856cca4`. |
+| Backend isolation | **Pass** — no provider send, model connection test, backend, browser process, helper test, permission prompt, binding change, or owned child ran. |
+| Signing / parity / rollback | **Pass** — the clean stamped commit is `1856cca4a77cd5ff39bffa23f337714bdd82357d`; dist/install executables both SHA-256 `5371d17205359756d52b56af352631c100c9ce3e77e1d024732d4d4efe95058e`; deep/strict signing passed under Team `DD2GCQJVB4`, quarantine is absent, and `/Users/jimmyschmitz/.Trash/GrokBuild-pre-slice-6-20260801-2025.app` is recoverable. |
+
+The installed pass stopped at the truthful no-live-process boundary rather than manufacturing a Live receipt with a provider-backed launch. The matching-generation restart receipt, off-main/cancellation contracts, and all persistence tests remain deterministic source and fake-ACP coverage.

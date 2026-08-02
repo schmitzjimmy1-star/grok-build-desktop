@@ -3,7 +3,7 @@
 | Field | Value |
 |---|---|
 | Prepared | 2026-08-01 |
-| Status | Slices 0–5 implemented and installed-app accepted; Slices 6–11 remain unstarted |
+| Status | Slices 0–6 implemented and installed-app accepted; Slices 7–11 remain unstarted |
 | Scope | Maintained SwiftUI app, current Grok CLI 0.2.118 contract, installed-app acceptance, and every unresolved hole from the Settings/startup/performance/backend-CPR audit |
 | Canonical worktree | /Users/jimmyschmitz/Desktop/Projects/MCP Servers/Grok Build/grok-build-desktop |
 | Canonical branch | codex/warm-glass-ui |
@@ -1631,6 +1631,15 @@ Exit:
 - all launch-impact changes state restart scope;
 - permission prompts happen only after explicit actions;
 - catalog/provider loading remains off-main.
+
+#### Slice 6 implementation receipt — 2026-08-01
+
+- Code is committed at `1856cca4a77cd5ff39bffa23f337714bdd82357d` on `codex/warm-glass-ui`. The final receipt commit is documentation-only, so the signed installed bundle remains a clean source ancestor under the mandatory preflight rule.
+- Agents, Models, Permissions, Memory, Browser, and Computer Use now receive parent-owned `SettingsValueState` drafts. The migrated controls no longer use `@AppStorage` as mutable view state; only explicit Apply persists launch-impact settings. Agents and Models declare future-session scope, while Permissions, Memory, Browser, and Computer Use state their current-live-tab restart scope.
+- Provider/config/catalog work remains in the existing detached background loader and checks cancellation after loading. Hidden panes cancel their view-owned tasks; the parent-owned Agent default draft was visibly retained through an App-pane round trip and then reverted without persistence.
+- Browser diagnostics declare themselves read-only and operate from applied settings. Computer Use no longer requests Screen Recording when a switch changes: macOS permission requests require the explicit request buttons. Provider connection tests, browser diagnostics, helper tests, permission prompts, and settings Apply actions were deliberately not invoked during acceptance.
+- `swift test --filter 'SettingsTabTests|LifecycleAndSubprocessTests|BrowserIntegrationTests|ComputerUseIntegrationTests|AgentsAndCapabilitiesTests|CustomModelTests'` completed **125 tests with 0 failures** in 2.223 seconds; `make test` completed **460 tests with 0 failures** in 14.715 seconds.
+- The exact installed `/Applications/GrokBuild.app` visibly showed `Personal • codex/warm-glass-ui @ 1856cca4` after a graceful quit/relaunch. Its executable matches `dist` at SHA-256 `5371d17205359756d52b56af352631c100c9ce3e77e1d024732d4d4efe95058e`; deep/strict signing passes, quarantine is absent, and the immediate recoverable predecessor is `/Users/jimmyschmitz/.Trash/GrokBuild-pre-slice-6-20260801-2025.app`. No provider send, connection test, backend, browser process, helper test, or owned child was started.
 
 ### Slice 7 — MCP, Compatibility, and extensions
 

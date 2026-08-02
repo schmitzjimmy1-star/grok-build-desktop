@@ -62,10 +62,10 @@ changes which application repository owns the workbench.
 
 ## Current accepted installed receipt — 2026-08-01
 
-- Source commit stamped into the bundle: `734e5050b5b49203d90e2ac9bc36245fdf725b09`
-- Build receipt: `personal • codex/warm-glass-ui @ 734e5050` with `GrokBuildSourceDirty = false`
-- `dist` / installed executable SHA-256: `b9e65137fa311fb763c81f00f478b71ae4761f47512e6ff966dbaaa3f815c996`
-- Automated verification: `make test` — **457 tests, 0 failures**; focused Settings/runtime/lifecycle suites — **19 tests, 0 failures**
-- Signing: deep/strict pass for app and helpers under Team `DD2GCQJVB4`; quarantine absent
-- Recoverable pre-Slice-5 install: `/Users/jimmyschmitz/.Trash/GrokBuild-pre-slice-5-20260801-195738.app`; the named pre-Slice-4 and pre-Slice-3 rollback bundles remain at `/Users/jimmyschmitz/.Trash/GrokBuild-pre-slice-4-20260801-192858.app` and `/Users/jimmyschmitz/.Trash/GrokBuild-pre-slice-3-20260801-1857.app`
-- Installed Computer Use proof: Settings → App visibly showed the personal repository/branch/`734e5050` receipt. Memory moved Saved → Draft, retained the draft while its hidden pane was unmounted, reverted without persistence, and produced an honest Saved/no-live-process apply receipt. Quit/relaunch proved persistence; the original enabled value was restored and re-proven after a final relaunch. No provider send or owned backend/helper child ran.
+- Source commit stamped into the bundle: `1856cca4a77cd5ff39bffa23f337714bdd82357d`
+- Build receipt: `personal • codex/warm-glass-ui @ 1856cca4` with `GrokBuildSourceDirty = false`
+- `dist` / installed executable SHA-256: `5371d17205359756d52b56af352631c100c9ce3e77e1d024732d4d4efe95058e`
+- Automated verification: `make test` — **460 tests, 0 failures**; focused Settings/runtime/lifecycle/browser/computer/agent/model suites — **125 tests, 0 failures**
+- Signing: deep/strict pass for the app and bundled helpers under `Apple Development: jhschmitz1993@gmail.com (LS4SUB57QL)`, Team `DD2GCQJVB4`; quarantine absent
+- Recoverable pre-Slice-6 install: `/Users/jimmyschmitz/.Trash/GrokBuild-pre-slice-6-20260801-2025.app`; named pre-Slice-5, pre-Slice-4, and pre-Slice-3 rollback bundles remain intact
+- Installed Computer Use proof: all six priority panes visibly exposed their saved/draft/apply scope. An Agent default draft survived a Settings → App pane change and was reverted without Apply; Models, Permissions, Memory, Browser, and Computer Use each showed the shared honest future-session/current-tab contract. Browser diagnostics remained read-only, and Computer Use showed explicit permission-request buttons; none was invoked. Command-Q followed by exact `/Applications/GrokBuild.app` relaunch visibly reported the stamped personal repository/branch receipt. No provider send, connection test, backend, browser, helper test, or owned child ran.
