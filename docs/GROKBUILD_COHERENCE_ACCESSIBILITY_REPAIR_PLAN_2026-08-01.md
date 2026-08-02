@@ -2251,3 +2251,11 @@ This repair does not:
 - merge, release, or publish to upstream without separate authority.
 
 The product promise after this work is modest and valuable: GrokBuild tells the truth about the work in front of you, lets every user operate it, stays out of the way when healthy, and becomes extremely careful when continuity is not.
+
+## 29. Post-merge provider truth closure — 2026-08-02
+
+PR #1 was merged, installed from `main`, and then subjected to the separately authorized provider-send matrix. That matrix found one release blocker the send-free Slices 11–12 could not expose: a tab selected as OpenAI launched with the requested flag but ACP retained Grok 4.5, producing one wrong-provider billable call. Backend history and usage, not the picker, established the truth.
+
+Repair commit `9304b7a1fe64ec13c27164bde12f0b6d33d0c8ba` now makes every explicit startup selection pass a generation-bound pre-send gate: reassert through `session/set_model`, require effective-model readback, and fail closed on missing or mismatched identity. Custom TOML selectors accept only their declared provider-facing model as an alternate readback. Focused ACP tests passed 27/27 and the full suite passed 493/493.
+
+Installed billable acceptance passed direct OpenAI, Kimi, OpenRouter, and Grok routes. The subsequently authorized OpenRouter S256 OAuth flow completed through the system browser and device-only Keychain, after which DeepSeek V4 Flash, Gemini 2.5 Flash, and GPT-4.1 Mini each passed a separate one-call marker test with matching live/backend model identity and usage. This intentionally added two OpenRouter model entries and advanced normal transcript/session state; it did not remove prior sessions, direct-provider entries, authenticated v3 authority, or rollback bundles. Secrets and response bodies remain excluded from the repository and receipts.

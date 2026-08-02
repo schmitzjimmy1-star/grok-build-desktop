@@ -223,6 +223,9 @@ final class ACPClientContractTests: XCTestCase {
             *'"method":"session/new"'*)
               printf '{"jsonrpc":"2.0","id":%s,"result":{"sessionId":"fixture-new"}}\\n' "$id"
               ;;
+            *'"method":"session/set_model"'*)
+              printf '{"jsonrpc":"2.0","id":%s,"result":{"_meta":{"model":{"Ok":"grok-4.5"}}}}\\n' "$id"
+              ;;
           esac
         done
         """
@@ -250,9 +253,9 @@ final class ACPClientContractTests: XCTestCase {
         XCTAssertEqual(process.launchReceipt?.workspaceID, workspace.id)
         XCTAssertEqual(process.launchReceipt?.backendSessionID, "fixture-resume")
         XCTAssertEqual(process.launchReceipt?.outcome, .loaded)
-        XCTAssertEqual(process.modelExecutionState.status, .requested)
+        XCTAssertEqual(process.modelExecutionState.status, .confirmed)
         XCTAssertEqual(process.modelExecutionState.requestedModelID, "grok-4.5")
-        XCTAssertNil(process.modelExecutionState.effectiveModelID)
+        XCTAssertEqual(process.modelExecutionState.effectiveModelID, "grok-4.5")
         let firstGeneration = process.processGeneration
 
         await process.start(workspace: workspace, options: GrokLaunchOptions(
@@ -275,6 +278,95 @@ final class ACPClientContractTests: XCTestCase {
         XCTAssertTrue(launches[0].contains("--always-approve"))
         XCTAssertFalse(launches[1].contains("--always-approve"))
         await process.stop()
+    }
+
+    func testLaunchReassertsCustomModelAfterACPNewSessionDefaultsToGrok() async throws {
+        let fixtureRoot = FileManager.default.temporaryDirectory
+            .appendingPathComponent("grokbuild-launch-model-fixture-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: fixtureRoot, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: fixtureRoot) }
+        let rpcLogURL = fixtureRoot.appendingPathComponent("rpc.log")
+        let scriptURL = fixtureRoot.appendingPathComponent("fake-grok")
+        let script = """
+        #!/bin/sh
+        while IFS= read -r line; do
+          printf '%s\n' "$line" >> '\(rpcLogURL.path)'
+          id=$(printf '%s' "$line" | sed -E 's/.*"id":([0-9]+).*/\\1/')
+          case "$line" in
+            *'"method":"initialize"'*)
+              printf '{"jsonrpc":"2.0","id":%s,"result":{}}\n' "$id"
+              ;;
+            *'"method":"session/new"'*)
+              printf '{"jsonrpc":"2.0","id":%s,"result":{"sessionId":"custom-model-session","models":{"currentModelId":"grok-4.5","availableModels":[]}}}\n' "$id"
+              ;;
+            *'"method":"session/set_model"'*)
+              printf '{"jsonrpc":"2.0","id":%s,"result":{"_meta":{"model":{"Ok":"gpt-5.6-terra"}}}}\n' "$id"
+              ;;
+          esac
+        done
+        """
+        try script.write(to: scriptURL, atomically: true, encoding: .utf8)
+        try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: scriptURL.path)
+
+        GrokProcess.cliOverrideForTests = scriptURL
+        defer { GrokProcess.cliOverrideForTests = nil }
+        let process = GrokProcess()
+        await process.start(
+            workspace: Workspace(name: "fixture", path: fixtureRoot),
+            options: GrokLaunchOptions(localTabID: UUID(), model: "gpt-5.6-terra")
+        )
+
+        XCTAssertEqual(process.state, .ready)
+        XCTAssertEqual(process.currentModelId, "gpt-5.6-terra")
+        XCTAssertEqual(process.modelExecutionState.status, .confirmed)
+        XCTAssertEqual(process.modelExecutionState.requestedModelID, "gpt-5.6-terra")
+        XCTAssertEqual(process.modelExecutionState.effectiveModelID, "gpt-5.6-terra")
+        let rpcLog = try String(contentsOf: rpcLogURL, encoding: .utf8)
+        XCTAssertTrue(rpcLog.contains("\"method\":\"session/set_model\""))
+        XCTAssertTrue(rpcLog.contains("\"modelId\":\"gpt-5.6-terra\""))
+        await process.stop()
+    }
+
+    func testLaunchFailsClosedWhenACPConfirmsTheWrongModel() async throws {
+        let fixtureRoot = FileManager.default.temporaryDirectory
+            .appendingPathComponent("grokbuild-wrong-model-fixture-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: fixtureRoot, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: fixtureRoot) }
+        let scriptURL = fixtureRoot.appendingPathComponent("fake-grok")
+        let script = """
+        #!/bin/sh
+        while IFS= read -r line; do
+          id=$(printf '%s' "$line" | sed -E 's/.*"id":([0-9]+).*/\\1/')
+          case "$line" in
+            *'"method":"initialize"'*)
+              printf '{"jsonrpc":"2.0","id":%s,"result":{}}\n' "$id"
+              ;;
+            *'"method":"session/new"'*)
+              printf '{"jsonrpc":"2.0","id":%s,"result":{"sessionId":"wrong-model-session","models":{"currentModelId":"grok-4.5","availableModels":[]}}}\n' "$id"
+              ;;
+            *'"method":"session/set_model"'*)
+              printf '{"jsonrpc":"2.0","id":%s,"result":{"_meta":{"model":{"Ok":"grok-4.5"}}}}\n' "$id"
+              ;;
+          esac
+        done
+        """
+        try script.write(to: scriptURL, atomically: true, encoding: .utf8)
+        try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: scriptURL.path)
+
+        GrokProcess.cliOverrideForTests = scriptURL
+        defer { GrokProcess.cliOverrideForTests = nil }
+        let process = GrokProcess()
+        await process.start(
+            workspace: Workspace(name: "fixture", path: fixtureRoot),
+            options: GrokLaunchOptions(localTabID: UUID(), model: "gpt-5.6-terra")
+        )
+
+        guard case .failed(let message) = process.state else {
+            return XCTFail("Expected startup to fail closed, got \(process.state)")
+        }
+        XCTAssertTrue(message.contains("confirmed grok-4.5 instead of the requested model gpt-5.6-terra"))
+        XCTAssertEqual(process.modelExecutionState.status, .rejected)
+        XCTAssertNil(process.activeProcessGeneration)
     }
 
     func testProcessKeepsAcceptedModelRequestUnconfirmedWithoutEffectiveReadback() async throws {
@@ -319,6 +411,50 @@ final class ACPClientContractTests: XCTestCase {
         XCTAssertEqual(result.requestedModelID, "gpt-5.6-terra")
         XCTAssertEqual(result.effectiveModelID, "grok-4.5")
         XCTAssertEqual(process.currentModelId, "grok-4.5")
+        await process.stop()
+    }
+
+    func testCustomLaunchAcceptsOnlyItsDeclaredProviderModelReadback() async throws {
+        let fixtureRoot = FileManager.default.temporaryDirectory
+            .appendingPathComponent("grokbuild-custom-alias-fixture-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: fixtureRoot, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: fixtureRoot) }
+        let scriptURL = fixtureRoot.appendingPathComponent("fake-grok")
+        let script = """
+        #!/bin/sh
+        while IFS= read -r line; do
+          id=$(printf '%s' "$line" | sed -E 's/.*"id":([0-9]+).*/\\1/')
+          case "$line" in
+            *'"method":"initialize"'*)
+              printf '{"jsonrpc":"2.0","id":%s,"result":{}}\\n' "$id"
+              ;;
+            *'"method":"session/new"'*)
+              printf '{"jsonrpc":"2.0","id":%s,"result":{"sessionId":"custom-alias-session","models":{"currentModelId":"grok-4.5","availableModels":[]}}}\\n' "$id"
+              ;;
+            *'"method":"session/set_model"'*)
+              printf '{"jsonrpc":"2.0","id":%s,"result":{"_meta":{"model":{"Ok":"deepseek/deepseek-v4-flash-0731"}}}}\\n' "$id"
+              ;;
+          esac
+        done
+        """
+        try script.write(to: scriptURL, atomically: true, encoding: .utf8)
+        try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: scriptURL.path)
+
+        GrokProcess.cliOverrideForTests = scriptURL
+        defer { GrokProcess.cliOverrideForTests = nil }
+        let process = GrokProcess()
+        await process.start(
+            workspace: Workspace(name: "fixture", path: fixtureRoot),
+            options: GrokLaunchOptions(
+                localTabID: UUID(),
+                model: "deepseek-deepseek-v4-flash-0731",
+                expectedEffectiveModelID: "deepseek/deepseek-v4-flash-0731"
+            )
+        )
+
+        XCTAssertEqual(process.state, .ready)
+        XCTAssertEqual(process.modelExecutionState.requestedModelID, "deepseek-deepseek-v4-flash-0731")
+        XCTAssertEqual(process.modelExecutionState.effectiveModelID, "deepseek/deepseek-v4-flash-0731")
         await process.stop()
     }
 

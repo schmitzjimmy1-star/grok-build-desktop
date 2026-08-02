@@ -240,9 +240,10 @@ Permission launch arguments are centralized in `GrokPermissionLaunchArguments`. 
 
 1. `start(workspace:options:)` — spawn process, `initializeACP()` (JSON-RPC handshake).
 2. `createSession(workspace:mcpServers:)` **or** `loadSession(id:…)` if resuming. When `session/load` fails with `FS_NOT_FOUND` / “Path not found” (stale on-disk grok session), GrokBuild falls back to `session/new`, sets `sessionLoadStartedFreshFallback`, and `ChatStore` adds a system note — local transcript is preserved. During load, the CLI replays prior turn history via `session/update` with `_meta.isReplay: true`; `GrokProcess` skips routing those to `ChatStore` (still applies `contextUsage` / `totalTokens`) so resume does not re-drive live tool/thinking UI.
-3. MCP servers from `MCPServerConfig` passed in `session/new` (browser, computer use when enabled).
-4. `send(_:)` — prompt during `.ready`/`.busy`.
-5. `stop()` — tear down process (LRU cap, settings reload, app shutdown).
+3. If launch requested an explicit model, `confirmRequestedLaunchModel` compares the session readback and, when necessary, sends `session/set_model`. `.ready` is withheld unless ACP explicitly confirms the exact requested ID. This compensates for grok 0.2.118 accepting `--model` while `session/new` still starts at the default model, and prevents a custom-provider tab from silently billing Grok.
+4. MCP servers from `MCPServerConfig` passed in `session/new` (browser, computer use when enabled).
+5. `send(_:)` — prompt during `.ready`/`.busy`.
+6. `stop()` — tear down process (LRU cap, settings reload, app shutdown).
 
 The initialize handshake advertises ACP client terminal support. Grok-owned shell calls are served by `ACPClientTerminalManager` (`terminal/create`, `terminal/output`, `terminal/wait_for_exit`, `terminal/kill`, and `terminal/release`): commands run in the approved working directory with an explicit environment, stdout/stderr are combined into a bounded UTF-8 buffer, exit state is retained until release, and all outstanding terminals are released during process cleanup. Current grok builds sometimes put a complete shell command in ACP's `command` field with an empty `args` array; when that string is not an executable path, the manager preserves it as one exact `/bin/zsh -lc` argument instead of re-tokenizing it.
 
@@ -272,7 +273,7 @@ Consumed by `ChatStore.consumeOutput()`:
 
 ### Model switching
 
-`ModelExecutionState` and its pure reducer own model truth. States are Unknown, Requested, Pending, Confirmed, and Rejected. Every launch/model request carries `ModelRequestIdentity` (local tab UUID, backend ID, process generation, and request UUID); wrong-tab, wrong-backend, old-generation, duplicate, and out-of-order completions are discarded. `session/set_model` never changes `currentModelId` optimistically. An explicit ACP effective-model readback confirms; a successful response without effective state remains Requested; rejection preserves the last confirmed effective model in the receipt while `ChatStore` restores the prior picker/intent. Failures still surface through `modelSwitchError` / `modelSwitchNeedsNewSession`.
+`ModelExecutionState` and its pure reducer own model truth. States are Unknown, Requested, Pending, Confirmed, and Rejected. Every launch/model request carries `ModelRequestIdentity` (local tab UUID, backend ID, process generation, and request UUID); wrong-tab, wrong-backend, old-generation, duplicate, and out-of-order completions are discarded. `session/set_model` never changes `currentModelId` optimistically. An explicit ACP effective-model readback confirms; a successful response without effective state remains Requested for an already-running manual switch, while launch-time reconciliation fails closed before Ready if exact confirmation is absent or mismatched. Rejection preserves the last confirmed effective model in the receipt while `ChatStore` restores the prior picker/intent. Failures still surface through `modelSwitchError` / `modelSwitchNeedsNewSession`.
 
 The composer label and the keyboard-reachable session receipt distinguish Saved, Pending, Requested, Live, Last live, Rejected, and Unknown. Launch arguments and picker intent prove only what GrokBuild requested; when ACP omits effective state the details explicitly say the backend model is not independently exposed. Restore no longer emits a hidden second `session/set_model` to force the picker to match saved state.
 

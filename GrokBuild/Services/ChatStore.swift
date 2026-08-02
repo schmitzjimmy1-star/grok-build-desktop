@@ -940,7 +940,10 @@ final class ChatStore {
         modelExecutionState = process.modelExecutionState
         if modelExecutionState.status == .confirmed,
            let effective = modelExecutionState.effectiveModelID {
-            currentModel = effective
+            currentModel = selectionModelID(
+                requested: modelExecutionState.requestedModelID,
+                effective: effective
+            )
         }
     }
 
@@ -1346,6 +1349,8 @@ final class ChatStore {
         let settings = loadPermissionSettings()
         let savedSelection = effectiveResumeSessionID.flatMap { sessionSelections[$0] }
         let modelForLaunch = modelForProcessLaunch(fallbackSelection: savedSelection)
+        let expectedEffectiveModelForLaunch = customModelsByID[modelForLaunch]?.model
+            .trimmingCharacters(in: .whitespacesAndNewlines)
         let reasoningEffortForLaunch = modelSupportsReasoningEffort(modelForLaunch) ? workspaceReasoningEffort : ""
         let browserSettings = BrowserSettingsStore.loadApplied()
         let computerUseSettings = ComputerUseSettingsStore.loadApplied()
@@ -1381,6 +1386,9 @@ final class ChatStore {
             permissionMode: settings.permissionMode,
             reasoningEffort: reasoningEffortForLaunch,
             model: modelForLaunch.isEmpty ? nil : modelForLaunch,
+            expectedEffectiveModelID: expectedEffectiveModelForLaunch?.isEmpty == false
+                ? expectedEffectiveModelForLaunch
+                : nil,
             sandboxProfile: settings.sandboxProfile,
             disableWebSearch: settings.disableWebSearch,
             noSubagents: settings.noSubagents,
@@ -2254,7 +2262,10 @@ final class ChatStore {
             switch result.status {
             case .confirmed:
                 if let effective = result.effectiveModelID {
-                    self.currentModel = effective
+                    self.currentModel = self.selectionModelID(
+                        requested: model,
+                        effective: effective
+                    )
                 }
             case .requested:
                 // ACP accepted the request without exposing the effective model.
@@ -2379,6 +2390,19 @@ final class ChatStore {
 
     func modelDisplayName(_ id: String) -> String {
         modelDisplayNames[id] ?? id
+    }
+
+    /// Grok selects custom models by their TOML table key but reports the
+    /// provider-facing `model` value after ACP confirmation. Keep the picker on
+    /// the table key while preserving the provider readback in the execution
+    /// receipt.
+    private func selectionModelID(requested: String?, effective: String) -> String {
+        guard let requested,
+              let custom = customModelsByID[requested] else { return effective }
+        let providerModel = custom.model.trimmingCharacters(in: .whitespacesAndNewlines)
+        return effective == requested || (!providerModel.isEmpty && effective == providerModel)
+            ? requested
+            : effective
     }
 
     var currentModelSupportsReasoningEffort: Bool {
@@ -3128,7 +3152,10 @@ final class ChatStore {
         modelExecutionState = process.modelExecutionState
         if modelExecutionState.status == .confirmed,
            let effective = modelExecutionState.effectiveModelID {
-            currentModel = effective
+            currentModel = selectionModelID(
+                requested: modelExecutionState.requestedModelID,
+                effective: effective
+            )
         } else if let requested = modelExecutionState.requestedModelID {
             currentModel = requested
         } else if tabHasExplicitModel, availableModels.contains(currentModel) {

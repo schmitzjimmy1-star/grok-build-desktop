@@ -286,6 +286,9 @@ final class SettingsRuntimeContractTests: XCTestCase {
             *'"method":"session/load"'*)
               printf '{"jsonrpc":"2.0","id":%s,"result":{}}\\n' "$id"
               ;;
+            *'"method":"session/set_model"'*)
+              printf '{"jsonrpc":"2.0","id":%s,"result":{"_meta":{"model":{"Ok":"grok-4.5"}}}}\\n' "$id"
+              ;;
           esac
         done
         """

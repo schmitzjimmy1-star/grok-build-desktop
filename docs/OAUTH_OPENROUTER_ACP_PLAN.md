@@ -197,3 +197,11 @@ The OAuth login and any billable smoke require visible user authorization at exe
 | **Build next** | OpenRouter preset, S256 PKCE, account/key status, rich searchable catalog, routed-provider disclosure, Grok CLI smoke |
 | **Spike after** | Generic ACP process plus Goose backend, with backend-scoped sessions and advertised auth/capabilities |
 | **Defer** | OpenAuth server, arbitrary custom OAuth issuers, AG-UI, LiteLLM gateway, full OpenHands server, silent provider fallback, and a second Swift model runtime |
+
+## Live OpenRouter OAuth closure — 2026-08-02
+
+The authorized installed-app acceptance completed the first four live gates in this plan. `Connect with OpenRouter` opened the system browser, the S256 flow returned through the exact random loopback callback, and GrokBuild stored the issued credential in macOS Keychain without displaying or logging it. The provider card now reports **OpenRouter OAuth**, local disconnect remains separate from remote key management, and the authenticated catalog returned 337 models.
+
+The existing DeepSeek route plus newly imported Gemini 2.5 Flash and GPT-4.1 Mini were each exercised through one minimal billable turn. For every model, the exact marker contract, generation-bound live model receipt, backend history model ID, and one-call usage record agreed. Total-token/provider-duration receipts were: DeepSeek 13,459 / 2,043 ms; Gemini 10,917 / 707 ms; GPT-4.1 Mini 10,966 / 3,007 ms. No fallback or silent provider substitution occurred.
+
+The acceptance also closed a post-merge blocker that the earlier catalog-only Slice 12 deliberately could not detect. Grok CLI 0.2.118 may accept a launch `--model` while `session/new` still retains the default model. GrokBuild now reasserts the requested selection through ACP and requires exact readback before enabling a send. A custom table key is equivalent only to its own declared provider-facing `model` value; unrelated readbacks remain a hard failure. Generic OAuth issuers, refresh-token sets, richer OpenRouter account telemetry, alternate ACP backends, and remote revocation automation remain deferred.
