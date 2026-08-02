@@ -1547,6 +1547,18 @@ Exit:
 - mismatched/composite state cannot send to the saved backend;
 - local work remains readable and durable.
 
+#### Slice 3 implementation receipt — 2026-08-01
+
+- Slice 3 code and governing documentation are committed on `codex/warm-glass-ui` at `e1be34b337e5e823d40daba6a59ee3fc8afdc01b`. The signed installed bundle was rebuilt from that clean commit and visibly reports `Personal • codex/warm-glass-ui @ e1be34b3`; the receipt-only documentation commit may follow it without changing build inputs.
+- `GrokSessionTranscriptImporter` streams only the exact bound history through a 2 MB / 2,000-conversational-row soft bound. Oversized reads and their HMAC comparison share one five-second cancellable deadline. `SessionTranscriptRecovery` classifies exact, prefix, backend-only, missing, unreadable, incomplete, divergent, and composite-suspected relationships with separate normalization/HMAC schema versions and no raw-content diagnostics.
+- `ChatStore` now verifies before `GrokProcess.start`, gates every composer delivery, preserves a verified receipt when a live tab is reselected, and refuses legacy backend-tail reconciliation until continuity permits it. Local-only tabs remain process-free until first send. Recovery/fresh-start relationships persist as append-only predecessor/successor ledger entries inside authenticated v3 state.
+- `make test`: 439 tests, 0 failures, 13.721 seconds. The final continuity/lifecycle/source-contract filter completed 38 tests with 0 failures in 0.066 seconds. Fixtures cover exact/prefix/backend-only, missing/synthetic/incomplete, divergence/composite, all send-gate states, authenticated receipt/ledger round trips, and the source-order contract that no saved backend starts or sends before the gate.
+- Installed Computer Use opened a real missing-backend tab with all 16 local conversational rows readable, `backendHistoryMissing` details redacted to an eight-character backend suffix, and Send accessibility-disabled. A harmless unsent draft remained editable and survived Settings in 829 ms / return in 1.203 seconds. After an 822 ms graceful quit, relaunch settled in 1.110 seconds on a safe local-only transcript with `No active process`; typing another unsent draft enabled Send without creating a process. Both acceptance-only drafts were cleared.
+- No backend CPR, provider send, prompt submission, migrated-backend start, Grok ACP child, browser child, or app-owned Computer Use helper ran. The installed app had zero owned children and sampled 0.0% CPU across three one-second samples. Verified-happy-path send permission is deterministic fixture proof only, preserving the no-provider-send boundary.
+- The original v2 payload remains byte-identical at 7,902 bytes and SHA-256 `b9d760c004f74f88996d75ee83df5a2f5636ded80c6863a996c63442d5bacad7`. Authenticated v3 remains schema 3 with 24 records, a committed marker and flush receipt; the installed run durably recorded one `backendMissing` continuity receipt. The live fork ledger remains empty because acceptance did not create a backend or fork; authenticated ledger persistence and suffix selection are fixture-proven.
+- Installed and packaged executables match at SHA-256 `970557b2f3b2393a575ce5fead7b44de5b186f90d1603c50b931d9209a28f848`; deep/strict signing passes under Team `DD2GCQJVB4`, quarantine is absent, and the exact pre-Slice-3 clean Slice 2 app is recoverable at `/Users/jimmyschmitz/.Trash/GrokBuild-pre-slice-3-20260801-1857.app`.
+- Slice 4 remains unauthorized. Candidate review, **Continue as New**, and **Relink** actions are intentionally absent; Slice 3 only exposes redacted details and fails closed.
+
 ### Slice 4 — provenance-safe import and recovery UI
 
 Deliver:

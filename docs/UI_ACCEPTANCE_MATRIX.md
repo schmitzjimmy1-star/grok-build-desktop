@@ -268,3 +268,24 @@ This pass implemented process/model truth only. `make test` completed **433 test
 | Rollback | **Pass** — the prior exact installed app is recoverable at `/Users/jimmyschmitz/.Trash/GrokBuild-pre-slice-2-20260801-1822.app`; the original pre-Slices-0–1 rollback and byte-identical v2 payload also remain intact |
 
 A real provider-backed Live label was not manufactured for this slice because that would violate the no-send boundary. The deterministic fake ACP transport proves both explicit confirmation and empty-success uncertainty; installed acceptance proves that the migrated/restored surface does not lie when no backend is active.
+
+## Coherence repair Slice 3 — continuity verifier and send gate (2026-08-01)
+
+This pass implemented the bounded exact-backend verifier and fail-closed Send boundary only. `make test` completed **439 tests with 0 failures** in 13.721 seconds; the final focused continuity/lifecycle/source-contract run completed **38 tests with 0 failures** in 0.066 seconds. Acceptance sent no prompt and started no Grok backend.
+
+| Check | Installed-app result |
+|---|---|
+| Missing-backend truth | **Pass** — the selected installed transcript remained fully readable while the continuity card said `The saved Grok conversation is unavailable`; details exposed only backend suffix `…35869782`, 16 local rows, 0 backend rows, prefix 0, and `backendHistoryMissing` |
+| Saved-backend Send gate | **Pass** — an entered local draft left the AX Send control disabled as `Send blocked by conversation continuity`; the draft survived Settings and was cleared without submission |
+| Local-only lazy creation | **Pass** — after relaunch, a safe local-only transcript showed `Messages restored locally` and `No active process`; entering a second unsent draft enabled ordinary Send while the process still did not exist, proving creation is deferred until submission |
+| Local transcript preservation | **Pass** — the Cubs transcript remained intact under the failure card; relaunch restored another complete local transcript instead of importing or starting the failed binding. v3 durably records the failed relationship for later explicit recovery |
+| Redacted details / accessibility | **Pass** — continuity heading, explanatory value, disclosure, reason/count receipt, and blocked-Send label/help all appeared in the installed AX tree; no prompt text, full backend ID, HMAC tag, or key appeared in the details |
+| Settings round trip | **Pass** — blocked draft opened Settings in 829 ms and returned in 1.203 seconds with the exact text and disabled gate intact |
+| Graceful quit/relaunch | **Pass** — Command-Q completed in 822 ms; installed relaunch settled in 1.110 seconds, refused the failed saved selection, preserved readable local work, and kept all backends stopped |
+| Backend isolation | **Pass** — no provider send, CPR, migrated-backend start, Grok ACP/browser/helper child, or app-owned Computer Use process ran; the app had zero owned children and sampled 0.0% CPU across three one-second samples |
+| Authenticated persistence | **Pass** — v3 remains schema 3 with 24 records plus committed marker/flush receipt and one durable `backendMissing` continuity receipt; fork-ledger persistence is automated-only because live acceptance intentionally created no fork |
+| v2 rollback bytes | **Pass** — 7,902 bytes, SHA-256 `b9d760c004f74f88996d75ee83df5a2f5636ded80c6863a996c63442d5bacad7`, unchanged before install, after installed use, and after quit/relaunch |
+| Installed identity / parity | **Pass** — Settings → App visibly reported `Personal • codex/warm-glass-ui @ e1be34b3`; `Info.plist` records full clean commit `e1be34b337e5e823d40daba6a59ee3fc8afdc01b`, and dist/install executables both hash to `970557b2f3b2393a575ce5fead7b44de5b186f90d1603c50b931d9209a28f848` |
+| Signing / rollback | **Pass** — deep/strict signing passed under Team `DD2GCQJVB4`, quarantine is absent, and the immediate prior clean Slice 2 bundle is recoverable at `/Users/jimmyschmitz/.Trash/GrokBuild-pre-slice-3-20260801-1857.app` |
+
+Verified exact/prefix/backend-only histories and every blocked classification are deterministic fixture proof so the installed no-provider-send boundary stays honest. Slice 4 recovery actions—candidate review, **Continue as New**, and **Relink**—remain intentionally unimplemented and unauthorized.
