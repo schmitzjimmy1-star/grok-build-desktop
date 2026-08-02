@@ -167,6 +167,30 @@ final class SettingsTabTests: XCTestCase {
         XCTAssertEqual(AppSettingsDraft.load(defaults: defaults), saved)
     }
 
+    func testAppearanceChoicesUseIndependentAccessibleButtons() throws {
+        let repositoryRoot = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        let source = try String(
+            contentsOf: repositoryRoot.appendingPathComponent("GrokBuild/Views/SettingsView.swift"),
+            encoding: .utf8
+        )
+        let appearanceStart = try XCTUnwrap(source.range(of: "updatesCard(title: \"Appearance\""))
+        let applyStart = try XCTUnwrap(
+            source.range(
+                of: "SettingsApplyBar(",
+                range: appearanceStart.upperBound..<source.endIndex
+            )
+        )
+        let appearance = String(source[appearanceStart.lowerBound..<applyStart.lowerBound])
+
+        XCTAssertFalse(appearance.contains("pickerStyle(.segmented)"))
+        XCTAssertTrue(source.contains("ForEach(GrokBuildAppearance.allCases)"))
+        XCTAssertTrue(source.contains("grok-appearance-\" + option.rawValue"))
+        XCTAssertTrue(source.contains("accessibilityAddTraits"))
+    }
+
     func testSettingsLoadStatesAndStatusAccessibilityAreDistinct() {
         let states: [SettingsLoadState] = [
             .checking,

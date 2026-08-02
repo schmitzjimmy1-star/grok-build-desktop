@@ -6936,6 +6936,44 @@ private struct AppUpdatesSettingsPane: View {
         )
     }
 
+    private var appearanceOptions: some View {
+        HStack(spacing: 6) {
+            ForEach(GrokBuildAppearance.allCases) { option in
+                appearanceOptionButton(option)
+            }
+        }
+        .frame(minWidth: 220, maxWidth: 300, alignment: .leading)
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("App appearance")
+        .accessibilityValue(valueState.draft.appearance.accessibilityValue)
+        .accessibilityHint("Choose System, Light, or Dark, then Apply to save.")
+    }
+
+    private func appearanceOptionButton(_ option: GrokBuildAppearance) -> some View {
+        let isSelected = valueState.draft.appearance == option
+        return Button {
+            appearanceBinding.wrappedValue = option
+        } label: {
+            Text(option.title)
+                .frame(minWidth: 64)
+        }
+        .buttonStyle(.bordered)
+        .tint(isSelected ? AppTheme.Palette.accent : .secondary)
+        .accessibilityLabel(option.title)
+        .accessibilityValue(
+            isSelected
+                ? "Selected. " + option.accessibilityValue
+                : option.accessibilityValue
+        )
+        .accessibilityHint(
+            isSelected
+                ? "Selected appearance."
+                : "Select " + option.title + " appearance."
+        )
+        .accessibilityAddTraits(isSelected ? [.isSelected] : [])
+        .accessibilityIdentifier("grok-appearance-" + option.rawValue)
+    }
+
     var body: some View {
         // UpdateScheduler stores its receipts statically rather than through an
         // observable model. Reading this revision ties the kept-alive App pane to
@@ -6995,17 +7033,7 @@ private struct AppUpdatesSettingsPane: View {
                             "App appearance",
                             subtitle: "System follows macOS. Light and Dark stay fixed. Draft only until Apply."
                         ) {
-                            Picker("App appearance", selection: appearanceBinding) {
-                                ForEach(GrokBuildAppearance.allCases) { appearance in
-                                    Text(appearance.title)
-                                        .tag(appearance)
-                                }
-                            }
-                            .pickerStyle(.segmented)
-                            .frame(minWidth: 220, maxWidth: 300)
-                            .accessibilityLabel("App appearance")
-                            .accessibilityValue(valueState.draft.appearance.accessibilityValue)
-                            .accessibilityHint("Choose System, Light, or Dark, then Apply to save.")
+                            appearanceOptions
                         }
                         Text("Contrast-aware borders, light/dark surfaces, and rich-content colors update with the selected appearance.")
                             .font(.caption)
