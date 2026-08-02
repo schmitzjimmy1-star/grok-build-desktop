@@ -283,6 +283,116 @@ struct GrokAgentInfo: Identifiable, Hashable, Sendable {
     }
 }
 
+enum GrokMCPTransport: String, CaseIterable, Identifiable, Sendable {
+    case stdio
+    case http
+    case sse
+
+    var id: Self { self }
+}
+
+enum GrokMCPConfigScope: String, CaseIterable, Identifiable, Sendable {
+    case user
+    case project
+
+    var id: Self { self }
+}
+
+struct GrokMCPArgumentDraft: Identifiable, Equatable, Sendable {
+    let id: UUID
+    var value: String
+
+    init(id: UUID = UUID(), value: String = "") {
+        self.id = id
+        self.value = value
+    }
+}
+
+struct GrokMCPSecretDraft: Identifiable, Equatable, Sendable {
+    let id: UUID
+    var name: String
+    var value: String
+
+    init(id: UUID = UUID(), name: String = "", value: String = "") {
+        self.id = id
+        self.name = name
+        self.value = value
+    }
+}
+
+/// Structured in-memory editor for `grok mcp add`. It is never persisted by
+/// GrokBuild: the selected Grok user/project config remains the sole owner.
+struct GrokMCPServerDraft: Equatable, Sendable {
+    var name = ""
+    var transport = GrokMCPTransport.stdio
+    var scope = GrokMCPConfigScope.user
+    var executable = ""
+    var arguments: [GrokMCPArgumentDraft] = []
+    var environment: [GrokMCPSecretDraft] = []
+    var url = ""
+    var headers: [GrokMCPSecretDraft] = []
+
+    var containsLiteralSecrets: Bool {
+        let entries = transport == .stdio ? environment : headers
+        return entries.contains { !$0.name.isEmpty || !$0.value.isEmpty }
+    }
+
+    var validation: SettingsValidationResult {
+        let trimmedName = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedName.isEmpty else { return .invalid("Server name is required.") }
+        guard trimmedName.rangeOfCharacter(from: .whitespacesAndNewlines) == nil else {
+            return .invalid("Server name cannot contain whitespace.")
+        }
+
+        switch transport {
+        case .stdio:
+            guard !executable.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+                return .invalid("An executable is required for a stdio server.")
+            }
+            for entry in environment {
+                guard Self.isEnvironmentName(entry.name) else {
+                    return .invalid("Environment names must use letters, numbers, and underscores and cannot start with a number.")
+                }
+                guard !entry.value.contains("\n"), !entry.value.contains("\0") else {
+                    return .invalid("Environment values cannot contain line breaks or null characters.")
+                }
+            }
+        case .http, .sse:
+            guard let components = URLComponents(
+                string: url.trimmingCharacters(in: .whitespacesAndNewlines)
+            ), ["http", "https"].contains(components.scheme?.lowercased() ?? ""), components.host != nil else {
+                return .invalid("A complete HTTP or HTTPS URL is required.")
+            }
+            for entry in headers {
+                guard Self.isHeaderName(entry.name) else {
+                    return .invalid("Header names must use valid HTTP token characters.")
+                }
+                guard !entry.value.contains("\n"), !entry.value.contains("\r"), !entry.value.contains("\0") else {
+                    return .invalid("Header values cannot contain line breaks or null characters.")
+                }
+            }
+        }
+        return .valid
+    }
+
+    var secretValues: [String] {
+        (transport == .stdio ? environment : headers)
+            .map(\.value)
+            .filter { !$0.isEmpty }
+    }
+
+    private static func isEnvironmentName(_ value: String) -> Bool {
+        value.range(of: #"^[A-Za-z_][A-Za-z0-9_]*$"#, options: .regularExpression) != nil
+    }
+
+    private static func isHeaderName(_ value: String) -> Bool {
+        value.range(
+            of: #"^[!#$%&'*+.^_`|~0-9A-Za-z-]+$"#,
+            options: .regularExpression
+        ) != nil
+    }
+}
+
 struct GrokMCPServerInfo: Identifiable, Hashable, Sendable {
     let id: String
     let name: String
@@ -290,14 +400,64 @@ struct GrokMCPServerInfo: Identifiable, Hashable, Sendable {
     let target: String
     let source: String
     let isEnabled: Bool?
+    let argumentCount: Int
+    let environmentNames: [String]
+    let headerNames: [String]
 
     init(dictionary: [String: Any]) {
         name = dictionary["name"] as? String ?? "Unknown"
         id = dictionary["id"] as? String ?? name
-        transport = dictionary["transport"] as? String ?? dictionary["type"] as? String ?? ""
-        target = dictionary["target"] as? String ?? dictionary["url"] as? String ?? dictionary["command"] as? String ?? ""
+        let rawURL = dictionary["url"] as? String
+        transport = dictionary["transport"] as? String
+            ?? dictionary["type"] as? String
+            ?? (rawURL == nil ? GrokMCPTransport.stdio.rawValue : GrokMCPTransport.http.rawValue)
+        let rawTarget = dictionary["target"] as? String ?? rawURL ?? dictionary["command"] as? String ?? ""
+        target = GrokMCPRedactor.redact(rawTarget)
         source = dictionary["source"] as? String ?? dictionary["scope"] as? String ?? ""
         isEnabled = dictionary["enabled"] as? Bool
+        argumentCount = (dictionary["args"] as? [Any])?.count ?? 0
+        environmentNames = Self.names(in: dictionary["env"])
+        headerNames = Self.names(in: dictionary["headers"] ?? dictionary["header"])
+    }
+
+    private static func names(in value: Any?) -> [String] {
+        if let dictionary = value as? [String: Any] {
+            return dictionary.keys.sorted()
+        }
+        if let entries = value as? [[String: Any]] {
+            return entries.compactMap { $0["name"] as? String ?? $0["key"] as? String }.sorted()
+        }
+        return []
+    }
+}
+
+enum GrokMCPRedactor {
+    static func redact(_ text: String, secretValues: [String] = []) -> String {
+        var result = text
+        for secret in secretValues where !secret.isEmpty {
+            result = result.replacingOccurrences(of: secret, with: "<redacted>")
+        }
+        let patterns = [
+            #"(?i)((?:authorization|proxy-authorization)\s*[:=]\s*)[^\r\n,]+"#,
+            #"(?i)((?:api[_-]?key|token|secret|password)\s*[:=]\s*)[^\s,;]+"#,
+            #"(?i)(bearer\s+)[A-Za-z0-9._~+/-]+"#,
+        ]
+        for pattern in patterns {
+            result = result.replacingOccurrences(
+                of: pattern,
+                with: "$1<redacted>",
+                options: .regularExpression
+            )
+        }
+        return redactURLCredentials(result)
+    }
+
+    static func redactURLCredentials(_ text: String) -> String {
+        guard var components = URLComponents(string: text),
+              components.user != nil || components.password != nil else { return text }
+        components.user = components.user == nil ? nil : "<redacted>"
+        components.password = components.password == nil ? nil : "<redacted>"
+        return components.string ?? "<redacted URL>"
     }
 }
 
@@ -331,15 +491,15 @@ struct GrokMCPDoctorReport: Sendable {
                 id: server["name"] as? String ?? UUID().uuidString,
                 name: server["name"] as? String ?? "Unknown",
                 transport: server["transport"] as? String ?? "",
-                target: server["target"] as? String ?? "",
+                target: GrokMCPRedactor.redact(server["target"] as? String ?? ""),
                 source: server["source"] as? String ?? "",
                 healthy: server["healthy"] as? Bool ?? false,
                 checks: (server["checks"] as? [[String: Any]] ?? []).map { check in
                     Server.Check(
                         label: check["label"] as? String ?? "",
                         passed: check["passed"] as? Bool ?? false,
-                        detail: check["detail"] as? String ?? "",
-                        hint: check["hint"] as? String ?? ""
+                        detail: GrokMCPRedactor.redact(check["detail"] as? String ?? ""),
+                        hint: GrokMCPRedactor.redact(check["hint"] as? String ?? "")
                     )
                 }
             )
@@ -580,7 +740,9 @@ final class GrokCLIService {
         _ args: [String],
         cwd: URL? = nil,
         allowFailure: Bool = false,
-        timeout: TimeInterval? = 300
+        timeout: TimeInterval? = 300,
+        diagnosticArgs: [String]? = nil,
+        secretValues: [String] = []
     ) async throws -> GrokCLIResult {
         guard let cli = Self.locateGrokCLI() else { throw CLIError.notFound }
 
@@ -598,15 +760,22 @@ final class GrokCLIService {
         // A hung invocation must not wedge the update scheduler, a Settings pane, or
         // launch restore forever — BoundedProcess owns the drain + timeout + cancellation.
         let outcome = try await BoundedProcess.run(process, stdout: stdout, stderr: stderr, timeout: timeout)
+        let safeArgs = diagnosticArgs ?? args
 
         if outcome.timedOut {
-            throw CLIError.timedOut(args: args, seconds: Int(timeout ?? 0))
+            throw CLIError.timedOut(args: safeArgs, seconds: Int(timeout ?? 0))
         }
-        let out = String(decoding: outcome.stdout, as: UTF8.self)
-        let err = String(decoding: outcome.stderr, as: UTF8.self)
+        let out = GrokMCPRedactor.redact(
+            String(decoding: outcome.stdout, as: UTF8.self),
+            secretValues: secretValues
+        )
+        let err = GrokMCPRedactor.redact(
+            String(decoding: outcome.stderr, as: UTF8.self),
+            secretValues: secretValues
+        )
         let result = GrokCLIResult(stdout: out, stderr: err, exitCode: outcome.status)
         if outcome.status != 0 && !allowFailure {
-            throw CLIError.failed(args: args, result: result)
+            throw CLIError.failed(args: safeArgs, result: result)
         }
         return result
     }
@@ -644,13 +813,7 @@ final class GrokCLIService {
     func listExternalCompat(cwd: URL? = nil) async throws -> [GrokExternalCompatInfo] {
         let json = try await jsonValue(["inspect", "--json"], cwd: cwd)
         let dictionary = json as? [String: Any] ?? [:]
-        if let compat = dictionary["compat"] as? [[String: Any]] {
-            return compat.map(GrokExternalCompatInfo.init(dictionary:))
-        }
-        if let compat = dictionary["external_compat"] as? [[String: Any]] {
-            return compat.map(GrokExternalCompatInfo.init(dictionary:))
-        }
-        return (dictionary["compat_layers"] as? [[String: Any]] ?? []).map(GrokExternalCompatInfo.init(dictionary:))
+        return try GrokExternalCompatDecoder.decode(inspect: dictionary)
     }
 
     func listAvailablePlugins() async throws -> [GrokPluginInfo] {
@@ -696,26 +859,73 @@ final class GrokCLIService {
         try await run(["update"], allowFailure: true, timeout: 600)
     }
 
-    func listMCPServers() async throws -> [GrokMCPServerInfo] {
-        let json = try await jsonValue(["mcp", "list", "--json"])
+    func listMCPServers(cwd: URL? = nil) async throws -> [GrokMCPServerInfo] {
+        let json = try await jsonValue(["mcp", "list", "--json"], cwd: cwd)
         return (json as? [[String: Any]] ?? []).map(GrokMCPServerInfo.init(dictionary:))
     }
 
-    func mcpDoctor(name: String? = nil) async throws -> GrokMCPDoctorReport {
+    func mcpDoctor(name: String? = nil, cwd: URL? = nil) async throws -> GrokMCPDoctorReport {
         var args = ["mcp", "doctor", "--json"]
         if let name, !name.isEmpty { args.append(name) }
-        let json = try await jsonValue(args, allowFailure: true)
+        let json = try await jsonValue(args, cwd: cwd, allowFailure: true, timeout: 20)
         return GrokMCPDoctorReport(dictionary: json as? [String: Any] ?? [:])
     }
 
-    func addMCPServer(name: String, transport: String, target: String, scope: String) async throws {
-        var args = ["mcp", "add", "--transport", transport, "--scope", scope, name]
-        args += target.split(separator: " ").map(String.init)
-        _ = try await run(args)
+    static func mcpAddArguments(for draft: GrokMCPServerDraft, redacted: Bool) -> [String] {
+        var args = [
+            "mcp", "add",
+            "--transport", draft.transport.rawValue,
+            "--scope", draft.scope.rawValue,
+        ]
+        if draft.transport == .stdio {
+            for entry in draft.environment {
+                args += ["--env", "\(entry.name)=\(redacted ? "<redacted>" : entry.value)"]
+            }
+        } else {
+            for entry in draft.headers {
+                args += ["--header", "\(entry.name): \(redacted ? "<redacted>" : entry.value)"]
+            }
+        }
+        args.append(draft.name.trimmingCharacters(in: .whitespacesAndNewlines))
+        if draft.transport == .stdio {
+            args.append("--")
+            args.append(draft.executable.trimmingCharacters(in: .whitespacesAndNewlines))
+            args.append(contentsOf: draft.arguments.map(\.value))
+        } else {
+            args.append(draft.url.trimmingCharacters(in: .whitespacesAndNewlines))
+        }
+        return args
     }
 
-    func removeMCPServer(name: String) async throws {
-        _ = try await run(["mcp", "remove", name])
+    func addMCPServer(_ draft: GrokMCPServerDraft, cwd: URL? = nil) async throws {
+        guard draft.validation.isValid else {
+            throw CLIError.failed(
+                args: ["mcp", "add", "<invalid draft>"],
+                result: GrokCLIResult(
+                    stdout: "",
+                    stderr: draft.validation.message ?? "Invalid MCP server draft.",
+                    exitCode: 2
+                )
+            )
+        }
+        let args = Self.mcpAddArguments(for: draft, redacted: false)
+        _ = try await run(
+            args,
+            cwd: cwd,
+            diagnosticArgs: Self.mcpAddArguments(for: draft, redacted: true),
+            secretValues: draft.secretValues
+        )
+    }
+
+    func removeMCPServer(
+        name: String,
+        scope: GrokMCPConfigScope?,
+        cwd: URL? = nil
+    ) async throws {
+        var args = ["mcp", "remove"]
+        if let scope { args += ["--scope", scope.rawValue] }
+        args.append(name)
+        _ = try await run(args, cwd: cwd)
     }
 
     func listModels() async throws -> [GrokModelInfo] {
@@ -746,12 +956,17 @@ final class GrokCLIService {
         _ = try await run(["sessions", "delete", id], cwd: cwd)
     }
 
-    private func jsonValue(_ args: [String], cwd: URL? = nil, allowFailure: Bool = false) async throws -> Any {
-        let result = try await run(args, cwd: cwd, allowFailure: allowFailure)
+    private func jsonValue(
+        _ args: [String],
+        cwd: URL? = nil,
+        allowFailure: Bool = false,
+        timeout: TimeInterval? = 300
+    ) async throws -> Any {
+        let result = try await run(args, cwd: cwd, allowFailure: allowFailure, timeout: timeout)
         let output = sanitizedJSONOutput(result.stdout)
         guard let data = output.data(using: .utf8),
               let value = try? JSONSerialization.jsonObject(with: data) else {
-            throw CLIError.invalidJSON(result.combinedOutput)
+            throw CLIError.invalidJSON("Response content omitted (\(result.combinedOutput.utf8.count) bytes).")
         }
         return value
     }

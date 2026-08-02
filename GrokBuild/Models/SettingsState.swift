@@ -371,6 +371,121 @@ struct ComputerUsePaneSettings: Equatable, Sendable {
     )
 }
 
+/// The three aggregate compatibility switches are one atomic config.toml draft.
+/// Individual capability cells remain visible in the discovery receipt, while Apply
+/// deliberately writes only the capability cells Grok currently supports.
+struct CompatibilitySettingsDraft: Equatable, Sendable {
+    var cursorEnabled: Bool
+    var claudeEnabled: Bool
+    var codexEnabled: Bool
+
+    static let defaults = CompatibilitySettingsDraft(
+        cursorEnabled: true,
+        claudeEnabled: true,
+        codexEnabled: true
+    )
+}
+
+/// Shared retained state for read-only or direct-action inventories. The selected
+/// pane may unmount (cancelling its task) without turning a prior successful load
+/// into a fake empty result when the user returns.
+struct SettingsInventoryState<Value: Equatable & Sendable>: Equatable, Sendable {
+    var value: Value
+    var loadState: SettingsLoadState
+    var refreshedAt: Date?
+    var hasLoaded: Bool
+    var configurationGeneration: UInt64
+
+    init(empty value: Value) {
+        self.value = value
+        loadState = .checking
+        refreshedAt = nil
+        hasLoaded = false
+        configurationGeneration = 0
+    }
+
+    mutating func beginRefresh(staleMessage: String) {
+        loadState = hasLoaded ? .stale(staleMessage) : .checking
+    }
+
+    mutating func finish(_ value: Value, isEmpty: Bool, emptyMessage: String) {
+        self.value = value
+        refreshedAt = Date()
+        hasLoaded = true
+        if isEmpty {
+            loadState = .empty(emptyMessage)
+        } else {
+            loadState = .content
+        }
+    }
+
+    mutating func fail(_ message: String) {
+        loadState = hasLoaded
+            ? .stale("Showing the last successful result. \(message)")
+            : .error(message)
+    }
+
+    mutating func nextConfigurationGeneration() -> UInt64 {
+        configurationGeneration &+= 1
+        return configurationGeneration
+    }
+}
+
+enum SettingsRowOperationStatus: String, Equatable, Sendable {
+    case running
+    case success
+    case failure
+    case cancelled
+}
+
+/// Credential-free receipt for one direct row action. Secret values, raw command
+/// arguments, headers, environment values, plugin output, and absolute private
+/// config paths are intentionally excluded.
+struct SettingsRowOperationReceipt: Equatable, Sendable {
+    let rowID: String
+    let status: SettingsRowOperationStatus
+    let summary: String
+    let scope: SettingsApplyScope
+    let completedAt: Date?
+    let applyReceipt: SettingsApplyReceipt?
+
+    static func running(
+        rowID: String,
+        summary: String,
+        scope: SettingsApplyScope
+    ) -> SettingsRowOperationReceipt {
+        SettingsRowOperationReceipt(
+            rowID: rowID,
+            status: .running,
+            summary: summary,
+            scope: scope,
+            completedAt: nil,
+            applyReceipt: nil
+        )
+    }
+
+    static func completed(
+        rowID: String,
+        status: SettingsRowOperationStatus,
+        summary: String,
+        scope: SettingsApplyScope,
+        applyReceipt: SettingsApplyReceipt? = nil
+    ) -> SettingsRowOperationReceipt {
+        SettingsRowOperationReceipt(
+            rowID: rowID,
+            status: status,
+            summary: summary,
+            scope: scope,
+            completedAt: Date(),
+            applyReceipt: applyReceipt
+        )
+    }
+
+    var accessibilityValue: String {
+        "\(status.rawValue.capitalized). \(summary)"
+    }
+}
+
 /// Shared four-layer value state used by editable Settings panes. `draft` is never
 /// storage-backed; panes write `persisted`/`applied` only from their explicit Apply action.
 struct SettingsValueState<Value: Equatable & Sendable>: Equatable, Sendable {

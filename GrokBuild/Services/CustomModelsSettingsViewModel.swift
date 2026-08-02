@@ -7,6 +7,12 @@ enum SettingsBackgroundLoader {
     ) async -> Value {
         await Task.detached(priority: .userInitiated, operation: operation).value
     }
+
+    static func runThrowing<Value: Sendable>(
+        _ operation: @escaping @Sendable () throws -> Value
+    ) async throws -> Value {
+        try await Task.detached(priority: .userInitiated, operation: operation).value
+    }
 }
 
 /// Persistent Models-pane state. The SwiftUI view owns editor presentation only; provider,

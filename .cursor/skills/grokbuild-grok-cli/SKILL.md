@@ -1,6 +1,6 @@
 ---
 name: grokbuild-grok-cli
-description: Works with grok CLI integration in GrokBuild — auth state, version checks, session resume, permission settings, and bundled browser skill. Use when changing GrokProcess, GrokCLIService, UpdateChecker, or grok-related settings UI.
+description: Works with grok CLI integration in GrokBuild — auth state, version checks, session resume, permission settings, MCP and extension management, and bundled browser skill. Use when changing GrokProcess, GrokCLIService, UpdateChecker, or grok-related settings UI.
 ---
 
 # Grok CLI in GrokBuild
@@ -63,6 +63,14 @@ grok owns subagent orchestration (main agent delegates to subagents in parallel;
 
 Browser tools are provided by the bundled `agent-browser` CLI (`BrowserSettings.swift`), exposed to grok as an stdio MCP server (`grokbuild-browser`) via `AgentBrowserService.browserMCPConfig`; managed or external Chromium over CDP. (grok's native `browser_tab` was evaluated and removed — it wasn't exposed to sessions in practice.)
 
+## MCP and extension Settings (installed CLI 0.2.118)
+
+- Build MCP commands from `GrokMCPServerDraft`; never split or join a command line. Stdio uses repeated `--env KEY=value`, then `--`, executable, and each argument as its own process argument. HTTP/SSE use repeated `--header NAME: VALUE` and a validated `http`/`https` URL.
+- Scope is explicit: `--scope user` or `--scope project`; project operations require the selected workspace as `cwd`.
+- The current CLI does not advertise a secret-reference syntax. Environment/header values are literal CLI config values, so the UI requires the disclosure acknowledgment and must retain only names in inventory/receipts. Redact authorization, bearer, token, key, secret, password, URL credentials, diagnostic arguments, and output before display or error propagation.
+- `grok inspect --json` exposes compatibility through `externalCompat.cells`. The current fixture has 13 cells: six Cursor, six Claude, and Codex sessions only. Decode current schema strictly, retain legacy-array compatibility, and surface malformed current data as an error rather than empty success.
+- Skills, hooks, plugins, and marketplace commands are one-shot bounded work. Preserve the last successful inventory as stale on refresh failure; cancel hidden-pane work; require explicit trust for plugin/source mutation and destructive confirmation for uninstall/removal.
+
 ## Scheduled tasks (mirror of grok `scheduler_*`)
 
 grok owns scheduling (`scheduler_create`/`list`/`delete`, `/loop`); the ACP surface is prompt-only, so GrokBuild can't call these tools directly. Instead it **observes** them: `GrokProcess` detects scheduler tool-call `session/update`s (`SchedulerToolParsing.schedulerName`) and yields `AcpEvent.schedulerActivity(payload:)`; `ChatStore` feeds them to `ScheduledTaskTracker` → `ChatStore.scheduledTasks`, rendered by `ChatView.tasksStatusPill`.
@@ -105,7 +113,7 @@ Skills ship under `GrokBuild/Resources/Skills/` and install to `~/.grok/skills/`
 - `grokbuild-browser-control` — `BrowserSkillInstaller`
 - `grokbuild-grok-web` — `BrowserSkillInstaller` (installed alongside browser-control when browser tools enabled; drives grok.com web features like Imagine/skills/connectors via browser tools)
 - `grokbuild-computer-use` — `ComputerUseSkillInstaller`
-- `grokbuild-desktop` — bundled only (GrokBuild self-hints)
+- `grokbuild-desktop` — retired from the packaged runtime; do not restore it as a self-hint
 
 Browser **quick presets** (`BrowserPreset` in `BrowserSettings.swift`) apply runtime/session-name/CDP settings for common targets (e.g. `.grokCom`).
 

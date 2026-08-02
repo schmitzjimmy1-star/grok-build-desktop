@@ -510,7 +510,8 @@ final class SessionLifecycleV3Tests: XCTestCase {
                 "appLaunchToWindow", "layoutLoad", "restoreDecision", "selectedTranscriptLoad",
                 "continuityVerification", "processSpawnToACPReady", "firstSendToFirstChunk",
                 "finalChunkToSettledRender", "tabSwitchToInteractive", "settingsPaneLoad",
-                "modelCatalogLoad", "providerCredentialMetadataLoad", "richMessageParse",
+                "settingsSkillsInspect", "settingsMarketplaceLoad", "modelCatalogLoad",
+                "providerCredentialMetadataLoad", "richMessageParse",
                 "mermaidRender", "transcriptWrite",
             ])
         )

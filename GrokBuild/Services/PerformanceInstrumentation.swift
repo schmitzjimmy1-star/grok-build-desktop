@@ -17,6 +17,8 @@ enum GrokBuildPerformanceLane: String, CaseIterable, Sendable {
     case finalChunkToSettledRender
     case tabSwitchToInteractive
     case settingsPaneLoad
+    case settingsSkillsInspect
+    case settingsMarketplaceLoad
     case modelCatalogLoad
     case providerCredentialMetadataLoad
     case richMessageParse
@@ -35,6 +37,8 @@ enum GrokBuildPerformanceLane: String, CaseIterable, Sendable {
         case .finalChunkToSettledRender: return "finalChunkToSettledRender"
         case .tabSwitchToInteractive: return "tabSwitchToInteractive"
         case .settingsPaneLoad: return "settingsPaneLoad"
+        case .settingsSkillsInspect: return "settingsSkillsInspect"
+        case .settingsMarketplaceLoad: return "settingsMarketplaceLoad"
         case .modelCatalogLoad: return "modelCatalogLoad"
         case .providerCredentialMetadataLoad: return "providerCredentialMetadataLoad"
         case .richMessageParse: return "richMessageParse"

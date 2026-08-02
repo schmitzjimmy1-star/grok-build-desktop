@@ -47,6 +47,25 @@ enum CompatConfigStore {
         }
     }
 
+    static func loadDraft() -> CompatibilitySettingsDraft {
+        CompatibilitySettingsDraft(
+            cursorEnabled: loadEnabled(.cursor),
+            claudeEnabled: loadEnabled(.claude),
+            codexEnabled: loadEnabled(.codex)
+        )
+    }
+
+    /// One locked config mutation for the three aggregate switches. A write cannot
+    /// leave Cursor updated while Claude/Codex still reflect the prior pane draft.
+    static func setEnabled(_ draft: CompatibilitySettingsDraft) throws {
+        try GrokConfigRepository.shared.update { existing in
+            var rewritten = rewrite(existing, flavor: .cursor, enabled: draft.cursorEnabled)
+            rewritten = rewrite(rewritten, flavor: .claude, enabled: draft.claudeEnabled)
+            rewritten = rewrite(rewritten, flavor: .codex, enabled: draft.codexEnabled)
+            return rewritten
+        }
+    }
+
     static func rewrite(_ contents: String, flavor: CompatFlavor, enabled: Bool) -> String {
         let sectionName = "compat.\(flavor.tomlKey)"
         let managedKeys = Set(flavor.supportedCapabilities + ["enabled"])
@@ -185,16 +204,119 @@ enum CompatConfigStore {
     }
 }
 
+struct GrokExternalCompatCell: Identifiable, Hashable, Sendable {
+    let vendor: String
+    let surface: String
+    let isEnabled: Bool
+    let source: String
+
+    var id: String { "\(vendor)|\(surface)" }
+}
+
 struct GrokExternalCompatInfo: Identifiable, Hashable, Sendable {
     let id: String
     let name: String
     let isEnabled: Bool
+    let cells: [GrokExternalCompatCell]
+    let schema: String
+
+    init(
+        id: String,
+        name: String,
+        isEnabled: Bool,
+        cells: [GrokExternalCompatCell],
+        schema: String
+    ) {
+        self.id = id
+        self.name = name
+        self.isEnabled = isEnabled
+        self.cells = cells
+        self.schema = schema
+    }
 
     init(dictionary: [String: Any]) {
-        name = dictionary["name"] as? String ?? dictionary["id"] as? String ?? "Unknown"
-        id = name
+        let rawName = dictionary["name"] as? String ?? dictionary["id"] as? String ?? "Unknown"
+        id = rawName.lowercased()
+        name = rawName
         isEnabled = dictionary["enabled"] as? Bool
             ?? (dictionary["is_enabled"] as? Bool)
             ?? false
+        cells = []
+        schema = "legacy"
+    }
+}
+
+enum GrokExternalCompatDecoder {
+    enum DecodeError: LocalizedError {
+        case unsupported(String)
+
+        var errorDescription: String? {
+            switch self {
+            case .unsupported(let detail):
+                return "Grok returned an unsupported external compatibility schema (\(detail))."
+            }
+        }
+    }
+
+    /// Supports Grok 0.2.118's `externalCompat.cells` object plus the three
+    /// historical array fields. A present-but-malformed current field is an error,
+    /// never a successful empty inventory.
+    static func decode(inspect: [String: Any]) throws -> [GrokExternalCompatInfo] {
+        if let raw = inspect["externalCompat"] {
+            guard let object = raw as? [String: Any],
+                  let rows = object["cells"] as? [[String: Any]] else {
+                throw DecodeError.unsupported("externalCompat.cells is not an array")
+            }
+            var grouped: [String: [GrokExternalCompatCell]] = [:]
+            for row in rows {
+                guard let vendor = row["vendor"] as? String, !vendor.isEmpty,
+                      let surface = row["surface"] as? String, !surface.isEmpty,
+                      let enabled = row["enabled"] as? Bool else {
+                    throw DecodeError.unsupported("a capability cell is missing vendor, surface, or enabled")
+                }
+                grouped[vendor, default: []].append(
+                    GrokExternalCompatCell(
+                        vendor: vendor,
+                        surface: surface,
+                        isEnabled: enabled,
+                        source: row["source"] as? String ?? "unknown"
+                    )
+                )
+            }
+            let preferredOrder = ["cursor", "claude", "codex"]
+            return grouped.keys.sorted { lhs, rhs in
+                let left = preferredOrder.firstIndex(of: lhs) ?? preferredOrder.count
+                let right = preferredOrder.firstIndex(of: rhs) ?? preferredOrder.count
+                return left == right ? lhs < rhs : left < right
+            }.map { vendor in
+                let cells = (grouped[vendor] ?? []).sorted { $0.surface < $1.surface }
+                return GrokExternalCompatInfo(
+                    id: vendor,
+                    name: displayName(for: vendor),
+                    isEnabled: !cells.isEmpty && cells.allSatisfy(\.isEnabled),
+                    cells: cells,
+                    schema: "externalCompat.cells"
+                )
+            }
+        }
+
+        for key in ["compat", "external_compat", "compat_layers"] {
+            if let raw = inspect[key] {
+                guard let rows = raw as? [[String: Any]] else {
+                    throw DecodeError.unsupported("\(key) is not an array")
+                }
+                return rows.map(GrokExternalCompatInfo.init(dictionary:))
+            }
+        }
+        return []
+    }
+
+    private static func displayName(for vendor: String) -> String {
+        switch vendor.lowercased() {
+        case "cursor": return "Cursor"
+        case "claude": return "Claude Code"
+        case "codex": return "Codex"
+        default: return vendor
+        }
     }
 }

@@ -45,6 +45,7 @@ Full checklist: `.cursor/rules/docs-and-tests.mdc`.
 | Slice 3 continuity / send-gate tests | `swift test --filter 'GrokSessionTranscriptImporterTests|SessionLifecycleV3Tests|ACPClientContractTests/testSavedBackendCannotStartOrSendBeforeContinuityGateAllowsIt'` |
 | Slice 4 provenance / explicit recovery tests | `swift test --filter 'GrokSessionTranscriptImporterTests|SessionLifecycleV3Tests|ACPClientContractTests'` |
 | Slice 5 Settings apply / reload / LRU tests | `swift test --filter 'SettingsTabTests|SettingsRuntimeContractTests|SessionLifecycleTests'` |
+| Slice 7 Settings extensions / schema / cancellation tests | `swift test --filter 'SettingsExtensionContractTests|SettingsTabTests|CompatConfigTests|WorkflowRunTests|SessionLifecycleTests|SubprocessHygieneTests'` |
 | Slice 0 synthetic fixtures | `Tests/GrokBuildTests/Fixtures/CoherenceRepair/` |
 
 ## Coherence profiling

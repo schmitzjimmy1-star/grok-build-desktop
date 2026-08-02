@@ -9,7 +9,7 @@ alwaysApply: false
 ## Services
 
 - `GrokProcess` — spawns `grok agent … stdio`, parses ACP into `AcpEvent`s.
-- `GrokCLIService` — one-shot CLI commands (`run`, session list, `--version`, `formatVersionOutput`).
+- `GrokCLIService` — bounded one-shot CLI commands (`run`, session list, `--version`, structured MCP/extension management, `formatVersionOutput`).
 - `ChatStore` — bridges UI to `GrokProcess`, session resume IDs, permission settings.
 - `UpdateChecker` — notarized GitHub releases for app; `grok update --check --json` for CLI.
 
@@ -31,7 +31,15 @@ Run `make test` and update `ARCHITECTURE.md`, `README.md` (if user-visible), and
 
 Strip `grok ` prefix and `(hash)` from `grok --version` via `GrokCLIService.formatVersionOutput`.
 
+## MCP and compatibility schema
+
+- Serialize MCP edits from `GrokMCPServerDraft`; never shell-split user text. Preserve ordered stdio arguments after `--`, repeated environment/header options, explicit user/project scope, and the selected project `cwd`.
+- The installed 0.2.118 CLI stores MCP environment/header values literally. Require the UI disclosure acknowledgment, keep only secret names in view-model state, and redact arguments, targets, output, and errors.
+- Decode current compatibility from `externalCompat.cells` and fail closed when that key exists with a malformed shape. Codex currently exposes sessions only; never synthesize capability parity.
+- One-shot extension work must use `BoundedProcess`, respect task cancellation, keep row-local receipts, and retain a previous successful inventory as stale when refresh fails.
+
 ## Do not
 
 - Shell out with raw `Process` elsewhere — use `GrokCLIService` or `GrokProcess`.
+- Reconstruct MCP commands from one text field or persist returned secret values in Settings state.
 - Cache CLI version indefinitely in UI; refresh when About opens or on explicit update checks.

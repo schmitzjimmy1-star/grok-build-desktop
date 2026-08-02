@@ -262,6 +262,59 @@ final class SettingsTabTests: XCTestCase {
         XCTAssertFalse(state.persisted.settings.includeScreenshots)
         XCTAssertFalse(state.persisted.cursorIntegrationEnabled)
     }
+
+    func testSliceSevenPanesUseSharedStateExplicitScopesAndRowReceipts() throws {
+        let repositoryRoot = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        let source = try String(
+            contentsOf: repositoryRoot.appendingPathComponent("GrokBuild/Views/SettingsView.swift"),
+            encoding: .utf8
+        )
+
+        for pane in ["WorkflowsSettingsPane", "CompatibilitySettingsPane", "AppUpdatesSettingsPane"] {
+            let body = try paneBody(named: pane, source: source)
+            XCTAssertTrue(body.contains("@Binding var valueState"), "\(pane) needs a parent-owned draft")
+            XCTAssertTrue(body.contains("SettingsApplyRequest"), "\(pane) needs an explicit Apply request")
+            XCTAssertFalse(body.contains("@AppStorage"), "\(pane) cannot mutate persistence from a control")
+        }
+
+        for pane in ["MCPSettingsPane", "SkillsSettingsPane", "PluginsSettingsPane", "MarketplaceSettingsPane", "HooksSettingsPane"] {
+            let body = try paneBody(named: pane, source: source)
+            XCTAssertTrue(body.contains("SettingsInventoryState"), "\(pane) needs retained load/stale/error state")
+        }
+
+        for pane in ["MCPSettingsPane", "PluginsSettingsPane", "MarketplaceSettingsPane"] {
+            let body = try paneBody(named: pane, source: source)
+            XCTAssertTrue(body.contains("SettingsRowOperationReceipt"), "\(pane) needs row-local operation receipts")
+            XCTAssertTrue(body.contains("operationTask?.cancel()"), "\(pane) must cancel hidden-pane work")
+            XCTAssertTrue(body.contains("activeTabRestart"), "\(pane) must declare current-tab restart scope")
+        }
+
+        let marketplace = try paneBody(named: "MarketplaceSettingsPane", source: source)
+        XCTAssertTrue(marketplace.contains("trustedPluginIDs.contains"))
+        XCTAssertTrue(marketplace.contains("I reviewed and trust"))
+
+        let mcp = try paneBody(named: "MCPSettingsPane", source: source)
+        XCTAssertTrue(mcp.contains("@Binding var draft: GrokMCPServerDraft"))
+        XCTAssertTrue(mcp.contains("Structured server draft"))
+        XCTAssertTrue(mcp.contains("SecureField"))
+        XCTAssertTrue(mcp.contains("Literal secret storage"))
+        XCTAssertFalse(mcp.contains("split(separator: \" \""))
+
+        let compatibility = try paneBody(named: "CompatibilitySettingsPane", source: source)
+        XCTAssertFalse(compatibility.contains("try? await service.listExternalCompat"))
+        XCTAssertTrue(compatibility.contains("Codex currently exposes sessions only"))
+    }
+
+    private func paneBody(named pane: String, source: String) throws -> String {
+        let start = try XCTUnwrap(source.range(of: "private struct \(pane)"))
+        let remainder = source[start.lowerBound...]
+        let next = remainder.dropFirst().range(of: "\nprivate struct ")?.lowerBound
+            ?? remainder.endIndex
+        return String(remainder[..<next])
+    }
 }
 
 private extension SettingsValueStatus {

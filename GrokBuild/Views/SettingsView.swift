@@ -120,6 +120,20 @@ struct SettingsView: View {
     @State private var computerUseValueState = SettingsValueState<ComputerUsePaneSettings>.unloaded(
         default: .defaults
     )
+    @State private var workflowsValueState = SettingsValueState<Bool>.unloaded(default: true)
+    @State private var compatibilityValueState = SettingsValueState<CompatibilitySettingsDraft>.unloaded(
+        default: .defaults
+    )
+    @State private var appValueState = SettingsValueState<Bool>.unloaded(default: true)
+    @State private var mcpDraft = GrokMCPServerDraft()
+    @State private var mcpAcknowledgedLiteralStorage = false
+    @State private var mcpInventory = SettingsInventoryState<[GrokMCPServerInfo]>(empty: [])
+    @State private var skillsInventory = SettingsInventoryState<[GrokSkillInfo]>(empty: [])
+    @State private var pluginsInventory = SettingsInventoryState<[GrokPluginInfo]>(empty: [])
+    @State private var marketplacePluginsInventory = SettingsInventoryState<[GrokPluginInfo]>(empty: [])
+    @State private var marketplaceSourcesInventory = SettingsInventoryState<[GrokMarketplaceSource]>(empty: [])
+    @State private var hooksInventory = SettingsInventoryState<[GrokHookInfo]>(empty: [])
+    @State private var compatibilityInventory = SettingsInventoryState<[GrokExternalCompatInfo]>(empty: [])
     @State private var paneLoadInterval: GrokBuildPerformanceInterval?
 
     var body: some View {
@@ -278,9 +292,12 @@ struct SettingsView: View {
             )
 
         case .workflows:
-            WorkflowsSettingsPane {
-                Task { await store.reloadConfiguration() }
-            }
+            WorkflowsSettingsPane(
+                valueState: $workflowsValueState,
+                liveReceipt: store.effectiveSessionReceipt,
+                configurationStatusMessage: store.configurationStatusMessage,
+                onApply: onSettingsApplyRequest
+            )
 
         case .browser:
             BrowserSettingsPane(
@@ -299,38 +316,57 @@ struct SettingsView: View {
             )
 
         case .mcpServers:
-            MCPSettingsPane {
-                Task { await store.reloadConfiguration() }
-            }
+            MCPSettingsPane(
+                workspace: store.currentWorkspace,
+                inventory: $mcpInventory,
+                draft: $mcpDraft,
+                acknowledgedLiteralStorage: $mcpAcknowledgedLiteralStorage,
+                onApply: onSettingsApplyRequest
+            )
             .settingsPaneColumn()
 
         case .skills:
-            SkillsSettingsPane(workspace: store.currentWorkspace)
+            SkillsSettingsPane(
+                workspace: store.currentWorkspace,
+                inventory: $skillsInventory
+            )
                 .settingsPaneColumn()
 
         case .plugins:
-            PluginsSettingsPane {
-                Task { await store.reloadConfiguration() }
-            }
+            PluginsSettingsPane(
+                inventory: $pluginsInventory,
+                onApply: onSettingsApplyRequest
+            )
             .settingsPaneColumn()
 
         case .marketplace:
-            MarketplaceSettingsPane {
-                Task { await store.reloadConfiguration() }
-            }
+            MarketplaceSettingsPane(
+                pluginsInventory: $marketplacePluginsInventory,
+                sourcesInventory: $marketplaceSourcesInventory,
+                onApply: onSettingsApplyRequest
+            )
             .settingsPaneColumn()
 
         case .compatibility:
-            CompatibilitySettingsPane {
-                Task { await store.reloadConfiguration() }
-            }
+            CompatibilitySettingsPane(
+                valueState: $compatibilityValueState,
+                inventory: $compatibilityInventory,
+                onApply: onSettingsApplyRequest
+            )
 
         case .hooks:
-            HooksSettingsPane(workspace: store.currentWorkspace)
+            HooksSettingsPane(
+                workspace: store.currentWorkspace,
+                inventory: $hooksInventory
+            )
                 .settingsPaneColumn()
 
         case .app:
-            AppUpdatesSettingsPane()
+            AppUpdatesSettingsPane(
+                valueState: $appValueState,
+                liveReceipt: store.effectiveSessionReceipt,
+                onApply: onSettingsApplyRequest
+            )
         }
     }
 }
@@ -587,6 +623,43 @@ private struct SettingsDestructiveActionRow: View {
             Button(buttonTitle, role: .destructive, action: action)
         }
         .accessibilityHint(consequence)
+    }
+}
+
+private struct SettingsRowOperationReceiptView: View {
+    let receipt: SettingsRowOperationReceipt
+    var onCancel: (() -> Void)? = nil
+
+    var body: some View {
+        HStack(alignment: .firstTextBaseline, spacing: 8) {
+            if receipt.status == .running {
+                ProgressView()
+                    .controlSize(.small)
+            } else {
+                Image(systemName: icon)
+                    .foregroundStyle(.secondary)
+            }
+            Text(receipt.summary)
+                .font(.caption)
+                .foregroundStyle(receipt.status == .failure ? Color.red : Color.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+            Spacer(minLength: 8)
+            if receipt.status == .running, let onCancel {
+                Button("Cancel", action: onCancel)
+                    .controlSize(.small)
+            }
+        }
+        .accessibilityElement(children: .contain)
+        .accessibilityValue(receipt.accessibilityValue)
+    }
+
+    private var icon: String {
+        switch receipt.status {
+        case .running: return "clock"
+        case .success: return "checkmark.circle"
+        case .failure: return "xmark.circle"
+        case .cancelled: return "slash.circle"
+        }
     }
 }
 
@@ -1422,15 +1495,19 @@ private struct BrowserSettingsPane: View {
 }
 
 private struct PluginsSettingsPane: View {
-    let onConfigurationChanged: () -> Void
+    @Binding var inventory: SettingsInventoryState<[GrokPluginInfo]>
+    let onApply: (SettingsApplyRequest) async -> SettingsApplyReceipt
 
     private let service = GrokCLIService()
-    @State private var plugins: [GrokPluginInfo] = []
     @State private var installSource = ""
     @State private var trustInstall = false
     @State private var selectedDetails: String?
     @State private var isLoading = false
-    @State private var errorMessage: String?
+    @State private var activeOperationID: String?
+    @State private var activeOperationIsCancellable = false
+    @State private var operationTask: Task<Void, Never>?
+    @State private var rowReceipts: [String: SettingsRowOperationReceipt] = [:]
+    @State private var pendingUninstall: GrokPluginInfo?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -1449,17 +1526,28 @@ private struct PluginsSettingsPane: View {
 
             HStack {
                 TextField("GitHub repo, Git URL, or local path", text: $installSource)
-                Toggle("Trust", isOn: $trustInstall)
+                Toggle("I reviewed and trust this source", isOn: $trustInstall)
                     .toggleStyle(.checkbox)
                     .controlSize(.small)
                 Button("Install") {
-                    Task { await installPlugin() }
+                    startInstall()
                 }
-                .disabled(installSource.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                .disabled(
+                    installSource.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                        || !trustInstall
+                        || activeOperationID != nil
+                )
+            }
+
+            Text("Install is a direct CLI action. GrokBuild requires an explicit trust decision, then restarts only the current live tab; plugin data may remain after uninstall unless the CLI removes it.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            if let receipt = rowReceipts["install"] {
+                SettingsRowOperationReceiptView(receipt: receipt)
             }
 
             List {
-                ForEach(plugins) { plugin in
+                ForEach(inventory.value) { plugin in
                     VStack(alignment: .leading, spacing: 6) {
                         HStack {
                             VStack(alignment: .leading, spacing: 2) {
@@ -1470,7 +1558,7 @@ private struct PluginsSettingsPane: View {
                                     .foregroundStyle(.secondary)
                             }
                             Spacer()
-                            Text(plugin.isEnabled ? "Enabled" : "Disabled")
+                            Text(pluginStatus(plugin))
                                 .font(.caption.weight(.medium))
                                 .foregroundStyle(.secondary)
                         }
@@ -1488,16 +1576,20 @@ private struct PluginsSettingsPane: View {
 
                         Menu {
                             Button(plugin.isEnabled ? "Disable" : "Enable") {
-                                Task { await setPlugin(plugin, enabled: !plugin.isEnabled) }
+                                startMutation(plugin, action: plugin.isEnabled ? "Disable" : "Enable") {
+                                    try await service.setPlugin(name: plugin.name, enabled: !plugin.isEnabled)
+                                }
                             }
                             Button("Details") {
-                                Task { await loadDetails(plugin) }
+                                startDetails(plugin)
                             }
                             Button("Update") {
-                                Task { await updatePlugin(plugin) }
+                                startMutation(plugin, action: "Update") {
+                                    try await service.updatePlugin(name: plugin.name)
+                                }
                             }
                             Button("Uninstall", role: .destructive) {
-                                Task { await uninstallPlugin(plugin) }
+                                pendingUninstall = plugin
                             }
                         } label: {
                             Image(systemName: "ellipsis")
@@ -1507,16 +1599,24 @@ private struct PluginsSettingsPane: View {
                         .controlSize(.small)
                         .fixedSize()
                         .help("Plugin actions")
+
+                        if let receipt = rowReceipts[plugin.id] {
+                            SettingsRowOperationReceiptView(
+                                receipt: receipt,
+                                onCancel: activeOperationID == plugin.id && activeOperationIsCancellable
+                                    ? { cancelOperation(plugin.id) }
+                                    : nil
+                            )
+                        }
                     }
                     .padding(.vertical, 4)
                 }
             }
             .overlay {
-                if plugins.isEmpty && !isLoading {
-                    ContentUnavailableView(
-                        "No Plugins",
-                        systemImage: SettingsTab.plugins.systemImage,
-                        description: Text("Install a plugin here or from Marketplace.")
+                if inventory.value.isEmpty && !isLoading {
+                    SettingsLoadStateView(
+                        state: inventory.loadState,
+                        retry: { Task { await refresh() } }
                     )
                 }
             }
@@ -1534,25 +1634,30 @@ private struct PluginsSettingsPane: View {
                 .frame(maxHeight: 180)
             }
         }
-        .overlay(alignment: .bottom) {
-            statusOverlay
-        }
         .task { await refresh() }
-    }
-
-    private var statusOverlay: some View {
-        VStack {
-            if isLoading {
-                ProgressView()
-                    .padding(8)
+        .onDisappear {
+            operationTask?.cancel()
+            operationTask = nil
+        }
+        .confirmationDialog(
+            "Uninstall \(pendingUninstall?.name ?? "plugin")?",
+            isPresented: Binding(
+                get: { pendingUninstall != nil },
+                set: { if !$0 { pendingUninstall = nil } }
+            ),
+            titleVisibility: .visible
+        ) {
+            if let plugin = pendingUninstall {
+                Button("Uninstall \(plugin.name)", role: .destructive) {
+                    pendingUninstall = nil
+                    startMutation(plugin, action: "Uninstall") {
+                        try await service.uninstallPlugin(name: plugin.name, keepData: false)
+                    }
+                }
             }
-            if let errorMessage {
-                Text(errorMessage)
-                    .font(.caption)
-                    .foregroundStyle(.red)
-                    .padding(8)
-                    .background(.regularMaterial, in: RoundedRectangle(cornerRadius: AppTheme.Radius.large))
-            }
+            Button("Cancel", role: .cancel) { pendingUninstall = nil }
+        } message: {
+            Text("The plugin is removed through the Grok CLI. Its persistent data may also be removed; this action cannot be represented as a harmless Apply toggle.")
         }
     }
 
@@ -1571,79 +1676,135 @@ private struct PluginsSettingsPane: View {
     }
 
     private func refresh() async {
-        await perform {
-            plugins = try await service.listPlugins()
+        isLoading = true
+        inventory.beginRefresh(staleMessage: "Refreshing installed plugins…")
+        do {
+            let plugins = try await service.listPlugins()
+            guard !Task.isCancelled else { return }
+            inventory.finish(
+                plugins,
+                isEmpty: plugins.isEmpty,
+                emptyMessage: "No plugins are installed. Grok completed the inventory successfully."
+            )
+        } catch {
+            guard !Task.isCancelled else { return }
+            inventory.fail(error.localizedDescription)
         }
+        isLoading = false
     }
 
-    private func installPlugin() async {
+    private func startInstall() {
         let source = installSource.trimmingCharacters(in: .whitespacesAndNewlines)
-        await perform {
-            try await service.installPlugin(source: source, trust: trustInstall)
+        let rowID = "install"
+        startOperation(rowID: rowID, action: "Install", mutatesConfiguration: true, cancellable: false) {
+            try await service.installPlugin(source: source, trust: true)
             installSource = ""
-            try await refreshAfterMutation()
+            trustInstall = false
         }
     }
 
-    private func uninstallPlugin(_ plugin: GrokPluginInfo) async {
-        await perform {
-            try await service.uninstallPlugin(name: plugin.name, keepData: false)
-            try await refreshAfterMutation()
-        }
-    }
-
-    private func setPlugin(_ plugin: GrokPluginInfo, enabled: Bool) async {
-        await perform {
-            try await service.setPlugin(name: plugin.name, enabled: enabled)
-            try await refreshAfterMutation()
-        }
-    }
-
-    private func updatePlugin(_ plugin: GrokPluginInfo) async {
-        await perform {
-            try await service.updatePlugin(name: plugin.name)
-            try await refreshAfterMutation()
-        }
-    }
-
-    private func loadDetails(_ plugin: GrokPluginInfo) async {
-        await perform {
+    private func startDetails(_ plugin: GrokPluginInfo) {
+        startOperation(rowID: plugin.id, action: "Load details", mutatesConfiguration: false, cancellable: true) {
             selectedDetails = try await service.pluginDetails(name: plugin.name)
         }
     }
 
-    private func refreshAfterMutation() async throws {
-        plugins = try await service.listPlugins()
-        onConfigurationChanged()
+    private func startMutation(
+        _ plugin: GrokPluginInfo,
+        action: String,
+        operation: @escaping () async throws -> Void
+    ) {
+        startOperation(
+            rowID: plugin.id,
+            action: action,
+            mutatesConfiguration: true,
+            cancellable: false,
+            operation: operation
+        )
     }
 
-    private func perform(_ operation: @escaping () async throws -> Void) async {
-        // Rapid re-taps must not stack concurrent CLI mutations.
-        guard !isLoading else { return }
-        isLoading = true
-        errorMessage = nil
-        do {
-            try await operation()
-        } catch {
-            errorMessage = error.localizedDescription
+    private func startOperation(
+        rowID: String,
+        action: String,
+        mutatesConfiguration: Bool,
+        cancellable: Bool,
+        operation: @escaping () async throws -> Void
+    ) {
+        guard activeOperationID == nil else { return }
+        activeOperationID = rowID
+        activeOperationIsCancellable = cancellable
+        rowReceipts[rowID] = .running(
+            rowID: rowID,
+            summary: "\(action) is running for this plugin.",
+            scope: mutatesConfiguration ? .activeTabRestart : .externalConfigOnly
+        )
+        operationTask = Task {
+            do {
+                try await operation()
+                try Task.checkCancellation()
+                var applyReceipt: SettingsApplyReceipt?
+                if mutatesConfiguration {
+                    let request = SettingsApplyRequest(
+                        configurationGeneration: inventory.nextConfigurationGeneration(),
+                        capability: .plugins,
+                        persistenceOwner: .externalIntegration,
+                        applyScope: .activeTabRestart,
+                        requiresProcessRestart: true,
+                        requiresPermissionOrTrust: action == "Install",
+                        redactedSummary: "Plugin \(action.lowercased()) completed; restarting only the current live tab when eligible."
+                    )
+                    applyReceipt = await onApply(request)
+                    try Task.checkCancellation()
+                    await refresh()
+                }
+                rowReceipts[rowID] = .completed(
+                    rowID: rowID,
+                    status: applyReceipt?.status == .failure ? .failure : .success,
+                    summary: applyReceipt?.summary ?? "\(action) completed.",
+                    scope: mutatesConfiguration ? .activeTabRestart : .externalConfigOnly,
+                    applyReceipt: applyReceipt
+                )
+            } catch {
+                let cancelled = Task.isCancelled || error is CancellationError
+                rowReceipts[rowID] = .completed(
+                    rowID: rowID,
+                    status: cancelled ? .cancelled : .failure,
+                    summary: cancelled
+                        ? "Operation cancelled. Refresh to confirm the plugin's current state."
+                        : error.localizedDescription,
+                    scope: mutatesConfiguration ? .activeTabRestart : .externalConfigOnly
+                )
+            }
+            activeOperationID = nil
+            activeOperationIsCancellable = false
+            operationTask = nil
         }
-        isLoading = false
+    }
+
+    private func cancelOperation(_ rowID: String) {
+        guard activeOperationID == rowID, activeOperationIsCancellable else { return }
+        operationTask?.cancel()
+    }
+
+    private func pluginStatus(_ plugin: GrokPluginInfo) -> String {
+        if plugin.status.localizedCaseInsensitiveContains("update") { return "Update available" }
+        if plugin.status.localizedCaseInsensitiveContains("fail") { return "Failed" }
+        return plugin.isEnabled ? "Enabled" : "Disabled"
     }
 }
 
 private struct HooksSettingsPane: View {
     let workspace: Workspace?
+    @Binding var inventory: SettingsInventoryState<[GrokHookInfo]>
 
     private let service = GrokCLIService()
-    @State private var hooks: [GrokHookInfo] = []
     @State private var filter = ""
     @State private var isLoading = false
-    @State private var errorMessage: String?
 
     private var filteredHooks: [GrokHookInfo] {
         let trimmed = filter.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else { return hooks }
-        return hooks.filter {
+        guard !trimmed.isEmpty else { return inventory.value }
+        return inventory.value.filter {
             $0.event.localizedCaseInsensitiveContains(trimmed) ||
             $0.target.localizedCaseInsensitiveContains(trimmed) ||
             $0.sourceType.localizedCaseInsensitiveContains(trimmed) ||
@@ -1714,17 +1875,20 @@ private struct HooksSettingsPane: View {
                 }
             }
             .overlay {
-                if hooks.isEmpty && !isLoading {
-                    ContentUnavailableView("No Hooks", systemImage: "curlybraces", description: Text("Grok did not report any hooks for this project."))
+                if inventory.value.isEmpty && !isLoading {
+                    SettingsLoadStateView(
+                        state: inventory.loadState,
+                        retry: { Task { await refresh() } }
+                    )
                 }
             }
 
             if isLoading { ProgressView() }
-            if let errorMessage {
-                Text(errorMessage)
-                    .font(.caption)
-                    .foregroundStyle(.red)
-                    .textSelection(.enabled)
+            if !inventory.value.isEmpty, inventory.loadState != .content {
+                SettingsLoadStateView(
+                    state: inventory.loadState,
+                    retry: { Task { await refresh() } }
+                )
             }
 
             Text("Sources refresh automatically from Grok, Cursor, Claude, plugins, and the current project.")
@@ -1738,14 +1902,18 @@ private struct HooksSettingsPane: View {
 
     private func refresh() async {
         isLoading = true
-        errorMessage = nil
+        inventory.beginRefresh(staleMessage: "Refreshing hooks for the selected project…")
         do {
-            hooks = try await service.listHooks(cwd: workspace?.path)
+            let hooks = try await service.listHooks(cwd: workspace?.path)
+            guard !Task.isCancelled else { return }
+            inventory.finish(
+                hooks,
+                isEmpty: hooks.isEmpty,
+                emptyMessage: "No hooks configured. Grok completed inspection successfully."
+            )
         } catch {
-            // Clear so the empty/error state shows instead of a stale list
-            // with a red caption under it.
-            hooks = []
-            errorMessage = error.localizedDescription
+            guard !Task.isCancelled else { return }
+            inventory.fail(error.localizedDescription)
         }
         isLoading = false
     }
@@ -1757,16 +1925,31 @@ private struct HooksSettingsPane: View {
 }
 
 private struct MarketplaceSettingsPane: View {
-    let onConfigurationChanged: () -> Void
+    @Binding var pluginsInventory: SettingsInventoryState<[GrokPluginInfo]>
+    @Binding var sourcesInventory: SettingsInventoryState<[GrokMarketplaceSource]>
+    let onApply: (SettingsApplyRequest) async -> SettingsApplyReceipt
 
     private let service = GrokCLIService()
-    @State private var availablePlugins: [GrokPluginInfo] = []
-    @State private var installedPlugins: [GrokPluginInfo] = []
-    @State private var marketplaceSources: [GrokMarketplaceSource] = []
     @State private var marketplaceSource = ""
+    @State private var sourceTrustConfirmed = false
     @State private var availableFilter = ""
     @State private var isLoading = false
-    @State private var errorMessage: String?
+    @State private var trustedPluginIDs: Set<String> = []
+    @State private var activeOperationID: String?
+    @State private var operationTask: Task<Void, Never>?
+    @State private var rowReceipts: [String: SettingsRowOperationReceipt] = [:]
+    @State private var pendingUninstall: GrokPluginInfo?
+    @State private var pendingSourceRemoval: GrokMarketplaceSource?
+
+    private var availablePlugins: [GrokPluginInfo] {
+        pluginsInventory.value.filter { $0.status == "available" }
+    }
+
+    private var installedPlugins: [GrokPluginInfo] {
+        pluginsInventory.value.filter { $0.status != "available" }
+    }
+
+    private var marketplaceSources: [GrokMarketplaceSource] { sourcesInventory.value }
 
     private var filteredAvailablePlugins: [GrokPluginInfo] {
         let filter = availableFilter.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -1791,12 +1974,24 @@ private struct MarketplaceSettingsPane: View {
                 }
             }
 
-            HStack {
-                TextField("Marketplace Git URL or owner/repo", text: $marketplaceSource)
-                Button("Add Source") {
-                    Task { await addMarketplace() }
+            VStack(alignment: .leading, spacing: 8) {
+                HStack {
+                    TextField("Marketplace Git URL or owner/repo", text: $marketplaceSource)
+                    Button("Add Source") {
+                        startAddMarketplace()
+                    }
+                    .disabled(
+                        marketplaceSource.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                            || !sourceTrustConfirmed
+                            || activeOperationID != nil
+                    )
                 }
-                .disabled(marketplaceSource.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                Toggle("I reviewed and trust this marketplace source", isOn: $sourceTrustConfirmed)
+                    .toggleStyle(.checkbox)
+                    .controlSize(.small)
+                if let receipt = rowReceipts["add-source"] {
+                    SettingsRowOperationReceiptView(receipt: receipt)
+                }
             }
 
             TextField("Search available plugins", text: $availableFilter)
@@ -1830,24 +2025,71 @@ private struct MarketplaceSettingsPane: View {
                 .padding(.horizontal, 4)
             }
             .overlay {
-                if availablePlugins.isEmpty && installedPlugins.isEmpty && !isLoading {
-                    ContentUnavailableView(
-                        "No Plugins",
-                        systemImage: SettingsTab.marketplace.systemImage,
-                        description: Text("Refresh the marketplace or add a trusted source.")
+                if pluginsInventory.value.isEmpty && !isLoading {
+                    SettingsLoadStateView(
+                        state: pluginsInventory.loadState,
+                        retry: { Task { await refresh() } }
                     )
                 }
             }
 
             if isLoading { ProgressView() }
-            if let errorMessage {
-                Text(errorMessage)
-                    .font(.caption)
-                    .foregroundStyle(.red)
-                    .textSelection(.enabled)
+            if !pluginsInventory.value.isEmpty, pluginsInventory.loadState != .content {
+                SettingsLoadStateView(
+                    state: pluginsInventory.loadState,
+                    retry: { Task { await refresh() } }
+                )
+            }
+            if !sourcesInventory.value.isEmpty, sourcesInventory.loadState != .content {
+                SettingsLoadStateView(
+                    state: sourcesInventory.loadState,
+                    retry: { Task { await refresh() } }
+                )
             }
         }
         .task { await refresh() }
+        .onDisappear {
+            operationTask?.cancel()
+            operationTask = nil
+        }
+        .confirmationDialog(
+            "Uninstall \(pendingUninstall?.name ?? "plugin")?",
+            isPresented: Binding(
+                get: { pendingUninstall != nil },
+                set: { if !$0 { pendingUninstall = nil } }
+            ),
+            titleVisibility: .visible
+        ) {
+            if let plugin = pendingUninstall {
+                Button("Uninstall \(plugin.name)", role: .destructive) {
+                    pendingUninstall = nil
+                    startPluginMutation(plugin, action: "Uninstall") {
+                        try await service.uninstallPlugin(name: plugin.name, keepData: false)
+                    }
+                }
+            }
+            Button("Cancel", role: .cancel) { pendingUninstall = nil }
+        } message: {
+            Text("The Grok CLI may remove the plugin's persistent data. The affected row will report the actual result.")
+        }
+        .confirmationDialog(
+            "Remove marketplace source?",
+            isPresented: Binding(
+                get: { pendingSourceRemoval != nil },
+                set: { if !$0 { pendingSourceRemoval = nil } }
+            ),
+            titleVisibility: .visible
+        ) {
+            if let source = pendingSourceRemoval {
+                Button("Remove \(source.name)", role: .destructive) {
+                    pendingSourceRemoval = nil
+                    startSourceRemoval(source)
+                }
+            }
+            Button("Cancel", role: .cancel) { pendingSourceRemoval = nil }
+        } message: {
+            Text("Available plugins from this source will disappear. Installed plugins are not represented as removed until the refreshed CLI inventory says so.")
+        }
     }
 
     private var marketplaceSourcesCard: some View {
@@ -1880,7 +2122,7 @@ private struct MarketplaceSettingsPane: View {
                     }
                     Spacer()
                     Button(role: .destructive) {
-                        Task { await removeMarketplace(source) }
+                        pendingSourceRemoval = source
                     } label: {
                         Image(systemName: "minus.circle")
                             .frame(width: 20, height: 20)
@@ -1888,6 +2130,10 @@ private struct MarketplaceSettingsPane: View {
                     .buttonStyle(.plain)
                     .controlSize(.small)
                     .help("Remove source")
+                }
+                if let receipt = rowReceipts[source.id] {
+                    SettingsRowOperationReceiptView(receipt: receipt)
+                    .padding(.top, 5)
                 }
             }
         }
@@ -1902,17 +2148,18 @@ private struct MarketplaceSettingsPane: View {
                 VStack(alignment: .leading, spacing: 2) {
                     Text(plugin.name)
                         .font(.headline)
-                    Text([plugin.marketplace, plugin.componentSummary].filter { !$0.isEmpty }.joined(separator: " · "))
+                    Text([plugin.marketplace, plugin.source, plugin.componentSummary].filter { !$0.isEmpty }.joined(separator: " · "))
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
                 Spacer()
                 if showInstall {
                     Button("Install") {
-                        Task { await installAvailablePlugin(plugin) }
+                        startInstallAvailablePlugin(plugin)
                     }
                     .buttonStyle(.borderless)
                     .controlSize(.small)
+                    .disabled(!trustedPluginIDs.contains(plugin.id) || activeOperationID != nil)
                 } else {
                     Text(plugin.isEnabled ? "Enabled" : "Disabled")
                         .font(.caption.weight(.medium))
@@ -1927,13 +2174,30 @@ private struct MarketplaceSettingsPane: View {
                     .lineLimit(3)
             }
 
+            if showInstall {
+                Toggle(
+                    "I reviewed and trust \(plugin.marketplace.isEmpty ? "this source" : plugin.marketplace)",
+                    isOn: Binding(
+                        get: { trustedPluginIDs.contains(plugin.id) },
+                        set: { trusted in
+                            if trusted { trustedPluginIDs.insert(plugin.id) }
+                            else { trustedPluginIDs.remove(plugin.id) }
+                        }
+                    )
+                )
+                .toggleStyle(.checkbox)
+                .controlSize(.small)
+            }
+
             if !showInstall {
                 Menu {
                     Button(plugin.isEnabled ? "Disable" : "Enable") {
-                        Task { await setInstalledPlugin(plugin, enabled: !plugin.isEnabled) }
+                        startPluginMutation(plugin, action: plugin.isEnabled ? "Disable" : "Enable") {
+                            try await service.setPlugin(name: plugin.name, enabled: !plugin.isEnabled)
+                        }
                     }
                     Button("Uninstall", role: .destructive) {
-                        Task { await uninstallInstalledPlugin(plugin) }
+                        pendingUninstall = plugin
                     }
                 } label: {
                     Image(systemName: "ellipsis")
@@ -1943,6 +2207,10 @@ private struct MarketplaceSettingsPane: View {
                 .controlSize(.small)
                 .fixedSize()
                 .help("Plugin actions")
+            }
+
+            if let receipt = rowReceipts[plugin.id] {
+                SettingsRowOperationReceiptView(receipt: receipt)
             }
         }
         .padding(.vertical, 10)
@@ -1962,87 +2230,138 @@ private struct MarketplaceSettingsPane: View {
     }
 
     private func refresh() async {
-        await perform {
-            let allPlugins = try await service.listPlugins(includeAvailable: true)
-            async let sources = service.listMarketplaceSources()
-            availablePlugins = allPlugins.filter { $0.status == "available" }
-            installedPlugins = allPlugins.filter { $0.status != "available" }
-            marketplaceSources = try await sources
+        isLoading = true
+        pluginsInventory.beginRefresh(staleMessage: "Refreshing marketplace plugins…")
+        sourcesInventory.beginRefresh(staleMessage: "Refreshing marketplace sources…")
+        let interval = GrokBuildPerformance.begin(.settingsMarketplaceLoad)
+        defer {
+            interval.end()
+            isLoading = false
+        }
+        do {
+            let plugins = try await service.listPlugins(includeAvailable: true)
+            guard !Task.isCancelled else { return }
+            pluginsInventory.finish(
+                plugins,
+                isEmpty: plugins.isEmpty,
+                emptyMessage: "No marketplace plugins are available. The source inventory loaded successfully."
+            )
+        } catch {
+            guard !Task.isCancelled else { return }
+            pluginsInventory.fail(error.localizedDescription)
+        }
+
+        do {
+            let sources = try await service.listMarketplaceSources()
+            guard !Task.isCancelled else { return }
+            sourcesInventory.finish(
+                sources,
+                isEmpty: sources.isEmpty,
+                emptyMessage: "No marketplace sources are configured."
+            )
+        } catch {
+            guard !Task.isCancelled else { return }
+            sourcesInventory.fail(error.localizedDescription)
         }
     }
 
-    private func setInstalledPlugin(_ plugin: GrokPluginInfo, enabled: Bool) async {
-        await perform {
-            try await service.setPlugin(name: plugin.name, enabled: enabled)
-            try await refreshAfterMutation()
-        }
-    }
-
-    private func uninstallInstalledPlugin(_ plugin: GrokPluginInfo) async {
-        await perform {
-            try await service.uninstallPlugin(name: plugin.name, keepData: false)
-            try await refreshAfterMutation()
-        }
-    }
-
-    private func installAvailablePlugin(_ plugin: GrokPluginInfo) async {
-        await perform {
+    private func startInstallAvailablePlugin(_ plugin: GrokPluginInfo) {
+        guard trustedPluginIDs.contains(plugin.id) else { return }
+        startPluginMutation(plugin, action: "Install") {
             try await service.installPlugin(source: plugin.name, trust: true)
-            try await refreshAfterMutation()
+            trustedPluginIDs.remove(plugin.id)
         }
     }
 
-    private func addMarketplace() async {
+    private func startPluginMutation(
+        _ plugin: GrokPluginInfo,
+        action: String,
+        operation: @escaping () async throws -> Void
+    ) {
+        startOperation(rowID: plugin.id, action: action, operation: operation)
+    }
+
+    private func startAddMarketplace() {
         let source = marketplaceSource.trimmingCharacters(in: .whitespacesAndNewlines)
-        await perform {
+        guard sourceTrustConfirmed else { return }
+        startOperation(rowID: "add-source", action: "Add source") {
             try await service.addMarketplaceSource(source)
             marketplaceSource = ""
-            try await refreshAfterMutation()
+            sourceTrustConfirmed = false
         }
     }
 
-    private func removeMarketplace(_ source: GrokMarketplaceSource) async {
-        await perform {
+    private func startSourceRemoval(_ source: GrokMarketplaceSource) {
+        startOperation(rowID: source.id, action: "Remove source") {
             try await service.removeMarketplaceSource(source.location)
-            try await refreshAfterMutation()
         }
     }
 
-    private func refreshAfterMutation() async throws {
-        let allPlugins = try await service.listPlugins(includeAvailable: true)
-        availablePlugins = allPlugins.filter { $0.status == "available" }
-        installedPlugins = allPlugins.filter { $0.status != "available" }
-        marketplaceSources = try await service.listMarketplaceSources()
-        onConfigurationChanged()
+    private func startOperation(
+        rowID: String,
+        action: String,
+        operation: @escaping () async throws -> Void
+    ) {
+        guard activeOperationID == nil else { return }
+        activeOperationID = rowID
+        rowReceipts[rowID] = .running(
+            rowID: rowID,
+            summary: "\(action) is running for this marketplace row.",
+            scope: .activeTabRestart
+        )
+        operationTask = Task {
+            do {
+                try await operation()
+                try Task.checkCancellation()
+                let request = SettingsApplyRequest(
+                    configurationGeneration: pluginsInventory.nextConfigurationGeneration(),
+                    capability: .marketplace,
+                    persistenceOwner: .externalIntegration,
+                    applyScope: .activeTabRestart,
+                    requiresProcessRestart: true,
+                    requiresPermissionOrTrust: action == "Install" || action == "Add source",
+                    redactedSummary: "Marketplace \(action.lowercased()) completed; restarting only the current live tab when eligible."
+                )
+                let applyReceipt = await onApply(request)
+                try Task.checkCancellation()
+                await refresh()
+                rowReceipts[rowID] = .completed(
+                    rowID: rowID,
+                    status: applyReceipt.status == .failure ? .failure : .success,
+                    summary: applyReceipt.summary,
+                    scope: .activeTabRestart,
+                    applyReceipt: applyReceipt
+                )
+            } catch {
+                let cancelled = Task.isCancelled || error is CancellationError
+                rowReceipts[rowID] = .completed(
+                    rowID: rowID,
+                    status: cancelled ? .cancelled : .failure,
+                    summary: cancelled
+                        ? "Operation cancelled. Refresh to confirm the marketplace's current state."
+                        : error.localizedDescription,
+                    scope: .activeTabRestart
+                )
+            }
+            activeOperationID = nil
+            operationTask = nil
+        }
     }
 
-    private func perform(_ operation: @escaping () async throws -> Void) async {
-        // Rapid re-taps must not stack concurrent CLI mutations.
-        guard !isLoading else { return }
-        isLoading = true
-        errorMessage = nil
-        do {
-            try await operation()
-        } catch {
-            errorMessage = error.localizedDescription
-        }
-        isLoading = false
-    }
 }
 
 private struct SkillsSettingsPane: View {
     let workspace: Workspace?
+    @Binding var inventory: SettingsInventoryState<[GrokSkillInfo]>
 
     private let service = GrokCLIService()
-    @State private var skills: [GrokSkillInfo] = []
     @State private var filter = ""
     @State private var isLoading = false
-    @State private var errorMessage: String?
 
     private var filteredSkills: [GrokSkillInfo] {
         let trimmed = filter.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else { return skills }
-        return skills.filter {
+        guard !trimmed.isEmpty else { return inventory.value }
+        return inventory.value.filter {
             $0.name.localizedCaseInsensitiveContains(trimmed) ||
             $0.description.localizedCaseInsensitiveContains(trimmed) ||
             $0.sourceType.localizedCaseInsensitiveContains(trimmed) ||
@@ -2105,21 +2424,20 @@ private struct SkillsSettingsPane: View {
                 }
             }
             .overlay {
-                if skills.isEmpty && !isLoading {
-                    ContentUnavailableView(
-                        "No Skills",
-                        systemImage: SettingsTab.skills.systemImage,
-                        description: Text("No skills are available for this project.")
+                if inventory.value.isEmpty && !isLoading {
+                    SettingsLoadStateView(
+                        state: inventory.loadState,
+                        retry: { Task { await refresh() } }
                     )
                 }
             }
 
             if isLoading { ProgressView() }
-            if let errorMessage {
-                Text(errorMessage)
-                    .font(.caption)
-                    .foregroundStyle(.red)
-                    .textSelection(.enabled)
+            if !inventory.value.isEmpty, inventory.loadState != .content {
+                SettingsLoadStateView(
+                    state: inventory.loadState,
+                    retry: { Task { await refresh() } }
+                )
             }
 
             Text("Sources refresh automatically from this Mac and the current project.")
@@ -2131,12 +2449,20 @@ private struct SkillsSettingsPane: View {
 
     private func refresh() async {
         isLoading = true
-        errorMessage = nil
+        inventory.beginRefresh(staleMessage: "Refreshing skills for the selected project…")
         do {
-            skills = try await service.listSkills(cwd: workspace?.path)
+            let skills = try await GrokBuildPerformance.measure(.settingsSkillsInspect) {
+                try await service.listSkills(cwd: workspace?.path)
+            }
+            guard !Task.isCancelled else { return }
+            inventory.finish(
+                skills,
+                isEmpty: skills.isEmpty,
+                emptyMessage: "No skills are available. Grok completed inspection successfully."
+            )
         } catch {
-            skills = []
-            errorMessage = error.localizedDescription
+            guard !Task.isCancelled else { return }
+            inventory.fail(error.localizedDescription)
         }
         isLoading = false
     }
@@ -5127,17 +5453,20 @@ private struct CustomModelsSettingsPane: View {
 }
 
 private struct MCPSettingsPane: View {
-    let onConfigurationChanged: () -> Void
+    let workspace: Workspace?
+    @Binding var inventory: SettingsInventoryState<[GrokMCPServerInfo]>
+    @Binding var draft: GrokMCPServerDraft
+    @Binding var acknowledgedLiteralStorage: Bool
+    let onApply: (SettingsApplyRequest) async -> SettingsApplyReceipt
 
     private let service = GrokCLIService()
-    @State private var servers: [GrokMCPServerInfo] = []
     @State private var doctorReport: GrokMCPDoctorReport?
-    @State private var name = ""
-    @State private var transport = "stdio"
-    @State private var target = ""
-    @State private var scope = "user"
     @State private var isLoading = false
-    @State private var errorMessage: String?
+    @State private var activeOperationID: String?
+    @State private var activeOperationIsCancellable = false
+    @State private var operationTask: Task<Void, Never>?
+    @State private var rowReceipts: [String: SettingsRowOperationReceipt] = [:]
+    @State private var pendingRemoval: GrokMCPServerInfo?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -5148,40 +5477,27 @@ private struct MCPSettingsPane: View {
                     systemImage: SettingsTab.mcpServers.systemImage
                 )
                 Button("Run Doctor") {
-                    Task { await runDoctor() }
+                    startDoctor()
                 }
                 Button("Refresh") {
                     Task { await refresh() }
                 }
             }
 
-            Grid(alignment: .leading, horizontalSpacing: 8, verticalSpacing: 8) {
-                GridRow {
-                    TextField("Name", text: $name)
-                    Picker("Transport", selection: $transport) {
-                        Text("stdio").tag("stdio")
-                        Text("http").tag("http")
-                        Text("sse").tag("sse")
-                    }
-                    .labelsHidden()
-                    Picker("Scope", selection: $scope) {
-                        Text("User").tag("user")
-                        Text("Project").tag("project")
-                    }
-                    .labelsHidden()
-                }
-                GridRow {
-                    TextField(transport == "stdio" ? "Command and args" : "URL", text: $target)
-                        .gridCellColumns(2)
-                    Button("Add / Update") {
-                        Task { await addServer() }
-                    }
-                    .disabled(name.isEmpty || target.isEmpty)
-                }
+            if let receipt = rowReceipts["doctor-all"] {
+                SettingsRowOperationReceiptView(
+                    receipt: receipt,
+                    onCancel: activeOperationID == "doctor-all" && activeOperationIsCancellable
+                        ? { cancelOperation("doctor-all") }
+                        : nil
+                )
             }
 
+            mcpEditor
+
             List {
-                ForEach(servers) { server in
+                ForEach(inventory.value) { server in
+                    VStack(alignment: .leading, spacing: 7) {
                     HStack {
                         VStack(alignment: .leading, spacing: 3) {
                             Text(server.name)
@@ -5196,24 +5512,43 @@ private struct MCPSettingsPane: View {
                                     .lineLimit(1)
                                     .truncationMode(.middle)
                             }
+                            let metadata = [
+                                server.argumentCount > 0 ? "\(server.argumentCount) argument\(server.argumentCount == 1 ? "" : "s")" : nil,
+                                server.environmentNames.isEmpty ? nil : "environment: \(server.environmentNames.joined(separator: ", ")) (values redacted)",
+                                server.headerNames.isEmpty ? nil : "headers: \(server.headerNames.joined(separator: ", ")) (values redacted)",
+                            ].compactMap { $0 }
+                            if !metadata.isEmpty {
+                                Text(metadata.joined(separator: " · "))
+                                    .font(.caption2)
+                                    .foregroundStyle(.tertiary)
+                                    .lineLimit(2)
+                            }
                         }
                         Spacer()
                         Button("Check") {
-                            Task { await runDoctor(name: server.name) }
+                            startDoctor(name: server.name, rowID: server.id)
                         }
                         Button("Remove", role: .destructive) {
-                            Task { await removeServer(server) }
+                            pendingRemoval = server
                         }
+                    }
+                    if let receipt = rowReceipts[server.id] {
+                        SettingsRowOperationReceiptView(
+                            receipt: receipt,
+                            onCancel: activeOperationID == server.id && activeOperationIsCancellable
+                                ? { cancelOperation(server.id) }
+                                : nil
+                        )
+                    }
                     }
                     .padding(.vertical, 3)
                 }
             }
             .overlay {
-                if servers.isEmpty && !isLoading {
-                    ContentUnavailableView(
-                        "No MCP Servers",
-                        systemImage: SettingsTab.mcpServers.systemImage,
-                        description: Text("Add a server or refresh this list.")
+                if inventory.value.isEmpty && !isLoading {
+                    SettingsLoadStateView(
+                        state: inventory.loadState,
+                        retry: { Task { await refresh() } }
                     )
                 }
             }
@@ -5266,14 +5601,242 @@ private struct MCPSettingsPane: View {
             }
 
             if isLoading { ProgressView() }
-            if let errorMessage {
-                Text(errorMessage)
-                    .font(.caption)
-                    .foregroundStyle(.red)
-                    .textSelection(.enabled)
+            if !inventory.value.isEmpty, inventory.loadState != .content {
+                SettingsLoadStateView(
+                    state: inventory.loadState,
+                    retry: { Task { await refresh() } }
+                )
             }
         }
-        .task { await refresh() }
+        .task(id: workspace?.path) { await refresh() }
+        .onDisappear {
+            operationTask?.cancel()
+            operationTask = nil
+        }
+        .confirmationDialog(
+            "Remove \(pendingRemoval?.name ?? "MCP server")?",
+            isPresented: Binding(
+                get: { pendingRemoval != nil },
+                set: { if !$0 { pendingRemoval = nil } }
+            ),
+            titleVisibility: .visible
+        ) {
+            if let server = pendingRemoval {
+                Button("Remove \(server.name)", role: .destructive) {
+                    pendingRemoval = nil
+                    startRemove(server)
+                }
+            }
+            Button("Cancel", role: .cancel) { pendingRemoval = nil }
+        } message: {
+            Text("This removes the selected scope entry through the Grok CLI and restarts only the current live tab when eligible.")
+        }
+    }
+
+    private var mcpEditor: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                Text("Structured server draft").font(.headline)
+                Spacer()
+                Text("\(draft.scope.rawValue.capitalized) scope")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.secondary)
+            }
+
+            SettingsFormRow("Name", subtitle: "Stable Grok MCP server identifier.") {
+                TextField("server-name", text: $draft.name).frame(minWidth: 220)
+            }
+            SettingsFormRow("Transport", subtitle: "Stdio uses an executable and ordered arguments; HTTP/SSE use a URL and headers.") {
+                Picker("Transport", selection: $draft.transport) {
+                    ForEach(GrokMCPTransport.allCases) { item in
+                        Text(item.rawValue.uppercased()).tag(item)
+                    }
+                }
+                .labelsHidden()
+                .frame(width: AppTheme.Layout.settingsControlWidth)
+            }
+            SettingsFormRow("Scope", subtitle: "User writes ~/.grok/config.toml. Project writes ./.grok/config.toml in the selected workspace.") {
+                Picker("Scope", selection: $draft.scope) {
+                    Text("User").tag(GrokMCPConfigScope.user)
+                    Text("Project").tag(GrokMCPConfigScope.project)
+                }
+                .labelsHidden()
+                .frame(width: AppTheme.Layout.settingsControlWidth)
+            }
+
+            if draft.transport == .stdio {
+                SettingsFormRow("Executable", subtitle: "Kept separate from arguments; no shell splitting.") {
+                    TextField("/path/to/executable", text: $draft.executable).frame(minWidth: 280)
+                }
+                structuredArguments
+                secretRows(
+                    title: "Environment",
+                    subtitle: "Repeated --env KEY=value entries. Only names are shown after save.",
+                    entries: $draft.environment,
+                    addTitle: "Add environment entry"
+                )
+            } else {
+                SettingsFormRow("URL", subtitle: "A complete HTTP or HTTPS endpoint.") {
+                    TextField("https://example.com/mcp", text: $draft.url).frame(minWidth: 280)
+                }
+                secretRows(
+                    title: "Headers",
+                    subtitle: "Repeated --header NAME: VALUE entries. Only names are shown after save.",
+                    entries: $draft.headers,
+                    addTitle: "Add header"
+                )
+            }
+
+            if draft.containsLiteralSecrets {
+                VStack(alignment: .leading, spacing: 7) {
+                    Label("Literal secret storage", systemImage: "exclamationmark.triangle")
+                        .font(.callout.weight(.semibold))
+                    Text("The installed Grok 0.2.118 CLI accepts literal --env/--header values and exposes no interoperable secret-reference syntax. Grok stores them in the selected config. User config remains owner-only (0600); project config may be shared. GrokBuild never mirrors or reveals these values.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    Toggle("I understand where these literal values will be stored", isOn: $acknowledgedLiteralStorage)
+                        .toggleStyle(.checkbox)
+                        .controlSize(.small)
+                }
+            }
+
+            if let validation = draft.validation.message {
+                Text(validation).font(.caption).foregroundStyle(.red)
+            } else if draft.scope == .project, workspace == nil {
+                Text("Choose a project before saving a project-scoped MCP server.")
+                    .font(.caption)
+                    .foregroundStyle(.red)
+            }
+
+            HStack {
+                Text("Direct CLI write · exact argument boundaries · current-tab restart only")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                Spacer()
+                Button("Revert Draft") {
+                    draft = GrokMCPServerDraft()
+                    acknowledgedLiteralStorage = false
+                }
+                .disabled(draft == GrokMCPServerDraft())
+                Button("Add / Update") { startAddServer() }
+                    .buttonStyle(.borderedProminent)
+                    .disabled(!canSaveDraft || activeOperationID != nil)
+            }
+            if let receipt = rowReceipts["mcp-editor"] {
+                SettingsRowOperationReceiptView(receipt: receipt)
+            }
+        }
+        .padding(14)
+        .grokGlassSurface()
+        .onChange(of: draft.transport) { _, _ in acknowledgedLiteralStorage = false }
+        .onChange(of: draft.scope) { _, _ in acknowledgedLiteralStorage = false }
+    }
+
+    private var canSaveDraft: Bool {
+        draft.validation.isValid
+            && (draft.scope != .project || workspace != nil)
+            && (!draft.containsLiteralSecrets || acknowledgedLiteralStorage)
+    }
+
+    private var structuredArguments: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Arguments").font(.callout.weight(.medium))
+                    Text("One row per exact argument. Empty and space-containing values are preserved.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                Spacer()
+                Button("Add Argument") { draft.arguments.append(GrokMCPArgumentDraft()) }
+                    .controlSize(.small)
+            }
+            ForEach(Array(draft.arguments.enumerated()), id: \.element.id) { index, argument in
+                HStack(spacing: 8) {
+                    Text("\(index + 1)").font(.caption.monospacedDigit()).foregroundStyle(.tertiary).frame(width: 22)
+                    TextField("Argument", text: argumentBinding(id: argument.id))
+                    Button { moveArgument(from: index, offset: -1) } label: { Image(systemName: "arrow.up") }
+                        .disabled(index == 0).help("Move argument up")
+                    Button { moveArgument(from: index, offset: 1) } label: { Image(systemName: "arrow.down") }
+                        .disabled(index == draft.arguments.count - 1).help("Move argument down")
+                    Button(role: .destructive) { draft.arguments.remove(at: index) } label: { Image(systemName: "minus.circle") }
+                        .help("Remove argument")
+                }
+                .controlSize(.small)
+            }
+        }
+    }
+
+    private func secretRows(
+        title: String,
+        subtitle: String,
+        entries: Binding<[GrokMCPSecretDraft]>,
+        addTitle: String
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(title).font(.callout.weight(.medium))
+                    Text(subtitle).font(.caption).foregroundStyle(.secondary)
+                }
+                Spacer()
+                Button(addTitle) {
+                    entries.wrappedValue.append(GrokMCPSecretDraft())
+                    acknowledgedLiteralStorage = false
+                }
+                .controlSize(.small)
+            }
+            ForEach(entries.wrappedValue) { entry in
+                HStack(spacing: 8) {
+                    TextField("Name", text: secretNameBinding(id: entry.id, entries: entries))
+                    SecureField("Value", text: secretValueBinding(id: entry.id, entries: entries)).privacySensitive()
+                    Button(role: .destructive) {
+                        entries.wrappedValue.removeAll { $0.id == entry.id }
+                        acknowledgedLiteralStorage = false
+                    } label: { Image(systemName: "minus.circle") }
+                        .help("Remove \(title.lowercased()) entry")
+                }
+                .controlSize(.small)
+            }
+        }
+    }
+
+    private func argumentBinding(id: UUID) -> Binding<String> {
+        Binding(
+            get: { draft.arguments.first(where: { $0.id == id })?.value ?? "" },
+            set: { value in
+                guard let index = draft.arguments.firstIndex(where: { $0.id == id }) else { return }
+                draft.arguments[index].value = value
+            }
+        )
+    }
+
+    private func secretNameBinding(id: UUID, entries: Binding<[GrokMCPSecretDraft]>) -> Binding<String> {
+        Binding(
+            get: { entries.wrappedValue.first(where: { $0.id == id })?.name ?? "" },
+            set: { value in
+                guard let index = entries.wrappedValue.firstIndex(where: { $0.id == id }) else { return }
+                entries.wrappedValue[index].name = value
+                acknowledgedLiteralStorage = false
+            }
+        )
+    }
+
+    private func secretValueBinding(id: UUID, entries: Binding<[GrokMCPSecretDraft]>) -> Binding<String> {
+        Binding(
+            get: { entries.wrappedValue.first(where: { $0.id == id })?.value ?? "" },
+            set: { value in
+                guard let index = entries.wrappedValue.firstIndex(where: { $0.id == id }) else { return }
+                entries.wrappedValue[index].value = value
+                acknowledgedLiteralStorage = false
+            }
+        )
+    }
+
+    private func moveArgument(from index: Int, offset: Int) {
+        let destination = index + offset
+        guard draft.arguments.indices.contains(index), draft.arguments.indices.contains(destination) else { return }
+        draft.arguments.swapAt(index, destination)
     }
 
     private func header(_ text: String, systemImage: String) -> some View {
@@ -5282,46 +5845,129 @@ private struct MCPSettingsPane: View {
     }
 
     private func refresh() async {
-        await perform {
-            servers = try await service.listMCPServers()
-        }
-    }
-
-    private func runDoctor(name: String? = nil) async {
-        await perform {
-            doctorReport = try await service.mcpDoctor(name: name)
-        }
-    }
-
-    private func addServer() async {
-        await perform {
-            try await service.addMCPServer(name: name, transport: transport, target: target, scope: scope)
-            name = ""
-            target = ""
-            servers = try await service.listMCPServers()
-            onConfigurationChanged()
-        }
-    }
-
-    private func removeServer(_ server: GrokMCPServerInfo) async {
-        await perform {
-            try await service.removeMCPServer(name: server.name)
-            servers = try await service.listMCPServers()
-            onConfigurationChanged()
-        }
-    }
-
-    private func perform(_ operation: @escaping () async throws -> Void) async {
-        // Rapid re-taps must not stack concurrent CLI mutations.
-        guard !isLoading else { return }
         isLoading = true
-        errorMessage = nil
+        inventory.beginRefresh(staleMessage: "Refreshing MCP servers for the selected scope and project…")
         do {
-            try await operation()
+            let servers = try await service.listMCPServers(cwd: workspace?.path)
+            guard !Task.isCancelled else { return }
+            inventory.finish(
+                servers,
+                isEmpty: servers.isEmpty,
+                emptyMessage: "No MCP servers are configured. Grok completed the inventory successfully."
+            )
         } catch {
-            errorMessage = error.localizedDescription
+            guard !Task.isCancelled else { return }
+            inventory.fail(error.localizedDescription)
         }
         isLoading = false
+    }
+
+    private func startDoctor(name: String? = nil, rowID: String = "doctor-all") {
+        startOperation(
+            rowID: rowID,
+            action: "Run MCP Doctor",
+            scope: .externalConfigOnly,
+            cancellable: true,
+            mutatesConfiguration: false,
+            requiresTrust: false
+        ) {
+            doctorReport = try await service.mcpDoctor(name: name, cwd: workspace?.path)
+        }
+    }
+
+    private func startAddServer() {
+        let submitted = draft
+        startOperation(
+            rowID: "mcp-editor",
+            action: "Save MCP server",
+            scope: .activeTabRestart,
+            cancellable: false,
+            mutatesConfiguration: true,
+            requiresTrust: submitted.containsLiteralSecrets
+        ) {
+            try await service.addMCPServer(submitted, cwd: workspace?.path)
+            draft = GrokMCPServerDraft()
+            acknowledgedLiteralStorage = false
+        }
+    }
+
+    private func startRemove(_ server: GrokMCPServerInfo) {
+        let scope = GrokMCPConfigScope(rawValue: server.source)
+        startOperation(
+            rowID: server.id,
+            action: "Remove MCP server",
+            scope: .activeTabRestart,
+            cancellable: false,
+            mutatesConfiguration: true,
+            requiresTrust: false
+        ) {
+            try await service.removeMCPServer(
+                name: server.name,
+                scope: scope,
+                cwd: workspace?.path
+            )
+        }
+    }
+
+    private func startOperation(
+        rowID: String,
+        action: String,
+        scope: SettingsApplyScope,
+        cancellable: Bool,
+        mutatesConfiguration: Bool,
+        requiresTrust: Bool,
+        operation: @escaping () async throws -> Void
+    ) {
+        guard activeOperationID == nil else { return }
+        activeOperationID = rowID
+        activeOperationIsCancellable = cancellable
+        rowReceipts[rowID] = .running(rowID: rowID, summary: "\(action) is running.", scope: scope)
+        operationTask = Task {
+            do {
+                try await operation()
+                try Task.checkCancellation()
+                var applyReceipt: SettingsApplyReceipt?
+                if mutatesConfiguration {
+                    let request = SettingsApplyRequest(
+                        configurationGeneration: inventory.nextConfigurationGeneration(),
+                        capability: .mcpServers,
+                        persistenceOwner: .grokConfig,
+                        applyScope: .activeTabRestart,
+                        requiresProcessRestart: true,
+                        requiresPermissionOrTrust: requiresTrust,
+                        redactedSummary: "MCP configuration saved through the verified CLI schema; restarting only the current live tab when eligible."
+                    )
+                    applyReceipt = await onApply(request)
+                    try Task.checkCancellation()
+                    await refresh()
+                }
+                rowReceipts[rowID] = .completed(
+                    rowID: rowID,
+                    status: applyReceipt?.status == .failure ? .failure : .success,
+                    summary: applyReceipt?.summary ?? "\(action) completed with a redacted receipt.",
+                    scope: scope,
+                    applyReceipt: applyReceipt
+                )
+            } catch {
+                let cancelled = Task.isCancelled || error is CancellationError
+                rowReceipts[rowID] = .completed(
+                    rowID: rowID,
+                    status: cancelled ? .cancelled : .failure,
+                    summary: cancelled
+                        ? "Operation cancelled. Refresh before trusting the current MCP state."
+                        : GrokMCPRedactor.redact(error.localizedDescription),
+                    scope: scope
+                )
+            }
+            activeOperationID = nil
+            activeOperationIsCancellable = false
+            operationTask = nil
+        }
+    }
+
+    private func cancelOperation(_ rowID: String) {
+        guard activeOperationID == rowID, activeOperationIsCancellable else { return }
+        operationTask?.cancel()
     }
 }
 
@@ -5843,29 +6489,43 @@ private struct MemorySettingsPane: View {
 }
 
 private struct WorkflowsSettingsPane: View {
-    let onConfigurationChanged: () -> Void
-
-    @State private var workflowsEnabled = WorkflowsConfigStore.loadEnabled()
-    @State private var appliedEnabled = WorkflowsConfigStore.loadEnabled()
-    @State private var statusMessage: String?
-
-    private var hasPendingChanges: Bool { workflowsEnabled != appliedEnabled }
+    @Binding var valueState: SettingsValueState<Bool>
+    let liveReceipt: EffectiveSessionReceipt?
+    let configurationStatusMessage: String?
+    let onApply: (SettingsApplyRequest) async -> SettingsApplyReceipt
+    @State private var loadState = SettingsLoadState.checking
+    @State private var isApplying = false
 
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 18) {
                 header
+                SettingsLoadStateView(
+                    state: loadState,
+                    retry: { Task { await loadPersistedState(force: true) } }
+                )
                 enableCard
                 infoCard
+                SettingsApplyBar(
+                    canApply: valueState.canApply,
+                    isApplying: isApplying,
+                    scopeText: "Writes the shared Grok config and restarts only the current live tab. Streaming work queues one restart after the turn.",
+                    validationMessage: valueState.validation.message,
+                    receipt: valueState.lastOperationReceipt,
+                    onRevert: { valueState.revert() },
+                    onApply: { Task { await applyChanges() } }
+                )
+                SettingsReceiptDisclosure(receipt: valueState.lastOperationReceipt)
             }
             .centeredSettingsColumn()
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .background(AppTheme.Palette.canvas)
-        .onReceive(NotificationCenter.default.publisher(for: .workflowsConfigChanged)) { _ in
-            let enabled = WorkflowsConfigStore.loadEnabled()
-            workflowsEnabled = enabled
-            appliedEnabled = enabled
+        .task {
+            await loadPersistedState(force: false)
+        }
+        .onChange(of: liveReceipt) { _, receipt in
+            valueState.refreshLive(receipt?.freshness == .live ? valueState.applied : nil)
         }
     }
 
@@ -5876,9 +6536,7 @@ private struct WorkflowsSettingsPane: View {
                 subtitle: "Run project workflows in the background.",
                 systemImage: SettingsTab.workflows.systemImage
             )
-            Text(workflowsEnabled ? "On" : "Off")
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(.secondary)
+            SettingsPaneStateHeader(status: valueState.status)
         }
     }
 
@@ -5887,8 +6545,11 @@ private struct WorkflowsSettingsPane: View {
             VStack(alignment: .leading, spacing: 12) {
                 SettingsToggleRow(
                     "Enable workflows",
-                    subtitle: "Shared with Grok Build CLI sessions.",
-                    isOn: $workflowsEnabled
+                    subtitle: "Draft only until Apply. The setting is shared with Grok CLI/TUI through config.toml.",
+                    isOn: Binding(
+                        get: { valueState.draft },
+                        set: { valueState.updateDraft($0) }
+                    )
                 )
 
                 Text("Skills remain available separately from the composer.")
@@ -5896,29 +6557,69 @@ private struct WorkflowsSettingsPane: View {
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
 
-                if let statusMessage {
-                    Text(statusMessage)
+                Text("Live means this app launched an exact newer process after the saved write. Grok CLI does not independently report the effective workflow toggle.")
+                    .font(.caption2)
+                    .foregroundStyle(.tertiary)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                if let configurationStatusMessage, isApplying {
+                    Text(configurationStatusMessage)
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
-
-                HStack {
-                    Spacer()
-                    Button("Apply Changes") {
-                        do {
-                            try WorkflowsConfigStore.setEnabled(workflowsEnabled)
-                            appliedEnabled = workflowsEnabled
-                            statusMessage = "Saved. Restarting sessions…"
-                            onConfigurationChanged()
-                        } catch {
-                            statusMessage = error.localizedDescription
-                        }
-                    }
-                    .buttonStyle(.borderedProminent)
-                    .disabled(!hasPendingChanges)
-                }
             }
         }
+    }
+
+    @MainActor
+    private func loadPersistedState(force: Bool) async {
+        if valueState.isLoaded, !force {
+            loadState = .content
+            return
+        }
+        loadState = .checking
+        let enabled = await SettingsBackgroundLoader.run { WorkflowsConfigStore.loadEnabled() }
+        guard !Task.isCancelled else { return }
+        valueState.load(persisted: enabled, applied: enabled, live: nil)
+        loadState = .content
+    }
+
+    @MainActor
+    private func applyChanges() async {
+        guard valueState.canApply else { return }
+        let enabled = valueState.draft
+        let request = SettingsApplyRequest(
+            configurationGeneration: valueState.configurationGeneration + 1,
+            capability: .workflows,
+            persistenceOwner: .grokConfig,
+            applyScope: .activeTabRestart,
+            requiresProcessRestart: true,
+            redactedSummary: "Saved the shared workflow setting; restarting only the current live tab when eligible."
+        )
+        do {
+            try await SettingsBackgroundLoader.runThrowing {
+                try WorkflowsConfigStore.setEnabled(enabled)
+            }
+        } catch {
+            valueState.lastOperationReceipt = .completed(
+                request: request,
+                status: .failure,
+                summary: error.localizedDescription
+            )
+            return
+        }
+        guard !Task.isCancelled else { return }
+        valueState.recordSaved(
+            applied: enabled,
+            requiresRestart: liveReceipt?.freshness == .live,
+            receipt: request.receipt
+        )
+        isApplying = true
+        let receipt = await onApply(request)
+        isApplying = false
+        guard !Task.isCancelled else { return }
+        let inferredLive = receipt.status == .success && receipt.effectiveSession != nil ? enabled : nil
+        valueState.complete(receipt: receipt, live: inferredLive)
     }
 
     private var infoCard: some View {
@@ -5960,22 +6661,13 @@ private struct WorkflowsSettingsPane: View {
 }
 
 private struct CompatibilitySettingsPane: View {
-    let onConfigurationChanged: () -> Void
+    @Binding var valueState: SettingsValueState<CompatibilitySettingsDraft>
+    @Binding var inventory: SettingsInventoryState<[GrokExternalCompatInfo]>
+    let onApply: (SettingsApplyRequest) async -> SettingsApplyReceipt
 
     private let service = GrokCLIService()
-    @State private var cursorEnabled = CompatConfigStore.loadEnabled(.cursor)
-    @State private var claudeEnabled = CompatConfigStore.loadEnabled(.claude)
-    @State private var codexEnabled = CompatConfigStore.loadEnabled(.codex)
-    @State private var appliedCursor = CompatConfigStore.loadEnabled(.cursor)
-    @State private var appliedClaude = CompatConfigStore.loadEnabled(.claude)
-    @State private var appliedCodex = CompatConfigStore.loadEnabled(.codex)
-    @State private var externalCompat: [GrokExternalCompatInfo] = []
-    @State private var statusMessage: String?
     @State private var isLoading = false
-
-    private var hasPendingChanges: Bool {
-        cursorEnabled != appliedCursor || claudeEnabled != appliedClaude || codexEnabled != appliedCodex
-    }
+    @State private var isApplying = false
 
     var body: some View {
         ScrollView {
@@ -5994,40 +6686,57 @@ private struct CompatibilitySettingsPane: View {
 
                 settingsCard(title: "Import From", systemImage: SettingsTab.compatibility.systemImage) {
                     VStack(alignment: .leading, spacing: 12) {
-                        compatToggle("Cursor", binding: $cursorEnabled)
-                        compatToggle("Claude Code", binding: $claudeEnabled)
-                        compatToggle("Codex", binding: $codexEnabled)
-
-                        if let statusMessage {
-                            Text(statusMessage)
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                        }
-
-                        HStack {
-                            Spacer()
-                            Button("Apply Changes") {
-                                applyCompat()
-                            }
-                            .buttonStyle(.borderedProminent)
-                            .disabled(!hasPendingChanges)
-                        }
+                        compatToggle("Cursor", binding: draftBinding(\.cursorEnabled))
+                        compatToggle("Claude Code", binding: draftBinding(\.claudeEnabled))
+                        compatToggle("Codex", binding: draftBinding(\.codexEnabled))
+                        Text("Live means this app launched an exact newer process after the atomic config write. CLI inspection reports supported cells, not the active process's imported state.")
+                            .font(.caption2)
+                            .foregroundStyle(.tertiary)
+                            .fixedSize(horizontal: false, vertical: true)
+                        SettingsPaneStateHeader(status: valueState.status)
                     }
                 }
 
-                if !externalCompat.isEmpty {
+                SettingsApplyBar(
+                    canApply: valueState.canApply,
+                    isApplying: isApplying,
+                    scopeText: "Writes supported Grok compatibility cells atomically and restarts only the current live tab.",
+                    validationMessage: valueState.validation.message,
+                    receipt: valueState.lastOperationReceipt,
+                    onRevert: { valueState.revert() },
+                    onApply: { Task { await applyCompat() } }
+                )
+                SettingsReceiptDisclosure(receipt: valueState.lastOperationReceipt)
+
+                SettingsLoadStateView(
+                    state: inventory.loadState,
+                    retry: { Task { await loadExternalCompat() } }
+                )
+
+                if !inventory.value.isEmpty {
                     settingsCard(title: "Detected Sources", systemImage: "magnifyingglass") {
                         VStack(alignment: .leading, spacing: 8) {
-                            ForEach(externalCompat) { item in
-                                HStack {
-                                    Text(item.name)
-                                        .font(.callout.weight(.medium))
-                                    Spacer()
-                                    Text(item.isEnabled ? "On" : "Off")
-                                        .font(.caption)
-                                        .foregroundStyle(item.isEnabled ? .green : .secondary)
+                            ForEach(inventory.value) { item in
+                                VStack(alignment: .leading, spacing: 4) {
+                                    HStack {
+                                        Text(item.name)
+                                            .font(.callout.weight(.medium))
+                                        Spacer()
+                                        Text(item.isEnabled ? "All supported capabilities on" : "Partial or off")
+                                            .font(.caption)
+                                            .foregroundStyle(.secondary)
+                                    }
+                                    if !item.cells.isEmpty {
+                                        Text(item.cells.map { "\($0.surface): \($0.isEnabled ? "on" : "off")" }.joined(separator: " · "))
+                                            .font(.caption2)
+                                            .foregroundStyle(.tertiary)
+                                            .fixedSize(horizontal: false, vertical: true)
+                                    }
                                 }
                             }
+                            Text("Codex currently exposes sessions only; the UI does not imply skills, rules, agents, MCPs, or hooks parity.")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
                         }
                     }
                 }
@@ -6040,7 +6749,10 @@ private struct CompatibilitySettingsPane: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .background(AppTheme.Palette.canvas)
-        .task { await loadExternalCompat() }
+        .task {
+            await loadPersistedState()
+            await loadExternalCompat()
+        }
     }
 
     private func compatToggle(_ title: String, binding: Binding<Bool>) -> some View {
@@ -6053,24 +6765,73 @@ private struct CompatibilitySettingsPane: View {
         )
     }
 
-    private func applyCompat() {
+    private func draftBinding(_ keyPath: WritableKeyPath<CompatibilitySettingsDraft, Bool>) -> Binding<Bool> {
+        Binding(
+            get: { valueState.draft[keyPath: keyPath] },
+            set: { enabled in
+                var draft = valueState.draft
+                draft[keyPath: keyPath] = enabled
+                valueState.updateDraft(draft)
+            }
+        )
+    }
+
+    @MainActor
+    private func loadPersistedState() async {
+        guard !valueState.isLoaded else { return }
+        let saved = await SettingsBackgroundLoader.run { CompatConfigStore.loadDraft() }
+        guard !Task.isCancelled else { return }
+        valueState.load(persisted: saved, applied: saved, live: nil)
+    }
+
+    @MainActor
+    private func applyCompat() async {
+        guard valueState.canApply else { return }
+        let draft = valueState.draft
+        let request = SettingsApplyRequest(
+            configurationGeneration: valueState.configurationGeneration + 1,
+            capability: .compatibility,
+            persistenceOwner: .grokConfig,
+            applyScope: .activeTabRestart,
+            requiresProcessRestart: true,
+            redactedSummary: "Saved supported compatibility capability cells; restarting only the current live tab when eligible."
+        )
         do {
-            try CompatConfigStore.setEnabled(.cursor, cursorEnabled)
-            try CompatConfigStore.setEnabled(.claude, claudeEnabled)
-            try CompatConfigStore.setEnabled(.codex, codexEnabled)
-            appliedCursor = cursorEnabled
-            appliedClaude = claudeEnabled
-            appliedCodex = codexEnabled
-            statusMessage = "Saved. Restarting sessions…"
-            onConfigurationChanged()
+            try await SettingsBackgroundLoader.runThrowing { try CompatConfigStore.setEnabled(draft) }
         } catch {
-            statusMessage = error.localizedDescription
+            valueState.lastOperationReceipt = .completed(
+                request: request,
+                status: .failure,
+                summary: error.localizedDescription
+            )
+            return
         }
+        guard !Task.isCancelled else { return }
+        valueState.recordSaved(applied: draft, requiresRestart: true, receipt: request.receipt)
+        isApplying = true
+        let receipt = await onApply(request)
+        isApplying = false
+        guard !Task.isCancelled else { return }
+        let inferredLive = receipt.status == .success && receipt.effectiveSession != nil ? draft : nil
+        valueState.complete(receipt: receipt, live: inferredLive)
+        await loadExternalCompat()
     }
 
     private func loadExternalCompat() async {
         isLoading = true
-        externalCompat = (try? await service.listExternalCompat()) ?? []
+        inventory.beginRefresh(staleMessage: "Refreshing Grok's compatibility capability cells…")
+        do {
+            let items = try await service.listExternalCompat()
+            guard !Task.isCancelled else { return }
+            inventory.finish(
+                items,
+                isEmpty: items.isEmpty,
+                emptyMessage: "Grok reported no compatibility sources."
+            )
+        } catch {
+            guard !Task.isCancelled else { return }
+            inventory.fail(error.localizedDescription)
+        }
         isLoading = false
     }
 
@@ -6098,12 +6859,16 @@ private struct CompatibilitySettingsPane: View {
 }
 
 private struct AppUpdatesSettingsPane: View {
+    @Binding var valueState: SettingsValueState<Bool>
+    let liveReceipt: EffectiveSessionReceipt?
+    let onApply: (SettingsApplyRequest) async -> SettingsApplyReceipt
     @State private var updateRevision = 0
+    @State private var isApplying = false
 
     private var autoCheckBinding: Binding<Bool> {
         Binding(
-            get: { UpdateSettingsStore.autoCheckEnabled },
-            set: { UpdateSettingsStore.autoCheckEnabled = $0 }
+            get: { valueState.draft },
+            set: { valueState.updateDraft($0) }
         )
     }
 
@@ -6120,6 +6885,7 @@ private struct AppUpdatesSettingsPane: View {
                     subtitle: "Keep GrokBuild and the Grok CLI current.",
                     systemImage: SettingsTab.app.systemImage
                 )
+                SettingsPaneStateHeader(status: valueState.status)
 
                 updatesCard(title: "Installed Version", systemImage: "info.circle") {
                     VStack(alignment: .leading, spacing: 8) {
@@ -6147,11 +6913,47 @@ private struct AppUpdatesSettingsPane: View {
                 }
 
                 updatesCard(title: "Automatic Checks", systemImage: "clock.arrow.circlepath") {
-                    SettingsToggleRow(
-                        "Automatically check for updates",
-                        subtitle: "Checks on launch and about once per day while GrokBuild is running.",
-                        isOn: autoCheckBinding
-                    )
+                    VStack(alignment: .leading, spacing: 10) {
+                        SettingsToggleRow(
+                            "Automatically check for updates",
+                            subtitle: "Draft only until Apply. Checks on launch and about once per day while GrokBuild is running.",
+                            isOn: autoCheckBinding
+                        )
+                        Text("Scope: GrokBuild update scheduling only. No session restart and no provider request.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+
+                SettingsApplyBar(
+                    canApply: valueState.canApply,
+                    isApplying: isApplying,
+                    scopeText: "Saves the App update-check preference immediately; no Grok process or tab restarts.",
+                    validationMessage: valueState.validation.message,
+                    receipt: valueState.lastOperationReceipt,
+                    onRevert: { valueState.revert() },
+                    onApply: { Task { await applyAppSettings() } }
+                )
+                SettingsReceiptDisclosure(receipt: valueState.lastOperationReceipt)
+
+                updatesCard(title: "Active Session Identity", systemImage: "bolt.horizontal.circle") {
+                    VStack(alignment: .leading, spacing: 5) {
+                        if let liveReceipt {
+                            Text(liveReceipt.freshness == .live ? "Live process receipt" : "Historical process receipt")
+                                .font(.callout.weight(.medium))
+                            Text("Tab \(shortID(liveReceipt.localTabID?.uuidString)) · backend \(shortID(liveReceipt.backendSessionID)) · generation \(liveReceipt.processGeneration)")
+                                .font(.caption.monospaced())
+                                .foregroundStyle(.secondary)
+                                .textSelection(.enabled)
+                        } else {
+                            Text("Unknown — no active process receipt for this tab.")
+                                .font(.callout)
+                                .foregroundStyle(.secondary)
+                        }
+                        Text("The installed app/update receipt is independent from this session receipt.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
                 }
 
                 updatesCard(title: "grok CLI", systemImage: "terminal") {
@@ -6218,9 +7020,47 @@ private struct AppUpdatesSettingsPane: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .background(AppTheme.Palette.canvas)
+        .task {
+            await loadPersistedState()
+        }
         .onReceive(NotificationCenter.default.publisher(for: .grokBuildUpdateStateChanged)) { _ in
             updateRevision &+= 1
         }
+    }
+
+    @MainActor
+    private func loadPersistedState() async {
+        guard !valueState.isLoaded else { return }
+        await Task.yield()
+        guard !Task.isCancelled else { return }
+        let saved = UpdateSettingsStore.autoCheckEnabled
+        valueState.load(persisted: saved, applied: saved, live: nil)
+    }
+
+    @MainActor
+    private func applyAppSettings() async {
+        guard valueState.canApply else { return }
+        let enabled = valueState.draft
+        let request = SettingsApplyRequest(
+            configurationGeneration: valueState.configurationGeneration + 1,
+            capability: .app,
+            persistenceOwner: .userDefaults,
+            applyScope: .externalConfigOnly,
+            requiresProcessRestart: false,
+            redactedSummary: "Saved the GrokBuild update-check preference; no session restart was requested."
+        )
+        UpdateSettingsStore.autoCheckEnabled = enabled
+        valueState.recordSaved(applied: enabled, requiresRestart: false, receipt: request.receipt)
+        isApplying = true
+        let receipt = await onApply(request)
+        isApplying = false
+        guard !Task.isCancelled else { return }
+        valueState.complete(receipt: receipt, live: nil)
+    }
+
+    private func shortID(_ value: String?) -> String {
+        guard let value, !value.isEmpty else { return "none" }
+        return value.count > 8 ? "…\(value.suffix(8))" : value
     }
 
     private func updatesCard<Content: View>(
