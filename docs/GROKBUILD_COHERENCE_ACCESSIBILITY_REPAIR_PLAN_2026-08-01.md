@@ -1682,6 +1682,16 @@ Exit:
 - rollback can still read the old snapshot;
 - permissions are owner-only.
 
+#### Slice 8 implementation receipt — 2026-08-01
+
+- Code is committed at `68de2a9d5b774fc98fd5c126247fcd834d316c65` on `codex/warm-glass-ui`. The final receipt commit is documentation-only, so the signed installed bundle remains a clean source ancestor under the mandatory preflight rule.
+- `SessionMessageStore` now owns one file-backed transcript and one metadata sidecar per local tab. Its dedicated serial queue, sibling-temp plus rename writer, owner-only permissions, and monotonic dirty generation avoid whole-map rewrites; unchanged generations are skipped. Session layout restores counts from authenticated metadata, while only the selected tab hydrates its message body.
+- Legacy `GrokBuild.sessionMessages.v1` migration is copy-first and verified: every candidate transcript is decoded and checked before a keyed marker is committed. Any failure leaves the entire v1 dictionary and no marker intact. The 33 retained v1 transcripts remain 128,256 bytes at SHA-256 `9aabac37d6ffe066d5b9853ea02c6223f4f73c32ee02fdebf462c39ec93d85c5`.
+- `swift test --filter SessionPersistenceTests` completed **47 tests with 0 failures** in 0.105 seconds; `make test` completed **475 tests with 0 failures** in 15.113 seconds. The 1,000-message dirty-generation fixture completed within its 0.25-second budget.
+- Installed-app migration created 33 transcript bodies, 33 metadata sidecars, and one migration marker (67 files total). The transcript directory is mode `0700`; every file is mode `0600`. `~/.grok/config.toml` stayed mode `0600`, 1,852 bytes, SHA-256 `54986189bf364f6abe7a06876425b576f9b02466177b181d4921640d4a62bce4`; the v2 rollback payload stayed 7,902 bytes at SHA-256 `b9d760c004f74f88996d75ee83df5a2f5636ded80c6863a996c63442d5bacad7`.
+- Exact `/Applications/GrokBuild.app` visibly restored the local `GPT-CENTRAL-RESUME-BASE-0731` and follow-up messages, displayed the safe continuity boundary, and kept Send disabled. Command-Q followed by an exact relaunch restored the same local history. Selecting another saved tab left the complete transcript-tree digest unchanged at `b2c7c44d313f6e42ba60b650b51cc524502e5e63cbda31b672873a919e9e3346`; no provider send, backend resume, helper, browser, or `grok agent` child ran. Settled CPU sampled 0.0% three times.
+- The installed executable SHA-256 is `5908269a804b9af80421cdf8a476317fd4d3c52afa2b6f7bf48307000afb3d21`; deep/strict signing passes under Team `DD2GCQJVB4`, and quarantine is absent. Gatekeeper assessment remains rejected because this development-signed build is not notarized; that is not represented as release/notarization proof. Immediate rollback is `/Users/jimmyschmitz/.Trash/GrokBuild-pre-slice-8-20260801-2119.app`; the pre-Slice-7 rollback remains intact.
+
 ### Slice 9 — lazy lifecycle and rich-render performance
 
 Deliver:
