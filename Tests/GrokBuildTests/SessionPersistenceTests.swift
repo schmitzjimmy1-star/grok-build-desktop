@@ -330,6 +330,191 @@ final class SessionPersistenceTests: XCTestCase {
         XCTAssertTrue(SessionMessageStore.messages(for: sessionID).isEmpty)
     }
 
+    func testFileBackedTranscriptUsesMetadataAndDirtyGenerations() throws {
+        let root = temporaryTranscriptRoot()
+        defer { try? FileManager.default.removeItem(at: root.deletingLastPathComponent()) }
+        let sessionID = UUID()
+        let first = [
+            Message(role: .user, content: "first"),
+            Message(role: .assistant, content: "answer"),
+        ]
+
+        let initial = try XCTUnwrap(SessionMessageStore.save(first, for: sessionID, rootURL: root))
+        XCTAssertEqual(initial.storageVersion, SessionMessageStore.storageVersion)
+        XCTAssertEqual(initial.generation, 1)
+        XCTAssertEqual(initial.messageCount, 2)
+        XCTAssertEqual(initial.restorableMessageCount, 2)
+        XCTAssertEqual(SessionMessageStore.messageCount(for: sessionID, rootURL: root), 2)
+        XCTAssertEqual(SessionMessageStore.storedTranscriptCount(rootURL: root), 1)
+
+        let unchanged = try XCTUnwrap(SessionMessageStore.save(first, for: sessionID, rootURL: root))
+        XCTAssertEqual(unchanged.generation, initial.generation, "clean writes must be skipped")
+
+        let changed = first + [Message(role: .user, content: "second")]
+        let updated = try XCTUnwrap(SessionMessageStore.save(changed, for: sessionID, rootURL: root))
+        XCTAssertEqual(updated.generation, initial.generation + 1)
+        XCTAssertEqual(SessionMessageStore.messageCount(for: sessionID, rootURL: root), 3)
+        XCTAssertEqual(SessionMessageStore.messages(for: sessionID, rootURL: root), changed)
+
+        let fileManager = FileManager.default
+        let directoryPermissions = try XCTUnwrap(
+            fileManager.attributesOfItem(atPath: root.path)[.posixPermissions] as? NSNumber
+        ).intValue & 0o777
+        let transcriptURL = root.appendingPathComponent("\(sessionID.uuidString).json")
+        let transcriptPermissions = try XCTUnwrap(
+            fileManager.attributesOfItem(atPath: transcriptURL.path)[.posixPermissions] as? NSNumber
+        ).intValue & 0o777
+        XCTAssertEqual(directoryPermissions, 0o700)
+        XCTAssertEqual(transcriptPermissions, 0o600)
+    }
+
+    func testLegacyTranscriptMigrationCopiesVerifiesAndRetainsRollbackDictionary() throws {
+        let root = temporaryTranscriptRoot()
+        let suiteName = "SessionPersistenceTests.transcriptMigration.\(UUID().uuidString)"
+        let defaults = isolatedTranscriptDefaults(suiteName)
+        defer {
+            try? FileManager.default.removeItem(at: root.deletingLastPathComponent())
+            defaults.removePersistentDomain(forName: suiteName)
+        }
+        let first = UUID()
+        let second = UUID()
+        let legacy: [String: Data] = [
+            first.uuidString: try JSONEncoder().encode([Message(role: .user, content: "one")]),
+            second.uuidString: try JSONEncoder().encode([
+                Message(role: .user, content: "two"),
+                Message(role: .assistant, content: "answer"),
+            ]),
+        ]
+        defaults.set(legacy, forKey: SessionMessageStore.legacyStorageKey)
+
+        let result = SessionMessageStore.migrateLegacyIfNeeded(
+            defaults: defaults,
+            rootURL: root,
+            keyProvider: StaticIntegrityKeyProvider()
+        )
+        XCTAssertEqual(result, .migrated(transcriptCount: 2))
+        XCTAssertTrue(SessionMessageStore.migrationMarkerExists(rootURL: root))
+        XCTAssertEqual(defaults.dictionary(forKey: SessionMessageStore.legacyStorageKey) as? [String: Data], legacy)
+        XCTAssertEqual(SessionMessageStore.messages(for: first, rootURL: root).map(\.content), ["one"])
+        XCTAssertEqual(SessionMessageStore.messageCount(for: second, rootURL: root), 2)
+        XCTAssertEqual(SessionMessageStore.storedTranscriptCount(rootURL: root), 2)
+        XCTAssertEqual(
+            SessionMessageStore.migrateLegacyIfNeeded(
+                defaults: defaults,
+                rootURL: root,
+                keyProvider: StaticIntegrityKeyProvider()
+            ),
+            .alreadyVerified
+        )
+    }
+
+    func testMigrationFailureKeepsEntireLegacyDictionaryAndWritesNoMarker() throws {
+        let parent = FileManager.default.temporaryDirectory
+            .appendingPathComponent("grokbuild-transcript-failure-\(UUID().uuidString)")
+        let blockedRoot = parent.appendingPathComponent("blocked")
+        let suiteName = "SessionPersistenceTests.transcriptMigrationFailure.\(UUID().uuidString)"
+        let defaults = isolatedTranscriptDefaults(suiteName)
+        defer {
+            try? FileManager.default.removeItem(at: parent)
+            defaults.removePersistentDomain(forName: suiteName)
+        }
+        try FileManager.default.createDirectory(at: parent, withIntermediateDirectories: true)
+        try Data("not a directory".utf8).write(to: blockedRoot)
+        let sessionID = UUID()
+        let legacy = [sessionID.uuidString: try JSONEncoder().encode([Message(role: .user, content: "keep me")])]
+        defaults.set(legacy, forKey: SessionMessageStore.legacyStorageKey)
+
+        XCTAssertEqual(
+            SessionMessageStore.migrateLegacyIfNeeded(
+                defaults: defaults,
+                rootURL: blockedRoot,
+                keyProvider: StaticIntegrityKeyProvider()
+            ),
+            .failed
+        )
+        XCTAssertEqual(defaults.dictionary(forKey: SessionMessageStore.legacyStorageKey) as? [String: Data], legacy)
+        XCTAssertFalse(SessionMessageStore.migrationMarkerExists(rootURL: blockedRoot))
+    }
+
+    func testSerializedWriterLeavesACompleteTranscriptUnderConcurrentDirtySaves() throws {
+        let root = temporaryTranscriptRoot()
+        defer { try? FileManager.default.removeItem(at: root.deletingLastPathComponent()) }
+        let sessionID = UUID()
+        let messageID = UUID()
+
+        DispatchQueue.concurrentPerform(iterations: 24) { revision in
+            _ = SessionMessageStore.save(
+                [Message(id: messageID, role: .user, content: "revision \(revision)")],
+                for: sessionID,
+                rootURL: root
+            )
+        }
+
+        let saved = SessionMessageStore.messages(for: sessionID, rootURL: root)
+        XCTAssertEqual(saved.count, 1)
+        XCTAssertEqual(saved.first?.id, messageID)
+        XCTAssertTrue(saved.first?.content.hasPrefix("revision ") == true)
+        XCTAssertNotNil(SessionMessageStore.metadata(for: sessionID, rootURL: root))
+    }
+
+    func testThousandMessageDirtyWriteTouchesOnlyItsOwnTranscriptAndFeedsV3Integrity() throws {
+        let root = temporaryTranscriptRoot()
+        let suiteName = "SessionPersistenceTests.transcriptV3.\(UUID().uuidString)"
+        let defaults = isolatedTranscriptDefaults(suiteName)
+        defer {
+            try? FileManager.default.removeItem(at: root.deletingLastPathComponent())
+            defaults.removePersistentDomain(forName: suiteName)
+        }
+        let largeID = UUID()
+        let untouchedID = UUID()
+        let workspaceID = UUID()
+        var messages = (0..<1_000).map { index in
+            Message(role: index.isMultiple(of: 2) ? .user : .assistant, content: "row \(index)")
+        }
+        _ = SessionMessageStore.save(messages, for: largeID, rootURL: root)
+        let untouched = try XCTUnwrap(SessionMessageStore.save(
+            [Message(role: .user, content: "do not rewrite")],
+            for: untouchedID,
+            rootURL: root
+        ))
+
+        messages[messages.count - 1] = Message(
+            id: messages[messages.count - 1].id,
+            role: .assistant,
+            content: "row 999 revised"
+        )
+        let started = Date()
+        let large = try XCTUnwrap(SessionMessageStore.save(messages, for: largeID, rootURL: root))
+        XCTAssertLessThan(Date().timeIntervalSince(started), 0.25, "1,000-message dirty write exceeded the local budget")
+        XCTAssertEqual(SessionMessageStore.metadata(for: untouchedID, rootURL: root)?.generation, untouched.generation)
+        XCTAssertEqual(large.messageCount, 1_000)
+
+        let snapshot = SessionLayoutSnapshot(
+            records: [SavedSessionRecord(
+                id: largeID,
+                workspaceID: workspaceID,
+                lastAccessed: .now,
+                transcriptGeneration: large.generation,
+                transcriptStorageVersion: large.storageVersion
+            )],
+            sessionOrderByWorkspace: [workspaceID: [largeID]],
+            selectedSessionID: largeID,
+            selectedWorkspaceID: workspaceID
+        )
+        XCTAssertTrue(SessionLayoutStore.saveSessions(
+            snapshot,
+            defaults: defaults,
+            keyProvider: StaticIntegrityKeyProvider()
+        ).committed)
+        let reloaded = SessionLayoutStore.loadSessionsResult(
+            defaults: defaults,
+            keyProvider: StaticIntegrityKeyProvider()
+        )
+        XCTAssertEqual(reloaded.authority, .v3Committed)
+        XCTAssertEqual(reloaded.snapshot.records.first?.transcriptGeneration, large.generation)
+        XCTAssertEqual(reloaded.snapshot.records.first?.transcriptStorageVersion, SessionMessageStore.storageVersion)
+    }
+
     func testSessionMessageStoreSkipsLegacyResumeNotes() {
         let sessionID = UUID()
         let messages = [
@@ -800,5 +985,17 @@ final class SessionPersistenceTests: XCTestCase {
         } else {
             UserDefaults.standard.removeObject(forKey: key)
         }
+    }
+
+    private func temporaryTranscriptRoot() -> URL {
+        FileManager.default.temporaryDirectory
+            .appendingPathComponent("grokbuild-transcripts-\(UUID().uuidString)")
+            .appendingPathComponent("Transcripts")
+    }
+
+    private func isolatedTranscriptDefaults(_ suiteName: String) -> UserDefaults {
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defaults.removePersistentDomain(forName: suiteName)
+        return defaults
     }
 }

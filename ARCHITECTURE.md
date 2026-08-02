@@ -376,7 +376,7 @@ ContentView.LiveSession {
 | `maxConnectedSessions` | 4 | Max live `grok agent stdio` processes |
 | `recentSessionOrder` | True MRU list derived from `lastActivationOrdinal` | Drives eviction |
 
-**Lazy restore at launch:** `restorePersistedSessions()` decodes the layout once, rebuilds lightweight `LiveSession` shells, and precomputes one `SessionRestoreCandidate` per tab while loading its local transcript. The pure `SessionRestorePolicy.restoreDecision` prefers a viable saved selection, then the first qualified tab by `lastActivationOrdinal`, timestamp, and stable UUID order. Transcript length is never a ranking signal. A local transcript with an unverified migrated backend binding restores visibly but defers backend start; divergence fails closed. Ordinary startup no longer scans history directories or guesses a backend ID from transcript text.
+**Lazy restore at launch:** `restorePersistedSessions()` decodes the layout once, rebuilds lightweight `LiveSession` shells, and precomputes one `SessionRestoreCandidate` per tab from its metadata sidecar. Only the selected tab loads and decodes its local transcript in `selectSession`. The pure `SessionRestorePolicy.restoreDecision` prefers a viable saved selection, then the first qualified tab by `lastActivationOrdinal`, timestamp, and stable UUID order. Transcript length is never a ranking signal. A local transcript with an unverified migrated backend binding restores visibly but defers backend start; divergence fails closed. Ordinary startup no longer scans history directories or guesses a backend ID from transcript text.
 
 Only an intentional tab activation increments `lastActivationOrdinal` and updates `lastAccessed`. Streaming, background recovery, persistence, process readiness, and LRU eviction do not manufacture recency. The activation is recorded before the v3 layout write, so a rapid A → B → quit restores B deterministically.
 
@@ -387,12 +387,16 @@ Only an intentional tab activation increments `lastActivationOrdinal` and update
 ### Session persistence flow
 
 ```
-selectSession / send / close
-    → persistSessionLayout()
+selectSession / rename / close
+    → SessionLayoutStore.saveSessions(SessionLayoutSnapshot)
+
+accepted send / completed turn / recovery boundary / controlled quit
+    → mark the affected tab dirty
+    → SessionMessageStore.saveAll(dirty tabs only)
     → SessionLayoutStore.saveSessions(SessionLayoutSnapshot)
 ```
 
-`SavedSessionRecord`: local/workspace IDs, structured `backendBinding`, title, model/agent intent, generation-bound `modelExecutionState`, display timestamp, activation ordinal, transcript generation/storage version, optional fork-ledger reference, and an optional authenticated pending recovery intent for **Continue as New**. A pending intent forces the persisted backend binding to `nil`, even while the in-memory tab shell still remembers the predecessor for display.
+`SavedSessionRecord`: local/workspace IDs, structured `backendBinding`, title, model/agent intent, generation-bound `modelExecutionState`, display timestamp, activation ordinal, transcript generation/storage version, optional fork-ledger reference, and an optional authenticated pending recovery intent for **Continue as New**. A pending intent forces the persisted backend binding to `nil`, even while the in-memory tab shell still remembers the predecessor for display. The generation comes from the per-tab transcript metadata sidecar, so the authenticated v3 marker still covers lifecycle/layout state without embedding transcript bodies.
 
 `SessionLayoutStore.saveSessions` writes a v3 candidate, verifies its complete decode plus schema/IDs/count/generations and keyed integrity tag, then writes and re-verifies a separate commit marker. `GrokBuild.sessionLayout.v2` is rollback input and is never overwritten. A missing/tampered marker or candidate falls back to the preserved v2 presentation in read-only mode instead of opening an empty workspace. Controlled quit records `GrokBuild.sessionLifecycle.lastFlush.v1` only after the layout commit and transcript write have both completed.
 
@@ -454,7 +458,7 @@ Do **not** commit exported plist files from repo root (`.gitignore`).
 | `GrokBuild.sessionLayout.v3` | `SessionLayoutStore` | Candidate lifecycle snapshot with semantic intents, model execution receipts, backend bindings plus continuity receipts, pending explicit-recovery intent, append-only fork ledger, activation ordinals, and transcript generations |
 | `GrokBuild.sessionLayout.v3.committed` | `SessionLayoutStore` | Candidate commit marker: schema/count/IDs/generations/ordinal/byte-count plus Keychain-backed HMAC |
 | `GrokBuild.sessionLifecycle.lastFlush.v1` | `SessionLayoutStore` | Last verified app-owned layout/transcript flush receipt |
-| `GrokBuild.sessionMessages.v1` | `SessionMessageStore` | Per live-session-tab chat transcript (`[Message]` JSON by session UUID); saved on `.liveSessionMessagesChanged` (user send + turn complete) and during full `persistSessionLayout(saveMessages: true)` passes such as app quit via `.grokBuildPrepareForShutdown` |
+| `GrokBuild.sessionMessages.v1` | `SessionMessageStore` | Legacy per-tab transcript dictionary retained as rollback input. Slice 8 copies it only after every entry is decoded, atomically written, and keyed-verified; this release never removes it. |
 | `GrokBuild.workspaceLayout.v1` | `SessionLayoutStore` | Pin order, workspace order, **`agentSettingsByWorkspace`** |
 | `grokbuild.sessionSelections.v1` | `ChatStore` | Per grok session id: mode |
 | `grokbuild.permissionMode` | `GrokSettingsKeys` | CLI permission mode |
@@ -489,6 +493,9 @@ Do **not** commit exported plist files from repo root (`.gitignore`).
 | `~/.grokbuild/computer-use/` | Cursor MCP helper binaries |
 | `~/Library/Application Support/GrokBuild/Updates/` | Downloaded app update zips |
 | `~/Library/Application Support/GrokBuild/instance.pid` | Single-instance lock |
+| `~/Library/Application Support/GrokBuild/Transcripts/<local-session-uuid>.json` | Owner-only v2 transcript body for one local tab. The envelope carries its schema and monotonic dirty generation; writes use a serialized temporary-sibling atomic replacement. |
+| `~/Library/Application Support/GrokBuild/Transcripts/<local-session-uuid>.metadata.json` | Owner-only metadata sidecar: local tab ID, schema, generation, message/restorable-message counts, and modified date. Restore selection and counts read this sidecar without parsing message bodies. |
+| `~/Library/Application Support/GrokBuild/Transcripts/legacy-v1-migration.json` | Owner-only keyed migration-complete marker. It is written only after the complete v1 dictionary is copied and verified; legacy preferences remain untouched for rollback. |
 
 ---
 
@@ -998,7 +1005,7 @@ make test    # Tests/GrokBuildTests/
 
 | File | Covers |
 |------|--------|
-| `SessionPersistenceTests.swift` | Layout/workspace persistence, per-tab model + agent, and truthful sidebar metadata including the unpersisted **New session** state |
+| `SessionPersistenceTests.swift` | Layout/workspace persistence, per-tab model + agent, truthful sidebar metadata including the unpersisted **New session** state, and Slice 8 file-store generation, migration, ownership, serialization, 1,000-message, and v3-marker coverage |
 | `SessionLifecycleV3Tests.swift` | Untouched/idempotent v2 migration, authenticated v3 rollback, semantic intent/model-receipt cycles, continuity-receipt/fork-ledger/pending-recovery cycles, true MRU/ties/A→B, divergence/no-candidate decisions, flush receipts, normalization/HMAC vectors, and Slice 0 fixture/signpost coverage |
 | `GrokSessionTranscriptImporterTests.swift` | Provenance-rich row import, root-final/worker separation, quarantine fail-closed behavior, exact-binding idempotence, explicit candidate evidence, no heuristic auto-binding, and Continue as New / Relink lifecycle contracts |
 | `BrowserIntegrationTests.swift` | Browser MCP config, skill install, settings round-trip, external browser launch args, presets |
@@ -1033,7 +1040,7 @@ Prefer extending existing test files. Test pure logic without launching real `gr
 | Read draft browser/computer settings in `ChatStore` | Use `loadApplied()` at process start |
 | Use `/releases/latest` for app updates | Use notarized release scan in `UpdateChecker` |
 | Auto-run `grok update` silently | Explicit button + confirm in `UpdatePanel` |
-| Add new per-chunk or per-keystroke UserDefaults writes | Transcripts persist only via `SessionMessageStore` at prompt boundaries (batched `saveAll`) |
+| Add new per-chunk or per-keystroke UserDefaults writes | Transcripts persist only through the serialized file-backed `SessionMessageStore` at prompt boundaries; selection writes only v3 layout metadata and only dirty tab files are encoded |
 | Add an Xcode project | Stay on SwiftPM + Makefile |
 | Commit without user request | Ask first |
 

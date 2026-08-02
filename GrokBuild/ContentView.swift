@@ -56,6 +56,9 @@ struct ContentView: View {
     )
     @State private var sessionLayoutAuthority: SessionLayoutAuthority = .empty
     @State private var sessionLayoutFailure: SessionLayoutFailureCode?
+    /// Only prompt-boundary, reconciliation, recovery, close, and quit paths may make a
+    /// transcript dirty. Selecting a tab writes layout metadata, never every transcript body.
+    @State private var dirtyTranscriptIDs: Set<UUID> = []
     @State private var pendingActivationDates: [UUID: Date] = [:]
     @State private var pendingActivationOrdinals: [UUID: UInt64] = [:]
     @State private var isUpgradeBannerDismissed = false
@@ -298,6 +301,7 @@ struct ContentView: View {
             onAutoSelectLatestDiff: autoSelectLatestDiffMessage,
             onNewSession: startNewSessionForCurrentProject,
             onPersistSessionLayout: { persistSessionLayout(saveMessages: $0) },
+            onTranscriptBoundary: markTranscriptDirtyAndPersist,
             openSettings: { tab in openSettings(tab: tab ?? selectedSettingsTab) }
         ))
     }
@@ -750,13 +754,16 @@ struct ContentView: View {
         sessionListRevision &+= 1
     }
 
-    private func persistSessionLayout(saveMessages: Bool = true) {
+    private func persistSessionLayout(saveMessages: Bool = false) {
         guard sessionLayoutAuthority != .legacyV2Fallback,
               sessionLayoutFailure == nil else { return }
-        if saveMessages {
-            SessionMessageStore.saveAll(
-                Dictionary(uniqueKeysWithValues: liveSessions.map { ($0.id, $0.store.messages) })
-            )
+        if saveMessages, !dirtyTranscriptIDs.isEmpty {
+            let dirtyIDs = dirtyTranscriptIDs
+            let dirtyMessages = Dictionary(uniqueKeysWithValues: liveSessions.compactMap { session in
+                dirtyIDs.contains(session.id) ? (session.id, session.store.messages) : nil
+            })
+            let saved = SessionMessageStore.saveAll(dirtyMessages)
+            dirtyTranscriptIDs.subtract(saved.keys)
         }
         var records: [SavedSessionRecord] = []
         var forkLedger = sessionLayout.forkLedger
@@ -825,8 +832,12 @@ struct ContentView: View {
                     lastActivationOrdinal: pendingActivationOrdinals[session.id]
                         ?? existing?.lastActivationOrdinal
                         ?? 0,
-                    transcriptGeneration: existing?.transcriptGeneration ?? 0,
-                    transcriptStorageVersion: existing?.transcriptStorageVersion ?? 1,
+                    transcriptGeneration: SessionMessageStore.metadata(for: session.id)?.generation
+                        ?? existing?.transcriptGeneration
+                        ?? 0,
+                    transcriptStorageVersion: SessionMessageStore.metadata(for: session.id)?.storageVersion
+                        ?? existing?.transcriptStorageVersion
+                        ?? 1,
                     forkLedgerReference: latestForkEntry?.id.uuidString
                         ?? existing?.forkLedgerReference,
                     pendingRecoveryIntent: session.store.persistedPendingRecoveryIntent
@@ -887,6 +898,11 @@ struct ContentView: View {
         }
     }
 
+    private func markTranscriptDirtyAndPersist(_ sessionID: UUID) {
+        dirtyTranscriptIDs.insert(sessionID)
+        persistSessionLayout(saveMessages: true)
+    }
+
     // MARK: - Logic
 
     private func bootstrap() {
@@ -896,7 +912,8 @@ struct ContentView: View {
         restoreStatusText = "Loading saved sessions..."
         Task {
             let loaded = await Task.detached(priority: .userInitiated) {
-                SessionLayoutStore.loadSessionsResult()
+                _ = SessionMessageStore.migrateLegacyIfNeeded()
+                return SessionLayoutStore.loadSessionsResult()
             }.value
             sessionLayout = loaded.snapshot
             sessionLayoutAuthority = loaded.authority
@@ -946,7 +963,7 @@ struct ContentView: View {
             restoreStatusText = "Restoring \(workspace.displayName)"
 
             let store = ChatStore()
-            let savedMessages = SessionMessageStore.messages(for: record.id)
+            let transcriptMetadata = SessionMessageStore.metadata(for: record.id)
             let durableGrokID = record.grokSessionID
             let title = await restoredTitle(
                 for: record,
@@ -967,7 +984,6 @@ struct ContentView: View {
                 },
                 savedPendingRecoveryIntent: record.pendingRecoveryIntent
             )
-            store.restorePersistedMessages(savedMessages)
             liveSessions.append(
                 LiveSession(
                     id: record.id,
@@ -977,11 +993,9 @@ struct ContentView: View {
                     grokSessionID: durableGrokID
                 )
             )
-            let hasLocalTranscript = savedMessages.contains { message in
-                message.role == .user
-                    || (message.role == .assistant
-                        && !message.content.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-            }
+            // Metadata is sufficient for restore selection. The selected tab hydrates its one
+            // transcript in `selectSession`; background tabs never decode bodies at launch.
+            let hasLocalTranscript = (transcriptMetadata?.restorableMessageCount ?? 0) > 0
             restoreCandidates.append(
                 SessionRestoreCandidate(
                     id: record.id,
@@ -1565,6 +1579,7 @@ private struct ContentViewNotificationHandlers: ViewModifier {
     let onAutoSelectLatestDiff: () -> Void
     let onNewSession: () -> Void
     let onPersistSessionLayout: (Bool) -> Void
+    let onTranscriptBoundary: (UUID) -> Void
     /// nil = keep the remembered tab; a value forces that tab.
     let openSettings: (SettingsTab?) -> Void
 
@@ -1626,7 +1641,7 @@ private struct ContentViewNotificationHandlers: ViewModifier {
         let notifyingStore = note.object as? ChatStore
         if let store = notifyingStore,
            let session = liveSessions.first(where: { $0.store === store }) {
-            SessionMessageStore.save(store.messages, for: session.id)
+            onTranscriptBoundary(session.id)
         }
         // Diff detection runs at prompt boundaries (send / turn complete /
         // failure), not per streamed chunk: a mid-stream diff is incomplete
@@ -1635,7 +1650,6 @@ private struct ContentViewNotificationHandlers: ViewModifier {
         if notifyingStore == nil || notifyingStore === activeStore {
             onAutoSelectLatestDiff()
         }
-        onPersistSessionLayout(false)
     }
 
     private func handleWorkspaceAgentSettingsChanged(_ note: Notification) {
