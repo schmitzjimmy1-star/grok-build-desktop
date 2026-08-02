@@ -182,6 +182,9 @@ struct Provider: Identifiable, Hashable, Codable, Sendable {
     var suggestedModel: String
     /// Authentication headers used by this provider's OpenAI-compatible endpoint.
     var authScheme: ProviderAuthScheme
+    /// Safe-to-persist provenance only. The credential remains solely in Keychain (plus the
+    /// owner-readable CLI projection required by grok).
+    var credentialMetadata: ProviderCredentialMetadata
     /// Explicit advanced opt-in for a cleartext remote endpoint (trusted-LAN model
     /// servers). Off by default; the UI keeps a persistent warning while it is on.
     var allowInsecureHTTP: Bool
@@ -193,6 +196,7 @@ struct Provider: Identifiable, Hashable, Codable, Sendable {
         apiKey: String = "",
         suggestedModel: String = "",
         authScheme: ProviderAuthScheme = .bearer,
+        credentialMetadata: ProviderCredentialMetadata? = nil,
         allowInsecureHTTP: Bool = false
     ) {
         self.id = id
@@ -201,11 +205,15 @@ struct Provider: Identifiable, Hashable, Codable, Sendable {
         self.apiKey = apiKey
         self.suggestedModel = suggestedModel
         self.authScheme = authScheme
+        self.credentialMetadata = credentialMetadata
+            ?? (!apiKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && authScheme != .none
+                ? .migratedAPIKey
+                : .none)
         self.allowInsecureHTTP = allowInsecureHTTP
     }
 
     private enum CodingKeys: String, CodingKey {
-        case id, name, baseURL, apiKey, suggestedModel, authScheme, allowInsecureHTTP
+        case id, name, baseURL, apiKey, suggestedModel, authScheme, credentialMetadata, allowInsecureHTTP
     }
 
     init(from decoder: Decoder) throws {
@@ -217,6 +225,10 @@ struct Provider: Identifiable, Hashable, Codable, Sendable {
         apiKey = try container.decodeIfPresent(String.self, forKey: .apiKey) ?? ""
         suggestedModel = try container.decodeIfPresent(String.self, forKey: .suggestedModel) ?? ""
         authScheme = try container.decodeIfPresent(ProviderAuthScheme.self, forKey: .authScheme) ?? .bearer
+        credentialMetadata = try container.decodeIfPresent(
+            ProviderCredentialMetadata.self,
+            forKey: .credentialMetadata
+        ) ?? .none
         allowInsecureHTTP = try container.decodeIfPresent(Bool.self, forKey: .allowInsecureHTTP) ?? false
     }
 
@@ -227,6 +239,7 @@ struct Provider: Identifiable, Hashable, Codable, Sendable {
         try container.encode(baseURL, forKey: .baseURL)
         try container.encode(suggestedModel, forKey: .suggestedModel)
         try container.encode(authScheme, forKey: .authScheme)
+        try container.encode(credentialMetadata, forKey: .credentialMetadata)
         try container.encode(allowInsecureHTTP, forKey: .allowInsecureHTTP)
     }
 
@@ -237,6 +250,14 @@ struct Provider: Identifiable, Hashable, Codable, Sendable {
     var hasInlineKey: Bool { !apiKey.trimmingCharacters(in: .whitespaces).isEmpty }
 
     var maskedKeyPreview: String { CustomModel.mask(apiKey) }
+
+    var credentialMethodLabel: String {
+        switch credentialMetadata.kind {
+        case .none: return authScheme == .none ? "No credential" : "Not connected"
+        case .apiKey: return "API key"
+        case .oauthIssuedKey: return "OpenRouter OAuth"
+        }
+    }
 
     var validationError: String? {
         if id.trimmingCharacters(in: .whitespaces).isEmpty { return "Provider id is required." }
@@ -290,6 +311,16 @@ enum ProviderPreset: String, CaseIterable, Identifiable {
         case .clinePass: return "Cline Pass"
         }
     }
+
+    var connectionMethodLabel: String {
+        switch self {
+        case .openrouter: return "OAuth or API key"
+        case .ollama: return "No credential"
+        default: return "API key"
+        }
+    }
+
+    var supportsBrowserOAuth: Bool { self == .openrouter }
 
     /// Whether GrokBuild can discover models via `GET {base_url}/models`.
     var supportsModelListingFetch: Bool {
@@ -503,6 +534,13 @@ struct ProviderValidationResult: Sendable, Equatable {
     var checkedAt: Date
 
     var isConnected: Bool { status == .connected }
+
+    /// A static snapshot label. SwiftUI's `.relative` date style installs a repeating timer;
+    /// rebuilding the full Models scroll surface every second cost double-digit idle CPU after
+    /// several providers were validated.
+    var checkedAtLabel: String {
+        DateFormatter.localizedString(from: checkedAt, dateStyle: .none, timeStyle: .medium)
+    }
 }
 
 /// Fetches the list of available models from an OpenAI-compatible provider.

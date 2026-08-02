@@ -8,6 +8,41 @@ enum ProviderAuthScheme: String, Codable, CaseIterable, Sendable {
     case none
 }
 
+/// Non-secret provenance for a provider credential. The credential value itself is kept in
+/// Keychain; this metadata is safe to persist in UserDefaults and copy into diagnostics.
+enum ProviderCredentialKind: String, Codable, CaseIterable, Sendable {
+    case none
+    case apiKey = "api-key"
+    case oauthIssuedKey = "oauth-issued-key"
+}
+
+struct ProviderCredentialMetadata: Codable, Hashable, Sendable {
+    var kind: ProviderCredentialKind
+    var issuer: String? = nil
+    var connectedAt: Date? = nil
+    var updatedAt: Date? = nil
+    var lastValidatedAt: Date? = nil
+
+    static let none = ProviderCredentialMetadata(kind: .none)
+
+    static func apiKey(at date: Date = Date()) -> ProviderCredentialMetadata {
+        ProviderCredentialMetadata(kind: .apiKey, connectedAt: date, updatedAt: date)
+    }
+
+    static func openRouterOAuth(at date: Date = Date()) -> ProviderCredentialMetadata {
+        ProviderCredentialMetadata(
+            kind: .oauthIssuedKey,
+            issuer: "https://openrouter.ai",
+            connectedAt: date,
+            updatedAt: date
+        )
+    }
+
+    /// Used only when adopting a pre-Slice-12 Keychain entry. Nil dates avoid inventing a
+    /// historical connection time and make the migration stable across every subsequent load.
+    static let migratedAPIKey = ProviderCredentialMetadata(kind: .apiKey)
+}
+
 protocol ProviderCredentialStoring: Sendable {
     func credential(for providerID: String) throws -> String?
     func setCredential(_ credential: String, for providerID: String) throws
@@ -40,7 +75,10 @@ struct KeychainProviderCredentialStore: ProviderCredentialStoring {
         }
         let data = Data(trimmed.utf8)
         let query = baseQuery(providerID: providerID)
-        let attributes = [kSecValueData as String: data]
+        let attributes: [String: Any] = [
+            kSecValueData as String: data,
+            kSecAttrAccessible as String: kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly
+        ]
 
         let updateStatus = SecItemUpdate(query as CFDictionary, attributes as CFDictionary)
         if updateStatus == errSecSuccess { return }
@@ -50,6 +88,7 @@ struct KeychainProviderCredentialStore: ProviderCredentialStoring {
 
         var addQuery = query
         addQuery[kSecValueData as String] = data
+        addQuery[kSecAttrAccessible as String] = kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly
         let addStatus = SecItemAdd(addQuery as CFDictionary, nil)
         guard addStatus == errSecSuccess else { throw ProviderCredentialError.keychain(addStatus) }
     }
@@ -126,6 +165,11 @@ enum ProviderCredentialMigrator {
                 let provider = hydrated[index]
                 if let existing = try credentialStore.credential(for: provider.id), !existing.isEmpty {
                     hydrated[index].apiKey = existing
+                    if provider.authScheme != .none,
+                       hydrated[index].credentialMetadata.kind == .none {
+                        hydrated[index].credentialMetadata = .migratedAPIKey
+                        didMigrate = true
+                    }
                     continue
                 }
 
@@ -164,6 +208,10 @@ enum ProviderCredentialMigrator {
                 }
                 createdProviderIDs.append(provider.id)
                 hydrated[index].apiKey = candidate
+                if hydrated[index].authScheme != .none,
+                   hydrated[index].credentialMetadata.kind == .none {
+                    hydrated[index].credentialMetadata = .migratedAPIKey
+                }
                 didMigrate = true
             }
         } catch {

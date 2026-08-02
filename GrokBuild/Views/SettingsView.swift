@@ -3765,6 +3765,8 @@ private struct CustomModelsSettingsPane: View {
     @State private var providerDraft = Provider(id: "", name: "", baseURL: "")
     @State private var revealProviderKey = false
     @State private var modelFilterText = ""
+    @State private var openRouterOAuthTask: Task<Void, Never>?
+    @State private var openRouterOAuthError: String?
 
     private enum ProviderEditorField: Hashable { case id, name, url, key }
     @FocusState private var providerEditorFocus: ProviderEditorField?
@@ -3842,6 +3844,10 @@ private struct CustomModelsSettingsPane: View {
     private var fetchErrorMessage: String? {
         get { viewModel.fetchErrorMessage }
         nonmutating set { viewModel.fetchErrorMessage = newValue }
+    }
+    private var grokAuthenticationState: GrokAuthenticationState {
+        get { viewModel.grokAuthenticationState }
+        nonmutating set { viewModel.grokAuthenticationState = newValue }
     }
 
     private struct DefaultModelOption: Identifiable {
@@ -3929,6 +3935,7 @@ private struct CustomModelsSettingsPane: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 18) {
                     header
+                    grokAccountCard
                     if !migrationIssues.isEmpty {
                         migrationIssueCard
                     }
@@ -3977,6 +3984,13 @@ private struct CustomModelsSettingsPane: View {
             let catalog = await GrokModelCatalog.shared.models()
             guard !Task.isCancelled else { return }
             builtInModels = catalog
+        }
+        .task {
+            await refreshGrokAuthentication()
+        }
+        .onDisappear {
+            openRouterOAuthTask?.cancel()
+            openRouterOAuthTask = nil
         }
         .onChange(of: liveReceipt) { _, receipt in
             valueState.refreshLive(
@@ -4027,6 +4041,61 @@ private struct CustomModelsSettingsPane: View {
                 systemImage: SettingsTab.models.systemImage
             )
             SettingsPaneStateHeader(status: valueState.status)
+        }
+    }
+
+    private var grokAccountCard: some View {
+        settingsCard(title: "Grok Account", systemImage: "person.crop.circle.badge.checkmark") {
+            VStack(alignment: .leading, spacing: 10) {
+                HStack(alignment: .top, spacing: 10) {
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text(grokAuthenticationState.label)
+                            .font(.subheadline.weight(.semibold))
+                        Text(grokAuthenticationState.detail)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                    Spacer()
+                    if grokAuthenticationState == .checking {
+                        ProgressView().controlSize(.small)
+                    } else {
+                        badge(
+                            grokAuthenticationState.label,
+                            systemImage: grokAuthenticationState.isSignedIn
+                                ? "checkmark.circle.fill"
+                                : "person.crop.circle.badge.exclamationmark"
+                        )
+                    }
+                }
+
+                HStack(spacing: 10) {
+                    Button {
+                        openTerminalForGrokLogin()
+                    } label: {
+                        Label(
+                            grokAuthenticationState.isSignedIn ? "Sign in again…" : "Sign in with Grok…",
+                            systemImage: "safari"
+                        )
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .controlSize(.small)
+                    .disabled(GrokAuthentication.loginCommand() == nil)
+
+                    Button("Copy command") { copyGrokLoginCommand() }
+                        .controlSize(.small)
+                        .disabled(GrokAuthentication.loginCommand() == nil)
+
+                    Button("Check again") {
+                        Task { await refreshGrokAuthentication() }
+                    }
+                    .controlSize(.small)
+                    .disabled(grokAuthenticationState == .checking)
+                }
+
+                Text("Sign-in is owned by the grok CLI and xAI's browser flow. GrokBuild stores no Grok password or session token.")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+            }
         }
     }
 
@@ -4100,7 +4169,7 @@ private struct CustomModelsSettingsPane: View {
                         VStack(alignment: .leading, spacing: 2) {
                             Text("Provider Templates")
                                 .font(.subheadline.weight(.semibold))
-                            Text("Popular OpenAI-compatible providers. Install one to add it to “Your Providers”, then enter its API key.")
+                            Text("Popular OpenAI-compatible providers. Install one, then use its listed connection method.")
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
                                 .multilineTextAlignment(.leading)
@@ -4165,6 +4234,9 @@ private struct CustomModelsSettingsPane: View {
                     .font(.caption2)
                     .foregroundStyle(.secondary)
             }
+            Text(preset.connectionMethodLabel)
+                .font(.caption2.weight(.semibold))
+                .foregroundStyle(.secondary)
             Button(installed ? "Configure" : "Install") { addProviderPreset(preset) }
                 .controlSize(.small)
                 .buttonStyle(.bordered)
@@ -4189,7 +4261,7 @@ private struct CustomModelsSettingsPane: View {
                         .font(.callout)
                         .foregroundStyle(.secondary)
                 } else {
-                    Text("A provider holds a base URL and a shared API key. Multiple models can reuse the same provider.")
+                    Text("A provider holds a base URL and a Keychain-backed connection. Multiple models can reuse the same provider.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                     ForEach(providers) { provider in
@@ -4245,7 +4317,7 @@ private struct CustomModelsSettingsPane: View {
                     HStack(spacing: 6) {
                         Text(result.message)
                         Text("·")
-                        Text(result.checkedAt, style: .relative)
+                        Text("checked \(result.checkedAtLabel)")
                     }
                     .font(.caption2)
                     .foregroundStyle(.secondary)
@@ -4349,6 +4421,7 @@ private struct CustomModelsSettingsPane: View {
         Provider: \(provider.name) (\(provider.id))
         Endpoint: \(ProviderEndpointPolicy.redactedDisplay(urlString: provider.baseURL))
         Authentication: \(provider.authScheme.rawValue)
+        Connection method: \(provider.credentialMethodLabel)
         Credential present: \(provider.hasInlineKey ? "yes" : "no")
         Status: \(result.status.rawValue)
         Models returned: \(result.models.count)
@@ -4360,7 +4433,7 @@ private struct CustomModelsSettingsPane: View {
     @ViewBuilder
     private func providerKeyBadge(for provider: Provider) -> some View {
         if provider.hasInlineKey {
-            badge("Key saved", systemImage: "key.fill")
+            badge(provider.credentialMethodLabel, systemImage: "key.fill")
         } else if provider.isLocalEndpoint {
             badge("Local", systemImage: "desktopcomputer")
         } else {
@@ -4417,7 +4490,9 @@ private struct CustomModelsSettingsPane: View {
                     HStack(alignment: .top, spacing: 8) {
                         Image(systemName: "key.fill")
                             .foregroundStyle(.secondary)
-                        Text("Enter your \(providerDraft.name) API key, then tap **Add Provider** to install it. Nothing is saved until you do.")
+                        Text(providerDraft.id == ProviderPreset.openrouter.provider.id
+                             ? "Connect with OpenRouter in your browser or paste an API key. Nothing is saved until the connection succeeds or you tap **Add Provider**."
+                             : "Enter your \(providerDraft.name) API key, then tap **Add Provider** to install it. Nothing is saved until you do.")
                             .font(.caption)
                             .foregroundStyle(.secondary)
                     }
@@ -4481,6 +4556,9 @@ private struct CustomModelsSettingsPane: View {
                     .frame(maxWidth: 280)
                     .disabled(providerDraftFromPreset)
                 }
+                if providerDraft.id == ProviderPreset.openrouter.provider.id {
+                    openRouterOAuthRow
+                }
                 settingRow("API key") {
                     HStack(spacing: 8) {
                         Group {
@@ -4503,14 +4581,14 @@ private struct CustomModelsSettingsPane: View {
                     }
                 }
 
-                Text("The API key is stored in macOS Keychain. GrokBuild projects only the CLI-required copy into the owner-only ~/.grok/config.toml file. Local/open servers don't need a key.")
+                Text("Credentials are stored in macOS Keychain with device-only accessibility. GrokBuild projects only the CLI-required copy into the owner-only ~/.grok/config.toml file. Local/open servers don't need a key.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
 
                 providerFetchRow
 
                 HStack(spacing: 10) {
-                    Button(isEditingProvider ? "Save Provider" : "Add Provider") { saveProviderDraft() }
+                    Button(isEditingProvider ? "Save Provider" : "Add Provider") { _ = saveProviderDraft() }
                         .buttonStyle(.borderedProminent)
                         .disabled(providerDraft.validationError != nil)
                     Button("Cancel") { resetProviderDraft() }
@@ -4520,6 +4598,61 @@ private struct CustomModelsSettingsPane: View {
                             .font(.caption)
                             .foregroundStyle(.secondary)
                     }
+                }
+            }
+        }
+    }
+
+    private var openRouterOAuthRow: some View {
+        settingRow("OpenRouter OAuth") {
+            VStack(alignment: .leading, spacing: 7) {
+                HStack(spacing: 8) {
+                    if openRouterOAuthTask != nil {
+                        ProgressView().controlSize(.small)
+                        Text("Waiting for browser authorization…")
+                            .font(.caption)
+                        Button("Cancel") { cancelOpenRouterOAuth() }
+                            .controlSize(.small)
+                    } else {
+                        Button {
+                            connectOpenRouterWithOAuth()
+                        } label: {
+                            Label("Connect with OpenRouter…", systemImage: "safari")
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .controlSize(.small)
+
+                        if providerDraft.credentialMetadata.kind == .oauthIssuedKey {
+                            badge("OAuth key saved", systemImage: "checkmark.circle.fill")
+                        }
+                    }
+                }
+
+                Text("Uses OpenRouter's S256 browser flow and returns an API key to this Mac. The key is stored in Keychain; no browser password reaches GrokBuild.")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+
+                if let openRouterOAuthError {
+                    Text(openRouterOAuthError)
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                }
+
+                if providerDraft.hasInlineKey && isEditingProvider {
+                    HStack(spacing: 10) {
+                        Button("Disconnect locally", role: .destructive) {
+                            disconnectOpenRouterLocally()
+                        }
+                        .controlSize(.small)
+                        Link(
+                            "Manage or revoke remote keys",
+                            destination: URL(string: "https://openrouter.ai/settings/keys")!
+                        )
+                        .font(.caption)
+                    }
+                    Text("Disconnect locally removes the Keychain item and Grok CLI projection. Remote revocation remains an explicit OpenRouter account action.")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
                 }
             }
         }
@@ -5040,6 +5173,35 @@ private struct CustomModelsSettingsPane: View {
 
     // MARK: - Actions
 
+    private func refreshGrokAuthentication() async {
+        grokAuthenticationState = .checking
+        grokAuthenticationState = await GrokAuthentication.check()
+    }
+
+    private func openTerminalForGrokLogin() {
+        guard let command = GrokAuthentication.loginCommand() else { return }
+        let escaped = command
+            .replacingOccurrences(of: "\\", with: "\\\\")
+            .replacingOccurrences(of: "\"", with: "\\\"")
+        let script = """
+        tell application "Terminal"
+            activate
+            do script "\(escaped)"
+        end tell
+        """
+        var error: NSDictionary?
+        NSAppleScript(source: script)?.executeAndReturnError(&error)
+        if error != nil {
+            NSWorkspace.shared.open(URL(fileURLWithPath: "/System/Applications/Utilities/Terminal.app"))
+        }
+    }
+
+    private func copyGrokLoginCommand() {
+        guard let command = GrokAuthentication.loginCommand() else { return }
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(command, forType: .string)
+    }
+
     private func reload() async {
         // Keychain reads can wait on securityd. Running them synchronously in this
         // SwiftUI task freezes every click and even the accessibility server.
@@ -5098,6 +5260,51 @@ private struct CustomModelsSettingsPane: View {
 
     // MARK: - Provider actions
 
+    private func connectOpenRouterWithOAuth() {
+        guard providerDraft.id == ProviderPreset.openrouter.provider.id,
+              openRouterOAuthTask == nil else { return }
+        let previousDraft = providerDraft
+        openRouterOAuthError = nil
+        openRouterOAuthTask = Task {
+            do {
+                let key = try await OpenRouterOAuth.connect()
+                try Task.checkCancellation()
+                providerDraft.apiKey = key
+                providerDraft.credentialMetadata = .openRouterOAuth()
+                openRouterOAuthTask = nil
+                if saveProviderDraft() {
+                    statusMessage = "OpenRouter connected. Credential saved in Keychain."
+                } else {
+                    providerDraft = previousDraft
+                }
+            } catch is CancellationError {
+                openRouterOAuthTask = nil
+                openRouterOAuthError = "OpenRouter authorization was cancelled. Nothing changed."
+            } catch {
+                openRouterOAuthTask = nil
+                openRouterOAuthError = error.localizedDescription
+            }
+        }
+    }
+
+    private func cancelOpenRouterOAuth() {
+        openRouterOAuthTask?.cancel()
+        openRouterOAuthTask = nil
+        openRouterOAuthError = "OpenRouter authorization was cancelled. Nothing changed."
+    }
+
+    private func disconnectOpenRouterLocally() {
+        guard providerDraft.id == ProviderPreset.openrouter.provider.id else { return }
+        let previousDraft = providerDraft
+        providerDraft.apiKey = ""
+        providerDraft.credentialMetadata = .none
+        if saveProviderDraft() {
+            statusMessage = "OpenRouter disconnected locally. No remote key was revoked."
+        } else {
+            providerDraft = previousDraft
+        }
+    }
+
     /// Installing a template stages it in the editor (key empty) instead of persisting it
     /// immediately — the provider is only saved once the user enters a key and taps Save.
     /// If the preset is already installed, jump to editing the existing one.
@@ -5136,6 +5343,9 @@ private struct CustomModelsSettingsPane: View {
     }
 
     private func resetProviderDraft() {
+        openRouterOAuthTask?.cancel()
+        openRouterOAuthTask = nil
+        openRouterOAuthError = nil
         providerDraft = Provider(id: "", name: "", baseURL: "")
         editingProviderID = nil
         providerDraftFromPreset = false
@@ -5143,8 +5353,18 @@ private struct CustomModelsSettingsPane: View {
         showingProviderEditor = false
     }
 
-    private func saveProviderDraft() {
-        guard providerDraft.validationError == nil else { return }
+    @discardableResult
+    private func saveProviderDraft() -> Bool {
+        guard providerDraft.validationError == nil else { return false }
+        let previousProviders = providers
+        let previousModels = models
+        let trimmedCredential = providerDraft.apiKey.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmedCredential.isEmpty {
+            providerDraft.credentialMetadata = .none
+        } else if providerDraft.credentialMetadata.kind == .none,
+                  providerDraft.authScheme != .none {
+            providerDraft.credentialMetadata = .apiKey()
+        }
         let affectedModelIDs = Set(modelsUsingProviderID(editingProviderID ?? providerDraft.id).map(\.id))
         if let editingProviderID, let index = providers.firstIndex(where: { $0.id == editingProviderID }) {
             providers[index] = providerDraft
@@ -5159,8 +5379,12 @@ private struct CustomModelsSettingsPane: View {
             try ProviderStore.save(providers)
             resetProviderDraft()
             persist(change: .models(affectedModelIDs))
+            return true
         } catch {
+            providers = previousProviders
+            models = previousModels
             errorMessage = error.localizedDescription
+            return false
         }
     }
 
@@ -5224,6 +5448,16 @@ private struct CustomModelsSettingsPane: View {
                 guard key == "__draft__" || providers.contains(where: { $0.id == key }) else { return }
                 fetchedModels[key] = result.models
                 validationResults[key] = result
+                if result.status == .connected,
+                   let index = providers.firstIndex(where: { $0.id == key }),
+                   providers[index].credentialMetadata.kind != .none {
+                    providers[index].credentialMetadata.lastValidatedAt = result.checkedAt
+                    do {
+                        try ProviderStore.save(providers)
+                    } catch {
+                        errorMessage = "Connection succeeded, but validation metadata could not be saved: \(error.localizedDescription)"
+                    }
+                }
                 if result.status != .connected {
                     fetchErrorProviderID = key
                     fetchErrorMessage = result.message

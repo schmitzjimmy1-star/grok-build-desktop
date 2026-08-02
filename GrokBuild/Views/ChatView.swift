@@ -2616,7 +2616,7 @@ struct AuthBanner: View {
                 Button {
                     openTerminalForLogin()
                 } label: {
-                    Label("Open Terminal & Run `grok login`", systemImage: "terminal")
+                    Label("Sign in with Grok…", systemImage: "terminal")
                 }
                 .buttonStyle(.borderedProminent)
 
@@ -2660,11 +2660,17 @@ struct AuthBanner: View {
     }
 
     private func openTerminalForLogin() {
-        // Use AppleScript to open Terminal and run the login command
+        guard let command = GrokAuthentication.loginCommand() else {
+            openTerminalApp()
+            return
+        }
+        let escaped = command
+            .replacingOccurrences(of: "\\", with: "\\\\")
+            .replacingOccurrences(of: "\"", with: "\\\"")
         let script = """
         tell application "Terminal"
             activate
-            do script "grok login"
+            do script "\(escaped)"
         end tell
         """
 
@@ -2686,9 +2692,10 @@ struct AuthBanner: View {
     }
 
     private func copyLoginCommand() {
+        guard let command = GrokAuthentication.loginCommand() else { return }
         let pasteboard = NSPasteboard.general
         pasteboard.clearContents()
-        pasteboard.setString("grok login", forType: .string)
+        pasteboard.setString(command, forType: .string)
     }
 }
 

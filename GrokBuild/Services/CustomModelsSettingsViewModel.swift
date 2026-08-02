@@ -51,4 +51,5 @@ final class CustomModelsSettingsViewModel {
     var fetchingProviderID: String?
     var fetchErrorProviderID: String?
     var fetchErrorMessage: String?
+    var grokAuthenticationState: GrokAuthenticationState = .checking
 }

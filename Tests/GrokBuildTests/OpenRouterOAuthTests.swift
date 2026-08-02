@@ -48,6 +48,10 @@ final class OpenRouterOAuthTests: XCTestCase {
         )
         XCTAssertNil(OpenRouterOAuth.extractCode(fromRequestLine: "GET /cb-xyz HTTP/1.1"))
         XCTAssertNil(OpenRouterOAuth.extractCode(fromRequestLine: "garbage"))
+        XCTAssertNil(OpenRouterOAuth.extractCode(
+            fromRequestLine: "GET /cb-wrong?code=ABC123 HTTP/1.1",
+            expectedPath: "/cb-right"
+        ))
     }
 
     // MARK: - Exchange request / response
@@ -105,6 +109,40 @@ final class OpenRouterOAuthTests: XCTestCase {
             guard case OpenRouterOAuth.OAuthError.timedOut = error else {
                 return XCTFail("expected timedOut, got \(error)")
             }
+        }
+    }
+
+    func testLoopbackServerRejectsWrongPathThenAcceptsExactCallback() async throws {
+        let server = LoopbackCallbackServer()
+        let callbackURL = try await server.start()
+        defer { server.stop() }
+
+        async let captured = server.waitForCode(timeout: 10)
+        var wrong = URLComponents(url: callbackURL, resolvingAgainstBaseURL: false)!
+        wrong.path = "/not-the-random-callback"
+        wrong.queryItems = [URLQueryItem(name: "code", value: "attacker-code")]
+        let (_, wrongResponse) = try await URLSession(configuration: .ephemeral).data(from: wrong.url!)
+        XCTAssertEqual((wrongResponse as? HTTPURLResponse)?.statusCode, 404)
+
+        var exact = URLComponents(url: callbackURL, resolvingAgainstBaseURL: false)!
+        exact.queryItems = [URLQueryItem(name: "code", value: "exact-code")]
+        let (_, exactResponse) = try await URLSession(configuration: .ephemeral).data(from: exact.url!)
+        XCTAssertEqual((exactResponse as? HTTPURLResponse)?.statusCode, 200)
+        let capturedCode = try await captured
+        XCTAssertEqual(capturedCode, "exact-code")
+    }
+
+    func testLoopbackWaitCancelsWithoutAcceptingAKey() async throws {
+        let server = LoopbackCallbackServer()
+        _ = try await server.start()
+        defer { server.stop() }
+        let waiter = Task { try await server.waitForCode(timeout: 10) }
+        waiter.cancel()
+        do {
+            _ = try await waiter.value
+            XCTFail("expected cancellation")
+        } catch is CancellationError {
+            // Expected: cancellation never synthesizes an authorization result.
         }
     }
 

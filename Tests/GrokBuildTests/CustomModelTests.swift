@@ -358,6 +358,37 @@ final class CustomModelTests: XCTestCase {
         }
     }
 
+    func testEveryProviderPresetHasAnExplicitConnectionContract() {
+        struct Expected {
+            let preset: ProviderPreset
+            let baseURL: String
+            let auth: ProviderAuthScheme
+            let backend: ModelAPIBackend
+            let method: String
+        }
+        let cases = [
+            Expected(preset: .openai, baseURL: "https://api.openai.com/v1", auth: .bearer, backend: .responses, method: "API key"),
+            Expected(preset: .openrouter, baseURL: "https://openrouter.ai/api/v1", auth: .bearer, backend: .chatCompletions, method: "OAuth or API key"),
+            Expected(preset: .zai, baseURL: "https://api.z.ai/api/coding/paas/v4", auth: .bearer, backend: .chatCompletions, method: "API key"),
+            Expected(preset: .minimax, baseURL: "https://api.minimax.io/v1", auth: .bearer, backend: .chatCompletions, method: "API key"),
+            Expected(preset: .kimi, baseURL: "https://api.moonshot.ai/v1", auth: .bearer, backend: .chatCompletions, method: "API key"),
+            Expected(preset: .qwen, baseURL: "https://dashscope-intl.aliyuncs.com/compatible-mode/v1", auth: .bearer, backend: .chatCompletions, method: "API key"),
+            Expected(preset: .xiaomiMiMo, baseURL: "https://api.xiaomimimo.com/v1", auth: .bearerAndAPIKey, backend: .chatCompletions, method: "API key"),
+            Expected(preset: .deepseek, baseURL: "https://api.deepseek.com", auth: .bearer, backend: .chatCompletions, method: "API key"),
+            Expected(preset: .ollama, baseURL: "http://localhost:11434/v1", auth: .none, backend: .chatCompletions, method: "No credential"),
+            Expected(preset: .clinePass, baseURL: "https://api.cline.bot/api/v1", auth: .bearer, backend: .chatCompletions, method: "API key"),
+        ]
+        XCTAssertEqual(cases.count, ProviderPreset.allCases.count)
+        for expected in cases {
+            let provider = expected.preset.provider
+            XCTAssertEqual(provider.baseURL, expected.baseURL, "\(expected.preset)")
+            XCTAssertEqual(provider.authScheme, expected.auth, "\(expected.preset)")
+            XCTAssertEqual(expected.preset.defaultAPIBackend, expected.backend, "\(expected.preset)")
+            XCTAssertEqual(expected.preset.connectionMethodLabel, expected.method, "\(expected.preset)")
+            XCTAssertEqual(expected.preset.supportsBrowserOAuth, expected.preset == .openrouter)
+        }
+    }
+
     func testDeepSeekPresetEndpoint() {
         let provider = ProviderPreset.deepseek.provider
         XCTAssertEqual(provider.baseURL, "https://api.deepseek.com")

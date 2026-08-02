@@ -3,6 +3,18 @@ import XCTest
 @testable import GrokBuild
 
 final class ProviderReliabilityTests: XCTestCase {
+    func testValidationTimestampLabelIsStaticAndNonEmpty() {
+        let result = ProviderValidationResult(
+            status: .connected,
+            models: [],
+            missingModelIDs: [],
+            message: "Connected",
+            checkedAt: Date(timeIntervalSince1970: 1_722_000_000)
+        )
+        XCTAssertFalse(result.checkedAtLabel.isEmpty)
+        XCTAssertFalse(result.checkedAtLabel.contains("ago"))
+    }
+
     func testSecureRepositorySerializesMutationsAndEnforcesOwnerOnlyPermissions() throws {
         let root = FileManager.default.temporaryDirectory
             .appendingPathComponent("grok-config-repository-\(UUID().uuidString)")
@@ -46,6 +58,27 @@ final class ProviderReliabilityTests: XCTestCase {
         XCTAssertTrue(text.contains("bearer"))
     }
 
+    func testProviderEncodingKeepsOnlyNonSecretCredentialProvenance() throws {
+        let connected = Date(timeIntervalSince1970: 1_234)
+        let provider = Provider(
+            id: "openrouter",
+            name: "OpenRouter",
+            baseURL: "https://openrouter.ai/api/v1",
+            apiKey: "must-stay-in-keychain",
+            credentialMetadata: .openRouterOAuth(at: connected)
+        )
+        let data = try JSONEncoder().encode(provider)
+        let text = String(decoding: data, as: UTF8.self)
+        XCTAssertFalse(text.contains("must-stay-in-keychain"))
+        XCTAssertTrue(text.contains("oauth-issued-key"))
+        XCTAssertTrue(text.contains("https:\\/\\/openrouter.ai"))
+
+        let decoded = try JSONDecoder().decode(Provider.self, from: data)
+        XCTAssertEqual(decoded.apiKey, "")
+        XCTAssertEqual(decoded.credentialMetadata.kind, .oauthIssuedKey)
+        XCTAssertEqual(decoded.credentialMetadata.connectedAt, connected)
+    }
+
     func testCredentialMigrationPrefersProviderKeyAndIsIdempotent() throws {
         let store = InMemoryProviderCredentialStore()
         let providers = [Provider(
@@ -70,16 +103,20 @@ final class ProviderReliabilityTests: XCTestCase {
         XCTAssertFalse(first.storageFailed)
         XCTAssertEqual(first.providers.first?.apiKey, "provider-key")
         XCTAssertEqual(try store.credential(for: "openai"), "provider-key")
+        XCTAssertEqual(first.providers.first?.credentialMetadata.kind, .apiKey)
 
         let second = ProviderCredentialMigrator.migrate(
-            providers: providers.map {
-                Provider(id: $0.id, name: $0.name, baseURL: $0.baseURL)
+            providers: first.providers.map {
+                var metadataOnly = $0
+                metadataOnly.apiKey = ""
+                return metadataOnly
             },
             models: models,
             credentialStore: store
         )
         XCTAssertFalse(second.didMigrate)
         XCTAssertEqual(second.providers.first?.apiKey, "provider-key")
+        XCTAssertEqual(second.providers.first?.credentialMetadata.kind, .apiKey)
     }
 
     func testCredentialMigrationReportsConflictingModelKeysWithoutGuessing() throws {

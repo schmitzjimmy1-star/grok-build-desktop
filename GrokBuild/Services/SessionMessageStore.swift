@@ -171,7 +171,9 @@ enum SessionMessageStore {
                     if let existing = readEnvelope(for: id, rootURL: rootURL) {
                         // A previous incomplete migration may have left a verified candidate. Do
                         // not overwrite a newer, different file with stale legacy bytes.
-                        guard existing.messages == messages else { throw MigrationFailure.candidateMismatch }
+                        guard messagesEquivalent(existing.messages, messages) else {
+                            throw MigrationFailure.candidateMismatch
+                        }
                         guard let existingMetadata = readMetadata(for: id, rootURL: rootURL),
                               metadataMatches(existingMetadata, envelope: existing) else {
                             throw MigrationFailure.candidateMismatch
@@ -195,7 +197,7 @@ enum SessionMessageStore {
                     guard let expected = decoded[id],
                           let envelope = readEnvelope(for: id, rootURL: rootURL),
                           envelope.localSessionID == id,
-                          envelope.messages == expected,
+                          messagesEquivalent(envelope.messages, expected),
                           let metadata = readMetadata(for: id, rootURL: rootURL),
                           metadataMatches(metadata, envelope: envelope),
                           transcriptVerificationTag(sessionID: id, messages: envelope.messages, key: key)
@@ -212,7 +214,8 @@ enum SessionMessageStore {
                     integrityTag: migrationIntegrityTag(sessionIDs: sessionIDs, legacy: legacy, key: key)
                 )
                 guard writeMigrationMarker(marker, rootURL: rootURL),
-                      readMigrationMarker(rootURL: rootURL) == marker else {
+                      let storedMarker = readMigrationMarker(rootURL: rootURL),
+                      migrationMarkersEquivalent(storedMarker, marker) else {
                     throw MigrationFailure.writeFailed
                 }
                 return .migrated(transcriptCount: sessionIDs.count)
@@ -303,7 +306,7 @@ enum SessionMessageStore {
     ) -> Metadata? {
         if let existing,
            existing.localSessionID == sessionID,
-           existing.messages == messages,
+           messagesEquivalent(existing.messages, messages),
            let existingMetadata = readMetadata(for: sessionID, rootURL: rootURL),
            metadataMatches(existingMetadata, envelope: existing) {
             return existingMetadata
@@ -331,8 +334,11 @@ enum SessionMessageStore {
               let metadataData = try? JSONEncoder().encode(metadata),
               atomicWrite(envelopeData, to: transcriptURL(for: sessionID, rootURL: rootURL)),
               atomicWrite(metadataData, to: metadataURL(for: sessionID, rootURL: rootURL)),
-              readEnvelope(for: sessionID, rootURL: rootURL) == envelope,
-              readMetadata(for: sessionID, rootURL: rootURL) == metadata else {
+              let storedEnvelope = readEnvelope(for: sessionID, rootURL: rootURL),
+              envelopesEquivalent(storedEnvelope, envelope),
+              let storedMetadata = readMetadata(for: sessionID, rootURL: rootURL),
+              metadataMatches(storedMetadata, envelope: storedEnvelope),
+              abs(storedMetadata.modifiedAt.timeIntervalSince(metadata.modifiedAt)) < 0.001 else {
             return nil
         }
         return metadata
@@ -416,6 +422,36 @@ enum SessionMessageStore {
             && metadata.generation == envelope.generation
             && metadata.messageCount == envelope.messages.count
             && metadata.restorableMessageCount == envelope.messages.filter(isRestorableMessage).count
+    }
+
+    /// Foundation's default Date JSON representation can move by a fraction of a microsecond
+    /// across a decode→encode→decode cycle. Persistence verification must compare the transcript
+    /// payload exactly while treating sub-millisecond timestamp representation as equivalent.
+    private static func messagesEquivalent(_ lhs: [Message], _ rhs: [Message]) -> Bool {
+        guard lhs.count == rhs.count else { return false }
+        return zip(lhs, rhs).allSatisfy { left, right in
+            left.id == right.id
+                && left.role == right.role
+                && left.content == right.content
+                && left.provenance == right.provenance
+                && abs(left.timestamp.timeIntervalSince(right.timestamp)) < 0.001
+        }
+    }
+
+    private static func envelopesEquivalent(_ lhs: Envelope, _ rhs: Envelope) -> Bool {
+        lhs.localSessionID == rhs.localSessionID
+            && lhs.storageVersion == rhs.storageVersion
+            && lhs.generation == rhs.generation
+            && abs(lhs.writtenAt.timeIntervalSince(rhs.writtenAt)) < 0.001
+            && messagesEquivalent(lhs.messages, rhs.messages)
+    }
+
+    private static func migrationMarkersEquivalent(_ lhs: MigrationMarker, _ rhs: MigrationMarker) -> Bool {
+        lhs.storageVersion == rhs.storageVersion
+            && lhs.legacyTranscriptCount == rhs.legacyTranscriptCount
+            && lhs.localSessionIDs == rhs.localSessionIDs
+            && lhs.integrityTag == rhs.integrityTag
+            && abs(lhs.completedAt.timeIntervalSince(rhs.completedAt)) < 0.001
     }
 
     private static func legacyMap(defaults: UserDefaults) -> [String: Data]? {
@@ -535,7 +571,25 @@ enum SessionMessageStore {
         messages: [Message],
         key: Data
     ) -> String {
-        let body = (try? JSONEncoder().encode(messages)) ?? Data()
+        struct Fingerprint: Codable {
+            let id: UUID
+            let role: MessageRole
+            let content: String
+            let timestampMilliseconds: Int64
+            let provenance: TranscriptMessageProvenance?
+        }
+        let fingerprints = messages.map { message in
+            Fingerprint(
+                id: message.id,
+                role: message.role,
+                content: message.content,
+                timestampMilliseconds: Int64((message.timestamp.timeIntervalSince1970 * 1_000).rounded()),
+                provenance: message.provenance
+            )
+        }
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.sortedKeys]
+        let body = (try? encoder.encode(fingerprints)) ?? Data()
         var payload = Data(sessionID.uuidString.utf8)
         payload.append(0x1F)
         payload.append(body)

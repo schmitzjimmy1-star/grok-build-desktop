@@ -35,8 +35,8 @@ If you mainly use the grok TUI or CLI and just need a UI for providers and model
 
 1. Install the `grok` CLI and open GrokBuild Desktop App (no project or `grok login` required for this path).
 2. Open **Settings → Models**.
-3. Install a provider (endpoint + API key), run **Test connection**, then add one or more returned OpenAI-compatible models.
-4. The provider key is stored in macOS Keychain. GrokBuild projects the CLI-required model copy into owner-only (`0600`) `~/.grok/config.toml`, so `/model <id>` still works in the grok CLI/TUI and in GrokBuild sessions.
+3. Install a provider, use its declared connection method, run **Test connection**, then add one or more returned OpenAI-compatible models. OpenRouter supports S256 browser OAuth or a pasted API key; local Ollama needs no credential; the other official presets use API keys.
+4. Provider secrets are stored in macOS Keychain with device-only accessibility. GrokBuild projects only the CLI-required model copy into owner-only (`0600`) `~/.grok/config.toml`, so `/model <id>` still works in the grok CLI/TUI and in GrokBuild sessions.
 
 GrokBuild does not load provider credentials from a project `.env` file. A custom or local endpoint may use an unverified model ID only through the explicit advanced path.
 
@@ -85,7 +85,8 @@ Release assets are versioned, e.g. `GrokBuild-v0.1.10.app.zip` and `GrokBuild-v0
 - Per-tab **model** selection and per-project **reasoning effort** through one compact native menu with the models directly visible and an Effort submenu. Model labels distinguish Saved, Pending, Requested, Live, Rejected, and Unknown; an accepted ACP request without an effective-model readback never masquerades as live confirmation. Fresh chats seed this list from the installed `grok` CLI and fall back to Grok 4.5 while ACP connects.
 - Git branch/worktree management from the session status row.
 - `Open in` menu for Finder, Cursor, VS Code, Terminal, iTerm, and Zed.
-- **Custom models (standalone)** — OpenAI-compatible providers and models in **Settings → Models** with Keychain-backed provider secrets, typed catalog validation, redacted diagnostics, native Chat Completions / Responses / Anthropic Messages routing, and atomic owner-only writes to `~/.grok/config.toml`. GrokBuild-only UI hints live in a non-secret sidecar, so the CLI config contains only fields Grok understands. OpenAI preset models default to the Responses API. Usable on its own (no project/session); models are then available in the grok CLI/TUI and in GrokBuild sessions.
+- **Grok and provider sign-in** — **Settings → Models** shows coarse local Grok sign-in state and can launch the resolved CLI's xAI browser flow (`grok login --oauth`) without storing its session. OpenRouter supports exact-loopback S256 OAuth or paste-key setup; every other preset declares API-key or keyless connection explicitly.
+- **Custom models (standalone)** — OpenAI-compatible providers and models in **Settings → Models** with device-only Keychain-backed provider secrets, typed catalog validation, redacted diagnostics, native Chat Completions / Responses / Anthropic Messages routing, and atomic owner-only writes to `~/.grok/config.toml`. GrokBuild-only UI hints and credential provenance live in a non-secret sidecar, so the CLI config contains only fields Grok understands. OpenAI preset models default to the Responses API. Usable on its own (no project/session); models are then available in the grok CLI/TUI and in GrokBuild sessions.
 
 ### Agent Capabilities
 

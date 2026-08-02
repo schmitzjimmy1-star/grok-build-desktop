@@ -2,9 +2,30 @@
 
 Date: 2026-07-31
 
-Status: planned follow-on to the completed architecture/provider reliability audit
+Status: Slice 12 provider-auth implementation complete; installed acceptance pending
 
 Default product decision: **Grok-first, ACP-open; OpenRouter is optional routing, never a silent fallback**
+
+## Slice 12 implementation checkpoint — 2026-08-01
+
+The provider-auth portion of this plan is now implemented without adding a dependency or
+second agent runtime. `ProviderCredentialMetadata` persists only credential kind, issuer,
+connection/update time, and last validation; secret values remain in Keychain using
+`kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly`, with only the grok-required owner-only
+`config.toml` projection. Existing Keychain entries migrate idempotently as API-key
+credentials.
+
+OpenRouter now offers **Connect with OpenRouter…** and paste-key paths. The S256 PKCE
+listener binds only `127.0.0.1`, requires its random exact path, is single-result,
+cancellable, and bounded by timeout. Local disconnect and remote key management are
+visibly separate. Grok sign-in is represented independently: Settings probes `grok models`
+without inference, keeps only coarse signed-in state, and opens the resolved CLI with
+`login --oauth`; GrokBuild never stores the Grok login session.
+
+Every built-in provider now declares an explicit connection method and has a fixture-pinned
+endpoint, authentication-header, API-backend, and catalog contract. Generic custom OAuth,
+OAuth token-set/refresh handling, arbitrary issuers, alternate ACP backends, and richer
+OpenRouter account/catalog metadata remain deferred rather than being faked.
 
 ## Why this is a separate phase
 
@@ -41,7 +62,7 @@ These are concrete gaps, not speculative refactors:
 
 Resolved in the reliability pass: model/provider links now persist in `CustomModelMetadataStore` and infer only on one unambiguous endpoint match; OpenAI `gpt-5.6-terra` now uses Grok's native Responses backend and passes the required CLI smoke. Runtime smoke remains an acceptance gate because catalog success alone still cannot prove an arbitrary provider/backend combination.
 
-Resolved in the Fable 5 endpoint-trust pass (2026-07-31): items 1–3 above are fixed in source. `ProviderEndpointPolicy` classifies locality from the parsed URL host (exact loopback `localhost`/`*.localhost`/`127.0.0.0/8`/`::1`, plus the `0.0.0.0` and `host.docker.internal` aliases kept for existing setups); remote `http://` now fails model/provider validation and `ProviderModelFetcher.request(for:)` refuses to attach a credential over cleartext (typed `insecureEndpoint`); `ProviderRedirectPolicyDelegate` bounds catalog redirects to three same-origin hops with cross-origin and https→http refused (typed `redirectBlocked`); and `canFetch` passes the caller's explicit auth scheme through so `.none` keyless remote providers can Test connection/Fetch models. Covered by `ProviderEndpointPolicyTests` plus new `ProviderReliabilityTests` fixtures — 324 tests green. Items 4–6 remain open; see `docs/FABLE_5_IMPLEMENTATION_PLAN.md`.
+Resolved in the Fable 5 endpoint-trust pass (2026-07-31): items 1–3 above are fixed in source. `ProviderEndpointPolicy` classifies locality from the parsed URL host (exact loopback `localhost`/`*.localhost`/`127.0.0.0/8`/`::1`, plus the `0.0.0.0` and `host.docker.internal` aliases kept for existing setups); remote `http://` now fails model/provider validation and `ProviderModelFetcher.request(for:)` refuses to attach a credential over cleartext (typed `insecureEndpoint`); `ProviderRedirectPolicyDelegate` bounds catalog redirects to three same-origin hops with cross-origin and https→http refused (typed `redirectBlocked`); and `canFetch` passes the caller's explicit auth scheme through so `.none` keyless remote providers can Test connection/Fetch models. Covered by `ProviderEndpointPolicyTests` plus new `ProviderReliabilityTests` fixtures — 324 tests green. Slice 12 resolves item 4 for API keys and OpenRouter-issued keys; ACP agent authentication and richer routed-catalog capability metadata in items 5–6 remain deferred.
 
 ## Workstream 1 — endpoint and provider identity hardening
 

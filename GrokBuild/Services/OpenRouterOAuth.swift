@@ -66,11 +66,23 @@ enum OpenRouterOAuth {
     }
 
     /// Extracts `?code=` from an HTTP request line like `GET /cb-UUID?code=XYZ HTTP/1.1`.
-    static func extractCode(fromRequestLine line: String) -> String? {
+    /// When `expectedPath` is supplied, lookalike callbacks are rejected before their code
+    /// can satisfy the pending authorization.
+    static func extractCode(fromRequestLine line: String, expectedPath: String? = nil) -> String? {
         let parts = line.split(separator: " ")
         guard parts.count >= 2 else { return nil }
         guard let components = URLComponents(string: "http://127.0.0.1\(parts[1])") else { return nil }
+        if let expectedPath, components.path != expectedPath { return nil }
         return components.queryItems?.first(where: { $0.name == "code" })?.value?.nonEmpty
+    }
+
+    static func requestPath(fromRequestLine line: String) -> String? {
+        let parts = line.split(separator: " ")
+        guard parts.count >= 2,
+              let components = URLComponents(string: "http://127.0.0.1\(parts[1])") else {
+            return nil
+        }
+        return components.path
     }
 
     static func exchangeRequest(code: String, verifier: String) -> URLRequest {
@@ -142,7 +154,9 @@ final class LoopbackCallbackServer: @unchecked Sendable {
     func start() async throws -> URL {
         let listener: NWListener
         do {
-            listener = try NWListener(using: .tcp, on: .any)
+            let parameters = NWParameters.tcp
+            parameters.requiredLocalEndpoint = .hostPort(host: "127.0.0.1", port: .any)
+            listener = try NWListener(using: parameters)
         } catch {
             throw OpenRouterOAuth.OAuthError.listenerFailed(error.localizedDescription)
         }
@@ -239,20 +253,32 @@ final class LoopbackCallbackServer: @unchecked Sendable {
             guard let self else { return }
             let request = data.flatMap { String(data: $0, encoding: .utf8) } ?? ""
             let firstLine = request.split(whereSeparator: { $0 == "\r" || $0 == "\n" }).first.map(String.init) ?? request
-            let code = OpenRouterOAuth.extractCode(fromRequestLine: firstLine)
+            guard OpenRouterOAuth.requestPath(fromRequestLine: firstLine) == self.path else {
+                self.sendResponse(
+                    status: "404 Not Found",
+                    body: "This is not the active GrokBuild authorization callback.",
+                    over: connection
+                )
+                return
+            }
+            let code = OpenRouterOAuth.extractCode(fromRequestLine: firstLine, expectedPath: self.path)
             let body = code != nil
                 ? "GrokBuild is connected to OpenRouter. You can close this window and return to the app."
                 : "No authorization code was received. You can close this window and try Connect again."
-            let response = "HTTP/1.1 200 OK\r\nContent-Type: text/plain; charset=utf-8\r\nContent-Length: \(body.utf8.count)\r\nConnection: close\r\n\r\n\(body)"
-            connection.send(content: Data(response.utf8), completion: .contentProcessed { _ in
-                connection.cancel()
-            })
+            self.sendResponse(status: "200 OK", body: body, over: connection)
             if let code {
                 self.resolve(.success(code))
             } else {
                 self.resolve(.failure(OpenRouterOAuth.OAuthError.missingCode))
             }
         }
+    }
+
+    private func sendResponse(status: String, body: String, over connection: NWConnection) {
+        let response = "HTTP/1.1 \(status)\r\nContent-Type: text/plain; charset=utf-8\r\nContent-Length: \(body.utf8.count)\r\nConnection: close\r\n\r\n\(body)"
+        connection.send(content: Data(response.utf8), completion: .contentProcessed { _ in
+            connection.cancel()
+        })
     }
 
     private func resolve(_ result: Result<String, Error>) {

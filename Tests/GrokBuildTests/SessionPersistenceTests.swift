@@ -378,11 +378,14 @@ final class SessionPersistenceTests: XCTestCase {
         }
         let first = UUID()
         let second = UUID()
+        let fractionalTimestamp = Date(timeIntervalSince1970: 1_722_000_000.1234567)
         let legacy: [String: Data] = [
-            first.uuidString: try JSONEncoder().encode([Message(role: .user, content: "one")]),
+            first.uuidString: try JSONEncoder().encode([
+                Message(role: .user, content: "one", timestamp: fractionalTimestamp)
+            ]),
             second.uuidString: try JSONEncoder().encode([
-                Message(role: .user, content: "two"),
-                Message(role: .assistant, content: "answer"),
+                Message(role: .user, content: "two", timestamp: fractionalTimestamp),
+                Message(role: .assistant, content: "answer", timestamp: fractionalTimestamp),
             ]),
         ]
         defaults.set(legacy, forKey: SessionMessageStore.legacyStorageKey)

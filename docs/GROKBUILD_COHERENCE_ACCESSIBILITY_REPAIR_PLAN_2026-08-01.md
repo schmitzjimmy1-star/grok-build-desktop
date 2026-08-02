@@ -3,7 +3,7 @@
 | Field | Value |
 |---|---|
 | Prepared | 2026-08-01 |
-| Status | Slices 0–10 implemented and installed-app accepted; Slice 11 remains unstarted |
+| Status | Slices 0–11 implemented and installed-app accepted; Slice 12 provider-auth implementation complete and awaiting installed acceptance |
 | Scope | Maintained SwiftUI app, current Grok CLI 0.2.118 contract, installed-app acceptance, and every unresolved hole from the Settings/startup/performance/backend-CPR audit |
 | Canonical worktree | /Users/jimmyschmitz/Desktop/Projects/MCP Servers/Grok Build/grok-build-desktop |
 | Canonical branch | codex/warm-glass-ui |
@@ -1761,6 +1761,35 @@ Deliver:
 - rollback proof.
 
 No merge or release follows automatically. Publication and release remain explicit operations under repository rules.
+
+#### Slice 11 checkpoint — installed acceptance complete
+
+- All fourteen Settings panes completed a fresh accessibility-tree round trip in the signed
+  installed Slice 10 app. No Apply, provider connection, permission prompt, extension
+  mutation, or provider send ran.
+- Three saved tabs covered Grok 4.5, `deepseek/deepseek-v4-flash-0731`, and a temporary
+  `gpt-5.6-terra` selection. The temporary selection was restored to Grok 4.5 before quit;
+  exact relaunch recovered the saved DeepSeek tab and local-only continuity boundary.
+- The ten-minute idle soak collected 61 samples: maximum CPU 0.0%, RSS bounded from
+  22,096–114,544 KB, and zero owned children. Config and the 67-file transcript tree kept
+  their Slice 10 digests.
+- Signed rollback `/Users/jimmyschmitz/.Trash/GrokBuild-pre-slice-12-20260801-232458.app`
+  passed deep/strict verification before Slice 12 work began.
+- The order-sensitive migration warning was promoted to a release blocker. Slice 12 now
+  canonicalizes the keyed migration fingerprint and tolerates only sub-millisecond `Date`
+  representation drift; three consecutive 489-test runs pass.
+
+### Slice 12 — Grok and provider authentication
+
+Deliver:
+
+- visible Grok CLI sign-in state and exact `grok login --oauth` handoff without token custody;
+- OpenRouter S256 OAuth plus paste-key setup, exact loopback callback enforcement,
+  cancellation, local disconnect, and explicit remote-key management;
+- device-only Keychain storage and non-secret credential provenance;
+- explicit connection/auth/catalog contracts for every official provider preset;
+- no secret-bearing logs, receipts, UserDefaults values, or source fixtures;
+- focused provider tests, full-suite stability, signed installed acceptance, and rollback proof.
 
 ## 21. Automated verification matrix
 

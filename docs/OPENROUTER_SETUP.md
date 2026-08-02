@@ -1,23 +1,38 @@
-# OpenRouter in GrokBuild — paste-your-key setup
+# OpenRouter in GrokBuild — OAuth or API key
 
-OpenRouter is a first-class provider template as of 2026-07-31. One OpenRouter key
+OpenRouter is a first-class provider template. One OpenRouter key
 fronts models from many labs (OpenAI, Anthropic, Google, xAI, Meta, …), and because it
 speaks the OpenAI Chat Completions protocol it rides GrokBuild's existing provider,
 Keychain, catalog, and endpoint-trust machinery — no new runtime, no dependency.
 
-## Get a key
+## Recommended: connect in your browser
 
-<https://openrouter.ai/keys> → create a key (starts with `sk-or-...`). Add credit or a
-spend limit on your OpenRouter account as you like; GrokBuild never sees your balance.
+1. Open **Settings → Models**.
+2. Under **Add Provider → Provider Templates**, install **OpenRouter**.
+3. Click **Connect with OpenRouter…**. GrokBuild opens OpenRouter's documented S256
+   browser flow and listens only on `127.0.0.1`, on an ephemeral port and random exact
+   callback path.
+4. Approve the connection in OpenRouter. The returned user-controlled API key is saved
+   to macOS Keychain with device-only accessibility; the authorization code and PKCE
+   verifier are discarded.
+5. Click **Test connection** to validate the credential and fetch the live model catalog.
 
-## Connect it (four clicks + paste)
+Cancel, timeout, wrong-path, malformed, and exchange-failure paths leave the previous
+credential untouched. **Disconnect locally** removes the Keychain item and owner-only CLI
+projection, but does not claim to revoke the remote key. Use **Manage or revoke remote
+keys** for that separate OpenRouter account action.
+
+## Alternative: paste an API key
+
+Create a key at <https://openrouter.ai/keys>. Add credit or a spend limit on your
+OpenRouter account as you like; GrokBuild never sees your balance.
 
 1. **Settings → Models** (gear, top-right).
 2. Under **Add Provider → Provider Templates**, click **Install** on the **OpenRouter**
    tile. The editor opens pre-filled: id `openrouter`, base URL
    `https://openrouter.ai/api/v1`, **Bearer token** auth.
 3. Paste your key into **API key**, then click **Test connection** to fetch the live
-   catalog (~300+ models).
+   catalog.
 4. Click **Add Provider**. Your key is stored in the **macOS Keychain**; only the
    CLI-required projection lands in `~/.grok/config.toml` (mode `0600`).
 
@@ -33,15 +48,14 @@ composer's model picker like any other.
 
 - **Security:** the key travels only over HTTPS (OpenRouter is https-only), never over a
   cross-origin redirect (bounded same-origin redirect policy), and is redacted from
-  diagnostics. It lives in the Keychain, not in UserDefaults.
+  diagnostics. UserDefaults contains only non-secret connection provenance; the key lives
+  in Keychain, not UserDefaults.
 - **grok owns execution:** GrokBuild configures the provider; the grok CLI actually calls
   OpenRouter when a session uses one of its models. A `Reply OK` smoke through a real
   session is the only proof a given model/route works end to end (catalog success alone
   isn't) — run one after adding your first model.
-- **Not built (by design):** the one-click "Connect with OpenRouter" OAuth/PKCE flow is a
-  future nicety; the paste-key path above is the supported route and needs no OAuth. A
-  searchable (vs type-to-search dropdown) model picker is also a future nicety given
-  OpenRouter's large catalog.
+- **No silent sends:** connection and catalog validation are separate from model inference.
+  GrokBuild never sends a prompt merely because a provider was connected or tested.
 
 ## Why not Goose?
 
