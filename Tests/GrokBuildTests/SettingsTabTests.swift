@@ -148,6 +148,25 @@ final class SettingsTabTests: XCTestCase {
         )
     }
 
+    func testAppSettingsDraftRoundTripsAppearanceAndUpdatePreference() {
+        let suite = "grokbuild.tests.appearance.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suite)!
+        defer { defaults.removePersistentDomain(forName: suite) }
+
+        let initial = AppSettingsDraft.load(defaults: defaults)
+        XCTAssertEqual(initial, .defaults)
+
+        defaults.set(false, forKey: UpdateSettingsKeys.autoCheckEnabled)
+        defaults.set(GrokBuildAppearance.light.rawValue, forKey: GrokSettingsKeys.appearance)
+        let loaded = AppSettingsDraft.load(defaults: defaults)
+        XCTAssertFalse(loaded.autoCheckEnabled)
+        XCTAssertEqual(loaded.appearance, .light)
+
+        let saved = AppSettingsDraft(autoCheckEnabled: true, appearance: .dark)
+        saved.save(to: defaults)
+        XCTAssertEqual(AppSettingsDraft.load(defaults: defaults), saved)
+    }
+
     func testSettingsLoadStatesAndStatusAccessibilityAreDistinct() {
         let states: [SettingsLoadState] = [
             .checking,

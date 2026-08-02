@@ -3,7 +3,7 @@
 | Field | Value |
 |---|---|
 | Prepared | 2026-08-01 |
-| Status | Slices 0–9 implemented and installed-app accepted; Slices 10–11 remain unstarted |
+| Status | Slices 0–10 implemented; Slice 10 installed-app acceptance is the current gate; Slice 11 remains unstarted |
 | Scope | Maintained SwiftUI app, current Grok CLI 0.2.118 contract, installed-app acceptance, and every unresolved hole from the Settings/startup/performance/backend-CPR audit |
 | Canonical worktree | /Users/jimmyschmitz/Desktop/Projects/MCP Servers/Grok Build/grok-build-desktop |
 | Canonical branch | codex/warm-glass-ui |
@@ -1735,6 +1735,14 @@ Exit:
 - keyboard-only and VoiceOver scenarios pass in the installed app;
 - no color-only, motion-only, or hover-only state remains;
 - focus survives add/remove/apply/error flows.
+
+#### Slice 10 implementation checkpoint — code complete, installed acceptance pending
+
+- `ChatTranscriptScrollPolicy` now tracks bottom attachment from scroll geometry. Stream revisions and bounded rich-layout retries stop when a reader detaches; unread content is summarized once and the accessible **Jump to latest** action explicitly resumes following.
+- Workbench, transcript, composer, Settings navigation, thinking/tool disclosures, code blocks, tables, equations, and diagrams expose task-oriented labels, values, hints, roles, and focus sections. Terminal connection failure, continuity blocking, model-switch rejection, completed turns, Jump to latest, and code copy use sparse VoiceOver announcements without token/loading spam.
+- App appearance is now a real System/Light/Dark UserDefaults setting. Existing installs migrate to Dark once to preserve the established Slice 9 surface; new installs default to System. Dynamic palette tokens, contrast-aware borders, reduced transparency, reduced motion, adaptive composer rows, and large-text Settings rows are native SwiftUI/AppKit behavior.
+- Mermaid and LaTeX retain selectable source fallbacks when WebKit or its CDN renderer is unavailable. Rich cache identity is bumped and web sizing includes appearance/reduced-motion/contrast presentation state; WebKit remains visible-only and explicitly dismantled.
+- Focused tests cover detached scrolling/unread labels, appearance draft persistence, linear table descriptions, and rich fallback text. The signed installed acceptance and final evidence packet remain pending for the next checkpoint.
 
 ### Slice 11 — installed-app acceptance and release decision
 

@@ -700,6 +700,7 @@ enum ReasoningEffortRestartStrategy: Sendable {
 }
 
 enum GrokSettingsKeys {
+    static let appearance = "grokbuild.appearance"
     static let permissionMode = "grokbuild.permissionMode"
     static let sandboxProfile = "grokbuild.sandboxProfile"
     static let reasoningEffort = "grokbuild.reasoningEffort"
@@ -1046,6 +1047,7 @@ enum LegacySettingsMigration {
     /// Nothing read the old key anymore, so an upgrading user's explicit
     /// memory choice was silently lost; honor it once, then clear it.
     static func run(defaults: UserDefaults = .standard) {
+        AppAppearanceMigration.run(defaults: defaults)
         if defaults.object(forKey: GrokSettingsKeys.memoryEnabled) == nil,
            let legacyNoMemory = defaults.object(forKey: GrokSettingsKeys.noMemory) as? Bool {
             defaults.set(!legacyNoMemory, forKey: GrokSettingsKeys.memoryEnabled)

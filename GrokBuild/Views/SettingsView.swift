@@ -127,7 +127,8 @@ struct SettingsView: View {
     @State private var compatibilityValueState = SettingsValueState<CompatibilitySettingsDraft>.unloaded(
         default: .defaults
     )
-    @State private var appValueState = SettingsValueState<Bool>.unloaded(default: true)
+    @State private var appValueState = SettingsValueState<AppSettingsDraft>.unloaded(default: .defaults)
+    @AccessibilityFocusState private var settingsPaneFocus: SettingsTab?
     @State private var mcpDraft = GrokMCPServerDraft()
     @State private var mcpAcknowledgedLiteralStorage = false
     @State private var mcpInventory = SettingsInventoryState<[GrokMCPServerInfo]>(empty: [])
@@ -138,6 +139,7 @@ struct SettingsView: View {
     @State private var hooksInventory = SettingsInventoryState<[GrokHookInfo]>(empty: [])
     @State private var compatibilityInventory = SettingsInventoryState<[GrokExternalCompatInfo]>(empty: [])
     @State private var paneLoadInterval: GrokBuildPerformanceInterval?
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         VStack(spacing: 0) {
@@ -158,6 +160,8 @@ struct SettingsView: View {
             .padding(.horizontal, 18)
             .padding(.vertical, 10)
             .background(AppTheme.Palette.chrome)
+            .accessibilityElement(children: .contain)
+            .accessibilityLabel("Settings header")
 
             HStack(spacing: 0) {
                 settingsSidebar
@@ -171,12 +175,21 @@ struct SettingsView: View {
         .background(AppTheme.Palette.canvas)
         .onAppear {
             measureSelectedPaneLoad()
+            settingsPaneFocus = selectedTab
         }
         .onChange(of: selectedTab) { _, tab in
-            _ = tab
             measureSelectedPaneLoad()
+            Task { @MainActor in
+                await Task.yield()
+                settingsPaneFocus = tab
+            }
         }
         .onExitCommand(perform: onBackToChat)
+        .transaction { transaction in
+            if reduceMotion {
+                transaction.animation = nil
+            }
+        }
     }
 
     private func measureSelectedPaneLoad() {
@@ -235,7 +248,9 @@ struct SettingsView: View {
                         }
                         .foregroundStyle(selectedTab == tab ? Color.primary : Color.secondary)
                         .accessibilityLabel(tab.title)
+                        .accessibilityHint("Open the \(tab.title) settings pane.")
                         .accessibilityAddTraits(selectedTab == tab ? [.isSelected] : [])
+                        .accessibilitySortPriority(selectedTab == tab ? 2 : 1)
                         }
                     }
                 }
@@ -255,6 +270,9 @@ struct SettingsView: View {
         settingsPane(for: selectedTab)
             .id(selectedTab)
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+            .accessibilityFocused($settingsPaneFocus, equals: selectedTab)
+            .accessibilityLabel("\(selectedTab.title) settings")
+            .accessibilitySortPriority(1)
     }
 
     @ViewBuilder
@@ -6890,7 +6908,7 @@ private struct CompatibilitySettingsPane: View {
 }
 
 private struct AppUpdatesSettingsPane: View {
-    @Binding var valueState: SettingsValueState<Bool>
+    @Binding var valueState: SettingsValueState<AppSettingsDraft>
     let liveReceipt: EffectiveSessionReceipt?
     let onApply: (SettingsApplyRequest) async -> SettingsApplyReceipt
     @State private var updateRevision = 0
@@ -6898,8 +6916,23 @@ private struct AppUpdatesSettingsPane: View {
 
     private var autoCheckBinding: Binding<Bool> {
         Binding(
-            get: { valueState.draft },
-            set: { valueState.updateDraft($0) }
+            get: { valueState.draft.autoCheckEnabled },
+            set: {
+                var draft = valueState.draft
+                draft.autoCheckEnabled = $0
+                valueState.updateDraft(draft)
+            }
+        )
+    }
+
+    private var appearanceBinding: Binding<GrokBuildAppearance> {
+        Binding(
+            get: { valueState.draft.appearance },
+            set: {
+                var draft = valueState.draft
+                draft.appearance = $0
+                valueState.updateDraft(draft)
+            }
         )
     }
 
@@ -6956,10 +6989,34 @@ private struct AppUpdatesSettingsPane: View {
                     }
                 }
 
+                updatesCard(title: "Appearance", systemImage: "circle.lefthalf.filled") {
+                    VStack(alignment: .leading, spacing: 10) {
+                        SettingsFormRow(
+                            "App appearance",
+                            subtitle: "System follows macOS. Light and Dark stay fixed. Draft only until Apply."
+                        ) {
+                            Picker("App appearance", selection: appearanceBinding) {
+                                ForEach(GrokBuildAppearance.allCases) { appearance in
+                                    Text(appearance.title)
+                                        .tag(appearance)
+                                }
+                            }
+                            .pickerStyle(.segmented)
+                            .frame(minWidth: 220, maxWidth: 300)
+                            .accessibilityLabel("App appearance")
+                            .accessibilityValue(valueState.draft.appearance.accessibilityValue)
+                            .accessibilityHint("Choose System, Light, or Dark, then Apply to save.")
+                        }
+                        Text("Contrast-aware borders, light/dark surfaces, and rich-content colors update with the selected appearance.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+
                 SettingsApplyBar(
                     canApply: valueState.canApply,
                     isApplying: isApplying,
-                    scopeText: "Saves the App update-check preference immediately; no Grok process or tab restarts.",
+                    scopeText: "Saves update checks and appearance locally; no Grok process or tab restarts.",
                     validationMessage: valueState.validation.message,
                     receipt: valueState.lastOperationReceipt,
                     onRevert: { valueState.revert() },
@@ -7064,7 +7121,7 @@ private struct AppUpdatesSettingsPane: View {
         guard !valueState.isLoaded else { return }
         await Task.yield()
         guard !Task.isCancelled else { return }
-        let saved = await SettingsBackgroundLoader.run { UpdateSettingsStore.autoCheckEnabled }
+        let saved = await SettingsBackgroundLoader.run { AppSettingsDraft.load() }
         guard !Task.isCancelled else { return }
         valueState.load(persisted: saved, applied: saved, live: nil)
     }
@@ -7072,17 +7129,18 @@ private struct AppUpdatesSettingsPane: View {
     @MainActor
     private func applyAppSettings() async {
         guard valueState.canApply else { return }
-        let enabled = valueState.draft
+        let draft = valueState.draft
         let request = SettingsApplyRequest(
             configurationGeneration: valueState.configurationGeneration + 1,
             capability: .app,
             persistenceOwner: .userDefaults,
             applyScope: .externalConfigOnly,
             requiresProcessRestart: false,
-            redactedSummary: "Saved the GrokBuild update-check preference; no session restart was requested."
+            redactedSummary: "Saved GrokBuild update checks and appearance; no session restart was requested."
         )
-        UpdateSettingsStore.autoCheckEnabled = enabled
-        valueState.recordSaved(applied: enabled, requiresRestart: false, receipt: request.receipt)
+        draft.save()
+        GrokBuildAppearance.apply(draft.appearance)
+        valueState.recordSaved(applied: draft, requiresRestart: false, receipt: request.receipt)
         isApplying = true
         let receipt = await onApply(request)
         isApplying = false

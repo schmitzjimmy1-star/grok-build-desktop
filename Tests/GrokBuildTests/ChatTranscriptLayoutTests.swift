@@ -10,6 +10,50 @@ final class ChatTranscriptLayoutTests: XCTestCase {
         XCTAssertTrue(gaps.allSatisfy { $0 >= 0 })
     }
 
+    func testDetachedTranscriptStopsFollowingAndCountsNewContent() {
+        XCTAssertTrue(
+            ChatTranscriptScrollPolicy.isAttached(
+                distanceFromBottom: ChatTranscriptScrollPolicy.attachmentThreshold
+            )
+        )
+        XCTAssertFalse(
+            ChatTranscriptScrollPolicy.isAttached(
+                distanceFromBottom: ChatTranscriptScrollPolicy.attachmentThreshold + 1
+            )
+        )
+        XCTAssertEqual(
+            ChatTranscriptScrollPolicy.unreadCount(
+                current: 2,
+                messageCountDelta: 0,
+                contentChanged: true,
+                isAttached: false
+            ),
+            3
+        )
+        XCTAssertEqual(
+            ChatTranscriptScrollPolicy.unreadCount(
+                current: 2,
+                messageCountDelta: 4,
+                contentChanged: true,
+                isAttached: false
+            ),
+            6
+        )
+        XCTAssertEqual(
+            ChatTranscriptScrollPolicy.unreadCount(
+                current: 2,
+                messageCountDelta: 4,
+                contentChanged: true,
+                isAttached: true
+            ),
+            0
+        )
+        XCTAssertEqual(
+            ChatTranscriptScrollPolicy.jumpLabel(unreadCount: 3),
+            "Jump to latest (3 new)"
+        )
+    }
+
     func testActiveAssistantAnchorKeepsToolActivityAboveStreamingAnswer() {
         let prompt = Message(role: .user, content: "Search")
         let answer = Message(role: .assistant, content: "Streaming")

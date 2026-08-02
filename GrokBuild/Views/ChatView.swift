@@ -53,6 +53,30 @@ enum ChatAutoScrollPolicy {
     static let layoutSettleGapsMilliseconds = [0, 120, 240, 440]
 }
 
+enum ChatTranscriptScrollPolicy {
+    /// A small bottom margin keeps a reader attached when they are just above
+    /// the final line, while a deliberate upward scroll immediately detaches.
+    static let attachmentThreshold: CGFloat = 52
+
+    static func isAttached(distanceFromBottom: CGFloat) -> Bool {
+        distanceFromBottom <= attachmentThreshold
+    }
+
+    static func unreadCount(
+        current: Int,
+        messageCountDelta: Int,
+        contentChanged: Bool,
+        isAttached: Bool
+    ) -> Int {
+        guard contentChanged, !isAttached else { return isAttached ? 0 : current }
+        return current + max(1, messageCountDelta)
+    }
+
+    static func jumpLabel(unreadCount: Int) -> String {
+        unreadCount > 0 ? "Jump to latest (\(unreadCount) new)" : "Jump to latest"
+    }
+}
+
 enum ComposerModelMenuLayout {
     static func effortDisplayName(storedValue: String) -> String {
         ReasoningEffortLevel(storedValue: storedValue).displayName
@@ -126,6 +150,12 @@ struct ChatView: View {
     @State private var toolActivityExpanded = false
     @State private var autoScrollTask: Task<Void, Never>?
     @State private var lastAutoScroll: Date = .distantPast
+    @State private var transcriptIsAttachedToBottom = true
+    @State private var transcriptHasUserScrolled = false
+    @State private var transcriptUnreadCount = 0
+    @State private var transcriptJumpAnnouncementPosted = false
+    @State private var lastObservedTranscriptMessageCount = 0
+    @State private var wasStreaming = false
     @State private var voiceInput = VoiceInputService()
     @State private var pendingReasoningEffortChange: String?
     // GrokBuild is a project workbench, not a generic chat window. Keep branch,
@@ -365,20 +395,60 @@ struct ChatView: View {
                     .padding(.horizontal, 26)
                     .padding(.vertical, 24)
                 }
+                .coordinateSpace(name: Self.transcriptCoordinateSpace)
                 .background(AppTheme.Palette.canvas)
                 .onAppear {
                     // Settings navigation and tab restoration recreate ChatView, so
                     // populated transcripts must reopen at the latest answer.
                     scheduleSettledAutoScroll(proxy: proxy)
                 }
-                .onChange(of: store.messages.count) { _, _ in
-                    scheduleSettledAutoScroll(proxy: proxy)
+                .onAppear {
+                    transcriptIsAttachedToBottom = true
+                    transcriptHasUserScrolled = false
+                    transcriptUnreadCount = 0
+                    transcriptJumpAnnouncementPosted = false
+                    lastObservedTranscriptMessageCount = store.messages.count
+                    wasStreaming = store.isStreaming
                 }
-                .onChange(of: store.isGrokking) { _, _ in
-                    scheduleSettledAutoScroll(proxy: proxy)
+                .onScrollPhaseChange { _, phase in
+                    if phase == .tracking || phase == .interacting {
+                        transcriptHasUserScrolled = true
+                    }
+                }
+                .onScrollGeometryChange(for: CGFloat.self) { geometry in
+                    max(0, geometry.contentSize.height - geometry.contentOffset.y - geometry.containerSize.height)
+                } action: { _, distanceFromBottom in
+                    guard transcriptHasUserScrolled else { return }
+                    let isAttached = ChatTranscriptScrollPolicy.isAttached(
+                        distanceFromBottom: distanceFromBottom
+                    )
+                    transcriptIsAttachedToBottom = isAttached
+                    if isAttached {
+                        transcriptUnreadCount = 0
+                        transcriptJumpAnnouncementPosted = false
+                    }
+                }
+                .onChange(of: store.messages.count) { _, newCount in
+                    let delta = max(0, newCount - lastObservedTranscriptMessageCount)
+                    lastObservedTranscriptMessageCount = newCount
+                    recordTranscriptContentChange(messageCountDelta: delta)
+                    if transcriptIsAttachedToBottom || !transcriptHasUserScrolled {
+                        scheduleSettledAutoScroll(proxy: proxy)
+                    }
+                }
+                .onChange(of: store.isGrokking) { _, isGrokking in
+                    if !transcriptIsAttachedToBottom && isGrokking {
+                        recordTranscriptContentChange()
+                    } else if transcriptIsAttachedToBottom || !transcriptHasUserScrolled {
+                        scheduleSettledAutoScroll(proxy: proxy)
+                    }
                 }
                 .onChange(of: store.isStreaming) { _, isStreaming in
-                    if !isStreaming {
+                    if wasStreaming && !isStreaming {
+                        VoiceOverAnnouncer.announce("Build agent finished.")
+                    }
+                    wasStreaming = isStreaming
+                    if !isStreaming, (transcriptIsAttachedToBottom || !transcriptHasUserScrolled) {
                         // The final provider event can precede the last rich-text layout.
                         scheduleSettledAutoScroll(
                             proxy: proxy,
@@ -392,6 +462,10 @@ struct ChatView: View {
                 // Throttled to ~12/sec so it follows live, with a trailing scroll so the
                 // final token always lands the true bottom in view.
                 .onChange(of: store.streamRevision) { _, _ in
+                    guard transcriptIsAttachedToBottom || !transcriptHasUserScrolled else {
+                        recordTranscriptContentChange()
+                        return
+                    }
                     let now = Date()
                     if now.timeIntervalSince(lastAutoScroll) > 0.08 {
                         lastAutoScroll = now
@@ -399,7 +473,46 @@ struct ChatView: View {
                     }
                     scheduleSettledAutoScroll(proxy: proxy)
                 }
+
+                if !transcriptIsAttachedToBottom {
+                    Button {
+                        transcriptIsAttachedToBottom = true
+                        transcriptHasUserScrolled = true
+                        transcriptUnreadCount = 0
+                        transcriptJumpAnnouncementPosted = false
+                        scrollToBottom(proxy: proxy)
+                        VoiceOverAnnouncer.announce("Jumped to latest content.")
+                    } label: {
+                        Label(
+                            ChatTranscriptScrollPolicy.jumpLabel(unreadCount: transcriptUnreadCount),
+                            systemImage: "arrow.down.to.line"
+                        )
+                    }
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
+                    .help("Return to the latest transcript content")
+                    .accessibilityLabel("Jump to latest")
+                    .accessibilityValue(
+                        transcriptUnreadCount > 0
+                            ? "\(transcriptUnreadCount) new content"
+                            : "Latest content is below"
+                    )
+                    .accessibilityHint("Resumes following the latest response.")
+                    .accessibilityIdentifier("grok-jump-to-latest")
+                    .accessibilitySortPriority(3)
+                    .frame(maxWidth: .infinity, alignment: .center)
+                    .padding(.bottom, 4)
+                }
             }
+            .accessibilityElement(children: .contain)
+            .accessibilityLabel("Conversation transcript")
+            .accessibilityHint(
+                transcriptIsAttachedToBottom
+                    ? "Reading the latest content. Scroll up to pause following new content."
+                    : "Detached from the latest content. Use Jump to latest to resume following."
+            )
+            .accessibilitySortPriority(2)
+            .focusSection()
 
             if let goal = store.goalState {
                 GoalBanner(state: goal, store: store)
@@ -414,6 +527,8 @@ struct ChatView: View {
             }
 
             composer
+                .accessibilitySortPriority(1)
+                .focusSection()
         }
         .onAppear { inputFocused = true }
         .onDisappear {
@@ -422,6 +537,21 @@ struct ChatView: View {
         }
         .onChange(of: store.liveToolCalls.isEmpty) { _, isEmpty in
             if isEmpty { toolActivityExpanded = false }
+        }
+        .onChange(of: store.connectionState) { _, state in
+            if case .failed = state {
+                VoiceOverAnnouncer.announce("Build agent connection failed. Review the connection error.")
+            }
+        }
+        .onChange(of: store.continuityBlocksSend) { _, blocked in
+            if blocked {
+                VoiceOverAnnouncer.announce("Conversation continuity needs attention. Send is blocked.")
+            }
+        }
+        .onChange(of: store.modelSwitchError) { _, error in
+            if error != nil {
+                VoiceOverAnnouncer.announce("Model change was not confirmed. Review the model status.")
+            }
         }
         .confirmationDialog(
             "Change reasoning effort?",
@@ -534,6 +664,8 @@ struct ChatView: View {
             .buttonStyle(GrokChromeButtonStyle())
             .disabled(store.currentWorkspace == nil)
             .help("New session")
+            .accessibilityLabel("New session")
+            .accessibilityHint("Starts a new session in the selected project.")
 
             Spacer()
 
@@ -614,6 +746,10 @@ struct ChatView: View {
         .padding(.horizontal, 12)
         .padding(.vertical, 7)
         .background(AppTheme.Palette.canvas)
+        .focusSection()
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("Workbench controls")
+        .accessibilitySortPriority(4)
     }
 
     private func openInButton(
@@ -752,6 +888,24 @@ struct ChatView: View {
     }
 
     static let bottomAnchorID = "transcript-bottom-anchor"
+    static let transcriptCoordinateSpace = "grokbuild-transcript"
+
+    private func recordTranscriptContentChange(messageCountDelta: Int = 0) {
+        // Stream revisions can arrive once per chunk. One detached response is
+        // one unread item; message-count changes may add their exact delta.
+        let increment = messageCountDelta > 0
+            ? messageCountDelta
+            : (transcriptUnreadCount == 0 ? 1 : 0)
+        transcriptUnreadCount = ChatTranscriptScrollPolicy.unreadCount(
+            current: transcriptUnreadCount,
+            messageCountDelta: increment,
+            contentChanged: increment > 0,
+            isAttached: transcriptIsAttachedToBottom
+        )
+        guard !transcriptIsAttachedToBottom, !transcriptJumpAnnouncementPosted else { return }
+        transcriptJumpAnnouncementPosted = true
+        VoiceOverAnnouncer.announce("New transcript content is available. Jump to latest.")
+    }
 
     private func scrollToBottom(proxy: ScrollViewProxy, instant: Bool = false) {
         guard !store.messages.isEmpty else { return }
@@ -780,6 +934,9 @@ struct ChatView: View {
                     await Task.yield()
                 }
                 guard !Task.isCancelled else { return }
+                guard transcriptIsAttachedToBottom || !transcriptHasUserScrolled else {
+                    return
+                }
                 lastAutoScroll = Date()
                 scrollToBottom(proxy: proxy, instant: true)
             }
@@ -883,6 +1040,10 @@ struct ChatView: View {
                     .focused($inputFocused)
                     .lineLimit(1...6)
                     .submitLabel(.send)
+                    .accessibilityLabel("Message composer")
+                    .accessibilityValue(input.isEmpty ? "Empty" : "\(input.count) characters")
+                    .accessibilityHint("Enter a plan or build request. Return sends; Shift-Return adds a line.")
+                    .accessibilityIdentifier("grok-message-composer")
                     .onSubmit {
                         if showSlashPopover {
                             activateSlashEntry(at: slashActiveIndex)
@@ -942,37 +1103,17 @@ struct ChatView: View {
                     }
                 }
 
-                HStack(spacing: 9) {
-                modeSelector
-                modelSelector
-
-                composerCommandMenu
-
-                ContextUsageIndicator(
-                    label: store.currentModelContextLabel,
-                    fraction: store.contextUsageFraction
-                )
-                .help("Context usage")
-
-                Spacer()
-
-                reviewControls
-
-                MicButton(voice: voiceInput, input: $input)
-
-                Button {
-                    chooseFiles()
-                } label: {
-                    Image(systemName: "plus")
-                        .frame(width: ComposerControlMetrics.minimumHitTarget, height: ComposerControlMetrics.minimumHitTarget)
-                        .contentShape(Rectangle())
+                ViewThatFits(in: .horizontal) {
+                    HStack(spacing: 9) {
+                        composerPrimaryControls
+                        Spacer(minLength: 4)
+                        composerActionControls
+                    }
+                    VStack(alignment: .leading, spacing: 5) {
+                        composerPrimaryControls
+                        composerActionControls
+                    }
                 }
-                .buttonStyle(.plain)
-                .foregroundStyle(.secondary)
-                .help("Attach files")
-
-                sessionActionButton
-            }
             }
             .padding(.horizontal, 11)
             .padding(.vertical, 10)
@@ -993,11 +1134,53 @@ struct ChatView: View {
         .padding(.vertical, 12)
     }
 
+    private var composerPrimaryControls: some View {
+        HStack(spacing: 9) {
+            modeSelector
+            modelSelector
+            composerCommandMenu
+            ContextUsageIndicator(
+                label: store.currentModelContextLabel,
+                fraction: store.contextUsageFraction
+            )
+            .help("Context usage")
+            .accessibilityLabel("Context usage")
+            .accessibilityValue(store.currentModelContextLabel)
+        }
+    }
+
+    private var composerActionControls: some View {
+        HStack(spacing: 9) {
+            reviewControls
+
+            MicButton(voice: voiceInput, input: $input)
+
+            Button {
+                chooseFiles()
+            } label: {
+                Image(systemName: "plus")
+                    .frame(width: ComposerControlMetrics.minimumHitTarget, height: ComposerControlMetrics.minimumHitTarget)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .foregroundStyle(.secondary)
+            .help("Attach files")
+            .accessibilityLabel("Attach files")
+            .accessibilityHint("Choose files to include with the next request.")
+
+            sessionActionButton
+        }
+    }
+
     private var sessionControlsDisclosure: some View {
         VStack(alignment: .leading, spacing: 8) {
             Button {
-                withAnimation(.easeInOut(duration: 0.18)) {
+                if reduceMotion {
                     showSessionControls.toggle()
+                } else {
+                    withAnimation(.easeInOut(duration: 0.18)) {
+                        showSessionControls.toggle()
+                    }
                 }
             } label: {
                 HStack(spacing: 7) {
@@ -1021,6 +1204,8 @@ struct ChatView: View {
             }
             .buttonStyle(.plain)
             .accessibilityLabel(showSessionControls ? "Hide session controls" : "Show session controls")
+            .accessibilityValue("\(store.currentWorkspace?.displayName ?? "No project selected"), \(connectionSubtitle)")
+            .accessibilityHint("Reveals or hides project, branch, and session status.")
 
             if showSessionControls {
                 projectStatusRow
@@ -1734,6 +1919,8 @@ struct ChatView: View {
             }
             .buttonStyle(.plain)
             .help("Stop session (⌘.)")
+            .accessibilityLabel("Stop generation")
+            .accessibilityHint("Stops the active build response without sending another request.")
             .keyboardShortcut(".", modifiers: .command)
         } else {
             Button {
@@ -1751,6 +1938,9 @@ struct ChatView: View {
             .accessibilityLabel(store.continuityBlocksSend
                 ? "Send blocked by conversation continuity"
                 : "Send message")
+            .accessibilityHint(store.continuityBlocksSend
+                ? "Resolve the continuity warning before sending."
+                : "Sends the current composer draft to the active session.")
             .disabled(input.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && !store.hasVisibleFileAttachments ||
                       store.currentWorkspace == nil ||
                       store.authRequiredMessage != nil ||
@@ -1774,6 +1964,8 @@ struct ChatView: View {
             .buttonStyle(.bordered)
             .controlSize(.small)
             .help(isReviewVisible ? "Hide changed files" : "Show changed files")
+            .accessibilityLabel(isReviewVisible ? "Hide changed files" : "Show changed files")
+            .accessibilityValue("\(reviewFileCount) changed \(reviewFileCount == 1 ? "file" : "files")")
         }
     }
 
@@ -1812,7 +2004,8 @@ struct ChatView: View {
         .help("Change agent mode")
         .accessibilityLabel("Agent mode")
         .accessibilityValue(displayName(for: store.currentMode))
-        .accessibilityIdentifier("grok-mode-selector")
+            .accessibilityIdentifier("grok-mode-selector")
+            .accessibilityHint("Choose the agent operating mode.")
     }
 
     private func modeMenuRow(icon: String, title: String, isSelected: Bool) -> some View {
@@ -1908,6 +2101,7 @@ struct ChatView: View {
         .accessibilityLabel("Model and reasoning effort")
         .accessibilityValue(store.modelAccessibilityValue)
         .accessibilityIdentifier("grok-model-effort-selector")
+        .accessibilityHint("Choose the model and, when supported, reasoning effort.")
         .help(modelSelectorHelp)
     }
 
@@ -2058,6 +2252,7 @@ private struct QuickStartChip: View {
     var onSelect: () -> Void
 
     @State private var isHovered = false
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         Button(action: onSelect) {
@@ -2087,7 +2282,9 @@ private struct QuickStartChip: View {
         .buttonStyle(.plain)
         .onHover { isHovered = $0 }
         .help(item.prompt)
-        .animation(.easeOut(duration: 0.12), value: isHovered)
+        .animation(reduceMotion ? nil : .easeOut(duration: 0.12), value: isHovered)
+        .accessibilityLabel(item.title)
+        .accessibilityHint("Adds this starter request to the message composer.")
     }
 
 }

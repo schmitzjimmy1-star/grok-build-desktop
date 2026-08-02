@@ -210,6 +210,21 @@ final class MarkdownBlockParserTests: XCTestCase {
             ),
             "Status: Ready"
         )
+        XCTAssertEqual(
+            MarkdownTableAccessibility.linearDescription(
+                headers: ["Tool", "Status"],
+                rows: [["Terminal", "Ready"]]
+            ),
+            "Row 1: Tool: Terminal; Status: Ready."
+        )
+        XCTAssertTrue(
+            RichContentFallback.mermaid(source: "A-->B")
+                .contains("Mermaid source: A-->B")
+        )
+        XCTAssertTrue(
+            RichContentFallback.latex(source: #"x^2"#)
+                .contains("Source: x^2")
+        )
     }
 
 }

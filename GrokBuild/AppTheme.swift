@@ -1,25 +1,75 @@
 import SwiftUI
+import AppKit
 
 /// Shared visual language for the main GrokBuild surface.
 ///
-/// The app intentionally stays dark-mode-first and neutral: graphite canvas,
-/// matte raised surfaces, faint borders, and a monochrome status system.
+/// The app stays neutral and warm across System, Light, and Dark appearances.
+/// NSColor dynamic providers keep the existing dark graphite treatment while
+/// giving light mode real boundaries instead of a dark palette pasted on white.
 enum AppTheme {
     enum Palette {
-        static let canvas = Color(red: 0.086, green: 0.086, blue: 0.086)
-        static let sidebar = Color(red: 0.078, green: 0.078, blue: 0.078)
+        static let canvas = adaptive(
+            dark: NSColor(red: 0.086, green: 0.086, blue: 0.086, alpha: 1),
+            light: NSColor(red: 0.955, green: 0.955, blue: 0.965, alpha: 1)
+        )
+        static let sidebar = adaptive(
+            dark: NSColor(red: 0.078, green: 0.078, blue: 0.078, alpha: 1),
+            light: NSColor(red: 0.915, green: 0.915, blue: 0.93, alpha: 1)
+        )
         static let chrome = canvas
-        static let surface = Color(red: 0.125, green: 0.125, blue: 0.125)
-        static let surfaceHover = Color(red: 0.15, green: 0.15, blue: 0.15)
-        static let glassTint = Color.white.opacity(0.035)
-        static let glassBorder = Color.white.opacity(0.085)
-        static let glassBorderStrong = Color.white.opacity(0.15)
-        static let accent = Color.white.opacity(0.92)
-        static let accentSoft = Color.white.opacity(0.075)
-        static let textMuted = Color.white.opacity(0.62)
+        static let surface = adaptive(
+            dark: NSColor(red: 0.125, green: 0.125, blue: 0.125, alpha: 1),
+            light: NSColor.white
+        )
+        static let surfaceHover = adaptive(
+            dark: NSColor(red: 0.15, green: 0.15, blue: 0.15, alpha: 1),
+            light: NSColor(red: 0.89, green: 0.89, blue: 0.91, alpha: 1)
+        )
+        static let glassTint = adaptive(
+            dark: NSColor.white.withAlphaComponent(0.035),
+            light: NSColor.black.withAlphaComponent(0.025)
+        )
+        static let glassBorder = adaptive(
+            dark: NSColor.white.withAlphaComponent(0.085),
+            light: NSColor.black.withAlphaComponent(0.13)
+        )
+        static let glassBorderStrong = adaptive(
+            dark: NSColor.white.withAlphaComponent(0.15),
+            light: NSColor.black.withAlphaComponent(0.24)
+        )
+        static let accent = adaptive(
+            dark: NSColor.white.withAlphaComponent(0.92),
+            light: NSColor.black.withAlphaComponent(0.88)
+        )
+        static let accentSoft = adaptive(
+            dark: NSColor.white.withAlphaComponent(0.075),
+            light: NSColor.black.withAlphaComponent(0.06)
+        )
+        static let textMuted = adaptive(
+            dark: NSColor.white.withAlphaComponent(0.62),
+            light: NSColor.black.withAlphaComponent(0.62)
+        )
         /// One step below `textMuted` for supporting metadata.
-        static let textFaint = Color.white.opacity(0.42)
+        static let textFaint = adaptive(
+            dark: NSColor.white.withAlphaComponent(0.42),
+            light: NSColor.black.withAlphaComponent(0.48)
+        )
         static let shadow = Color.black.opacity(0.18)
+        static let richContentBackground = adaptive(
+            dark: NSColor.black.withAlphaComponent(0.26),
+            light: NSColor.black.withAlphaComponent(0.055)
+        )
+        static let richTableBackground = adaptive(
+            dark: NSColor.black.withAlphaComponent(0.16),
+            light: NSColor.black.withAlphaComponent(0.035)
+        )
+
+        private static func adaptive(dark: NSColor, light: NSColor) -> Color {
+            Color(nsColor: NSColor(name: nil) { appearance in
+                let best = appearance.bestMatch(from: [.darkAqua, .aqua])
+                return best == .darkAqua ? dark : light
+            })
+        }
     }
 
     /// The app ships three card radii plus one for floating overlays.
@@ -114,19 +164,28 @@ private struct GrokGlassSurfaceModifier: ViewModifier {
     let cornerRadius: CGFloat
     let emphasized: Bool
     let shadowed: Bool
+    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
+    @Environment(\.accessibilityDifferentiateWithoutColor) private var differentiateWithoutColor
+    @Environment(\.colorSchemeContrast) private var colorSchemeContrast
 
     func body(content: Content) -> some View {
         content
             .background {
                 RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-                    .fill(AppTheme.Palette.surface)
+                    .fill(
+                        reduceTransparency
+                            ? AppTheme.Palette.surface
+                            : AppTheme.Palette.surface.opacity(0.98)
+                    )
             }
             .overlay {
                 RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
                     .stroke(
                         emphasized
                             ? AppTheme.Palette.glassBorderStrong
-                            : AppTheme.Palette.glassBorder,
+                            : (differentiateWithoutColor || colorSchemeContrast == .increased
+                                ? AppTheme.Palette.glassBorderStrong
+                                : AppTheme.Palette.glassBorder),
                         lineWidth: 1
                     )
             }

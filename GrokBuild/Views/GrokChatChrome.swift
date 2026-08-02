@@ -12,6 +12,7 @@ struct GrokkingIndicator: View {
             .font(.subheadline)
             .foregroundStyle(.secondary)
             .accessibilityLabel("Build agent is working")
+            .accessibilityValue("Waiting for the next result")
     }
 }
 
@@ -34,6 +35,9 @@ struct ThinkingBlock: View {
                 }
             }
             .buttonStyle(.plain)
+            .accessibilityLabel(isExpanded ? "Hide thinking" : "Show thinking")
+            .accessibilityValue("\(headerTitle). \(isExpanded ? "Expanded" : "Collapsed")")
+            .accessibilityHint("Reveals or hides the agent's reasoning summary.")
 
             if isExpanded, !text.isEmpty {
                 Text(text)
@@ -60,6 +64,7 @@ struct ThinkingBlock: View {
 struct ToolCallRow: View {
     let tool: ChatStore.LiveToolCall
     @State private var isExpanded = false
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         VStack(alignment: .leading, spacing: 5) {
@@ -67,7 +72,11 @@ struct ToolCallRow: View {
                 rowLabel
             } else {
                 Button {
-                    withAnimation(.easeOut(duration: 0.14)) { isExpanded.toggle() }
+                    if reduceMotion {
+                        isExpanded.toggle()
+                    } else {
+                        withAnimation(.easeOut(duration: 0.14)) { isExpanded.toggle() }
+                    }
                 } label: {
                     rowLabel
                 }
@@ -120,6 +129,8 @@ struct ToolCallRow: View {
         .contentShape(Rectangle())
         .accessibilityElement(children: .combine)
         .accessibilityLabel("\(tool.title), \(statusLabel ?? tool.kind)")
+        .accessibilityValue(tool.detail == nil ? "No additional details" : (isExpanded ? "Details expanded" : "Details collapsed"))
+        .accessibilityHint(tool.detail == nil ? "Tool activity status." : "Reveals or hides tool details.")
     }
 
     private var iconName: String {
@@ -187,6 +198,9 @@ struct ToolActivityGroup: View {
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
+            .accessibilityLabel(isExpanded ? "Hide tool activity" : "Show tool activity")
+            .accessibilityValue("\(summaryTitle), \(tools.count) \(tools.count == 1 ? "item" : "items")")
+            .accessibilityHint("Reveals or hides the individual tool events.")
 
             if isExpanded {
                 VStack(alignment: .leading, spacing: 0) {

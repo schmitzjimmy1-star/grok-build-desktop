@@ -1,4 +1,5 @@
 import SwiftUI
+import AppKit
 import WebKit
 import CryptoKit
 
@@ -24,7 +25,7 @@ enum MarkdownBlock: Identifiable, Hashable, Sendable {
 /// Bounded, process-local rich content cache. Transcript bodies remain the source of truth;
 /// this cache is disposable render work only and never crosses launches or gets persisted.
 enum RichContentCache {
-    static let renderVersion = 1
+    static let renderVersion = 2
     static let maximumEntries = 64
 
     struct Key: Hashable, Sendable {
@@ -150,10 +151,16 @@ enum RichContentCache {
     static func cachedWebHeight(
         kind: WebContentKind,
         source: String,
-        displayMode: Bool = false
+        displayMode: Bool = false,
+        appearanceKey: String = "default"
     ) -> CGFloat? {
         withLock { storage in
-            let key = webStorageKey(kind: kind, source: source, displayMode: displayMode)
+            let key = webStorageKey(
+                kind: kind,
+                source: source,
+                displayMode: displayMode,
+                appearanceKey: appearanceKey
+            )
             guard let height = storage.webHeights[key] else {
                 storage.webHeightMisses += 1
                 return nil
@@ -167,11 +174,17 @@ enum RichContentCache {
         _ height: CGFloat,
         kind: WebContentKind,
         source: String,
-        displayMode: Bool = false
+        displayMode: Bool = false,
+        appearanceKey: String = "default"
     ) {
         guard height > 0 else { return }
         withLock { storage in
-            storage.webHeights[webStorageKey(kind: kind, source: source, displayMode: displayMode)] = height
+            storage.webHeights[webStorageKey(
+                kind: kind,
+                source: source,
+                displayMode: displayMode,
+                appearanceKey: appearanceKey
+            )] = height
             evictIfNeeded(storage)
         }
     }
@@ -220,9 +233,10 @@ enum RichContentCache {
     private static func webStorageKey(
         kind: WebContentKind,
         source: String,
-        displayMode: Bool
+        displayMode: Bool,
+        appearanceKey: String
     ) -> String {
-        "web|\(kind.rawValue)|\(digest(source))|\(displayMode)|\(renderVersion)"
+        "web|\(kind.rawValue)|\(digest(source))|\(displayMode)|\(appearanceKey)|\(renderVersion)"
     }
 
     private static func evictIfNeeded(_ storage: Storage) {
@@ -512,6 +526,26 @@ enum MarkdownTableAccessibility {
         }
         return "\(InlineMarkdownPresentation.spokenText(headers[column])): \(spokenValue)"
     }
+
+    static func linearDescription(headers: [String], rows: [[String]]) -> String {
+        guard !rows.isEmpty else { return "Table has no data rows." }
+        return rows.enumerated().map { rowIndex, row in
+            let cells = row.enumerated().map { column, value in
+                cellLabel(headers: headers, value: value, column: column)
+            }
+            return "Row \(rowIndex + 1): \(cells.joined(separator: "; "))."
+        }.joined(separator: " ")
+    }
+}
+
+enum RichContentFallback {
+    static func mermaid(source: String) -> String {
+        "Diagram preview unavailable. Mermaid source: \(source)"
+    }
+
+    static func latex(source: String) -> String {
+        "Equation preview unavailable. \(MathAccessibility.spokenDescription(source)). Source: \(source)"
+    }
 }
 
 private struct InlineMarkdownAccessibilityModifier: ViewModifier {
@@ -763,6 +797,9 @@ struct RichMessageView: View {
     private let cacheKey: RichContentCache.Key
     @State private var parsedBlocks: [MarkdownBlock]?
     @State private var parsedKey: RichContentCache.Key?
+    @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.colorSchemeContrast) private var colorSchemeContrast
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     init(
         text: String,
@@ -788,9 +825,24 @@ struct RichMessageView: View {
                         case .text(let chunk):
                             MarkdownTextView(text: chunk)
                         case .mermaid(let source):
-                            SizedMermaidWebView(source: source)
+                            SizedMermaidWebView(
+                                source: source,
+                                appearance: RichWebAppearance(
+                                    colorScheme: colorScheme,
+                                    highContrast: colorSchemeContrast == .increased,
+                                    reduceMotion: reduceMotion
+                                )
+                            )
                         case .latex(let expr, let display):
-                            SizedLaTeXWebView(latex: expr, displayMode: display)
+                            SizedLaTeXWebView(
+                                latex: expr,
+                                displayMode: display,
+                                appearance: RichWebAppearance(
+                                    colorScheme: colorScheme,
+                                    highContrast: colorSchemeContrast == .increased,
+                                    reduceMotion: reduceMotion
+                                )
+                            )
                         }
                     }
                 }
@@ -800,6 +852,7 @@ struct RichMessageView: View {
                     .lineSpacing(4)
                     .textSelection(.enabled)
                     .frame(maxWidth: .infinity, alignment: .leading)
+                    .accessibilityLabel("Build agent response: \(text)")
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -890,6 +943,8 @@ private struct MarkdownTextView: View {
                 .padding(.top, level == 1 ? 4 : 1)
                 .textSelection(.enabled)
                 .accessibleInlineMarkdown(text)
+                .accessibilityAddTraits(.isHeader)
+                .accessibilityLabel("Heading level \(level): \(InlineMarkdownPresentation.spokenText(text))")
 
         case .unorderedList(let items):
             VStack(alignment: .leading, spacing: 7) {
@@ -921,28 +976,7 @@ private struct MarkdownTextView: View {
             .padding(.vertical, 3)
 
         case .code(let language, let text):
-            VStack(alignment: .leading, spacing: 0) {
-                if let language {
-                    Text(language.uppercased())
-                        .font(.system(size: 10, weight: .semibold, design: .rounded))
-                        .foregroundStyle(AppTheme.Palette.textMuted)
-                        .padding(.horizontal, 12)
-                        .padding(.top, 10)
-                        .padding(.bottom, 5)
-                }
-                ScrollView(.horizontal, showsIndicators: false) {
-                    Text(text)
-                        .font(AppTheme.Typography.code)
-                        .lineSpacing(3)
-                        .textSelection(.enabled)
-                        .padding(12)
-                }
-            }
-            .background(Color.black.opacity(0.26), in: RoundedRectangle(cornerRadius: AppTheme.Radius.small))
-            .overlay {
-                RoundedRectangle(cornerRadius: AppTheme.Radius.small)
-                    .stroke(AppTheme.Palette.glassBorder)
-            }
+            CodeBlockView(language: language, text: text)
 
         case .table(let headers, let rows):
             markdownTable(headers: headers, rows: rows)
@@ -975,17 +1009,21 @@ private struct MarkdownTextView: View {
                 tableRow(headers, headers: headers, rowIndex: nil, emphasized: true)
                 ForEach(Array(rows.enumerated()), id: \.offset) { index, row in
                     tableRow(row, headers: headers, rowIndex: index, emphasized: false)
-                        .background(index.isMultiple(of: 2) ? Color.white.opacity(0.025) : .clear)
+                        .background(index.isMultiple(of: 2) ? AppTheme.Palette.accentSoft.opacity(0.33) : .clear)
                 }
             }
         }
-        .background(Color.black.opacity(0.16), in: RoundedRectangle(cornerRadius: AppTheme.Radius.small))
+        .background(AppTheme.Palette.richTableBackground, in: RoundedRectangle(cornerRadius: AppTheme.Radius.small))
         .overlay {
                 RoundedRectangle(cornerRadius: AppTheme.Radius.small)
                     .stroke(AppTheme.Palette.glassBorder)
         }
         .accessibilityElement(children: .contain)
         .accessibilityLabel(MarkdownTableAccessibility.summary(headers: headers, rows: rows))
+        .accessibilityHint("A linear row-by-row description is available to assistive technology.")
+        .accessibilityChildren {
+            Text(MarkdownTableAccessibility.linearDescription(headers: headers, rows: rows))
+        }
     }
 
     private func tableRow(
@@ -1029,17 +1067,88 @@ private struct MarkdownTextView: View {
     }
 }
 
+private struct CodeBlockView: View {
+    let language: String?
+    let text: String
+    @State private var didCopy = false
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            HStack(spacing: 8) {
+                Text(language?.uppercased() ?? "CODE")
+                    .font(.system(size: 10, weight: .semibold, design: .rounded))
+                    .foregroundStyle(AppTheme.Palette.textMuted)
+                Spacer()
+                Button {
+                    NSPasteboard.general.clearContents()
+                    NSPasteboard.general.setString(text, forType: .string)
+                    didCopy = true
+                    VoiceOverAnnouncer.announce("Code copied.")
+                } label: {
+                    Label(didCopy ? "Copied" : "Copy code", systemImage: didCopy ? "checkmark" : "doc.on.doc")
+                }
+                .buttonStyle(.borderless)
+                .font(.caption)
+                .accessibilityLabel(didCopy ? "Code copied" : "Copy code")
+                .accessibilityHint("Copies the complete code block to the clipboard.")
+            }
+            .padding(.horizontal, 12)
+            .padding(.top, 8)
+            .padding(.bottom, 5)
+
+            ScrollView(.horizontal, showsIndicators: false) {
+                Text(text)
+                    .font(AppTheme.Typography.code)
+                    .lineSpacing(3)
+                    .textSelection(.enabled)
+                    .padding(12)
+            }
+        }
+        .background(AppTheme.Palette.richContentBackground, in: RoundedRectangle(cornerRadius: AppTheme.Radius.small))
+        .overlay {
+            RoundedRectangle(cornerRadius: AppTheme.Radius.small)
+                .stroke(AppTheme.Palette.glassBorder)
+        }
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("\(language ?? "Code") code block")
+        .accessibilityValue("\(text.split(whereSeparator: \.isNewline).count) lines")
+    }
+}
+
+private struct RichWebAppearance: Equatable {
+    let isDark: Bool
+    let highContrast: Bool
+    let reduceMotion: Bool
+
+    init(colorScheme: ColorScheme, highContrast: Bool, reduceMotion: Bool) {
+        isDark = colorScheme == .dark
+        self.highContrast = highContrast
+        self.reduceMotion = reduceMotion
+    }
+
+    var cacheKey: String {
+        "\(isDark ? "dark" : "light")-\(highContrast ? "contrast" : "standard")-\(reduceMotion ? "still" : "motion")"
+    }
+}
+
 private struct SizedMermaidWebView: View {
     let source: String
+    let appearance: RichWebAppearance
     private let minHeight: CGFloat = 120
     @State private var height: CGFloat
     @State private var isMounted = false
+    @State private var renderFailed = false
 
-    init(source: String) {
+    init(source: String, appearance: RichWebAppearance) {
         self.source = source
+        self.appearance = appearance
         _height = State(
             initialValue: max(
-                RichContentCache.cachedWebHeight(kind: .mermaid, source: source) ?? 120,
+                RichContentCache.cachedWebHeight(
+                    kind: .mermaid,
+                    source: source,
+                    appearanceKey: appearance.cacheKey
+                ) ?? 120,
                 120
             )
         )
@@ -1047,15 +1156,26 @@ private struct SizedMermaidWebView: View {
 
     var body: some View {
         Group {
-            if isMounted {
-                MermaidWebView(source: source) { newHeight in
+            if renderFailed {
+                Text(RichContentFallback.mermaid(source: source))
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .textSelection(.enabled)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(8)
+            } else if isMounted {
+                MermaidWebView(source: source, appearance: appearance, onFailure: {
+                    renderFailed = true
+                }) { newHeight in
                     // Never shrink below the fallback: a premature/small scrollHeight
                     // (mermaid renders after didFinish) must not collapse the block.
                     let clamped = max(newHeight, minHeight)
                     RichContentCache.storeWebHeight(
                         clamped,
                         kind: .mermaid,
-                        source: source
+                        source: source,
+                        appearanceKey: appearance.cacheKey
                     )
                     if abs(clamped - height) > 1 {
                         height = clamped
@@ -1068,10 +1188,17 @@ private struct SizedMermaidWebView: View {
                     .frame(maxWidth: .infinity, alignment: .leading)
             }
         }
-        .frame(height: height)
+        .frame(height: renderFailed ? nil : height)
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel("Diagram: \(source)")
-        .onAppear { isMounted = true }
+        .accessibilityLabel(
+            renderFailed
+                ? RichContentFallback.mermaid(source: source)
+                : "Diagram: \(source)"
+        )
+        .onAppear {
+            isMounted = true
+            renderFailed = false
+        }
         .onDisappear { isMounted = false }
     }
 }
@@ -1079,13 +1206,16 @@ private struct SizedMermaidWebView: View {
 private struct SizedLaTeXWebView: View {
     let latex: String
     let displayMode: Bool
+    let appearance: RichWebAppearance
     private let minHeight: CGFloat
     @State private var height: CGFloat
     @State private var isMounted = false
+    @State private var renderFailed = false
 
-    init(latex: String, displayMode: Bool) {
+    init(latex: String, displayMode: Bool, appearance: RichWebAppearance) {
         self.latex = latex
         self.displayMode = displayMode
+        self.appearance = appearance
         let floorHeight: CGFloat = displayMode ? 48 : 28
         self.minHeight = floorHeight
         _height = State(
@@ -1093,7 +1223,8 @@ private struct SizedLaTeXWebView: View {
                 RichContentCache.cachedWebHeight(
                     kind: .latex,
                     source: latex,
-                    displayMode: displayMode
+                    displayMode: displayMode,
+                    appearanceKey: appearance.cacheKey
                 ) ?? floorHeight,
                 floorHeight
             )
@@ -1102,14 +1233,28 @@ private struct SizedLaTeXWebView: View {
 
     var body: some View {
         Group {
-            if isMounted {
-                LaTeXWebView(latex: latex, displayMode: displayMode) { newHeight in
+            if renderFailed {
+                Text(RichContentFallback.latex(source: latex))
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .textSelection(.enabled)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(8)
+            } else if isMounted {
+                LaTeXWebView(
+                    latex: latex,
+                    displayMode: displayMode,
+                    appearance: appearance,
+                    onFailure: { renderFailed = true }
+                ) { newHeight in
                     let clamped = max(newHeight, minHeight)
                     RichContentCache.storeWebHeight(
                         clamped,
                         kind: .latex,
                         source: latex,
-                        displayMode: displayMode
+                        displayMode: displayMode,
+                        appearanceKey: appearance.cacheKey
                     )
                     if abs(clamped - height) > 1 {
                         height = clamped
@@ -1122,20 +1267,50 @@ private struct SizedLaTeXWebView: View {
                     .frame(maxWidth: .infinity, alignment: .leading)
             }
         }
-        .frame(height: height)
+        .frame(height: renderFailed ? nil : height)
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel(MathAccessibility.spokenDescription(latex))
-        .onAppear { isMounted = true }
+        .accessibilityLabel(
+            renderFailed
+                ? RichContentFallback.latex(source: latex)
+                : MathAccessibility.spokenDescription(latex)
+        )
+        .onAppear {
+            isMounted = true
+            renderFailed = false
+        }
         .onDisappear { isMounted = false }
+    }
+}
+
+private enum RichHTML {
+    static func escaped(_ source: String) -> String {
+        source
+            .replacingOccurrences(of: "&", with: "&amp;")
+            .replacingOccurrences(of: "<", with: "&lt;")
+            .replacingOccurrences(of: ">", with: "&gt;")
+            .replacingOccurrences(of: "\"", with: "&quot;")
+            .replacingOccurrences(of: "'", with: "&#39;")
+            .replacingOccurrences(of: "\n", with: "<br>")
+    }
+
+    static func javascriptString(_ source: String) -> String {
+        guard let data = try? JSONSerialization.data(withJSONObject: [source]),
+              let encoded = String(data: data, encoding: .utf8),
+              encoded.count >= 2 else {
+            return "\"\""
+        }
+        return String(encoded.dropFirst().dropLast())
     }
 }
 
 private struct MermaidWebView: NSViewRepresentable {
     let source: String
+    let appearance: RichWebAppearance
+    var onFailure: () -> Void = {}
     var onHeightChange: (CGFloat) -> Void = { _ in }
 
     func makeCoordinator() -> Coordinator {
-        Coordinator(onHeightChange: onHeightChange)
+        Coordinator(onFailure: onFailure, onHeightChange: onHeightChange)
     }
 
     func makeNSView(context: Context) -> WKWebView {
@@ -1156,34 +1331,71 @@ private struct MermaidWebView: NSViewRepresentable {
 
     func updateNSView(_ view: WKWebView, context: Context) {
         context.coordinator.onHeightChange = onHeightChange
-        guard source != context.coordinator.lastLoadedSource else { return }
+        context.coordinator.onFailure = onFailure
+        let key = "\(appearance.cacheKey)|\(source)"
+        guard key != context.coordinator.lastLoadedKey else { return }
         context.coordinator.renderInterval?.end()
         context.coordinator.renderInterval = GrokBuildPerformance.begin(.mermaidRender)
-        context.coordinator.lastLoadedSource = source
-        view.loadHTMLString(Self.html(for: source), baseURL: nil)
+        context.coordinator.lastLoadedKey = key
+        view.loadHTMLString(Self.html(for: source, appearance: appearance), baseURL: nil)
     }
 
-    private static func html(for source: String) -> String {
-        let escaped = source
-            .replacingOccurrences(of: "\\", with: "\\\\")
-            .replacingOccurrences(of: "`", with: "\\`")
-            .replacingOccurrences(of: "$", with: "\\$")
+    private static func html(for source: String, appearance: RichWebAppearance) -> String {
+        let textColor = appearance.isDark ? "#e6e6e6" : "#202124"
+        let borderColor = appearance.highContrast ? "#707070" : (appearance.isDark ? "#444444" : "#b8b8b8")
+        let sourceLiteral = RichHTML.javascriptString(source)
+        let fallbackSource = RichHTML.escaped(source)
+        let motionCSS = appearance.reduceMotion ? "*{animation:none!important;transition:none!important;}" : ""
         return """
         <!doctype html><html><head>
         <meta charset="utf-8">
         <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
-        <style>body{margin:0;padding:8px;background:transparent;color:#ccc;font-family:-apple-system,sans-serif}</style>
-        </head><body><div class="mermaid">\(escaped)</div>
-        <script>mermaid.initialize({startOnLoad:true,theme:'dark'});</script></body></html>
+        <style>
+        body{margin:0;padding:8px;background:transparent;color:\(textColor);font-family:-apple-system,sans-serif}
+        #fallback{margin:0;padding:8px;border:1px solid \(borderColor);border-radius:6px;white-space:pre-wrap;font:12px ui-monospace,monospace}
+        #diagram[hidden],#fallback[hidden]{display:none}
+        \(motionCSS)
+        </style>
+        </head><body>
+        <pre id="fallback">Diagram preview unavailable.\n\(fallbackSource)</pre>
+        <div id="diagram" class="mermaid" hidden></div>
+        <script>
+        const source = \(sourceLiteral);
+        const fallback = document.getElementById('fallback');
+        const diagram = document.getElementById('diagram');
+        function renderDiagram() {
+          if (typeof mermaid === 'undefined') return;
+          diagram.textContent = source;
+          try {
+            mermaid.initialize({startOnLoad:false, theme:'\(appearance.isDark ? "dark" : "default")'});
+            mermaid.run({nodes:[diagram]}).then(() => {
+              fallback.hidden = true;
+              diagram.hidden = false;
+            }).catch(() => {
+              diagram.hidden = true;
+              fallback.hidden = false;
+            });
+          } catch (_) {
+            diagram.hidden = true;
+            fallback.hidden = false;
+          }
+        }
+        window.addEventListener('load', () => setTimeout(renderDiagram, 0));
+        </script></body></html>
         """
     }
 
     final class Coordinator: NSObject, WKNavigationDelegate {
-        var lastLoadedSource: String?
+        var lastLoadedKey: String?
+        var onFailure: () -> Void
         var onHeightChange: (CGFloat) -> Void
         var renderInterval: GrokBuildPerformanceInterval?
 
-        init(onHeightChange: @escaping (CGFloat) -> Void) {
+        init(
+            onFailure: @escaping () -> Void,
+            onHeightChange: @escaping (CGFloat) -> Void
+        ) {
+            self.onFailure = onFailure
             self.onHeightChange = onHeightChange
         }
 
@@ -1200,6 +1412,18 @@ private struct MermaidWebView: NSViewRepresentable {
                     self.onHeightChange(height)
                 }
             }
+        }
+
+        func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) {
+            renderInterval?.end()
+            renderInterval = nil
+            onFailure()
+        }
+
+        func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error) {
+            renderInterval?.end()
+            renderInterval = nil
+            onFailure()
         }
     }
 }
@@ -1218,10 +1442,12 @@ private func webViewScrollHeight(from result: Any?) -> CGFloat? {
 private struct LaTeXWebView: NSViewRepresentable {
     let latex: String
     let displayMode: Bool
+    let appearance: RichWebAppearance
+    var onFailure: () -> Void = {}
     var onHeightChange: (CGFloat) -> Void = { _ in }
 
     func makeCoordinator() -> Coordinator {
-        Coordinator(onHeightChange: onHeightChange)
+        Coordinator(onFailure: onFailure, onHeightChange: onHeightChange)
     }
 
     func makeNSView(context: Context) -> WKWebView {
@@ -1239,39 +1465,67 @@ private struct LaTeXWebView: NSViewRepresentable {
     }
 
     func updateNSView(_ view: WKWebView, context: Context) {
+        context.coordinator.onFailure = onFailure
         context.coordinator.onHeightChange = onHeightChange
-        let key = "\(displayMode)|\(latex)"
+        let key = "\(appearance.cacheKey)|\(displayMode)|\(latex)"
         guard key != context.coordinator.lastLoadedKey else { return }
         context.coordinator.lastLoadedKey = key
-        view.loadHTMLString(Self.html(latex: latex, displayMode: displayMode), baseURL: nil)
+        view.loadHTMLString(
+            Self.html(latex: latex, displayMode: displayMode, appearance: appearance),
+            baseURL: nil
+        )
     }
 
-    private static func html(latex: String, displayMode: Bool) -> String {
-        let escaped = latex
-            .replacingOccurrences(of: "\\", with: "\\\\")
-            .replacingOccurrences(of: "'", with: "\\'")
-            .replacingOccurrences(of: "\n", with: " ")
+    private static func html(
+        latex: String,
+        displayMode: Bool,
+        appearance: RichWebAppearance
+    ) -> String {
+        let textColor = appearance.isDark ? "#e6e6e6" : "#202124"
+        let borderColor = appearance.highContrast ? "#707070" : (appearance.isDark ? "#444444" : "#b8b8b8")
+        let sourceLiteral = RichHTML.javascriptString(latex)
+        let fallbackSource = RichHTML.escaped(latex)
+        let motionCSS = appearance.reduceMotion ? "*{animation:none!important;transition:none!important;}" : ""
         return """
         <!doctype html><html><head>
         <meta charset="utf-8">
         <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css">
         <script src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js"></script>
         <style>
-        body{margin:0;padding:4px 8px;background:transparent;color:#e6e6e6;font-family:-apple-system,sans-serif}
-        .katex{color:#e6e6e6}
+        body{margin:0;padding:4px 8px;background:transparent;color:\(textColor);font-family:-apple-system,sans-serif}
+        .katex{color:\(textColor)}
+        #fallback{margin:0;padding:8px;border:1px solid \(borderColor);border-radius:6px;white-space:pre-wrap;font:12px ui-monospace,monospace}
+        #math[hidden],#fallback[hidden]{display:none}
+        \(motionCSS)
         </style>
-        </head><body><div id="math"></div>
+        </head><body><pre id="fallback">Equation preview unavailable.\n\(fallbackSource)</pre><div id="math" hidden></div>
         <script>
-        katex.render('\(escaped)', document.getElementById('math'), { displayMode: \(displayMode ? "true" : "false"), throwOnError: false });
+        const source = \(sourceLiteral);
+        const fallback = document.getElementById('fallback');
+        const math = document.getElementById('math');
+        try {
+          if (typeof katex === 'undefined') throw new Error('KaTeX unavailable');
+          katex.render(source, math, { displayMode: \(displayMode ? "true" : "false"), throwOnError: false });
+          fallback.hidden = true;
+          math.hidden = false;
+        } catch (_) {
+          fallback.hidden = false;
+          math.hidden = true;
+        }
         </script></body></html>
         """
     }
 
     final class Coordinator: NSObject, WKNavigationDelegate {
         var lastLoadedKey: String?
+        var onFailure: () -> Void
         var onHeightChange: (CGFloat) -> Void
 
-        init(onHeightChange: @escaping (CGFloat) -> Void) {
+        init(
+            onFailure: @escaping () -> Void,
+            onHeightChange: @escaping (CGFloat) -> Void
+        ) {
+            self.onFailure = onFailure
             self.onHeightChange = onHeightChange
         }
 
@@ -1282,6 +1536,14 @@ private struct LaTeXWebView: NSViewRepresentable {
                     self.onHeightChange(height)
                 }
             }
+        }
+
+        func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) {
+            onFailure()
+        }
+
+        func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error) {
+            onFailure()
         }
     }
 }

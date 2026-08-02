@@ -56,13 +56,13 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMenuDele
         // Normal windowed app: Dock + standard application menus, without a
         // redundant status item in the system menu bar.
         NSApp.setActivationPolicy(.regular)
-        NSApp.appearance = NSAppearance(named: .darkAqua)
         setupMainMenu()
         if let appIcon = AppIconProvider.image() {
             NSApp.applicationIconImage = appIcon
         }
 
         LegacySettingsMigration.run()
+        GrokBuildAppearance.apply(GrokBuildAppearance.load())
         do {
             try GrokConfigLegacyMigration.run()
         } catch {
@@ -182,13 +182,8 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMenuDele
         window.titleVisibility = .hidden
         window.titlebarAppearsTransparent = true
         window.titlebarSeparatorStyle = .none
-        window.appearance = NSAppearance(named: .darkAqua)
-        window.backgroundColor = NSColor(
-            red: 0.086,
-            green: 0.086,
-            blue: 0.086,
-            alpha: 1
-        )
+        window.appearance = GrokBuildAppearance.load().nsAppearance
+        window.backgroundColor = NSColor.windowBackgroundColor
         window.delegate = self
         window.contentViewController = hosting
         // Restore the user's saved frame when one exists; fill the screen only
