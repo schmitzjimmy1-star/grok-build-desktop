@@ -3,7 +3,7 @@
 | Field | Value |
 |---|---|
 | Prepared | 2026-08-01 |
-| Status | Slices 0–10 implemented; Slice 10 installed-app acceptance is the current gate; Slice 11 remains unstarted |
+| Status | Slices 0–10 implemented and installed-app accepted; Slice 11 remains unstarted |
 | Scope | Maintained SwiftUI app, current Grok CLI 0.2.118 contract, installed-app acceptance, and every unresolved hole from the Settings/startup/performance/backend-CPR audit |
 | Canonical worktree | /Users/jimmyschmitz/Desktop/Projects/MCP Servers/Grok Build/grok-build-desktop |
 | Canonical branch | codex/warm-glass-ui |
@@ -1736,13 +1736,16 @@ Exit:
 - no color-only, motion-only, or hover-only state remains;
 - focus survives add/remove/apply/error flows.
 
-#### Slice 10 implementation checkpoint — code complete, installed acceptance pending
+#### Slice 10 implementation checkpoint — installed acceptance complete
 
 - `ChatTranscriptScrollPolicy` now tracks bottom attachment from scroll geometry. Stream revisions and bounded rich-layout retries stop when a reader detaches; unread content is summarized once and the accessible **Jump to latest** action explicitly resumes following.
 - Workbench, transcript, composer, Settings navigation, thinking/tool disclosures, code blocks, tables, equations, and diagrams expose task-oriented labels, values, hints, roles, and focus sections. Terminal connection failure, continuity blocking, model-switch rejection, completed turns, Jump to latest, and code copy use sparse VoiceOver announcements without token/loading spam.
 - App appearance is now a real System/Light/Dark UserDefaults setting. Existing installs migrate to Dark once to preserve the established Slice 9 surface; new installs default to System. Dynamic palette tokens, contrast-aware borders, reduced transparency, reduced motion, adaptive composer rows, and large-text Settings rows are native SwiftUI/AppKit behavior.
 - Mermaid and LaTeX retain selectable source fallbacks when WebKit or its CDN renderer is unavailable. Rich cache identity is bumped and web sizing includes appearance/reduced-motion/contrast presentation state; WebKit remains visible-only and explicitly dismantled.
-- Focused tests cover detached scrolling/unread labels, appearance draft persistence, linear table descriptions, and rich fallback text. The signed installed acceptance and final evidence packet remain pending for the next checkpoint.
+- Focused tests cover detached scrolling/unread labels, appearance draft persistence, linear table descriptions, and rich fallback text. `make test` completed **482 tests with 0 failures** in 14.473 seconds; focused `SettingsTabTests` completed **16 tests with 0 failures**.
+- The clean signed install at `/Applications/GrokBuild.app` stamps `22e95f31d9986d89129164477f5026fafd792174`; `dist` and installed executables match at SHA-256 `05114763add8d07f5fc390e2ff57d139b0f984d009126f663dcefc1d0d136d8d`. Deep/strict signing passes under Team `DD2GCQJVB4`, quarantine is absent, and Gatekeeper rejects only because this Apple Development build is not notarized.
+- Installed Computer Use acceptance exercised the fixed appearance accessibility action through Dark apply, Light apply, and Dark restore without a crash. The only diagnostic report is the preserved pre-fix segmented-picker report at `/Users/jimmyschmitz/Library/Logs/DiagnosticReports/GrokBuild-2026-08-01-223824.ips`.
+- Exact quit/relaunch restored `GPT-CENTRAL-RESUME-BASE-0731`, `GPT-CENTRAL-RESUME-FOLLOWUP-0731`, the local continuity boundary, empty composer, and disabled Send. Config, 67-file transcript storage, and v2 rollback bytes retained their recorded digests; no provider, backend, or authenticated v3 continuity action ran. Recoverable Slice 9 and Slice 10 checkpoints are recorded in `CANONICAL_WORKTREE.md`.
 
 ### Slice 11 — installed-app acceptance and release decision
 
