@@ -148,6 +148,7 @@ struct ChatView: View {
     @State private var showSetGoal = false
     @State private var showCreateSkill = false
     @State private var showImagine = false
+    @State private var showRecoveryReview = false
     @State private var createSkillName = ""
     @State private var imaginePrompt = ""
     // Constant default (matches WorkflowsConfigStore's missing-file default,
@@ -272,7 +273,14 @@ struct ChatView: View {
                     status: store.continuityStatus,
                     headline: store.continuityHeadline,
                     message: store.continuityMessage,
-                    details: store.continuityDetails
+                    details: store.continuityDetails,
+                    onContinueAsNew: {
+                        Task { _ = await store.continueAsNew() }
+                    },
+                    onRelink: {
+                        showRecoveryReview = true
+                        Task { await store.reviewRecoveryCandidates() }
+                    }
                 )
             }
 
@@ -476,6 +484,11 @@ struct ChatView: View {
         }
         .sheet(isPresented: $showImagine) {
             imagineSheet
+        }
+        .sheet(isPresented: $showRecoveryReview) {
+            SessionRecoveryReviewSheet(store: store) {
+                showRecoveryReview = false
+            }
         }
         .onAppear {
             workflowsEnabled = WorkflowsConfigStore.loadEnabled()
@@ -2160,8 +2173,11 @@ private struct SessionContinuityBanner: View {
     let headline: String
     let message: String
     let details: String
+    let onContinueAsNew: () -> Void
+    let onRelink: () -> Void
 
     @State private var showsDetails = false
+    @State private var confirmsContinueAsNew = false
 
     private var color: Color {
         switch status {
@@ -2197,6 +2213,24 @@ private struct SessionContinuityBanner: View {
                     .padding(.top, 4)
             }
             .font(.caption)
+            if [.diverged, .compositeSuspected, .backendMissing, .verificationIncomplete].contains(status) {
+                HStack(spacing: 8) {
+                    Button("Continue as New") {
+                        confirmsContinueAsNew = true
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .controlSize(.small)
+                    .accessibilityHint(
+                        "Keeps the local transcript and creates a new backend only when you next send."
+                    )
+                    Button("Relink…", action: onRelink)
+                        .buttonStyle(.bordered)
+                        .controlSize(.small)
+                        .accessibilityHint(
+                            "Reviews provenance-safe candidate histories before any binding changes."
+                        )
+                }
+            }
         }
         .padding(10)
         .background(color.opacity(0.08), in: RoundedRectangle(cornerRadius: AppTheme.Radius.large))
@@ -2210,6 +2244,118 @@ private struct SessionContinuityBanner: View {
         .accessibilityLabel(headline)
         .accessibilityValue(message)
         .accessibilityHint("Send remains blocked when the saved backend cannot be verified. Your local transcript is unchanged.")
+        .confirmationDialog(
+            "Continue this transcript as a new conversation?",
+            isPresented: $confirmsContinueAsNew,
+            titleVisibility: .visible
+        ) {
+            Button("Continue as New", role: .destructive, action: onContinueAsNew)
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text(
+                "Your local messages stay in this tab. The previous backend is preserved, and no new backend starts until you send."
+            )
+        }
+    }
+}
+
+private struct SessionRecoveryReviewSheet: View {
+    @Bindable var store: ChatStore
+    let onClose: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            HStack {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Review candidate histories")
+                        .font(.title3.weight(.semibold))
+                    Text("Candidates are read-only until you explicitly Relink a verified match.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                Spacer()
+                Button("Done", action: onClose)
+                    .keyboardShortcut(.cancelAction)
+            }
+
+            if store.isLoadingRecoveryCandidates {
+                HStack(spacing: 8) {
+                    ProgressView()
+                        .controlSize(.small)
+                    Text("Checking recent histories in this project…")
+                        .foregroundStyle(.secondary)
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else if let error = store.recoveryCandidateError {
+                ContentUnavailableView(
+                    "Candidate review unavailable",
+                    systemImage: "exclamationmark.shield",
+                    description: Text(error)
+                )
+                Button("Retry") {
+                    Task { await store.reviewRecoveryCandidates() }
+                }
+            } else if store.recoveryCandidates.isEmpty {
+                ContentUnavailableView(
+                    "No provenance-safe candidates",
+                    systemImage: "link.badge.plus",
+                    description: Text(
+                        "No recent history has enough evidence to verify this transcript. Continue as New remains the safe recovery."
+                    )
+                )
+            } else {
+                List(store.recoveryCandidates) { candidate in
+                    VStack(alignment: .leading, spacing: 7) {
+                        HStack(alignment: .firstTextBaseline) {
+                            Text(candidate.redactedBackendID)
+                                .font(.body.monospaced())
+                            Text(candidate.isRelinkable ? "Verified candidate" : "Review only")
+                                .font(.caption.weight(.semibold))
+                                .foregroundStyle(candidate.isRelinkable ? .green : .orange)
+                            Spacer()
+                            Button("Relink") {
+                                Task {
+                                    if await store.relink(to: candidate) {
+                                        onClose()
+                                    }
+                                }
+                            }
+                            .disabled(!candidate.isRelinkable)
+                        }
+                        Text(
+                            "\(candidate.workspaceName) · \(candidate.modelID ?? "model unknown") · last active \(candidate.lastActivity.formatted(date: .abbreviated, time: .shortened))"
+                        )
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        Text(
+                            "\(candidate.matchingTurnCount) matching turns · \(candidate.mismatchCount) mismatched rows · \(candidate.localMessageCount) local / \(candidate.backendMessageCount) backend rows"
+                        )
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        if candidate.quarantinedRowCount > 0 {
+                            Text("Mixed or unknown provenance is quarantined and cannot verify a binding.")
+                                .font(.caption)
+                                .foregroundStyle(.orange)
+                        } else if !candidate.isRelinkable {
+                            Text("Shared prompts are evidence for review, not identity proof.")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                    .padding(.vertical, 5)
+                    .accessibilityElement(children: .contain)
+                    .accessibilityLabel(
+                        "Backend \(candidate.redactedBackendID), \(candidate.isRelinkable ? "verified candidate" : "review only")"
+                    )
+                    .accessibilityValue(
+                        "\(candidate.matchingTurnCount) matching turns, \(candidate.mismatchCount) mismatched rows"
+                    )
+                }
+            }
+        }
+        .padding(20)
+        .frame(minWidth: 650, minHeight: 430)
+        .accessibilityElement(children: .contain)
     }
 }
 

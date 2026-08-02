@@ -709,7 +709,9 @@ struct ContentView: View {
         for session in liveSessions {
             // Prefer the live process id, but fall back to the known/saved id so lazily-restored
             // (not-yet-started) and LRU-evicted sessions are still persisted and resumable.
-            let grokSessionID = session.store.durableGrokSessionID ?? session.grokSessionID
+            let grokSessionID = session.store.persistedPendingRecoveryIntent == nil
+                ? (session.store.durableGrokSessionID ?? session.grokSessionID)
+                : nil
             guard sessionHasContent(session) else { continue }
             let existing = sessionLayout.records.first { $0.id == session.id }
             for entry in session.store.pendingForkLedgerEntries
@@ -720,7 +722,11 @@ struct ContentView: View {
                 .filter { $0.localSessionID == session.id }
                 .max { $0.createdAt < $1.createdAt }
             let backendBinding: SessionBackendBinding? = {
-                guard let grokSessionID else { return existing?.backendBinding }
+                guard let grokSessionID else {
+                    return session.store.persistedPendingRecoveryIntent == nil
+                        ? existing?.backendBinding
+                        : nil
+                }
                 let receipt = session.store.persistedContinuityReceipt
                 let verification: SessionBackendBindingVerification = {
                     switch receipt?.status {
@@ -768,7 +774,8 @@ struct ContentView: View {
                     transcriptGeneration: existing?.transcriptGeneration ?? 0,
                     transcriptStorageVersion: existing?.transcriptStorageVersion ?? 1,
                     forkLedgerReference: latestForkEntry?.id.uuidString
-                        ?? existing?.forkLedgerReference
+                        ?? existing?.forkLedgerReference,
+                    pendingRecoveryIntent: session.store.persistedPendingRecoveryIntent
                 )
             )
         }
@@ -903,7 +910,8 @@ struct ContentView: View {
                 savedBackendBinding: record.backendBinding,
                 savedForkLedgerEntry: record.forkLedgerReference.flatMap { reference in
                     saved.forkLedger.first { $0.id.uuidString == reference }
-                }
+                },
+                savedPendingRecoveryIntent: record.pendingRecoveryIntent
             )
             store.restorePersistedMessages(savedMessages)
             liveSessions.append(
@@ -1192,7 +1200,8 @@ struct ContentView: View {
             savedBackendBinding: savedRecord?.backendBinding,
             savedForkLedgerEntry: savedRecord?.forkLedgerReference.flatMap { reference in
                 sessionLayout.forkLedger.first { $0.id.uuidString == reference }
-            }
+            },
+            savedPendingRecoveryIntent: savedRecord?.pendingRecoveryIntent
         )
         session.store.syncWorkspaceReasoningEffortFromStorage()
         session.store.syncTabModelToLiveProcessIfNeeded()

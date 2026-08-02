@@ -25,6 +25,7 @@ enum SessionContinuityReason: String, Codable, Hashable, Sendable {
     case syntheticOnlyHistory
     case boundedReadIncomplete
     case integrityKeyUnavailable
+    case mixedOrUnknownProvenance
     case recoveryForked
 }
 
@@ -59,6 +60,30 @@ struct SessionContinuityReceipt: Codable, Hashable, Sendable {
 struct SessionContinuityVerification: Sendable {
     let receipt: SessionContinuityReceipt
     let backendMessages: [Message]
+}
+
+struct SessionRecoveryCandidate: Identifiable, Hashable, Sendable {
+    var id: String { backendID }
+
+    let backendID: String
+    let workspaceName: String
+    let modelID: String?
+    let lastActivity: Date
+    let matchingTurnCount: Int
+    let mismatchCount: Int
+    let localMessageCount: Int
+    let backendMessageCount: Int
+    let relationship: SessionContinuityStatus
+    let reason: SessionContinuityReason
+    let quarantinedRowCount: Int
+
+    var isRelinkable: Bool {
+        matchingTurnCount > 0
+            && quarantinedRowCount == 0
+            && relationship == .verified
+    }
+
+    var redactedBackendID: String { "…\(backendID.suffix(8))" }
 }
 
 enum SessionSendGateDecision: Equatable, Sendable {
@@ -96,6 +121,104 @@ enum SessionTranscriptRecovery {
         let authoritativeTailAssistantID: UUID?
     }
 
+    /// Explicit, bounded recovery review. The returned candidates are evidence only;
+    /// this function never mutates a binding and ordinary startup never invokes it.
+    static func recoveryCandidates(
+        workspacePath: URL,
+        workspaceName: String,
+        localMessages: [Message],
+        key: Data,
+        maxCandidates: Int = 50
+    ) -> [SessionRecoveryCandidate] {
+        guard !key.isEmpty else { return [] }
+        let localIdentity = identityMessages(localMessages)
+        var candidates: [SessionRecoveryCandidate] = []
+        let reviewDeadline = Date().addingTimeInterval(5)
+
+        for historyURL in GrokSessionTranscriptImporter.recoveryHistoryURLs(
+            workspacePath: workspacePath,
+            maxCandidates: maxCandidates
+        ) {
+            guard !Task<Never, Never>.isCancelled, Date() < reviewDeadline else { break }
+            let backendID = historyURL.deletingLastPathComponent().lastPathComponent
+            let remaining = max(0, reviewDeadline.timeIntervalSinceNow)
+            let imported = GrokSessionTranscriptImporter.importMessagesBounded(
+                from: historyURL,
+                backendSessionID: backendID,
+                key: key,
+                limits: .init(
+                    softByteLimit: GrokSessionTranscriptImporter.BoundedImportLimits.default.softByteLimit,
+                    softConversationalRowLimit: GrokSessionTranscriptImporter.BoundedImportLimits.default.softConversationalRowLimit,
+                    timeLimit: remaining
+                )
+            )
+            guard imported.outcome == .complete,
+                  !imported.transcript.identityMessages.isEmpty else { continue }
+
+            let receipt: SessionContinuityReceipt
+            if imported.transcript.hasQuarantinedIdentityRows {
+                receipt = failedContinuityVerification(
+                    localMessages: localIdentity,
+                    status: .compositeSuspected,
+                    reason: .mixedOrUnknownProvenance,
+                    backendMessages: imported.transcript.identityMessages
+                ).receipt
+            } else {
+                receipt = verifyContinuity(
+                    localMessages: localIdentity,
+                    backendMessages: imported.transcript.identityMessages,
+                    key: key
+                )
+            }
+            let sharedPrompts = matchingUserPromptCount(
+                local: localIdentity,
+                backend: imported.transcript.identityMessages
+            )
+            let matchingTurns = matchingCompleteTurnCount(
+                local: localIdentity,
+                backend: imported.transcript.identityMessages
+            )
+            let relinkable = receipt.status == .verified
+                && matchingTurns > 0
+                && imported.transcript.quarantinedRowCount == 0
+            guard sharedPrompts > 0 || relinkable else { continue }
+
+            let lastActivity = (try? historyURL.resourceValues(
+                forKeys: [.contentModificationDateKey]
+            ))?.contentModificationDate ?? .distantPast
+            let mismatchCount = max(
+                0,
+                receipt.localMessageCount + receipt.backendMessageCount
+                    - (2 * receipt.matchingPrefixCount)
+            )
+            candidates.append(SessionRecoveryCandidate(
+                backendID: backendID,
+                workspaceName: workspaceName,
+                modelID: imported.transcript.modelID,
+                lastActivity: lastActivity,
+                matchingTurnCount: matchingTurns,
+                mismatchCount: mismatchCount,
+                localMessageCount: receipt.localMessageCount,
+                backendMessageCount: receipt.backendMessageCount,
+                relationship: receipt.status,
+                reason: receipt.reason,
+                quarantinedRowCount: imported.transcript.quarantinedRowCount
+            ))
+        }
+
+        return candidates.sorted { lhs, rhs in
+            if lhs.isRelinkable != rhs.isRelinkable { return lhs.isRelinkable }
+            if lhs.matchingTurnCount != rhs.matchingTurnCount {
+                return lhs.matchingTurnCount > rhs.matchingTurnCount
+            }
+            if lhs.mismatchCount != rhs.mismatchCount {
+                return lhs.mismatchCount < rhs.mismatchCount
+            }
+            if lhs.lastActivity != rhs.lastActivity { return lhs.lastActivity > rhs.lastActivity }
+            return lhs.backendID < rhs.backendID
+        }
+    }
+
     static func verifyContinuity(
         localMessages: [Message],
         backendHistoryURL: URL,
@@ -104,6 +227,7 @@ enum SessionTranscriptRecovery {
     ) -> SessionContinuityVerification {
         let imported = GrokSessionTranscriptImporter.importMessagesBounded(
             from: backendHistoryURL,
+            key: key,
             limits: limits
         )
         switch imported.outcome {
@@ -127,21 +251,29 @@ enum SessionTranscriptRecovery {
                 backendMessages: imported.messages
             )
         case .complete:
-            guard !imported.messages.isEmpty else {
+            guard !imported.transcript.identityMessages.isEmpty else {
                 return failedContinuityVerification(
                     localMessages: localMessages,
                     status: .backendMissing,
                     reason: .syntheticOnlyHistory
                 )
             }
+            guard !imported.transcript.hasQuarantinedIdentityRows else {
+                return failedContinuityVerification(
+                    localMessages: localMessages,
+                    status: .compositeSuspected,
+                    reason: .mixedOrUnknownProvenance,
+                    backendMessages: imported.transcript.displayMessages
+                )
+            }
             return SessionContinuityVerification(
                 receipt: verifyContinuity(
                     localMessages: localMessages,
-                    backendMessages: imported.messages,
+                    backendMessages: imported.transcript.identityMessages,
                     key: key,
                     deadline: imported.verificationDeadline
                 ),
-                backendMessages: imported.messages
+                backendMessages: imported.transcript.displayMessages
             )
         }
     }
@@ -165,7 +297,7 @@ enum SessionTranscriptRecovery {
         key: Data,
         deadline: Date?
     ) -> SessionContinuityReceipt {
-        let local = conversationalMessages(localMessages)
+        let local = identityMessages(localMessages)
         let backend = conversationalMessages(backendMessages)
         guard !key.isEmpty else {
             return receipt(
@@ -265,7 +397,7 @@ enum SessionTranscriptRecovery {
         reason: SessionContinuityReason,
         backendMessages: [Message] = []
     ) -> SessionContinuityVerification {
-        let local = conversationalMessages(localMessages)
+        let local = identityMessages(localMessages)
         let backend = conversationalMessages(backendMessages)
         return SessionContinuityVerification(
             receipt: SessionContinuityReceipt(
@@ -316,6 +448,17 @@ enum SessionTranscriptRecovery {
         messages.filter {
             ($0.role == .user || $0.role == .assistant)
                 && !$0.content.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        }
+    }
+
+    private static func identityMessages(_ messages: [Message]) -> [Message] {
+        conversationalMessages(messages).filter { message in
+            switch message.provenance?.source {
+            case .backendWorker, .backendUnknown:
+                return false
+            case .backendRoot, nil:
+                return true
+            }
         }
     }
 
@@ -390,6 +533,62 @@ enum SessionTranscriptRecovery {
         return count
     }
 
+    private static func matchingUserPromptCount(local: [Message], backend: [Message]) -> Int {
+        func promptOccurrences(_ messages: [Message]) -> [String: Int] {
+            var occurrences: [String: Int] = [:]
+            for message in messages where message.role == .user {
+                let normalized = SessionTranscriptReconciler.normalizedContent(message.content)
+                guard !normalized.isEmpty else { continue }
+                occurrences[normalized, default: 0] += 1
+            }
+            return occurrences
+        }
+        let localPrompts = promptOccurrences(local)
+        let backendPrompts = promptOccurrences(backend)
+        return localPrompts.reduce(into: 0) { count, pair in
+            count += min(pair.value, backendPrompts[pair.key, default: 0])
+        }
+    }
+
+    private static func matchingCompleteTurnCount(local: [Message], backend: [Message]) -> Int {
+        func completeTurns(_ messages: [Message]) -> [String: Int] {
+            var turns: [String: Int] = [:]
+            var prompt: String?
+            var assistants: [String] = []
+
+            func finish() {
+                guard let prompt, let final = assistants.last else { return }
+                let key = "\(prompt)\u{1F}\(final)"
+                turns[key, default: 0] += 1
+            }
+
+            for message in messages {
+                switch message.role {
+                case .user:
+                    finish()
+                    prompt = SessionTranscriptReconciler.normalizedContent(message.content)
+                    assistants = []
+                case .assistant:
+                    if prompt != nil {
+                        assistants.append(
+                            SessionTranscriptReconciler.normalizedContent(message.content)
+                        )
+                    }
+                case .system:
+                    continue
+                }
+            }
+            finish()
+            return turns
+        }
+
+        let localTurns = completeTurns(local)
+        let backendTurns = completeTurns(backend)
+        return localTurns.reduce(into: 0) { count, pair in
+            count += min(pair.value, backendTurns[pair.key, default: 0])
+        }
+    }
+
     /// Returns reconciled messages when recovery changed the transcript; `nil` otherwise.
     /// This is safe for empty, partial, and already-complete transcripts and is idempotent.
     static func recoverIfNeeded(
@@ -428,10 +627,17 @@ enum SessionTranscriptRecovery {
                 return nil
             }
 
-            let imported = GrokSessionTranscriptImporter.importMessages(from: historyURL)
+            let imported = GrokSessionTranscriptImporter.importTranscript(
+                from: historyURL,
+                backendSessionID: grokSessionID
+            )
+            guard imported.backendSessionID == grokSessionID,
+                  !imported.hasQuarantinedIdentityRows else {
+                return nil
+            }
             let reconciled = SessionTranscriptReconciler.reconcile(
                 local: currentMessages,
-                authoritative: imported
+                authoritative: imported.displayMessages
             )
             let changed = SessionTranscriptReconciler.contentSignature(reconciled)
                 != SessionTranscriptReconciler.contentSignature(currentMessages)
@@ -444,7 +650,7 @@ enum SessionTranscriptRecovery {
 
             let authoritativeTail = SessionTranscriptReconciler.authoritativeTailAssistantContent(
                 local: reconciled,
-                authoritative: imported
+                authoritative: imported.identityMessages
             )
             let authoritativeTailAssistantID = authoritativeTail.flatMap { tail in
                 let normalizedTail = SessionTranscriptReconciler.normalizedContent(tail)

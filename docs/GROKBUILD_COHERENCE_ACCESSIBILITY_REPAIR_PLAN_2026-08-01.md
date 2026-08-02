@@ -3,7 +3,7 @@
 | Field | Value |
 |---|---|
 | Prepared | 2026-08-01 |
-| Status | Slices 0–2 implemented and installed-app accepted in the working tree; Slices 3–11 remain unstarted |
+| Status | Slices 0–3 implemented and installed-app accepted; Slice 4 implemented and fixture-accepted, pending installed-app acceptance; Slices 5–11 remain unstarted |
 | Scope | Maintained SwiftUI app, current Grok CLI 0.2.118 contract, installed-app acceptance, and every unresolved hole from the Settings/startup/performance/backend-CPR audit |
 | Canonical worktree | /Users/jimmyschmitz/Desktop/Projects/MCP Servers/Grok Build/grok-build-desktop |
 | Canonical branch | codex/warm-glass-ui |
@@ -1557,7 +1557,7 @@ Exit:
 - No backend CPR, provider send, prompt submission, migrated-backend start, Grok ACP child, browser child, or app-owned Computer Use helper ran. The installed app had zero owned children and sampled 0.0% CPU across three one-second samples. Verified-happy-path send permission is deterministic fixture proof only, preserving the no-provider-send boundary.
 - The original v2 payload remains byte-identical at 7,902 bytes and SHA-256 `b9d760c004f74f88996d75ee83df5a2f5636ded80c6863a996c63442d5bacad7`. Authenticated v3 remains schema 3 with 24 records, a committed marker and flush receipt; the installed run durably recorded one `backendMissing` continuity receipt. The live fork ledger remains empty because acceptance did not create a backend or fork; authenticated ledger persistence and suffix selection are fixture-proven.
 - Installed and packaged executables match at SHA-256 `970557b2f3b2393a575ce5fead7b44de5b186f90d1603c50b931d9209a28f848`; deep/strict signing passes under Team `DD2GCQJVB4`, quarantine is absent, and the exact pre-Slice-3 clean Slice 2 app is recoverable at `/Users/jimmyschmitz/.Trash/GrokBuild-pre-slice-3-20260801-1857.app`.
-- Slice 4 remains unauthorized. Candidate review, **Continue as New**, and **Relink** actions are intentionally absent; Slice 3 only exposes redacted details and fails closed.
+- Slice 4 was separately authorized after this receipt. Slice 3 itself remains the fail-closed boundary; candidate review, **Continue as New**, and **Relink** are owned by the following slice.
 
 ### Slice 4 — provenance-safe import and recovery UI
 
@@ -1574,6 +1574,14 @@ Exit:
 - no heuristic auto-binding at startup;
 - one common final prompt is insufficient proof;
 - recovery choice persists and passes marker relaunch.
+
+#### Slice 4 implementation state — before installed acceptance
+
+- The importer now retains backend/session/row provenance and separates display rows from root-authoritative identity rows. Known worker output remains displayable; unknown or explicitly non-final assistant rows are quarantined and cannot verify a binding.
+- Ordinary startup still reads only the exact saved backend. Candidate discovery is an explicit, bounded review action with redacted evidence; a shared prompt or prompt-only prefix remains review-only. Relink re-reads and re-verifies the exact chosen history before saving it.
+- Continue as New clears the active binding without starting a process, authenticates a pending predecessor intent in v3, and records its successor/fork entry only when a later real send creates the backend. Relink records an explicit recovery ledger entry without launching a backend.
+- Exact-binding reconciliation uses worker-inclusive display rows and root-only identity rows, remains idempotent across repeated restore, and never rewrites Grok history.
+- Automated acceptance is 448 tests with 0 failures. Installed identity, Settings/relaunch behavior, bundle parity/signing, v2 byte preservation, authenticated-v3 inspection, rollback, and the no-provider-send/no-backend-process boundary remain to be recorded below before the slice is accepted.
 
 ### Slice 5 — shared Settings state/apply contract
 

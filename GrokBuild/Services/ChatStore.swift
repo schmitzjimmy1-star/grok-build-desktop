@@ -108,6 +108,10 @@ final class ChatStore {
     private(set) var continuityReceipt: SessionContinuityReceipt = .localOnly
     private(set) var persistedContinuityReceipt: SessionContinuityReceipt?
     private(set) var pendingForkLedgerEntries: [SessionForkLedgerEntry] = []
+    private(set) var pendingRecoveryIntent: SessionPendingRecoveryIntent?
+    private(set) var recoveryCandidates: [SessionRecoveryCandidate] = []
+    private(set) var isLoadingRecoveryCandidates = false
+    private(set) var recoveryCandidateError: String?
     private var continuityBackendID: String?
     private var boundForkLedgerEntry: SessionForkLedgerEntry?
 
@@ -178,6 +182,7 @@ final class ChatStore {
 
     var grokSessionId: String? { process.sessionId }
     var durableGrokSessionID: String? { process.sessionId ?? savedGrokSessionID }
+    var persistedPendingRecoveryIntent: SessionPendingRecoveryIntent? { pendingRecoveryIntent }
     var effectiveLaunchReceipt: GrokLaunchReceipt? { process.launchReceipt }
     var effectivePermissionMode: GrokPermissionMode {
         process.launchReceipt?.permissionMode ?? .ask
@@ -342,6 +347,7 @@ final class ChatStore {
     private var historyIndex: Int?
 
     let process: GrokProcess
+    private let continuityKeyOverride: Data?
     private(set) var currentWorkspace: Workspace?
     // (removed Agent personas - see AGENTS.md + sub-agents in Grok Build CLI)
 
@@ -358,8 +364,9 @@ final class ChatStore {
     private var pendingLateChunkPersistence = false
     private var firstChunkInterval: GrokBuildPerformanceInterval?
 
-    init(process: GrokProcess? = nil) {
+    init(process: GrokProcess? = nil, continuityKeyOverride: Data? = nil) {
         self.process = process ?? GrokProcess()
+        self.continuityKeyOverride = continuityKeyOverride
         applyBuiltInModelCatalog(GrokModelCatalog.cachedOrFallback())
         loadSessionSelections()
         Task { [weak self] in await self?.consumeOutput() }
@@ -388,6 +395,10 @@ final class ChatStore {
             : Self.verifyingContinuityReceipt(localMessageCount: 0)
         persistedContinuityReceipt = nil
         pendingForkLedgerEntries = []
+        pendingRecoveryIntent = nil
+        recoveryCandidates = []
+        recoveryCandidateError = nil
+        isLoadingRecoveryCandidates = false
         boundForkLedgerEntry = nil
         currentWorkspace = workspace
         applyBuiltInModelCatalog(GrokModelCatalog.cachedOrFallback())
@@ -426,7 +437,8 @@ final class ChatStore {
         agentIntent: TabAgentIntent = .inheritGlobalDefault,
         savedGrokSessionID: String? = nil,
         savedBackendBinding: SessionBackendBinding? = nil,
-        savedForkLedgerEntry: SessionForkLedgerEntry? = nil
+        savedForkLedgerEntry: SessionForkLedgerEntry? = nil,
+        savedPendingRecoveryIntent: SessionPendingRecoveryIntent? = nil
     ) {
         tabSessionID = id
         let durableBackendID = savedBackendBinding?.backendID ?? savedGrokSessionID
@@ -441,7 +453,17 @@ final class ChatStore {
         if !isSameContinuityBinding || boundForkLedgerEntry == nil {
             boundForkLedgerEntry = savedForkLedgerEntry
         }
-        if durableBackendID == nil {
+        pendingRecoveryIntent = savedPendingRecoveryIntent
+        if savedPendingRecoveryIntent != nil {
+            self.savedGrokSessionID = nil
+            continuityBackendID = nil
+            boundForkLedgerEntry = nil
+            continuityReceipt = Self.recoveryForkedContinuityReceipt(
+                localMessages: messages,
+                localTag: savedPendingRecoveryIntent?.transcriptTag
+            )
+            persistedContinuityReceipt = continuityReceipt
+        } else if durableBackendID == nil {
             continuityReceipt = Self.localOnlyContinuityReceipt(localMessageCount: messages.count)
         } else if !isSameContinuityBinding {
             continuityReceipt = Self.verifyingContinuityReceipt(localMessageCount: messages.count)
@@ -491,6 +513,7 @@ final class ChatStore {
         let completeLocalSnapshot = messages
         let localSnapshot = boundForkLedgerEntry?.localMessagesForBackendVerification(messages)
             ?? completeLocalSnapshot
+        let continuityKeyOverride = continuityKeyOverride
         continuityBackendID = targetBackendID
         continuityReceipt = Self.verifyingContinuityReceipt(localMessageCount: localSnapshot.count)
 
@@ -517,7 +540,8 @@ final class ChatStore {
                 )
             }
             do {
-                guard let key = try KeychainSessionLifecycleIntegrityKeyProvider().existingKey() else {
+                guard let key = try (continuityKeyOverride
+                    ?? KeychainSessionLifecycleIntegrityKeyProvider().existingKey()) else {
                     return SessionContinuityVerification(
                         receipt: SessionContinuityReceipt(
                             status: .verificationIncomplete,
@@ -599,6 +623,176 @@ final class ChatStore {
         return verification.receipt.status
     }
 
+    /// Load review-only candidates after an explicit Relink action. This bounded scan
+    /// never runs during startup and never mutates the current binding.
+    func reviewRecoveryCandidates() async {
+        guard let workspace = currentWorkspace else {
+            recoveryCandidateError = "Select a project before reviewing histories."
+            return
+        }
+        let expectedTabID = tabSessionID
+        let expectedWorkspaceID = workspace.id
+        let localSnapshot = messages
+        let continuityKeyOverride = continuityKeyOverride
+        isLoadingRecoveryCandidates = true
+        recoveryCandidateError = nil
+        recoveryCandidates = []
+
+        let result = await Task.detached(priority: .userInitiated) {
+            do {
+                guard let key = try (continuityKeyOverride
+                    ?? KeychainSessionLifecycleIntegrityKeyProvider().existingKey()) else {
+                    return Result<[SessionRecoveryCandidate], Error>.failure(
+                        SessionRecoveryReviewError.integrityKeyUnavailable
+                    )
+                }
+                return .success(SessionTranscriptRecovery.recoveryCandidates(
+                    workspacePath: workspace.path,
+                    workspaceName: workspace.displayName,
+                    localMessages: localSnapshot,
+                    key: key
+                ))
+            } catch {
+                return .failure(error)
+            }
+        }.value
+
+        guard tabSessionID == expectedTabID,
+              currentWorkspace?.id == expectedWorkspaceID else { return }
+        isLoadingRecoveryCandidates = false
+        switch result {
+        case .success(let candidates):
+            recoveryCandidates = candidates
+        case .failure:
+            recoveryCandidateError = "Recovery histories could not be reviewed safely."
+        }
+    }
+
+    /// Preserve the local transcript and explicitly detach the failed backend. No Grok
+    /// process is started here; the next accepted send creates the successor lazily.
+    @discardableResult
+    func continueAsNew() async -> Bool {
+        guard let predecessor = continuityBackendID ?? savedGrokSessionID,
+              SessionSendGate.decision(for: continuityStatus) == .block else {
+            return false
+        }
+        let localSnapshot = messages
+        let continuityKeyOverride = continuityKeyOverride
+        let localTag = await Task.detached(priority: .utility) {
+            guard let key = continuityKeyOverride
+                ?? (try? KeychainSessionLifecycleIntegrityKeyProvider().existingKey()) else {
+                return nil as String?
+            }
+            return SessionTranscriptRecovery.transcriptSequenceTag(localSnapshot, key: key)
+        }.value
+        pendingRecoveryIntent = SessionPendingRecoveryIntent(
+            action: .continueAsNew,
+            predecessorBackendID: predecessor,
+            chosenAt: Date(),
+            localMessageCountAtChoice: localSnapshot.count,
+            transcriptTag: localTag
+        )
+        savedGrokSessionID = nil
+        continuityBackendID = nil
+        boundForkLedgerEntry = nil
+        continuityReceipt = Self.recoveryForkedContinuityReceipt(
+            localMessages: localSnapshot,
+            localTag: localTag
+        )
+        persistedContinuityReceipt = continuityReceipt
+        recoveryCandidates = []
+        recoveryCandidateError = nil
+        appendSystemNote(
+            "Recovery choice: Continue as New. The prior backend remains preserved; a new conversation will be created on the next send."
+        )
+        notifyMessagesChanged()
+        return true
+    }
+
+    /// Re-verify the exact selected candidate, then durably bind it. Candidate discovery
+    /// alone is never sufficient and this action does not start a backend process.
+    @discardableResult
+    func relink(to candidate: SessionRecoveryCandidate) async -> Bool {
+        guard candidate.isRelinkable,
+              let workspace = currentWorkspace,
+              let historyURL = GrokSessionTranscriptImporter.chatHistoryURL(
+                  workspacePath: workspace.path,
+                  grokSessionID: candidate.backendID
+              ) else { return false }
+        let expectedTabID = tabSessionID
+        let expectedWorkspaceID = workspace.id
+        let predecessor = continuityBackendID ?? savedGrokSessionID
+        let localSnapshot = messages
+        let continuityKeyOverride = continuityKeyOverride
+        let verification = await Task.detached(priority: .userInitiated) {
+            do {
+                guard let key = try (continuityKeyOverride
+                    ?? KeychainSessionLifecycleIntegrityKeyProvider().existingKey()) else {
+                    return nil as SessionContinuityVerification?
+                }
+                return SessionTranscriptRecovery.verifyContinuity(
+                    localMessages: localSnapshot,
+                    backendHistoryURL: historyURL,
+                    key: key
+                )
+            } catch {
+                return nil
+            }
+        }.value
+        guard tabSessionID == expectedTabID,
+              currentWorkspace?.id == expectedWorkspaceID,
+              let verification,
+              [.verified, .backendOnly].contains(verification.receipt.status) else {
+            recoveryCandidateError = "That history no longer verifies against this tab. No binding changed."
+            return false
+        }
+
+        if !verification.backendMessages.isEmpty {
+            let reconciled = SessionTranscriptReconciler.reconcile(
+                local: localSnapshot,
+                authoritative: verification.backendMessages
+            )
+            if SessionTranscriptReconciler.contentSignature(reconciled)
+                != SessionTranscriptReconciler.contentSignature(localSnapshot) {
+                messages = filteredPersistedMessages(reconciled)
+                if let expectedTabID {
+                    SessionMessageStore.replaceAfterAuthoritativeReconciliation(
+                        messages,
+                        for: expectedTabID
+                    )
+                }
+                streamRevision &+= 1
+            }
+        }
+
+        let entry = await makeForkLedgerEntry(
+            predecessorBackendID: predecessor,
+            successorBackendID: candidate.backendID,
+            reason: .explicitRelink,
+            localMessagesAtFork: messages
+        )
+        if let entry,
+           !pendingForkLedgerEntries.contains(where: { $0.id == entry.id }) {
+            pendingForkLedgerEntries.append(entry)
+            boundForkLedgerEntry = entry
+        }
+        pendingRecoveryIntent = nil
+        savedGrokSessionID = candidate.backendID
+        continuityBackendID = candidate.backendID
+        continuityReceipt = verification.receipt
+        persistedContinuityReceipt = verification.receipt
+        recoveryCandidateError = nil
+        appendSystemNote(
+            "Recovery choice: Relinked to verified backend …\(candidate.backendID.suffix(8))."
+        )
+        notifyMessagesChanged()
+        return true
+    }
+
+    private enum SessionRecoveryReviewError: Error {
+        case integrityKeyUnavailable
+    }
+
     private static func verifyingContinuityReceipt(localMessageCount: Int) -> SessionContinuityReceipt {
         SessionContinuityReceipt(
             status: .verifying,
@@ -624,6 +818,26 @@ final class ChatStore {
             backendMessageCount: 0,
             matchingPrefixCount: 0,
             localTranscriptTag: nil,
+            backendTranscriptTag: nil,
+            verifiedAt: Date()
+        )
+    }
+
+    private static func recoveryForkedContinuityReceipt(
+        localMessages: [Message],
+        localTag: String?
+    ) -> SessionContinuityReceipt {
+        SessionContinuityReceipt(
+            status: .recoveryForked,
+            reason: .recoveryForked,
+            normalizationVersion: VersionedOpaqueTag.transcriptNormalizationVersion,
+            authenticationSchemaVersion: VersionedOpaqueTag.transcriptAuthenticationSchemaVersion,
+            localMessageCount: localMessages.filter {
+                $0.role == .user || $0.role == .assistant
+            }.count,
+            backendMessageCount: 0,
+            matchingPrefixCount: 0,
+            localTranscriptTag: localTag,
             backendTranscriptTag: nil,
             verifiedAt: Date()
         )
@@ -754,6 +968,16 @@ final class ChatStore {
     func restorePersistedMessages(_ saved: [Message]) {
         messages = filteredPersistedMessages(saved)
         streamingMessageID = nil
+        if let pendingRecoveryIntent {
+            continuityReceipt = Self.recoveryForkedContinuityReceipt(
+                localMessages: messages,
+                localTag: pendingRecoveryIntent.transcriptTag
+            )
+            persistedContinuityReceipt = continuityReceipt
+        } else if savedGrokSessionID == nil {
+            continuityReceipt = Self.localOnlyContinuityReceipt(localMessageCount: messages.count)
+            persistedContinuityReceipt = continuityReceipt
+        }
     }
 
     /// Load persisted (and optionally grok on-disk) transcript for a tab.
@@ -1079,16 +1303,22 @@ final class ChatStore {
                 if process.sessionLoadStartedFreshFallback { return .resumeFallback }
                 if launchForkSession { return .explicitBackendFork }
                 if effectiveResumeSessionID == nil, hadLocalConversationBeforeStart {
-                    return .localOnlyStart
+                    return pendingRecoveryIntent?.action == .continueAsNew
+                        ? .explicitContinueAsNew
+                        : .localOnlyStart
                 }
                 return nil
             }()
             if let forkReason {
                 await recordRecoveryFork(
-                    predecessorBackendID: effectiveResumeSessionID,
+                    predecessorBackendID: pendingRecoveryIntent?.predecessorBackendID
+                        ?? effectiveResumeSessionID,
                     successorBackendID: successorBackendID,
                     reason: forkReason
                 )
+                if forkReason == .explicitContinueAsNew {
+                    pendingRecoveryIntent = nil
+                }
             }
         }
         modelExecutionState = process.modelExecutionState
@@ -1136,24 +1366,13 @@ final class ChatStore {
         reason: SessionForkLedgerReason,
         localMessagesAtFork: [Message]? = nil
     ) async {
-        guard let localSessionID = tabSessionID else { return }
         let localMessages = localMessagesAtFork ?? messages
-        let localTag = await Task.detached(priority: .utility) {
-            guard let key = try? KeychainSessionLifecycleIntegrityKeyProvider().existingKey() else {
-                return nil as String?
-            }
-            return SessionTranscriptRecovery.transcriptSequenceTag(localMessages, key: key)
-        }.value
-        let entry = SessionForkLedgerEntry(
-            id: UUID(),
-            localSessionID: localSessionID,
+        guard let entry = await makeForkLedgerEntry(
             predecessorBackendID: predecessorBackendID,
             successorBackendID: successorBackendID,
             reason: reason,
-            createdAt: Date(),
-            localMessageCountAtFork: localMessages.count,
-            transcriptTag: localTag
-        )
+            localMessagesAtFork: localMessages
+        ) else { return }
         if !pendingForkLedgerEntries.contains(where: {
             $0.predecessorBackendID == entry.predecessorBackendID
                 && $0.successorBackendID == entry.successorBackendID
@@ -1169,13 +1388,43 @@ final class ChatStore {
             localMessageCount: localMessages.filter { $0.role == .user || $0.role == .assistant }.count,
             backendMessageCount: 0,
             matchingPrefixCount: 0,
-            localTranscriptTag: localTag,
+            localTranscriptTag: entry.transcriptTag,
             backendTranscriptTag: nil,
             verifiedAt: Date()
         )
         persistedContinuityReceipt = continuityReceipt
         boundForkLedgerEntry = entry
         notifyMessagesChanged()
+    }
+
+    private func makeForkLedgerEntry(
+        predecessorBackendID: String?,
+        successorBackendID: String,
+        reason: SessionForkLedgerReason,
+        localMessagesAtFork: [Message]
+    ) async -> SessionForkLedgerEntry? {
+        guard let localSessionID = tabSessionID else { return nil }
+        let continuityKeyOverride = continuityKeyOverride
+        let localTag = await Task.detached(priority: .utility) {
+            guard let key = continuityKeyOverride
+                ?? (try? KeychainSessionLifecycleIntegrityKeyProvider().existingKey()) else {
+                return nil as String?
+            }
+            return SessionTranscriptRecovery.transcriptSequenceTag(
+                localMessagesAtFork,
+                key: key
+            )
+        }.value
+        return SessionForkLedgerEntry(
+            id: UUID(),
+            localSessionID: localSessionID,
+            predecessorBackendID: predecessorBackendID,
+            successorBackendID: successorBackendID,
+            reason: reason,
+            createdAt: Date(),
+            localMessageCountAtFork: localMessagesAtFork.count,
+            transcriptTag: localTag
+        )
     }
 
     private func startConnectionWatchdog() {

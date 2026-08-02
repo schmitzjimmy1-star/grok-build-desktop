@@ -528,6 +528,53 @@ final class ACPClientContractTests: XCTestCase {
         XCTAssertTrue(selection.contains("continuityPermitsAuthoritativeReconciliation"))
     }
 
+    func testRecoveryCandidatesRemainExplicitAndRecoveryActionsDoNotStartAProcess() throws {
+        let repositoryRoot = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        let contentSource = try String(
+            contentsOf: repositoryRoot.appendingPathComponent("GrokBuild/ContentView.swift"),
+            encoding: .utf8
+        )
+        let chatStoreSource = try String(
+            contentsOf: repositoryRoot.appendingPathComponent("GrokBuild/Services/ChatStore.swift"),
+            encoding: .utf8
+        )
+
+        let restoreStart = try XCTUnwrap(contentSource.range(of: "private func restorePersistedSessions"))
+        let restoreEnd = try XCTUnwrap(
+            contentSource.range(of: "private func restoredTitle", range: restoreStart.upperBound..<contentSource.endIndex)
+        )
+        let restore = String(contentSource[restoreStart.lowerBound..<restoreEnd.lowerBound])
+        XCTAssertFalse(restore.contains("recoveryCandidates"))
+        XCTAssertFalse(restore.contains("recoveryHistoryURLs"))
+
+        let persistenceStart = try XCTUnwrap(contentSource.range(of: "private func persistSessionLayout"))
+        let persistenceEnd = try XCTUnwrap(
+            contentSource.range(of: "// MARK: - Logic", range: persistenceStart.upperBound..<contentSource.endIndex)
+        )
+        let persistence = String(contentSource[persistenceStart.lowerBound..<persistenceEnd.lowerBound])
+        XCTAssertTrue(persistence.contains("session.store.persistedPendingRecoveryIntent == nil"))
+        XCTAssertTrue(persistence.contains("pendingRecoveryIntent: session.store.persistedPendingRecoveryIntent"))
+
+        let continueStart = try XCTUnwrap(chatStoreSource.range(of: "func continueAsNew"))
+        let relinkStart = try XCTUnwrap(
+            chatStoreSource.range(of: "func relink", range: continueStart.upperBound..<chatStoreSource.endIndex)
+        )
+        let continueAction = String(chatStoreSource[continueStart.lowerBound..<relinkStart.lowerBound])
+        XCTAssertFalse(continueAction.contains("restartProcess"))
+        XCTAssertFalse(continueAction.contains("process.start"))
+
+        let relinkEnd = try XCTUnwrap(
+            chatStoreSource.range(of: "private enum SessionRecoveryReviewError", range: relinkStart.upperBound..<chatStoreSource.endIndex)
+        )
+        let relinkAction = String(chatStoreSource[relinkStart.lowerBound..<relinkEnd.lowerBound])
+        XCTAssertTrue(relinkAction.contains("verifyContinuity"))
+        XCTAssertFalse(relinkAction.contains("restartProcess"))
+        XCTAssertFalse(relinkAction.contains("process.start"))
+    }
+
     func testAppUpdatePaneObservesFreshUpdateReceipts() throws {
         let repositoryRoot = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent()

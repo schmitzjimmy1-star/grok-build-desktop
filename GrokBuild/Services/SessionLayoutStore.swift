@@ -135,6 +135,21 @@ struct SessionForkLedgerEntry: Codable, Hashable, Sendable, Identifiable {
     }
 }
 
+enum SessionPendingRecoveryAction: String, Codable, Hashable, Sendable {
+    case continueAsNew
+}
+
+/// A durable explicit recovery choice made before a successor backend exists. The
+/// authenticated v3 snapshot carries this boundary across quit/relaunch; the first
+/// subsequent send creates the backend and converts it into a fork-ledger entry.
+struct SessionPendingRecoveryIntent: Codable, Hashable, Sendable {
+    let action: SessionPendingRecoveryAction
+    let predecessorBackendID: String
+    let chosenAt: Date
+    let localMessageCountAtChoice: Int
+    let transcriptTag: String?
+}
+
 struct SavedSessionRecord: Codable, Identifiable, Hashable {
     let id: UUID
     let workspaceID: UUID
@@ -149,6 +164,7 @@ struct SavedSessionRecord: Codable, Identifiable, Hashable {
     var transcriptGeneration: UInt64
     var transcriptStorageVersion: Int
     var forkLedgerReference: String?
+    var pendingRecoveryIntent: SessionPendingRecoveryIntent?
 
     var grokSessionID: String? {
         get { backendBinding?.backendID }
@@ -201,7 +217,8 @@ struct SavedSessionRecord: Codable, Identifiable, Hashable {
         lastActivationOrdinal: UInt64 = 0,
         transcriptGeneration: UInt64 = 0,
         transcriptStorageVersion: Int = 1,
-        forkLedgerReference: String? = nil
+        forkLedgerReference: String? = nil,
+        pendingRecoveryIntent: SessionPendingRecoveryIntent? = nil
     ) {
         self.init(
             id: id,
@@ -222,7 +239,8 @@ struct SavedSessionRecord: Codable, Identifiable, Hashable {
             lastActivationOrdinal: lastActivationOrdinal,
             transcriptGeneration: transcriptGeneration,
             transcriptStorageVersion: transcriptStorageVersion,
-            forkLedgerReference: forkLedgerReference
+            forkLedgerReference: forkLedgerReference,
+            pendingRecoveryIntent: pendingRecoveryIntent
         )
     }
 
@@ -238,7 +256,8 @@ struct SavedSessionRecord: Codable, Identifiable, Hashable {
         lastActivationOrdinal: UInt64,
         transcriptGeneration: UInt64 = 0,
         transcriptStorageVersion: Int = 1,
-        forkLedgerReference: String? = nil
+        forkLedgerReference: String? = nil,
+        pendingRecoveryIntent: SessionPendingRecoveryIntent? = nil
     ) {
         self.id = id
         self.workspaceID = workspaceID
@@ -252,12 +271,13 @@ struct SavedSessionRecord: Codable, Identifiable, Hashable {
         self.transcriptGeneration = transcriptGeneration
         self.transcriptStorageVersion = transcriptStorageVersion
         self.forkLedgerReference = forkLedgerReference
+        self.pendingRecoveryIntent = pendingRecoveryIntent
     }
 
     private enum CodingKeys: String, CodingKey {
         case id, workspaceID, backendBinding, title, modelIntent, modelExecutionState, agentIntent
         case lastAccessed, lastActivationOrdinal, transcriptGeneration
-        case transcriptStorageVersion, forkLedgerReference
+        case transcriptStorageVersion, forkLedgerReference, pendingRecoveryIntent
         // Defensive aliases for an uncommitted early v3 candidate. Authoritative v2 uses
         // LegacySavedSessionRecordV2 below.
         case model, agent, grokSessionID
@@ -303,6 +323,10 @@ struct SavedSessionRecord: Codable, Identifiable, Hashable {
         transcriptGeneration = try container.decodeIfPresent(UInt64.self, forKey: .transcriptGeneration) ?? 0
         transcriptStorageVersion = try container.decodeIfPresent(Int.self, forKey: .transcriptStorageVersion) ?? 1
         forkLedgerReference = try container.decodeIfPresent(String.self, forKey: .forkLedgerReference)
+        pendingRecoveryIntent = try container.decodeIfPresent(
+            SessionPendingRecoveryIntent.self,
+            forKey: .pendingRecoveryIntent
+        )
     }
 
     func encode(to encoder: Encoder) throws {
@@ -319,6 +343,7 @@ struct SavedSessionRecord: Codable, Identifiable, Hashable {
         try container.encode(transcriptGeneration, forKey: .transcriptGeneration)
         try container.encode(transcriptStorageVersion, forKey: .transcriptStorageVersion)
         try container.encodeIfPresent(forkLedgerReference, forKey: .forkLedgerReference)
+        try container.encodeIfPresent(pendingRecoveryIntent, forKey: .pendingRecoveryIntent)
     }
 }
 

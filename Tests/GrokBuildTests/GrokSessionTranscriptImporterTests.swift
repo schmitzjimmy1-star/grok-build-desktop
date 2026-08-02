@@ -62,7 +62,7 @@ final class GrokSessionTranscriptImporterTests: XCTestCase {
         )
     }
 
-    func testLegacyNilIDLocatorRequiresOneExactPromptMatch() throws {
+    func testRecoveryCandidateReviewNeverAutoBindsOneCommonPrompt() throws {
         let grokHome = FileManager.default.temporaryDirectory
             .appendingPathComponent("grokbuild-legacy-locator-\(UUID().uuidString)", isDirectory: true)
         GrokSessionTranscriptImporter.grokHomeDirectory = grokHome
@@ -83,24 +83,34 @@ final class GrokSessionTranscriptImporterTests: XCTestCase {
         }
 
         try writeHistory(id: "backend-one", prompt: "Use two workers")
-        XCTAssertEqual(
-            GrokSessionTranscriptImporter.uniqueSessionIDMatchingTranscript(
-                workspacePath: workspace,
-                localMessages: [
-                    Message(role: .user, content: "Earlier prompt from a fractured backend"),
-                    Message(role: .user, content: "Use  two workers"),
-                ]
-            ),
-            "backend-one"
+        let oneMatch = SessionTranscriptRecovery.recoveryCandidates(
+            workspacePath: workspace,
+            workspaceName: "Legacy fixture",
+            localMessages: [
+                Message(role: .user, content: "Earlier prompt from a fractured backend"),
+                Message(role: .assistant, content: "Earlier local answer"),
+                Message(role: .user, content: "Use two workers"),
+            ],
+            key: Data(0..<32)
         )
+        XCTAssertEqual(oneMatch.map(\.backendID), ["backend-one"])
+        XCTAssertEqual(oneMatch.first?.matchingTurnCount, 0)
+        XCTAssertFalse(try XCTUnwrap(oneMatch.first).isRelinkable)
+        XCTAssertEqual(oneMatch.first?.relationship, .diverged)
 
         try writeHistory(id: "backend-two", prompt: "Use two workers")
-        XCTAssertNil(
-            GrokSessionTranscriptImporter.uniqueSessionIDMatchingTranscript(
-                workspacePath: workspace,
-                localMessages: [Message(role: .user, content: "Use two workers")]
-            )
+        let twoMatches = SessionTranscriptRecovery.recoveryCandidates(
+            workspacePath: workspace,
+            workspaceName: "Legacy fixture",
+            localMessages: [
+                Message(role: .user, content: "Earlier prompt from a fractured backend"),
+                Message(role: .assistant, content: "Earlier local answer"),
+                Message(role: .user, content: "Use two workers"),
+            ],
+            key: Data(0..<32)
         )
+        XCTAssertEqual(Set(twoMatches.map(\.backendID)), Set(["backend-one", "backend-two"]))
+        XCTAssertTrue(twoMatches.allSatisfy { !$0.isRelinkable })
     }
 
     func testImportMessagesExtractsUserQueryAndAssistantText() throws {
@@ -159,6 +169,81 @@ final class GrokSessionTranscriptImporterTests: XCTestCase {
             GrokSessionTranscriptImporter.importMessages(from: file).map(\.content),
             ["Run the browser check", "BROWSER-FINAL-OK"]
         )
+    }
+
+    func testImportedRowsPreserveWorkerAndRootProvenance() throws {
+        let fixture = try fixtureURL("backend-composite-worker-parent.jsonl")
+        let transcript = GrokSessionTranscriptImporter.importTranscript(
+            from: fixture,
+            backendSessionID: "backend-provenance",
+            key: Data(0..<32)
+        )
+
+        XCTAssertEqual(transcript.rows.map(\.rowIndex), Array(0..<5))
+        XCTAssertEqual(
+            transcript.rows.map(\.kind),
+            [.synthetic, .userTurn, .workerOutput, .workerOutput, .rootFinal]
+        )
+        XCTAssertEqual(transcript.displayMessages.count, 4)
+        XCTAssertEqual(transcript.identityMessages.map(\.content), [
+            "Coordinate two synthetic workers.",
+            "Parent synthesis for the synthetic fixture.",
+        ])
+        XCTAssertEqual(
+            transcript.displayMessages[1].provenance?.source,
+            .backendWorker
+        )
+        XCTAssertEqual(
+            transcript.displayMessages.last?.provenance?.source,
+            .backendRoot
+        )
+        XCTAssertTrue(transcript.displayMessages.allSatisfy {
+            $0.provenance?.backendSessionID == "backend-provenance"
+                && $0.provenance?.opaqueContentTag != nil
+        })
+        XCTAssertFalse(transcript.hasQuarantinedIdentityRows)
+    }
+
+    func testKnownWorkerRowsDoNotDisplaceRootIdentityProof() throws {
+        let fixture = try fixtureURL("backend-composite-worker-parent.jsonl")
+        let local = [
+            Message(role: .user, content: "Coordinate two synthetic workers."),
+            Message(role: .assistant, content: "Parent synthesis for the synthetic fixture."),
+        ]
+        let verification = SessionTranscriptRecovery.verifyContinuity(
+            localMessages: local,
+            backendHistoryURL: fixture,
+            key: Data(0..<32)
+        )
+
+        XCTAssertEqual(verification.receipt.status, .verified)
+        XCTAssertEqual(verification.receipt.reason, .exactMatch)
+        XCTAssertEqual(verification.backendMessages.count, 4)
+        XCTAssertEqual(
+            verification.backendMessages.filter {
+                $0.provenance?.source == .backendWorker
+            }.count,
+            2
+        )
+    }
+
+    func testUnknownOrNonFinalAssistantProvenanceFailsClosed() throws {
+        let file = try writeTempJSONL("""
+        {"type":"user","content":"Do the safe thing"}
+        {"type":"assistant","content":"Unsettled root output","agent":"root","is_final":false}
+        {"type":"assistant","content":"Settled root output","agent":"root","is_final":true}
+        """)
+        let verification = SessionTranscriptRecovery.verifyContinuity(
+            localMessages: [
+                Message(role: .user, content: "Do the safe thing"),
+                Message(role: .assistant, content: "Settled root output"),
+            ],
+            backendHistoryURL: file,
+            key: Data(0..<32)
+        )
+
+        XCTAssertEqual(verification.receipt.status, .compositeSuspected)
+        XCTAssertEqual(verification.receipt.reason, .mixedOrUnknownProvenance)
     }
 
     func testContinuityVerifierAcceptsExactAndVerifiedPrefixHistories() {
@@ -264,6 +349,181 @@ final class GrokSessionTranscriptImporterTests: XCTestCase {
         )
         XCTAssertEqual(incomplete.receipt.status, .verificationIncomplete)
         XCTAssertEqual(incomplete.receipt.reason, .boundedReadIncomplete)
+    }
+
+    func testCandidateReviewMarksOnlyExactProvenanceSafeHistoryRelinkable() throws {
+        let grokHome = FileManager.default.temporaryDirectory
+            .appendingPathComponent("grokbuild-candidate-review-\(UUID().uuidString)", isDirectory: true)
+        GrokSessionTranscriptImporter.grokHomeDirectory = grokHome
+        defer { try? FileManager.default.removeItem(at: grokHome) }
+        let workspace = URL(fileURLWithPath: "/tmp/candidate-review")
+        let exactHistory = grokHome
+            .appendingPathComponent("sessions/%2Fprivate%2Ftmp%2Fcandidate-review/exact/chat_history.jsonl")
+        let commonHistory = grokHome
+            .appendingPathComponent("sessions/%2Fprivate%2Ftmp%2Fcandidate-review/common/chat_history.jsonl")
+        for history in [exactHistory, commonHistory] {
+            try FileManager.default.createDirectory(
+                at: history.deletingLastPathComponent(),
+                withIntermediateDirectories: true
+            )
+        }
+        try """
+        {"type":"user","content":"First exact prompt"}
+        {"type":"assistant","content":"First exact answer"}
+        {"type":"user","content":"Common prompt"}
+        {"type":"assistant","content":"Common exact answer"}
+        """.write(to: exactHistory, atomically: true, encoding: .utf8)
+        try """
+        {"type":"user","content":"Different history"}
+        {"type":"assistant","content":"Different answer"}
+        {"type":"user","content":"Common prompt"}
+        {"type":"assistant","content":"Unrelated common answer"}
+        """.write(to: commonHistory, atomically: true, encoding: .utf8)
+        let local = [
+            Message(role: .user, content: "First exact prompt"),
+            Message(role: .assistant, content: "First exact answer"),
+            Message(role: .user, content: "Common prompt"),
+            Message(role: .assistant, content: "Common exact answer"),
+        ]
+
+        let candidates = SessionTranscriptRecovery.recoveryCandidates(
+            workspacePath: workspace,
+            workspaceName: "Candidate review",
+            localMessages: local,
+            key: Data(0..<32)
+        )
+
+        XCTAssertEqual(candidates.first?.backendID, "exact")
+        XCTAssertTrue(try XCTUnwrap(candidates.first).isRelinkable)
+        XCTAssertEqual(candidates.first?.matchingTurnCount, 2)
+        XCTAssertFalse(try XCTUnwrap(candidates.first { $0.backendID == "common" }).isRelinkable)
+
+        let promptOnly = SessionTranscriptRecovery.recoveryCandidates(
+            workspacePath: workspace,
+            workspaceName: "Candidate review",
+            localMessages: [Message(role: .user, content: "First exact prompt")],
+            key: Data(0..<32)
+        )
+        let exactPromptOnly = try XCTUnwrap(promptOnly.first { $0.backendID == "exact" })
+        XCTAssertEqual(exactPromptOnly.relationship, .verified)
+        XCTAssertEqual(exactPromptOnly.matchingTurnCount, 0)
+        XCTAssertFalse(
+            exactPromptOnly.isRelinkable,
+            "one common user prompt is review evidence, never sufficient relink proof"
+        )
+    }
+
+    @MainActor
+    func testContinueAsNewPersistsIntentWithoutStartingBackend() async throws {
+        let workspace = Workspace(
+            name: "Continue fixture",
+            path: URL(fileURLWithPath: "/tmp/continue-as-new")
+        )
+        let store = ChatStore(continuityKeyOverride: Data(0..<32))
+        store.prepare(workspace: workspace, savedGrokSessionID: "missing-backend")
+        store.bindTabSession(
+            UUID(),
+            modelIntent: .inheritProjectDefault,
+            savedGrokSessionID: "missing-backend",
+            savedBackendBinding: SessionBackendBinding(
+                backendID: "missing-backend",
+                origin: .restored,
+                predecessorBackendID: nil,
+                verification: .failed
+            )
+        )
+        store.restorePersistedMessages([
+            Message(role: .user, content: "Preserve this local work"),
+            Message(role: .assistant, content: "Preserved local answer"),
+        ])
+        let missingStatus = await store.verifyContinuityBeforeResume()
+        XCTAssertEqual(missingStatus, .backendMissing)
+
+        let continued = await store.continueAsNew()
+        XCTAssertTrue(continued)
+        XCTAssertNil(store.savedGrokSessionIDForTests)
+        XCTAssertNil(store.grokSessionId)
+        XCTAssertEqual(store.connectionState, .idle)
+        XCTAssertEqual(store.continuityStatus, .recoveryForked)
+        XCTAssertEqual(store.persistedPendingRecoveryIntent?.action, .continueAsNew)
+        XCTAssertEqual(
+            store.persistedPendingRecoveryIntent?.predecessorBackendID,
+            "missing-backend"
+        )
+        XCTAssertTrue(store.pendingForkLedgerEntries.isEmpty)
+        XCTAssertTrue(store.messages.last?.content.contains("Continue as New") == true)
+
+        let relaunched = ChatStore(continuityKeyOverride: Data(0..<32))
+        relaunched.prepare(workspace: workspace)
+        relaunched.bindTabSession(
+            UUID(),
+            modelIntent: .inheritProjectDefault,
+            savedPendingRecoveryIntent: store.persistedPendingRecoveryIntent
+        )
+        relaunched.restorePersistedMessages(store.messages)
+        XCTAssertEqual(relaunched.continuityStatus, .recoveryForked)
+        XCTAssertNil(relaunched.durableGrokSessionID)
+        XCTAssertEqual(
+            relaunched.continuityReceipt.localMessageCount,
+            store.messages.filter { $0.role == .user || $0.role == .assistant }.count
+        )
+    }
+
+    @MainActor
+    func testExplicitRelinkReverifiesAndRecordsLedgerWithoutStartingBackend() async throws {
+        let grokHome = FileManager.default.temporaryDirectory
+            .appendingPathComponent("grokbuild-relink-\(UUID().uuidString)", isDirectory: true)
+        GrokSessionTranscriptImporter.grokHomeDirectory = grokHome
+        defer { try? FileManager.default.removeItem(at: grokHome) }
+        let workspace = Workspace(
+            name: "Relink fixture",
+            path: URL(fileURLWithPath: "/tmp/relink-fixture")
+        )
+        let history = grokHome
+            .appendingPathComponent("sessions/%2Fprivate%2Ftmp%2Frelink-fixture/verified-candidate/chat_history.jsonl")
+        try FileManager.default.createDirectory(
+            at: history.deletingLastPathComponent(),
+            withIntermediateDirectories: true
+        )
+        try """
+        {"type":"user","content":"Relink this exact turn"}
+        {"type":"assistant","content":"Exact relink answer","model_id":"grok-4.5"}
+        """.write(to: history, atomically: true, encoding: .utf8)
+
+        let store = ChatStore(continuityKeyOverride: Data(0..<32))
+        store.prepare(workspace: workspace, savedGrokSessionID: "wrong-backend")
+        store.bindTabSession(
+            UUID(),
+            modelIntent: .inheritProjectDefault,
+            savedGrokSessionID: "wrong-backend",
+            savedBackendBinding: SessionBackendBinding(
+                backendID: "wrong-backend",
+                origin: .restored,
+                predecessorBackendID: nil,
+                verification: .failed
+            )
+        )
+        store.restorePersistedMessages([
+            Message(role: .user, content: "Relink this exact turn"),
+            Message(role: .assistant, content: "Exact relink answer"),
+        ])
+        let missingStatus = await store.verifyContinuityBeforeResume()
+        XCTAssertEqual(missingStatus, .backendMissing)
+        await store.reviewRecoveryCandidates()
+        let candidate = try XCTUnwrap(store.recoveryCandidates.first)
+        XCTAssertTrue(candidate.isRelinkable)
+
+        let relinked = await store.relink(to: candidate)
+        XCTAssertTrue(relinked)
+        XCTAssertEqual(store.savedGrokSessionIDForTests, "verified-candidate")
+        XCTAssertNil(store.grokSessionId)
+        XCTAssertEqual(store.connectionState, .idle)
+        XCTAssertEqual(store.continuityStatus, .verified)
+        XCTAssertEqual(store.pendingForkLedgerEntries.last?.reason, .explicitRelink)
+        XCTAssertEqual(
+            store.pendingForkLedgerEntries.last?.predecessorBackendID,
+            "wrong-backend"
+        )
     }
 
     func testSendGateAllowsOnlySafeContinuityStates() {
@@ -396,6 +656,31 @@ final class GrokSessionTranscriptImporterTests: XCTestCase {
             "worker explore output",
             "Clean parent synthesis SUBAGENT-OK",
         ])
+        XCTAssertEqual(second, first)
+    }
+
+    func testExactBindingReconciliationAppendsProvenanceRowsOnce() throws {
+        let transcript = GrokSessionTranscriptImporter.importTranscript(
+            from: try fixtureURL("backend-composite-worker-parent.jsonl"),
+            backendSessionID: "exact-backend",
+            key: Data(0..<32)
+        )
+        let local = [Message(role: .user, content: "Coordinate two synthetic workers.")]
+
+        let first = SessionTranscriptReconciler.reconcile(
+            local: local,
+            authoritative: transcript.displayMessages
+        )
+        let second = SessionTranscriptReconciler.reconcile(
+            local: first,
+            authoritative: transcript.displayMessages
+        )
+
+        XCTAssertEqual(first.count, 4)
+        XCTAssertEqual(first.filter {
+            $0.provenance?.source == .backendWorker
+        }.count, 2)
+        XCTAssertEqual(first.last?.provenance?.source, .backendRoot)
         XCTAssertEqual(second, first)
     }
 

@@ -277,6 +277,48 @@ final class SessionLifecycleV3Tests: XCTestCase {
         )
     }
 
+    func testAuthenticatedV3RoundTripsPendingContinueAsNewIntent() throws {
+        let defaults = isolatedDefaults()
+        let workspaceID = UUID()
+        let pending = SessionPendingRecoveryIntent(
+            action: .continueAsNew,
+            predecessorBackendID: "backend-before",
+            chosenAt: Date(timeIntervalSince1970: 456),
+            localMessageCountAtChoice: 4,
+            transcriptTag: "opaque-choice-tag"
+        )
+        let record = SavedSessionRecord(
+            id: UUID(),
+            workspaceID: workspaceID,
+            backendBinding: nil,
+            title: "Pending recovery",
+            modelIntent: .inheritProjectDefault,
+            agentIntent: .inheritGlobalDefault,
+            lastAccessed: Date(timeIntervalSince1970: 456),
+            lastActivationOrdinal: 1,
+            pendingRecoveryIntent: pending
+        )
+        let snapshot = SessionLayoutSnapshot(
+            records: [record],
+            sessionOrderByWorkspace: [workspaceID: [record.id]],
+            selectedSessionID: record.id,
+            selectedWorkspaceID: workspaceID
+        )
+
+        XCTAssertTrue(SessionLayoutStore.saveSessions(
+            snapshot,
+            defaults: defaults,
+            keyProvider: provider
+        ).committed)
+        let loaded = SessionLayoutStore.loadSessionsResult(
+            defaults: defaults,
+            keyProvider: provider
+        )
+        XCTAssertEqual(loaded.authority, .v3Committed)
+        XCTAssertEqual(loaded.snapshot.records.first?.pendingRecoveryIntent, pending)
+        XCTAssertNil(loaded.snapshot.records.first?.backendBinding)
+    }
+
     func testRestoreDecisionUsesTrueMRUNotTranscriptLength() {
         let workspaceID = UUID()
         let olderLongTranscript = UUID()
