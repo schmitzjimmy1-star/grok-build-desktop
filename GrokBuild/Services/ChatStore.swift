@@ -678,6 +678,12 @@ final class ChatStore {
     private(set) var streamingMessageID: UUID?
     private var connectionWatchdogTask: Task<Void, Never>?
     private var streamingTextBuffer = StreamingTextBuffer()
+    /// Incremental streaming presentation for the active assistant message. Updated once
+    /// per display flush with the exact appended batch (O(appended), not O(full text));
+    /// `MessageBubble` consumes it instead of re-scanning the whole string per render.
+    private(set) var streamingPresentation: StreamingMarkdownPresentation?
+    private var streamingMarkdownAccumulator = StreamingMarkdownAccumulator()
+    private var streamingAccumulatorMessageID: UUID?
     private var streamingTextFlushTask: Task<Void, Never>?
     private var deferredPromptCompletion: (assistantID: UUID, ok: Bool)?
     private var turnSettlement = TurnSettlementCoordinator()
@@ -3856,9 +3862,31 @@ final class ChatStore {
         let batch = streamingTextBuffer.popNextBatch()
         if !batch.isEmpty {
             messages[idx].content += batch
+            updateStreamingPresentation(messageID: id, appended: batch, fullContent: messages[idx].content)
             streamRevision &+= 1
         }
         return !streamingTextBuffer.isEmpty
+    }
+
+    /// Keeps the incremental accumulator bound to the exact streaming message. Any
+    /// identity or raw-length desync (content replaced, turn rebound) rebuilds once
+    /// from the full content instead of trusting stale incremental state.
+    private func updateStreamingPresentation(messageID: UUID, appended: String, fullContent: String) {
+        if streamingAccumulatorMessageID != messageID
+            || streamingMarkdownAccumulator.consumedRawUTF8Count != fullContent.utf8.count - appended.utf8.count {
+            streamingMarkdownAccumulator.reset()
+            streamingAccumulatorMessageID = messageID
+            streamingMarkdownAccumulator.append(fullContent)
+        } else {
+            streamingMarkdownAccumulator.append(appended)
+        }
+        streamingPresentation = streamingMarkdownAccumulator.makePresentation()
+    }
+
+    private func clearStreamingPresentation() {
+        streamingPresentation = nil
+        streamingAccumulatorMessageID = nil
+        streamingMarkdownAccumulator.reset()
     }
 
     private func flushAllPendingAssistantText() {
@@ -3868,6 +3896,7 @@ final class ChatStore {
         let remaining = streamingTextBuffer.drain()
         guard !remaining.isEmpty else { return }
         messages[idx].content += remaining
+        updateStreamingPresentation(messageID: id, appended: remaining, fullContent: messages[idx].content)
         streamRevision &+= 1
     }
 
@@ -3898,6 +3927,7 @@ final class ChatStore {
         streamingTextFlushTask?.cancel()
         streamingTextFlushTask = nil
         streamingTextBuffer.clear()
+        clearStreamingPresentation()
         deferredPromptCompletion = nil
         pendingLateChunkPersistence = false
         pendingCompletionReconciliation = false

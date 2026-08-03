@@ -53,6 +53,9 @@ struct ContentView: View {
     /// layout persistence answer counts/generations without touching transcript files on the
     /// main actor or decoding any unselected body.
     @State private var transcriptMetadataByID: [UUID: SessionMessageStore.Metadata] = [:]
+    /// FIFO chain for asynchronous transcript writes; each link awaits its predecessor
+    /// so metadata merges and layout stamps can never complete out of submission order.
+    @State private var transcriptPersistChain: Task<Void, Never>?
     @State private var sessionLayout = SessionLayoutSnapshot(
         records: [],
         sessionOrderByWorkspace: [:],
@@ -269,6 +272,9 @@ struct ContentView: View {
         }
         .onReceive(NotificationCenter.default.publisher(for: .subagentRolesChanged)) { _ in
             refreshAgentHubRoles()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: NSApplication.willTerminateNotification)) { _ in
+            flushTranscriptsForTermination()
         }
         .onChange(of: selectedWorkspaceID) { _, _ in
             // Discovered agents are per-workspace; the store guard makes repeats cheap.
@@ -834,15 +840,52 @@ struct ContentView: View {
     private func persistSessionLayout(saveMessages: Bool = false) {
         guard sessionLayoutAuthority != .legacyV2Fallback,
               sessionLayoutFailure == nil else { return }
-        if saveMessages, !dirtyTranscriptIDs.isEmpty {
-            let dirtyIDs = dirtyTranscriptIDs
-            let dirtyMessages = Dictionary(uniqueKeysWithValues: liveSessions.compactMap { session in
-                dirtyIDs.contains(session.id) ? (session.id, session.store.messages) : nil
-            })
-            let saved = SessionMessageStore.saveAll(dirtyMessages)
+        guard saveMessages, !dirtyTranscriptIDs.isEmpty else {
+            encodeAndSaveSessionLayout(recordFlushReceipt: saveMessages)
+            return
+        }
+        // The dirty snapshot is taken at the prompt boundary on the main actor, but the
+        // file write (read envelope + merge + full JSON re-encode) moves off it — the
+        // old synchronous `storageQueue.sync` stalled the UI exactly when a long answer
+        // settled. Ordering is preserved two ways: writes chain FIFO behind the previous
+        // task, and the layout re-encode (which stamps transcript generations) runs only
+        // after its transcript write completes, so a stamp can never precede its file.
+        let dirtyIDs = dirtyTranscriptIDs
+        let dirtyMessages = Dictionary(uniqueKeysWithValues: liveSessions.compactMap { session in
+            dirtyIDs.contains(session.id) ? (session.id, session.store.messages) : nil
+        })
+        let previous = transcriptPersistChain
+        transcriptPersistChain = Task { @MainActor in
+            await previous?.value
+            let saved = await GrokBuildBackgroundWork.run({
+                SessionMessageStore.saveAll(dirtyMessages)
+            }, priority: .utility)
             transcriptMetadataByID.merge(saved) { _, new in new }
             dirtyTranscriptIDs.subtract(saved.keys)
+            encodeAndSaveSessionLayout(recordFlushReceipt: true)
         }
+    }
+
+    /// Final synchronous flush at app termination. The async chain covers normal
+    /// operation; quitting inside the small in-flight window must not lose the last
+    /// turn, so any still-dirty transcript is written before the process exits.
+    private func flushTranscriptsForTermination() {
+        guard sessionLayoutAuthority != .legacyV2Fallback,
+              sessionLayoutFailure == nil,
+              !dirtyTranscriptIDs.isEmpty else { return }
+        let dirtyIDs = dirtyTranscriptIDs
+        let dirtyMessages = Dictionary(uniqueKeysWithValues: liveSessions.compactMap { session in
+            dirtyIDs.contains(session.id) ? (session.id, session.store.messages) : nil
+        })
+        let saved = SessionMessageStore.saveAll(dirtyMessages)
+        transcriptMetadataByID.merge(saved) { _, new in new }
+        dirtyTranscriptIDs.subtract(saved.keys)
+        encodeAndSaveSessionLayout(recordFlushReceipt: true)
+    }
+
+    private func encodeAndSaveSessionLayout(recordFlushReceipt: Bool) {
+        guard sessionLayoutAuthority != .legacyV2Fallback,
+              sessionLayoutFailure == nil else { return }
         var records: [SavedSessionRecord] = []
         var forkLedger = sessionLayout.forkLedger
         for session in liveSessions {
@@ -962,7 +1005,7 @@ struct ContentView: View {
         )
         recentSessionOrder = SessionRestorePolicy.recentSessionOrder(from: records)
         let layoutReceipt = SessionLayoutStore.saveSessions(sessionLayout)
-        if saveMessages {
+        if recordFlushReceipt {
             _ = SessionLayoutStore.recordFlushReceipt(
                 layoutReceipt: layoutReceipt,
                 transcriptCount: SessionMessageStore.storedTranscriptCount

@@ -5,6 +5,9 @@ struct MessageBubble: View {
     /// When true, render assistant text plainly — `RichMessageView` re-parses the full
     /// body on every chunk and can freeze the UI on long streaming turns.
     var isStreaming: Bool = false
+    /// Incrementally maintained by `ChatStore` per display flush. Passing it in keeps
+    /// per-render work O(1); the batch `make` fallback covers a missing value only.
+    var streamingPresentation: StreamingMarkdownPresentation? = nil
     var showsAssistantHeader: Bool = true
 
     var body: some View {
@@ -32,7 +35,6 @@ struct MessageBubble: View {
             .accessibilityLabel("You: \(message.content)")
         case .assistant:
             if !message.content.isEmpty {
-                let streamingPresentation = StreamingMarkdownPresentation.make(message.content)
                 VStack(alignment: .leading, spacing: 7) {
                     if showsAssistantHeader {
                         Text("Build agent")
@@ -41,14 +43,19 @@ struct MessageBubble: View {
                     }
 
                     if isStreaming {
-                        if !streamingPresentation.visibleText.isEmpty {
-                            Text(streamingPresentation.visibleText)
+                        // Settled bubbles must never pay for a streaming scan: the
+                        // presentation is computed only on this branch, preferring the
+                        // store's incremental value over the full-string fallback.
+                        let presentation = streamingPresentation
+                            ?? StreamingMarkdownPresentation.make(message.content)
+                        if !presentation.visibleText.isEmpty {
+                            Text(presentation.visibleText)
                                 .textSelection(.enabled)
                                 .font(AppTheme.Typography.body)
                                 .lineSpacing(3)
                                 .frame(maxWidth: .infinity, alignment: .leading)
                         }
-                        if let withheld = streamingPresentation.withheldConstruct {
+                        if let withheld = presentation.withheldConstruct {
                             Label(withheld.displayLabel, systemImage: "text.line.first.and.arrowtriangle.forward")
                                 .font(.caption)
                                 .foregroundStyle(AppTheme.Palette.textMuted)

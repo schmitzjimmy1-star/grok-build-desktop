@@ -636,6 +636,9 @@ struct ChatView: View {
                                     MessageBubble(
                                         message: msg,
                                         isStreaming: store.isStreaming && msg.id == store.streamingMessageID,
+                                        streamingPresentation: msg.id == store.streamingMessageID
+                                            ? store.streamingPresentation
+                                            : nil,
                                         showsAssistantHeader: msg.role != .assistant
                                     )
                                     .id(msg.id)

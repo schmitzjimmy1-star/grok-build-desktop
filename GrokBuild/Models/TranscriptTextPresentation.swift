@@ -125,11 +125,11 @@ struct StreamingMarkdownPresentation: Equatable {
         return ranges
     }
 
-    private static func looksLikeTableRow(_ line: String) -> Bool {
+    static func looksLikeTableRow(_ line: String) -> Bool {
         line.trimmingCharacters(in: .whitespaces).contains("|")
     }
 
-    private static func looksLikeTableSeparator(_ line: String) -> Bool {
+    static func looksLikeTableSeparator(_ line: String) -> Bool {
         let cells = line
             .trimmingCharacters(in: .whitespaces)
             .trimmingCharacters(in: CharacterSet(charactersIn: "|"))
@@ -140,6 +140,164 @@ struct StreamingMarkdownPresentation: Equatable {
             let stripped = cell.replacingOccurrences(of: ":", with: "")
             return stripped.count >= 3 && stripped.allSatisfy { $0 == "-" }
         }
+    }
+}
+
+/// Incrementally maintains `StreamingMarkdownPresentation` for one growing streaming
+/// message.
+///
+/// `StreamingMarkdownPresentation.make` re-normalizes and re-scans the full accumulated
+/// string; called from the display flush every ~32 ms that made a long streaming answer
+/// O(n²) on the main actor. This accumulator does O(appended) work per flush: it
+/// normalizes only the new chunk (with a one-character carry so a CRLF split across
+/// chunks still collapses), folds completed lines into fence-parity and table state
+/// machines, and re-evaluates only the current partial line when producing the
+/// presentation. Chunk-by-chunk equivalence with `make` is pinned by property tests;
+/// `ChatStore` falls back to one full rebuild on any identity or length desync.
+struct StreamingMarkdownAccumulator: Equatable {
+    private(set) var normalized: String = ""
+    /// Total raw (pre-normalization) UTF-8 bytes consumed, including a carried "\r".
+    /// `ChatStore` compares this against the message content to detect desyncs.
+    private(set) var consumedRawUTF8Count = 0
+
+    private var normalizedUTF8Count = 0
+    /// A chunk ending in "\r" already emitted its "\n"; if the next chunk starts with
+    /// "\n" (a CRLF split across chunks), that leading byte must not emit a second one.
+    private var suppressLeadingNewlineAfterCR = false
+    private var currentLineText = ""
+    private var currentLineStartUTF8 = 0
+
+    // Fence parity over completed lines: start offset of the currently open fence line.
+    private var openFenceStartUTF8: Int?
+
+    // Table state over completed lines, mirroring the batch scanner's earliest
+    // header/separator pair whose row run reaches the end of the text.
+    private var tableAnchorUTF8: Int?
+    private var tableBodyCount = 0
+    private var previousLineWasRowish = false
+    private var previousLineStartUTF8 = 0
+
+    // A withheld prefix is stable while its cut offset is; cache the slice.
+    private var cachedWithheldPrefixOffset: Int?
+    private var cachedWithheldPrefix = ""
+
+    mutating func reset() {
+        self = StreamingMarkdownAccumulator()
+    }
+
+    mutating func append(_ raw: String) {
+        guard !raw.isEmpty else { return }
+        consumedRawUTF8Count += raw.utf8.count
+
+        var piece = raw
+        if suppressLeadingNewlineAfterCR {
+            suppressLeadingNewlineAfterCR = false
+            if piece.hasPrefix("\n") { piece.removeFirst() }
+        }
+        if piece.hasSuffix("\r") { suppressLeadingNewlineAfterCR = true }
+        guard !piece.isEmpty else { return }
+        let cleaned = TranscriptTextPresentation.normalize(piece)
+        guard !cleaned.isEmpty else { return }
+
+        normalized += cleaned
+        for scalar in cleaned.unicodeScalars {
+            normalizedUTF8Count += Int(UTF8.width(scalar))
+            if scalar == "\n" {
+                foldCompletedLine()
+            } else {
+                currentLineText.unicodeScalars.append(scalar)
+            }
+        }
+    }
+
+    /// Mutating only for the withheld-prefix cache; state is otherwise untouched.
+    mutating func makePresentation() -> StreamingMarkdownPresentation {
+        guard !normalized.isEmpty else {
+            return StreamingMarkdownPresentation(visibleText: "", withheldConstruct: nil)
+        }
+
+        // Fence first, exactly like the batch scanner. The partial line toggles parity.
+        let partialOpensFence = currentLineText
+            .trimmingCharacters(in: .whitespaces)
+            .hasPrefix("```")
+        let effectiveFenceStart: Int? = partialOpensFence
+            ? (openFenceStartUTF8 == nil ? currentLineStartUTF8 : nil)
+            : openFenceStartUTF8
+        if let fenceStart = effectiveFenceStart {
+            return withheld(.codeFence, prefixUTF8: fenceStart)
+        }
+
+        // Table: simulate the partial line as the final line, then apply the batch
+        // scanner's rule (anchored pair + at least one body line + run reaches EOF).
+        var anchor = tableAnchorUTF8
+        var body = tableBodyCount
+        if !currentLineText.isEmpty {
+            let rowish = StreamingMarkdownPresentation.looksLikeTableRow(currentLineText)
+            if anchor != nil {
+                if rowish {
+                    body += 1
+                } else {
+                    anchor = nil
+                    body = 0
+                }
+            }
+            if anchor == nil,
+               previousLineWasRowish,
+               StreamingMarkdownPresentation.looksLikeTableSeparator(currentLineText) {
+                anchor = previousLineStartUTF8
+                body = 0
+            }
+        }
+        if let anchor, body >= 1 {
+            return withheld(.table, prefixUTF8: anchor)
+        }
+
+        cachedWithheldPrefixOffset = nil
+        cachedWithheldPrefix = ""
+        return StreamingMarkdownPresentation(visibleText: normalized, withheldConstruct: nil)
+    }
+
+    private mutating func foldCompletedLine() {
+        let line = currentLineText
+        if line.trimmingCharacters(in: .whitespaces).hasPrefix("```") {
+            openFenceStartUTF8 = openFenceStartUTF8 == nil ? currentLineStartUTF8 : nil
+        }
+
+        let rowish = StreamingMarkdownPresentation.looksLikeTableRow(line)
+        if tableAnchorUTF8 != nil {
+            if rowish {
+                tableBodyCount += 1
+            } else {
+                tableAnchorUTF8 = nil
+                tableBodyCount = 0
+            }
+        }
+        if tableAnchorUTF8 == nil,
+           previousLineWasRowish,
+           StreamingMarkdownPresentation.looksLikeTableSeparator(line) {
+            tableAnchorUTF8 = previousLineStartUTF8
+            tableBodyCount = 0
+        }
+        previousLineWasRowish = rowish
+        previousLineStartUTF8 = currentLineStartUTF8
+
+        currentLineText = ""
+        currentLineStartUTF8 = normalizedUTF8Count
+    }
+
+    private mutating func withheld(
+        _ construct: StreamingMarkdownPresentation.WithheldConstruct,
+        prefixUTF8: Int
+    ) -> StreamingMarkdownPresentation {
+        if cachedWithheldPrefixOffset != prefixUTF8 {
+            let cut = normalized.utf8.index(normalized.utf8.startIndex, offsetBy: prefixUTF8)
+            cachedWithheldPrefix = String(normalized[..<cut])
+            cachedWithheldPrefixOffset = prefixUTF8
+        }
+        return StreamingMarkdownPresentation(
+            visibleText: cachedWithheldPrefix,
+            withheldConstruct: construct
+        )
     }
 }
 

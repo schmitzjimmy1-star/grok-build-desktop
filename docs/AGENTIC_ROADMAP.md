@@ -75,7 +75,7 @@ The Activity/receipts read like a debugger: "Execution receipts," "Settled/Live,
 - **Safe because:** copy + presentation only.
 
 ## Slice 9 — Streaming smoothness: incremental markdown + async persistence 🧹
-**Effort S/M · the two real buffering costs**
+**Effort S/M · the two real buffering costs · ✅ shipped 2026-08-03** (`StreamingMarkdownAccumulator`, FIFO async transcript chain + quit flush, `StreamingPresentationTests`)
 
 The streaming pipeline is mostly well-mitigated (paced reveal, bounded 6-pass scroll, plain-`Text` streaming body). Two genuine costs remain:
 1. **O(n²) main-actor markdown scan** — `StreamingMarkdownPresentation.make` runs on the *full accumulated string* every body evaluation while streaming (`MessageBubble.swift:35`), full-text scanning for open fences/tables (`TranscriptTextPresentation.swift:79`). Fix: scan only the **tail**, or skip until a fence/pipe appears.
