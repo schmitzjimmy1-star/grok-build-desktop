@@ -61,6 +61,14 @@ git diff --quiet <stamped-commit>..HEAD -- \
 A model provider selected *inside* GrokBuild (Grok, GPT, OpenRouter, Kimi) never
 changes which application repository owns the workbench.
 
+## Slice 5/6 routing + usage-HUD acceptance — 2026-08-03
+
+- Installed build `b4c1d377d0cf53af112050373163b3e52d826c19` (clean stamp == HEAD, `make ship` all-PASS, Team `DD2GCQJVB4`). Suite 601 tests, 0 failures.
+- Explicitly authorized live probes ("run live tests… visually proves your work"): one chrome-devtools read-only MCP turn (LIVE-PROOF-OK; listed `about:blank` only) plus one routing probe that spawned a temporary `proof-researcher` role routed to `deepseek-deepseek-v4-flash-0731`. The subagent answered `ROUTED-OK` via `spawn_subagent` with `subagent_type: proof-researcher`; grok's first attempt through the workflow host API failed with `Unknown subagent type` before the spawn tool succeeded — both workflow rows visible in the sidebar Activity lane.
+- The routing probe's parent turn settled at **497.0k total tokens / 16 model calls on `grok-4.5`** — the workflow retry loop was expensive, and the new Slice 6 usage HUD surfaced it live ("497.0k tokens · 16 calls · 1 turn"), which is the feature working as intended. No response bodies or credentials retained.
+- Temporary role was added and removed by direct config edit around the probe; `~/.grok/config.toml` restored to exact baseline `d2005a9fde0b8ed79753437fd8aa9124b6b0f58c5ab18acfeb010bfb90bc9034` (2,190 bytes, mode 0600) and `~/.grok/prompts/proof-researcher.md` deleted. Providers, OpenRouter OAuth Keychain credential, and registered MCP servers untouched throughout.
+- App-side fallback chains were deliberately not implemented (grok owns spawning; no fallback hook exists over ACP). Dollar figures in the HUD are labeled estimates and appear only for catalog-priced models; grok-native models show tokens only.
+
 ## Current installed repair acceptance — provider routing and OAuth — 2026-08-02
 
 - PR #1 merged as `c618bc214bfe4feb1f5a28190470f2cfa79f7fa2`. The first post-merge billable probe then exposed a release-blocking truth defect: a fresh tab saved as `gpt-5.6-terra`, and the launched CLI argv carried that selector, but ACP `session/new` retained Grok 4.5 and the first provider call was actually billed to `grok-4.5-build`. The backend receipt, not the picker label, caught the mismatch. The one affected call used 14,922 total tokens; no response body or credential is retained here.
