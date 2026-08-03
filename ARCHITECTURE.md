@@ -584,6 +584,10 @@ Extends the Tasks pill beyond scheduled `/loop` tasks to mirror background shell
 | Store | `ChatStore.backgroundActivities` is the correlated presentation projection; `subagentSpawnedEvents` / `subagentFinishedEvents` retain exact-once, generation-bound authoritative receipts |
 | Chat UI | `ActivitySidebar` shows every spawn-created worker with terminal receipt metadata, wait receipts, and explicit unknown/orphaned status; the rest remains backend/store evidence rather than permanent chrome |
 
+**Delegation inspector (agentic roadmap Slice 3).** The live Activity lanes are inspectable, not just flat rows: live workers surface their authoritative receipt (`workerReceiptDetail` — duration, tool count, redacted error) as soon as it arrives mid-turn instead of only at settlement, and each live tool row is a `DisclosureGroup` whose expansion shows the full already-redacted input receipt (selectable, no 180-character truncation) plus authoritative MCP attribution (`ActivitySidebarPresentation.liveToolMetadata` — "kind • status • via <server>"; a missing server receipt never fabricates a "via" segment, per the Slice 11 evidence-bound contract). Presentation-only: no lifecycle, authority, or persistence changes. Covered by `SidebarActivityTests`.
+
+**Sidebar Connections lane (agentic roadmap Slice 4).** The existing prompt-MCP inventory (`ChatStore.promptMCPOptions` from `grok mcp list --json` plus live app-connection statuses) renders as a **Connections** sidebar section: readiness dot, scope/transport detail, and an attached checkmark. Clicking a row calls the existing `togglePromptMCPAttachment` — per-tab, consumed at the next accepted send, **zero configuration writes** (the user's registered servers, providers, and OpenRouter credentials are untouched). Context menu offers Manage Connections… (Settings → MCP Servers, the CLI-scope editor, which remains the sole mutation path). The section hides when the inventory is empty. Deliberately thin: grok owns MCP wiring at runtime; GrokBuild adds no second injection lane for user servers.
+
 ### Rhai workflows (distinct from skill chips)
 
 grok's **Rhai workflow engine** (`.grok/workflows/`, `/workflow`, `/workflows`) is separate from **skill slash commands** (`/design`, `/review`, …) shown as composer chips.
@@ -1007,6 +1011,8 @@ See `BUILDING.md` for signing, notarization, CI workflow.
 | **Background tasks** | `BackgroundTaskStore.swift`, `ChatStore.backgroundActivities`, `ActivitySidebar`, `AcpEvent.backgroundActivity` |
 | **Sidebar Activity lane** | `Models/SidebarActivity.swift` (`SidebarActivityProjection.lane`), `SidebarView` (`SidebarActivityRow`), `ContentView.sidebarActivityLane` |
 | **Sidebar Agents hub** | `Models/AgentHub.swift` (`AgentHubProjection.entries`), `SidebarView` (`AgentHubRow`), `ContentView.agentHubEntries` / `createLiveSession(for:agent:)` |
+| **Sidebar Connections lane** | `SidebarView` (`ConnectionSidebarRow`), `ChatStore.promptMCPOptions` / `togglePromptMCPAttachment`, `ContentView` wiring to Settings `.mcpServers` |
+| **Delegation inspector (live workers/tools)** | `ActivitySidebar.liveWorkers` / `liveTools`, `ActivitySidebarPresentation.liveToolMetadata` / `workerReceiptDetail` |
 | **Run evidence projection and snapshot** | `RunEvidenceLiveProjection.swift`, `RunEvidenceSnapshot.swift`, `ChatStore.liveRunEvidenceProjection`, `ChatStore.runEvidenceSnapshot`, ordered `AcpEvent.turnCompleted`, `ContentView.recordGitReviewFiles` |
 | **Rhai workflows** | `WorkflowsConfigStore`, `WorkflowRunStore`, `SavedWorkflowStore`, composer command menu, `.workflowsConfigChanged` |
 | **Fork / share / queue** | `GrokLaunchOptions.forkSession`, `ChatStore.startForked`, `shareSession`, `promptQueue`, `btwAsideText` |

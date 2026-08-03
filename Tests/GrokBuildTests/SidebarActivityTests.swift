@@ -120,6 +120,79 @@ final class SidebarActivityTests: XCTestCase {
         XCTAssertEqual(lane.overflowCount, 0)
     }
 
+    /// Agentic roadmap Slice 3: live tool metadata carries kind, status, and authoritative
+    /// MCP attribution — and never invents a "via" segment without a server receipt.
+    func testLiveToolMetadataFormatsKindStatusAndMCPAttribution() {
+        XCTAssertEqual(
+            ActivitySidebarPresentation.liveToolMetadata(kind: "execute", status: "Running", mcpServerName: "chrome-devtools"),
+            "execute • Running • via chrome-devtools"
+        )
+        XCTAssertEqual(
+            ActivitySidebarPresentation.liveToolMetadata(kind: "other", status: "Done", mcpServerName: nil),
+            "Done"
+        )
+        XCTAssertEqual(
+            ActivitySidebarPresentation.liveToolMetadata(kind: "", status: "Failed", mcpServerName: "  "),
+            "Failed",
+            "a blank server name must not fabricate attribution"
+        )
+        XCTAssertEqual(
+            ActivitySidebarPresentation.liveToolMetadata(kind: "read", status: "Done", mcpServerName: nil),
+            "read • Done"
+        )
+    }
+
+    /// Agentic roadmap Slices 3+4 source contracts: the live tool inspector expands the
+    /// full redacted receipt, live workers surface mid-turn receipts, and the sidebar
+    /// Connections lane toggles prompt attachments without writing any configuration.
+    func testDelegationInspectorAndConnectionsWiring() throws {
+        let repositoryRoot = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+
+        let activitySource = try String(
+            contentsOf: repositoryRoot.appendingPathComponent("GrokBuild/Views/ActivitySidebar.swift"),
+            encoding: .utf8
+        )
+        let liveToolsStart = try XCTUnwrap(activitySource.range(of: "private func liveTools"))
+        let liveToolsEnd = try XCTUnwrap(
+            activitySource.range(of: "private func liveRunDetails", range: liveToolsStart.upperBound..<activitySource.endIndex)
+        )
+        let liveTools = String(activitySource[liveToolsStart.lowerBound..<liveToolsEnd.lowerBound])
+        XCTAssertTrue(liveTools.contains("DisclosureGroup"),
+                      "tool rows must expand to a full receipt, not truncate at 180 characters")
+        XCTAssertTrue(liveTools.contains("MCP server: \\(server)"),
+                      "the expanded receipt must show authoritative MCP attribution")
+
+        let liveWorkersStart = try XCTUnwrap(activitySource.range(of: "private func liveWorkers"))
+        let liveWorkersEnd = try XCTUnwrap(
+            activitySource.range(of: "private func liveTools", range: liveWorkersStart.upperBound..<activitySource.endIndex)
+        )
+        let liveWorkers = String(activitySource[liveWorkersStart.lowerBound..<liveWorkersEnd.lowerBound])
+        XCTAssertTrue(liveWorkers.contains("workerReceiptDetail"),
+                      "a worker that finished mid-turn must show its receipt live")
+
+        let sidebarSource = try String(
+            contentsOf: repositoryRoot.appendingPathComponent("GrokBuild/Views/SidebarView.swift"),
+            encoding: .utf8
+        )
+        XCTAssertTrue(sidebarSource.contains("ConnectionSidebarRow("),
+                      "Connections lane rows render through the dedicated component")
+        XCTAssertTrue(sidebarSource.contains("Label(\"Connections\", systemImage: \"network\")"))
+        XCTAssertTrue(sidebarSource.contains("if !connections.isEmpty {"),
+                      "an empty inventory must hide the Connections section")
+
+        let contentSource = try String(
+            contentsOf: repositoryRoot.appendingPathComponent("GrokBuild/ContentView.swift"),
+            encoding: .utf8
+        )
+        XCTAssertTrue(contentSource.contains("activeStore.togglePromptMCPAttachment(named: name)"),
+                      "toggling reuses the existing per-tab attachment machinery — no config writes")
+        XCTAssertTrue(contentSource.contains("connections: activeStore.promptMCPOptions"))
+        XCTAssertTrue(contentSource.contains("onManageConnections: { openSettings(tab: .mcpServers) }"))
+    }
+
     /// Source contract: the lane renders in the sidebar, navigates to the owning session,
     /// and ContentView builds it from the live stores' observed mirrors only.
     func testSidebarAndContentViewWiring() throws {

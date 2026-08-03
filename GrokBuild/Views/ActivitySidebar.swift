@@ -95,6 +95,23 @@ enum ActivitySidebarPresentation {
         return parts.joined(separator: " • ")
     }
 
+    /// Metadata line for a live tool receipt: kind • status, plus authoritative MCP
+    /// attribution when the receipt carries a server name. Attribution is never
+    /// inferred — an absent server simply omits the "via" segment (Slice 11 contract).
+    static func liveToolMetadata(kind: String, status: String, mcpServerName: String?) -> String {
+        let trimmedKind = kind.trimmingCharacters(in: .whitespacesAndNewlines)
+        var parts: [String] = []
+        if !trimmedKind.isEmpty, trimmedKind.lowercased() != "other" {
+            parts.append(trimmedKind)
+        }
+        parts.append(status)
+        if let server = mcpServerName?.trimmingCharacters(in: .whitespacesAndNewlines),
+           !server.isEmpty {
+            parts.append("via \(server)")
+        }
+        return parts.joined(separator: " • ")
+    }
+
     static func activityStatus(_ status: String) -> String {
         let clean = TranscriptTextPresentation.singleLine(status, maxLength: 48)
         guard !clean.isEmpty else { return "Running" }
@@ -312,6 +329,20 @@ struct ActivitySidebar: View {
                         Circle().fill(statusColor(worker.status)).frame(width: 6, height: 6).padding(.top, 5)
                         VStack(alignment: .leading, spacing: 2) {
                             Text(worker.title).font(AppTheme.Typography.captionStrong).lineLimit(2)
+                            // A worker that already finished mid-turn carries its
+                            // authoritative receipt; show it live, not only at settlement.
+                            let detail = ActivitySidebarPresentation.workerReceiptDetail(
+                                status: worker.status,
+                                durationMilliseconds: worker.durationMilliseconds,
+                                toolCallCount: worker.toolCallCount,
+                                redactedError: worker.redactedError
+                            )
+                            if !detail.isEmpty {
+                                Text(detail)
+                                    .font(AppTheme.Typography.section)
+                                    .foregroundStyle(.secondary)
+                                    .lineLimit(3)
+                            }
                             Text(ActivitySidebarPresentation.activityStatus(worker.status))
                                 .font(AppTheme.Typography.section)
                                 .foregroundStyle(.secondary)
@@ -330,26 +361,53 @@ struct ActivitySidebar: View {
                 emptyState("No tool receipts observed yet.")
             } else {
                 ForEach(live.tools) { tool in
-                    HStack(alignment: .top, spacing: 8) {
-                        Circle()
-                            .fill(tool.isActive ? Color.accentColor : statusColor(tool.status))
-                            .frame(width: 6, height: 6)
-                            .padding(.top, 5)
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text(tool.title).font(AppTheme.Typography.captionStrong).lineLimit(2)
-                            Text(liveToolMetadata(tool))
+                    // Tool-run inspector: the compact row expands to the full redacted
+                    // receipt (already-redacted input detail plus authoritative MCP
+                    // attribution) instead of a 180-character truncation dead end.
+                    DisclosureGroup {
+                        VStack(alignment: .leading, spacing: 4) {
+                            if let detail = tool.detail, !detail.isEmpty {
+                                Text(detail)
+                                    .font(AppTheme.Typography.section)
+                                    .foregroundStyle(.secondary)
+                                    .textSelection(.enabled)
+                                    .fixedSize(horizontal: false, vertical: true)
+                            } else {
+                                Text("No redacted input receipt for this call.")
+                                    .font(AppTheme.Typography.section)
+                                    .foregroundStyle(.secondary)
+                            }
+                            if let server = tool.mcpServerName {
+                                Label("MCP server: \(server)", systemImage: "network")
+                                    .font(AppTheme.Typography.section)
+                                    .foregroundStyle(.secondary)
+                            }
+                        }
+                        .padding(.leading, 14)
+                        .padding(.top, 2)
+                    } label: {
+                        HStack(alignment: .top, spacing: 8) {
+                            Circle()
+                                .fill(tool.isActive ? Color.accentColor : statusColor(tool.status))
+                                .frame(width: 6, height: 6)
+                                .padding(.top, 5)
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(tool.title).font(AppTheme.Typography.captionStrong).lineLimit(2)
+                                Text(ActivitySidebarPresentation.liveToolMetadata(
+                                    kind: tool.kind,
+                                    status: tool.status,
+                                    mcpServerName: tool.mcpServerName
+                                ))
                                 .font(AppTheme.Typography.section)
                                 .foregroundStyle(.secondary)
                                 .lineLimit(2)
-                            if let detail = tool.detail {
-                                Text(TranscriptTextPresentation.singleLine(detail, maxLength: 180))
-                                    .font(AppTheme.Typography.section)
-                                    .foregroundStyle(.secondary)
-                                    .lineLimit(3)
                             }
                         }
                     }
-                    .accessibilityElement(children: .combine)
+                    .disclosureGroupStyle(.automatic)
+                    .accessibilityElement(children: .contain)
+                    .accessibilityLabel("Tool \(tool.title), \(ActivitySidebarPresentation.liveToolMetadata(kind: tool.kind, status: tool.status, mcpServerName: tool.mcpServerName))")
+                    .accessibilityHint("Expands the redacted tool receipt.")
                 }
             }
         }
@@ -365,12 +423,6 @@ struct ActivitySidebar: View {
             detailRow("Usage", value: "Available after settlement")
             ForEach(live.process.mcps) { mcp in detailRow(mcp.name, value: mcp.state) }
         }
-    }
-
-    private func liveToolMetadata(_ tool: RunEvidenceLiveProjection.Tool) -> String {
-        let kind = tool.kind.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !kind.isEmpty, kind.lowercased() != "other" else { return tool.status }
-        return "\(kind) • \(tool.status)"
     }
 
     private func summaryCard(_ snapshot: RunEvidenceSnapshot) -> some View {

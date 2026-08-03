@@ -131,6 +131,8 @@ struct ContentView: View {
                 selectedSessionID: selectedSessionID,
                 activityLane: sidebarActivityLane,
                 agentEntries: agentHubEntries,
+                connections: activeStore.promptMCPOptions,
+                attachedConnectionNames: activeStore.selectedPromptMCPNames,
                 expandedSessionWorkspaceIDs: $sessionLayout.expandedSessionWorkspaceIDs,
                 hiddenSessionWorkspaceIDs: $sessionLayout.hiddenSessionWorkspaceIDs,
                 onAddWorkspace: { showPicker = true },
@@ -155,6 +157,10 @@ struct ContentView: View {
                     Task { await createLiveSession(for: workspace, agent: agent) }
                 },
                 onOpenAgentSettings: { openSettings(tab: .agents) },
+                onToggleConnection: { name in
+                    activeStore.togglePromptMCPAttachment(named: name)
+                },
+                onManageConnections: { openSettings(tab: .mcpServers) },
                 onNewSessionForWorkspace: { workspace in
                     Task { await createLiveSession(for: workspace) }
                 },
@@ -277,8 +283,12 @@ struct ContentView: View {
             flushTranscriptsForTermination()
         }
         .onChange(of: selectedWorkspaceID) { _, _ in
-            // Discovered agents are per-workspace; the store guard makes repeats cheap.
-            Task { await activeStore.loadDiscoveredAgentsIfNeeded() }
+            // Discovered agents and MCP connections are per-workspace; both store
+            // guards make repeats cheap, and neither call writes any configuration.
+            Task {
+                await activeStore.loadDiscoveredAgentsIfNeeded()
+                await activeStore.refreshPromptMCPOptions()
+            }
         }
         .sheet(isPresented: $showPicker) {
             WorkspacePicker(initialDirectory: currentWorkspace?.path) { url in
@@ -490,6 +500,7 @@ struct ContentView: View {
             let roles = await GrokBuildBackgroundWork.run({ SubagentRoleStore.load() }, priority: .utility)
             agentHubRoles = roles
             await activeStore.loadDiscoveredAgentsIfNeeded()
+            await activeStore.refreshPromptMCPOptions()
         }
     }
 

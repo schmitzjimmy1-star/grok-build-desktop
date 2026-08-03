@@ -33,14 +33,14 @@ Per-session agent is buried in a menu inside the closed-by-default Details discl
 - **Safe because:** reuses the existing `--agent` launch path (`ChatStore.swift:1792`); roles already round-trip to config.toml.
 
 ## Slice 3 — Subagent delegation tree + tool-run inspector ⚡
-**Effort M · thin**
+**Effort M · thin · ✅ shipped 2026-08-03** (live worker receipts mid-turn; expandable tool inspector with MCP attribution; `SidebarActivityTests`)
 
 The backend already captures per-turn worker attribution (`currentTurnWorkerActivityIDs`, `ChatStore.swift:232`), typed spawn/finish receipts with duration/turns/tokens/tool-counts (`BackgroundTaskStore.swift:334`), and typed live tool calls — but renders them flatly. Build a **delegation tree**: this turn spawned *these* subagents (role, model, live status, terminal receipt), each expandable to its **tool runs** (args → output). This is the "watch my agents work" view that defines an agentic app.
 - **Files:** `BackgroundTaskStore.swift`, `RunEvidenceLiveProjection.swift`, `ActivitySidebar.swift`.
 - **Safe because:** derived entirely from existing typed events.
 
 ## Slice 4 — Custom MCP server manager ⚡
-**Effort M · the biggest "more-than-a-chatbot" unlock**
+**Effort M · ✅ shipped 2026-08-03, scope corrected** — deep-dive follow-up found user-defined MCP management *already exists* (Settings → MCP Servers, CLI user/project scope, `GrokMCPServerDraft`), so the honest thin gap was surface, not plumbing: shipped as the sidebar **Connections lane** (readiness, one-click attach-to-next-message via the existing `togglePromptMCPAttachment`, Manage… → Settings). No second app-injection lane was added — grok owns MCP wiring at runtime, and no existing provider/OpenRouter/MCP config is touched.
 
 Right now only two app-managed MCP servers get injected (browser, computer-use, `ChatStore.swift:1785`) and there is **no UI for user-defined servers** — even though `MCPServerConfig` already models stdio **and** http/sse transports (`MCPServerConfig.swift:4`). Add a store + Settings pane so the user can connect **any MCP server / API tool** (their own, or hosted) and have it injected alongside the built-ins. This is how the app becomes a hub for *the APIs you already have*.
 - **Files:** `MCPServerConfig.swift`, MCP assembly in `ChatStore.restartProcess` (`:1785`), new `SettingsView` pane, new store.

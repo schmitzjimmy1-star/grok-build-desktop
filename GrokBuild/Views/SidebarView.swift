@@ -42,6 +42,11 @@ struct SidebarView: View {
     /// Agents hub: grok's default, custom subagent roles, and discovered agents.
     /// Selecting a row starts a new session as that agent in the selected project.
     var agentEntries: [AgentHubEntry] = []
+    /// MCP connections known to grok (user/project scope plus live app connections),
+    /// from the existing prompt-attachment inventory. Toggling a row attaches or
+    /// detaches it for the active session's next message — no config is written.
+    var connections: [PromptMCPOption] = []
+    var attachedConnectionNames: Set<String> = []
     @Binding var expandedSessionWorkspaceIDs: Set<Workspace.ID>
     @Binding var hiddenSessionWorkspaceIDs: Set<Workspace.ID>
 
@@ -51,6 +56,8 @@ struct SidebarView: View {
     var onSelectActivity: (SidebarActivityEntry) -> Void = { _ in }
     var onStartSessionAsAgent: (AgentHubEntry) -> Void = { _ in }
     var onOpenAgentSettings: () -> Void = {}
+    var onToggleConnection: (String) -> Void = { _ in }
+    var onManageConnections: () -> Void = {}
     var onNewSessionForWorkspace: (Workspace) -> Void = { _ in }
     var onRenameSession: (UUID, String) -> Void = { _, _ in }
     var onCloseSession: (UUID) -> Void = { _ in }
@@ -276,6 +283,33 @@ struct SidebarView: View {
                         Label("Agents", systemImage: "person.2")
                     }
                 }
+
+                if !connections.isEmpty {
+                    Section {
+                        ForEach(connections) { connection in
+                            ConnectionSidebarRow(
+                                connection: connection,
+                                isAttached: attachedConnectionNames.contains(connection.name)
+                            ) {
+                                onToggleConnection(connection.name)
+                            }
+                            .listRowInsets(EdgeInsets(top: 2, leading: 8, bottom: 2, trailing: 8))
+                            .listRowBackground(Color.clear)
+                            .contextMenu {
+                                Button(attachedConnectionNames.contains(connection.name)
+                                       ? "Detach from Next Message"
+                                       : "Attach to Next Message") {
+                                    onToggleConnection(connection.name)
+                                }
+                                Button("Manage Connections…") {
+                                    onManageConnections()
+                                }
+                            }
+                        }
+                    } header: {
+                        Label("Connections", systemImage: "network")
+                    }
+                }
             }
             .listStyle(.sidebar)
             .scrollContentBackground(.hidden)
@@ -385,6 +419,49 @@ struct SidebarView: View {
         Button("Remove Project", role: .destructive) {
             onRemoveWorkspace(ws)
         }
+    }
+}
+
+private struct ConnectionSidebarRow: View {
+    let connection: PromptMCPOption
+    let isAttached: Bool
+    var onToggle: () -> Void
+
+    var body: some View {
+        Button(action: onToggle) {
+            HStack(spacing: 8) {
+                Circle()
+                    .fill(connection.isReady ? Color.green : AppTheme.Palette.textMuted)
+                    .frame(width: 6, height: 6)
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(connection.name)
+                        .font(.callout)
+                        .lineLimit(1)
+                        .foregroundStyle(.primary)
+                    Text(connection.detail)
+                        .font(.caption2)
+                        .foregroundStyle(.tertiary)
+                        .lineLimit(1)
+                }
+                Spacer(minLength: 0)
+                if isAttached {
+                    Image(systemName: "checkmark.circle.fill")
+                        .font(.caption)
+                        .foregroundStyle(.tint)
+                        .accessibilityHidden(true)
+                }
+            }
+            .padding(.horizontal, 8)
+            .padding(.vertical, 4)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .help(isAttached
+              ? "\(connection.name) is attached to the next message. Click to detach."
+              : "Attach \(connection.name) to the next message in the active session.")
+        .accessibilityLabel("Connection: \(connection.name), \(connection.detail)\(isAttached ? ", attached" : "")")
+        .accessibilityHint("Toggles this MCP connection for the active session's next message. No configuration changes.")
+        .accessibilityIdentifier("grok-sidebar-connection-row")
     }
 }
 
