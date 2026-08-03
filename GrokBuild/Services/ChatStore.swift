@@ -238,7 +238,11 @@ final class ChatStore {
                 childID: $0.childID,
                 durationMilliseconds: $0.durationMilliseconds,
                 toolCallCount: $0.toolCallCount,
-                redactedError: $0.redactedError
+                redactedError: $0.redactedError,
+                routedModel: SubagentRouting.routedModel(
+                    forWorkerTitle: $0.title,
+                    rolesByName: subagentRoleModelsByName
+                )
             )
         }
         let tools = liveToolCalls.map { tool in
@@ -684,6 +688,32 @@ final class ChatStore {
     private(set) var streamingPresentation: StreamingMarkdownPresentation?
     private var streamingMarkdownAccumulator = StreamingMarkdownAccumulator()
     private var streamingAccumulatorMessageID: UUID?
+
+    /// Session-local usage ledger, appended only from authoritative `turn_completed`
+    /// receipts (agentic roadmap Slice 6). Reset when the tab prepares a new workspace
+    /// binding; never estimated mid-turn.
+    private(set) var sessionUsage = SessionUsageLedger()
+
+    /// Configured `[subagents.roles.*]` name→model map for worker routing display
+    /// (agentic roadmap Slice 5). Declared config, refreshed at prepare/launch;
+    /// workers with no exact role-name match make no routing claim.
+    private(set) var subagentRoleModelsByName: [String: String] = [:]
+
+    /// One-line session usage HUD ("12.4k tokens · 3 calls · 2 turns · ≈$…-… est."),
+    /// nil until the first settled turn. Dollar bounds appear only for models with
+    /// catalog-known pricing.
+    var sessionUsageSummary: String? {
+        sessionUsage.summaryText(pricing: ModelPricingStore.all())
+    }
+
+    private func refreshSubagentRoleModels() {
+        Task { [weak self] in
+            let map = await Task.detached(priority: .utility) {
+                SubagentRouting.rolesByName(SubagentRoleStore.load())
+            }.value
+            self?.subagentRoleModelsByName = map
+        }
+    }
     private var streamingTextFlushTask: Task<Void, Never>?
     private var deferredPromptCompletion: (assistantID: UUID, ok: Bool)?
     private var turnSettlement = TurnSettlementCoordinator()
@@ -735,6 +765,8 @@ final class ChatStore {
         isLoadingRecoveryCandidates = false
         boundForkLedgerEntry = nil
         currentWorkspace = workspace
+        sessionUsage.reset()
+        refreshSubagentRoleModels()
         applyBuiltInModelCatalog(GrokModelCatalog.cachedOrFallback())
         mergeCustomModels()
         loadWorkspaceReasoningEffort()
@@ -3327,6 +3359,12 @@ final class ChatStore {
             settleToolCallsAtTurnBarrier()
             attachCurrentTurnTrace(to: streamingMessageID)
             latestTurnOutcome = .completed
+            // Slice 6: the authoritative completion receipt is the only usage source.
+            sessionUsage.recordTurn(
+                modelID: modelExecutionState.effectiveModelID ?? currentModel,
+                totalTokens: completion.totalTokens,
+                modelCalls: completion.modelCalls
+            )
             runEvidenceSnapshot = makeRunEvidenceSnapshot(completion: completion)
             requestGitRefresh()
             process.acknowledgeTurnCompletionBridge(authoritative: true)
@@ -3556,7 +3594,11 @@ final class ChatStore {
                 childID: $0.childID,
                 durationMilliseconds: $0.durationMilliseconds,
                 toolCallCount: $0.toolCallCount,
-                redactedError: $0.redactedError
+                redactedError: $0.redactedError,
+                routedModel: SubagentRouting.routedModel(
+                    forWorkerTitle: $0.title,
+                    rolesByName: subagentRoleModelsByName
+                )
             )
         }
         let toolSummary = RunEvidenceSnapshot.ToolSummary(

@@ -33,6 +33,10 @@ struct RunEvidenceSnapshot: Equatable, Sendable {
         let durationMilliseconds: Int?
         let toolCallCount: Int?
         let redactedError: String?
+        /// Configured `[subagents.roles.*]` model for this worker's role name, when the
+        /// title matches a role exactly. Declared routing from config — displayed as
+        /// "(configured)", never as a runtime billing claim.
+        var routedModel: String? = nil
 
         var isActive: Bool { BackgroundActivityStatusPolicy.isActive(status) }
         var isCompleted: Bool {

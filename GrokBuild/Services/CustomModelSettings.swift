@@ -510,6 +510,11 @@ extension Provider {
 struct FetchedModel: Identifiable, Hashable, Sendable {
     var id: String
     var ownedBy: String?
+    /// Per-token USD rates when the catalog advertises them (OpenRouter does; most
+    /// OpenAI-style providers omit pricing and these stay nil). Used only for
+    /// display-side usage estimates — never for billing decisions.
+    var promptPricePerToken: Double?
+    var completionPricePerToken: Double?
 }
 
 enum ProviderValidationStatus: String, Sendable, Equatable {
@@ -628,9 +633,30 @@ enum ProviderModelFetcher {
             let identifier = (entry["id"] as? String) ?? (entry["model"] as? String)
             guard let id = identifier?.trimmingCharacters(in: .whitespacesAndNewlines), !id.isEmpty else { continue }
             guard seen.insert(id).inserted else { continue }
-            models.append(FetchedModel(id: id, ownedBy: entry["owned_by"] as? String))
+            let pricing = entry["pricing"] as? [String: Any]
+            models.append(FetchedModel(
+                id: id,
+                ownedBy: entry["owned_by"] as? String,
+                promptPricePerToken: pricePerToken(pricing?["prompt"]),
+                completionPricePerToken: pricePerToken(pricing?["completion"])
+            ))
         }
         return models.sorted { $0.id.localizedCaseInsensitiveCompare($1.id) == .orderedAscending }
+    }
+
+    /// OpenRouter serializes per-token USD rates as strings ("0.00000014"); tolerate
+    /// numbers too. Zero and negative rates are treated as absent, not as free.
+    static func pricePerToken(_ raw: Any?) -> Double? {
+        let value: Double?
+        if let string = raw as? String {
+            value = Double(string.trimmingCharacters(in: .whitespacesAndNewlines))
+        } else if let number = raw as? NSNumber {
+            value = number.doubleValue
+        } else {
+            value = nil
+        }
+        guard let value, value > 0, value.isFinite else { return nil }
+        return value
     }
 
     static func request(for provider: Provider) throws -> URLRequest {

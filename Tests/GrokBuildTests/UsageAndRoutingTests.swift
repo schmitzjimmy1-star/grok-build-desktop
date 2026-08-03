@@ -1,0 +1,184 @@
+import Foundation
+import XCTest
+@testable import GrokBuild
+
+/// Agentic roadmap Slices 5+6: configured role→model routing display and the
+/// session usage ledger / pricing capture. Everything here is display-side truth:
+/// routing labels come only from exact config matches, and dollar figures exist
+/// only where catalog pricing is known.
+final class UsageAndRoutingTests: XCTestCase {
+    // MARK: - Slice 5: routing
+
+    func testRolesByNameKeepsOnlyNamedRoutedRoles() {
+        let roles = [
+            SubagentRole(name: "Researcher", model: "deepseek-deepseek-v4-flash-0731", instruction: "dig"),
+            SubagentRole(name: "writer", model: "   ", instruction: "write"),
+            SubagentRole(name: "  ", model: "grok-build", instruction: "x"),
+        ]
+        let map = SubagentRouting.rolesByName(roles)
+        XCTAssertEqual(map, ["researcher": "deepseek-deepseek-v4-flash-0731"],
+                       "inheriting and unnamed roles must make no routing claim")
+    }
+
+    func testRoutedModelMatchesWorkerTitleExactlyCaseInsensitive() {
+        let map = ["researcher": "deepseek-deepseek-v4-flash-0731"]
+        XCTAssertEqual(SubagentRouting.routedModel(forWorkerTitle: "Researcher", rolesByName: map),
+                       "deepseek-deepseek-v4-flash-0731")
+        XCTAssertEqual(SubagentRouting.routedModel(forWorkerTitle: "  researcher  ", rolesByName: map),
+                       "deepseek-deepseek-v4-flash-0731")
+        XCTAssertNil(SubagentRouting.routedModel(forWorkerTitle: "researcher subagent", rolesByName: map),
+                     "a prompt-derived title must not fuzzy-match a role")
+        XCTAssertNil(SubagentRouting.routedModel(forWorkerTitle: "", rolesByName: map))
+    }
+
+    func testWorkerReceiptDetailLeadsWithConfiguredRoute() {
+        let detail = ActivitySidebarPresentation.workerReceiptDetail(
+            status: "completed",
+            durationMilliseconds: 3_200,
+            toolCallCount: 4,
+            redactedError: nil,
+            routedModel: "deepseek-deepseek-v4-flash-0731"
+        )
+        XCTAssertTrue(detail.hasPrefix("Routes to deepseek-deepseek-v4-flash-0731 (configured)"),
+                      "routing is declared config truth and labeled as such: \(detail)")
+        XCTAssertTrue(detail.contains("3.2 sec"))
+        XCTAssertTrue(detail.contains("4 tools"))
+        // No route → no claim, and the receipt is unchanged from the legacy shape.
+        let unrouted = ActivitySidebarPresentation.workerReceiptDetail(
+            status: "completed", durationMilliseconds: 3_200, toolCallCount: 4, redactedError: nil
+        )
+        XCTAssertFalse(unrouted.contains("Routes to"))
+    }
+
+    // MARK: - Slice 6: pricing capture
+
+    func testParseCapturesOpenRouterPricingAndToleratesShapes() throws {
+        let payload = """
+        {"data": [
+          {"id": "deepseek/deepseek-v4-flash-0731", "pricing": {"prompt": "0.00000014", "completion": "0.00000028"}},
+          {"id": "free/model", "pricing": {"prompt": "0", "completion": "0"}},
+          {"id": "numeric/model", "pricing": {"prompt": 0.000001, "completion": 0.000002}},
+          {"id": "no-pricing/model"}
+        ]}
+        """
+        let models = try XCTUnwrap(ProviderModelFetcher.parse(Data(payload.utf8)))
+        let byID = Dictionary(uniqueKeysWithValues: models.map { ($0.id, $0) })
+        XCTAssertEqual(byID["deepseek/deepseek-v4-flash-0731"]?.promptPricePerToken, 0.00000014)
+        XCTAssertEqual(byID["deepseek/deepseek-v4-flash-0731"]?.completionPricePerToken, 0.00000028)
+        XCTAssertNil(byID["free/model"]?.promptPricePerToken, "zero rates are absent, not free-forever claims")
+        XCTAssertEqual(byID["numeric/model"]?.promptPricePerToken, 0.000001)
+        XCTAssertNil(byID["no-pricing/model"]?.promptPricePerToken)
+    }
+
+    func testPricingStoreRoundTripAndCacheInvalidation() throws {
+        let suite = "grokbuild.tests.pricing.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer {
+            defaults.removePersistentDomain(forName: suite)
+            ModelPricingStore.resetCacheForTests()
+        }
+        ModelPricingStore.resetCacheForTests()
+
+        XCTAssertNil(ModelPricingStore.pricing(for: "x/y", defaults: defaults))
+        ModelPricingStore.record([
+            FetchedModel(id: "x/y", ownedBy: nil, promptPricePerToken: 1e-7, completionPricePerToken: 2e-7),
+            FetchedModel(id: "unpriced", ownedBy: nil),
+        ], defaults: defaults)
+        XCTAssertEqual(ModelPricingStore.pricing(for: "x/y", defaults: defaults),
+                       ModelPricing(promptPerToken: 1e-7, completionPerToken: 2e-7))
+        XCTAssertNil(ModelPricingStore.pricing(for: "unpriced", defaults: defaults),
+                     "models without pricing are never recorded as $0")
+        // A later fetch merges without erasing earlier entries.
+        ModelPricingStore.record([
+            FetchedModel(id: "a/b", ownedBy: nil, promptPricePerToken: 3e-7, completionPricePerToken: 3e-7)
+        ], defaults: defaults)
+        XCTAssertNotNil(ModelPricingStore.pricing(for: "x/y", defaults: defaults))
+        XCTAssertNotNil(ModelPricingStore.pricing(for: "a/b", defaults: defaults))
+    }
+
+    // MARK: - Slice 6: ledger
+
+    func testLedgerAccumulatesOnlySettledTurnsWithTokens() {
+        var ledger = SessionUsageLedger()
+        XCTAssertNil(ledger.summaryText(pricing: [:]))
+        ledger.recordTurn(modelID: "grok-4.5", totalTokens: 10_000, modelCalls: 2)
+        ledger.recordTurn(modelID: "grok-4.5", totalTokens: nil, modelCalls: 1)   // no receipt → no entry
+        ledger.recordTurn(modelID: "grok-4.5", totalTokens: 0, modelCalls: 1)     // zero → no entry
+        ledger.recordTurn(modelID: "deepseek/deepseek-v4-flash-0731", totalTokens: 5_000, modelCalls: 1)
+        XCTAssertEqual(ledger.turnCount, 2)
+        XCTAssertEqual(ledger.totalTokens, 15_000)
+        XCTAssertEqual(ledger.totalModelCalls, 3)
+
+        ledger.reset()
+        XCTAssertTrue(ledger.isEmpty)
+    }
+
+    func testEstimateBracketsPromptAndCompletionRatesAndFlagsPartialCoverage() {
+        var ledger = SessionUsageLedger()
+        ledger.recordTurn(modelID: "unpriced-model", totalTokens: 10_000, modelCalls: 1)
+        let pricing = ["deepseek/deepseek-v4-flash-0731": ModelPricing(promptPerToken: 1e-7, completionPerToken: 4e-7)]
+        XCTAssertNil(ledger.estimate(pricing: pricing), "no priced tokens → no dollar claim at all")
+
+        ledger.recordTurn(modelID: "deepseek/deepseek-v4-flash-0731", totalTokens: 10_000, modelCalls: 1)
+        let estimate = try! XCTUnwrap(ledger.estimate(pricing: pricing))
+        XCTAssertEqual(estimate.low, 10_000 * 1e-7, accuracy: 1e-12)
+        XCTAssertEqual(estimate.high, 10_000 * 4e-7, accuracy: 1e-12)
+        XCTAssertEqual(estimate.pricedTokens, 10_000)
+        XCTAssertFalse(estimate.coversAllTokens)
+
+        let summary = try! XCTUnwrap(ledger.summaryText(pricing: pricing))
+        XCTAssertTrue(summary.contains("20.0k tokens"))
+        XCTAssertTrue(summary.contains("2 turns"))
+        XCTAssertTrue(summary.contains("est. (priced portion)"),
+                      "partially priced sessions must disclose partial coverage: \(summary)")
+
+        let unpricedSummary = try! XCTUnwrap(ledger.summaryText(pricing: [:]))
+        XCTAssertFalse(unpricedSummary.contains("$"), "tokens only when no pricing is known")
+    }
+
+    func testCompactTokenAndDollarFormatting() {
+        XCTAssertEqual(SessionUsageLedger.compactTokens(999), "999")
+        XCTAssertEqual(SessionUsageLedger.compactTokens(41_300), "41.3k")
+        XCTAssertEqual(SessionUsageLedger.compactTokens(2_450_000), "2.45M")
+        XCTAssertEqual(SessionUsageLedger.dollars(0.1234), "$0.12")
+        XCTAssertEqual(SessionUsageLedger.dollars(0.00042), "$0.00042")
+    }
+
+    // MARK: - Source contracts
+
+    func testRoutingAndUsageWiring() throws {
+        let repositoryRoot = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        let chatStoreSource = try String(
+            contentsOf: repositoryRoot.appendingPathComponent("GrokBuild/Services/ChatStore.swift"),
+            encoding: .utf8
+        )
+        XCTAssertEqual(
+            chatStoreSource.components(separatedBy: "routedModel: SubagentRouting.routedModel(").count - 1,
+            2,
+            "both worker construction sites (live projection + settled snapshot) must carry routing"
+        )
+        let settleAnchor = try XCTUnwrap(chatStoreSource.range(of: "latestTurnOutcome = .completed"))
+        let afterSettle = String(chatStoreSource[settleAnchor.upperBound...].prefix(600))
+        XCTAssertTrue(afterSettle.contains("sessionUsage.recordTurn("),
+                      "the ledger records only at the authoritative completion barrier")
+        XCTAssertFalse(chatStoreSource.contains("sessionUsage.recordTurn(\n                modelID: nil"),
+                      "ledger entries carry the effective model for pricing correlation")
+
+        let chatViewSource = try String(
+            contentsOf: repositoryRoot.appendingPathComponent("GrokBuild/Views/ChatView.swift"),
+            encoding: .utf8
+        )
+        XCTAssertTrue(chatViewSource.contains("store.sessionUsageSummary"),
+                      "the Details bar surfaces the session usage HUD")
+
+        let settingsSource = try String(
+            contentsOf: repositoryRoot.appendingPathComponent("GrokBuild/Views/SettingsView.swift"),
+            encoding: .utf8
+        )
+        XCTAssertTrue(settingsSource.contains("ModelPricingStore.record(result.models)"),
+                      "Test connection captures catalog pricing with no extra requests")
+    }
+}

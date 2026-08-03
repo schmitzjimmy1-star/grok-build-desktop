@@ -73,9 +73,14 @@ enum ActivitySidebarPresentation {
         status: String,
         durationMilliseconds: Int?,
         toolCallCount: Int?,
-        redactedError: String?
+        redactedError: String?,
+        routedModel: String? = nil
     ) -> String {
         var parts: [String] = []
+        if let routedModel, !routedModel.isEmpty {
+            // Declared routing from [subagents.roles.*] — config truth, not a billing claim.
+            parts.append("Routes to \(routedModel) (configured)")
+        }
         if let durationMilliseconds {
             let seconds = Double(durationMilliseconds) / 1_000
             parts.append(seconds >= 60
@@ -335,7 +340,8 @@ struct ActivitySidebar: View {
                                 status: worker.status,
                                 durationMilliseconds: worker.durationMilliseconds,
                                 toolCallCount: worker.toolCallCount,
-                                redactedError: worker.redactedError
+                                redactedError: worker.redactedError,
+                                routedModel: worker.routedModel
                             )
                             if !detail.isEmpty {
                                 Text(detail)
@@ -527,7 +533,8 @@ struct ActivitySidebar: View {
                                 status: worker.status,
                                 durationMilliseconds: worker.durationMilliseconds,
                                 toolCallCount: worker.toolCallCount,
-                                redactedError: worker.redactedError
+                                redactedError: worker.redactedError,
+                                routedModel: worker.routedModel
                             )
                             if !detail.isEmpty {
                                 Text(detail)
@@ -553,7 +560,8 @@ struct ActivitySidebar: View {
             status: worker.status,
             durationMilliseconds: worker.durationMilliseconds,
             toolCallCount: worker.toolCallCount,
-            redactedError: worker.redactedError
+            redactedError: worker.redactedError,
+            routedModel: worker.routedModel
         )
         return detail.isEmpty
             ? "Worker \(worker.title). \(status)."

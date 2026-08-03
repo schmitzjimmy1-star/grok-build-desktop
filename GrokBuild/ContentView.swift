@@ -1520,6 +1520,13 @@ struct ContentView: View {
                 agentIntent: agent.map { .explicit($0) } ?? .inheritGlobalDefault
             )
         }
+        // A fresh ChatStore starts with empty discovery/connection inventories, which
+        // blanked the Agents hub and Connections lane until the next workspace switch.
+        // Both loads are guarded and read-only.
+        Task {
+            await store.loadDiscoveredAgentsIfNeeded()
+            await store.refreshPromptMCPOptions()
+        }
         await enforceConnectionCap()
         return id
     }

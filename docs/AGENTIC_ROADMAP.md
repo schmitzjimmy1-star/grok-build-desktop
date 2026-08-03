@@ -47,14 +47,14 @@ Right now only two app-managed MCP servers get injected (browser, computer-use, 
 - **Safe because:** the CLI executes MCP tools; GrokBuild only injects config (its documented lane).
 
 ## Slice 5 — Per-subagent model routing + OpenRouter, made real ⚡
-**Effort M/L · money-adjacent → full receipt**
+**Effort M/L · ✅ shipped 2026-08-03, scope honest** — configured role→model routing is now *visible and correlated*: worker receipts lead with "Routes to <model> (configured)" on exact role-name matches, and the roles editor groups models by provider (OpenRouter/custom routes first-class). App-side **fallback chains were deliberately not added**: grok owns subagent spawning and exposes no fallback hook, so an app-side chain would violate the thin-wrapper rule. Verified with a live OpenRouter-routed role probe (receipt in CANONICAL_WORKTREE.md).
 
 Per-role model routing *already exists* in config (`[subagents.roles.<name>].model`) but is invisible and unorchestrated. Make it a feature: **role→model presets** (e.g. plan/explore = cheap, verify = strong), let each role pick an **OpenRouter or custom-provider** model, add a **primary + fallback** chain, and **correlate the chosen model to the worker that actually ran** (close the loop in the delegation tree from Slice 3).
 - **Files:** `CustomModelSettings.swift:1227` (`SubagentRole`), roles pane in `SettingsView.swift:2514`, worker correlation in `BackgroundTaskStore`/projection.
 - **Safe because:** config-write path is tested; correlation is read-only. **Verify with a live billable probe per lane + `CANONICAL_WORKTREE.md` receipt** (this touches routing/billing — the class that burned the repo before).
 
 ## Slice 6 — Cost & usage HUD (per-session, per-worker $) ⚡🎨
-**Effort M**
+**Effort M · ✅ shipped 2026-08-03** — `SessionUsageLedger` + `ModelPricingStore` + Details-bar HUD. Estimates are honest low–high bounds (ACP reports combined tokens only); unpriced models show tokens, never $0; pricing captured from OpenRouter's catalog during Test connection. Per-worker $ awaits per-worker usage receipts from the CLI.
 
 Only raw token counts exist anywhere (`GrokProcess.swift:1663`, `ChatStore.swift:3082`). Agentic runs fan tokens across many subagents/providers, and consumers need to *see the meter*. Add token→$ using per-model pricing (OpenRouter exposes rich price/context/modality metadata the app currently ignores), surfaced as **per-turn, per-session, and per-worker spend**.
 - **Files:** usage plumbing `GrokProcess.swift:1663`, `ChatStore.swift:3082`; new pricing store; OpenRouter model metadata in `CustomModelSettings.swift:596`.

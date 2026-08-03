@@ -2948,13 +2948,27 @@ private struct SubagentRoleEditor: View {
 
             VStack(alignment: .leading, spacing: 4) {
                 Text("Model").font(.caption.weight(.medium)).foregroundStyle(.secondary)
+                // Provider-grouped so OpenRouter/custom routes are visible choices,
+                // not a flat ID soup (agentic roadmap Slice 5).
                 Picker("", selection: $model) {
                     Text("Inherit session model").tag("")
-                    ForEach(modelOptions, id: \.self) { option in
-                        Text(option).tag(option)
+                    Section("Grok") {
+                        ForEach(modelOptions.filter { $0 == "grok-build" }, id: \.self) { option in
+                            Text(option).tag(option)
+                        }
+                    }
+                    let customOptions = modelOptions.filter { $0 != "grok-build" }
+                    if !customOptions.isEmpty {
+                        Section("Your models (config.toml)") {
+                            ForEach(customOptions, id: \.self) { option in
+                                Text(option).tag(option)
+                            }
+                        }
                     }
                 }
                 .labelsHidden()
+                Text("Routed models come from your configured providers, including OpenRouter.")
+                    .font(.caption2).foregroundStyle(.tertiary)
             }
 
             VStack(alignment: .leading, spacing: 4) {
@@ -5447,6 +5461,9 @@ private struct CustomModelsSettingsPane: View {
                 // Never resurrect state for a provider removed mid-check.
                 guard key == "__draft__" || providers.contains(where: { $0.id == key }) else { return }
                 fetchedModels[key] = result.models
+                // Slice 6: capture catalog-advertised per-token pricing (OpenRouter)
+                // for display-side usage estimates. Non-secret; no extra requests.
+                ModelPricingStore.record(result.models)
                 validationResults[key] = result
                 if result.status == .connected,
                    let index = providers.firstIndex(where: { $0.id == key }),

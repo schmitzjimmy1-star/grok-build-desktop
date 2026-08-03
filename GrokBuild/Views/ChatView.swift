@@ -1663,6 +1663,18 @@ struct ChatView: View {
             .help("Context usage")
             .accessibilityLabel("Context usage")
             .accessibilityValue(store.currentModelContextLabel)
+            // Slice 6 usage HUD: cumulative settled-turn usage; $ bounds only for
+            // models with catalog-known pricing, and always labeled an estimate.
+            if let usage = store.sessionUsageSummary {
+                Label(usage, systemImage: "gauge.with.needle")
+                    .font(AppTheme.Typography.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                    .help("Session usage across settled turns. Dollar figures are estimates from provider catalog pricing.")
+                    .accessibilityLabel("Session usage")
+                    .accessibilityValue(usage)
+                    .accessibilityIdentifier("grok-session-usage")
+            }
         }
     }
 
