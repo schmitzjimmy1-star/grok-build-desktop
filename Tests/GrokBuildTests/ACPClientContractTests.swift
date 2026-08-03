@@ -817,6 +817,20 @@ final class ACPClientContractTests: XCTestCase {
         XCTAssertEqual(parsed?.diagnosticDetail, #"{"error":"tool_execution_failed","message":"Terminal exited with status 2"}"#)
     }
 
+    func testToolCallPreservesAuthoritativeMCPServerName() {
+        let parsed = GrokProcess().parseToolCall(from: [
+            "sessionUpdate": "tool_call_update",
+            "toolCallId": "mcp-call-1",
+            "toolName": "list_pages",
+            "serverName": "chrome-devtools",
+            "title": "List pages",
+            "status": "in_progress",
+        ])
+
+        XCTAssertEqual(parsed?.rawInput?["serverName"] as? String, "chrome-devtools")
+        XCTAssertEqual(parsed?.rawInput?["toolName"] as? String, "list_pages")
+    }
+
     func testTerminalExitReceiptOverridesTransportCompletedStatus() {
         let parsed = GrokProcess().parseToolCall(from: [
             "sessionUpdate": "tool_call_update",
@@ -949,6 +963,110 @@ final class ACPClientContractTests: XCTestCase {
 
         XCTAssertFalse(source.contains("TimelineView("))
         XCTAssertTrue(source.contains("Text(\"Agent working…\")"))
+    }
+
+    func testAuthoritativeCompletionDoesNotBypassPacedAnswerReveal() throws {
+        let repositoryRoot = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        let store = try String(
+            contentsOf: repositoryRoot.appendingPathComponent("GrokBuild/Services/ChatStore.swift"),
+            encoding: .utf8
+        )
+        let completionStart = try XCTUnwrap(
+            store.range(of: "case .turnCompleted(let completion):")
+        )
+        let completionEnd = try XCTUnwrap(
+            store.range(
+                of: "case .turnCompletionReceiptMissing",
+                range: completionStart.upperBound..<store.endIndex
+            )
+        )
+        let completionBlock = String(
+            store[completionStart.lowerBound..<completionEnd.lowerBound]
+        )
+
+        XCTAssertTrue(completionBlock.contains("pendingCompletionReconciliation = true"))
+        XCTAssertTrue(
+            completionBlock.contains("reconcileCompletedTurnIfDisplayBufferIsSettled()")
+        )
+        XCTAssertFalse(completionBlock.contains("flushAllPendingAssistantText()"))
+        XCTAssertFalse(completionBlock.contains("reconcileActiveTurnFromBackend()"))
+    }
+
+    @MainActor
+    func testSingleFinalACPChunkRevealsInBatchesBeforeSettling() async throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("grokbuild-paced-reveal-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let answer = String(repeating: "Smooth final answer segment. ", count: 80)
+        let scriptURL = root.appendingPathComponent("fake-grok")
+        let script = """
+        #!/bin/sh
+        while IFS= read -r line; do
+          id=$(printf '%s' "$line" | sed -E 's/.*"id":([0-9]+).*/\\1/')
+          case "$line" in
+            *'"method":"initialize"'*) printf '{"jsonrpc":"2.0","id":%s,"result":{}}\n' "$id" ;;
+            *'"method":"session/new"'*) printf '{"jsonrpc":"2.0","id":%s,"result":{"sessionId":"paced-backend","models":{"currentModelId":"grok-4.5","availableModels":[]}}}\n' "$id" ;;
+            *'"method":"session/set_model"'*) printf '{"jsonrpc":"2.0","id":%s,"result":{"_meta":{"model":{"Ok":"grok-4.5"}}}}\n' "$id" ;;
+            *'"method":"session/prompt"'*)
+              printf '{"jsonrpc":"2.0","method":"_x.ai/session_notification","params":{"sessionId":"paced-backend","update":{"sessionUpdate":"agent_thought_chunk","content":{"type":"text","text":"Checked the answer shape."}}}}\n'
+              printf '{"jsonrpc":"2.0","method":"_x.ai/session_notification","params":{"sessionId":"paced-backend","update":{"sessionUpdate":"agent_message_chunk","content":{"type":"text","text":"\(answer)"}}}}\n'
+              printf '{"jsonrpc":"2.0","method":"_x.ai/session_notification","params":{"sessionId":"paced-backend","update":{"sessionUpdate":"turn_completed","stop_reason":"end_turn"}}}\n'
+              printf '{"jsonrpc":"2.0","id":%s,"result":{"stopReason":"end_turn"}}\n' "$id"
+              ;;
+          esac
+        done
+        """
+        try script.write(to: scriptURL, atomically: true, encoding: .utf8)
+        try FileManager.default.setAttributes(
+            [.posixPermissions: 0o755],
+            ofItemAtPath: scriptURL.path
+        )
+
+        GrokProcess.cliOverrideForTests = scriptURL
+        defer { GrokProcess.cliOverrideForTests = nil }
+        let store = ChatStore()
+        store.bindTabSession(UUID(), savedModel: "grok-4.5")
+        await store.start(workspace: Workspace(name: "paced-reveal", path: root))
+
+        let sendTask = Task { @MainActor in
+            await store.sendAndWait("Reveal one final chunk smoothly")
+        }
+        var firstVisibleCount = 0
+        for _ in 0..<200 {
+            firstVisibleCount = store.messages.last(where: { $0.role == .assistant })?.content.count ?? 0
+            if firstVisibleCount > 0 { break }
+            try await Task.sleep(for: .milliseconds(5))
+        }
+
+        XCTAssertGreaterThan(firstVisibleCount, 0)
+        XCTAssertLessThan(firstVisibleCount, answer.count)
+        XCTAssertTrue(store.isStreaming)
+        XCTAssertEqual(store.thinkingText, "Checked the answer shape.")
+        XCTAssertEqual(
+            ChatTranscriptLayout.messageBlockOrder(
+                containsAgentHeader: true,
+                traceExpanded: true,
+                containsThinking: true,
+                containsToolActivity: false
+            ),
+            [.agentHeader, .thinking, .answer]
+        )
+
+        let sendSucceeded = await sendTask.value
+        XCTAssertTrue(sendSucceeded)
+        for _ in 0..<200 where store.isStreaming {
+            try await Task.sleep(for: .milliseconds(10))
+        }
+        XCTAssertEqual(
+            store.messages.last(where: { $0.role == .assistant })?.content,
+            answer
+        )
+        XCTAssertFalse(store.isStreaming)
+        await store.shutdownPermanently()
     }
 
     func testRestoredTranscriptSchedulesSettledAutoScrollOnAppearance() throws {

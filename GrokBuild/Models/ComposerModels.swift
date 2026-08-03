@@ -318,6 +318,92 @@ struct FileAttachment: Identifiable, Hashable, Sendable {
 
 }
 
+/// Secret-free connection metadata shown in the per-prompt MCP picker.
+/// Selecting one requests its use for the next prompt; it does not claim that
+/// a tool ran. Actual use is reported only from ACP tool-call receipts.
+struct PromptMCPOption: Identifiable, Hashable, Codable, Sendable {
+    let name: String
+    let detail: String
+    let isReady: Bool
+
+    var id: String { name }
+}
+
+enum PromptMCPInventoryCatalog {
+    private static let cacheKey = "grokbuild.promptMCPInventory.v1"
+
+    static func cached(defaults: UserDefaults = .standard) -> [PromptMCPOption] {
+        guard let data = defaults.data(forKey: cacheKey),
+              let options = try? JSONDecoder().decode([PromptMCPOption].self, from: data) else {
+            return []
+        }
+        return options
+    }
+
+    static func record(_ options: [PromptMCPOption], defaults: UserDefaults = .standard) {
+        guard let data = try? JSONEncoder().encode(options) else { return }
+        defaults.set(data, forKey: cacheKey)
+    }
+}
+
+enum PromptMCPAttachmentPromptBuilder {
+    static func build(from names: some Sequence<String>) -> String? {
+        let safeNames = Array(Set(names.compactMap { normalizedName($0) })).sorted()
+        guard !safeNames.isEmpty else { return nil }
+        let list = safeNames.map { "- \($0)" }.joined(separator: "\n")
+        return """
+        Attached MCP connections requested for this turn:
+        \(list)
+
+        Use these MCP connections when they materially improve the answer. If no attached MCP tool is actually called, do not claim that an MCP was used.
+        """
+    }
+
+    private static func normalizedName(_ value: String) -> String? {
+        let singleLine = value
+            .replacingOccurrences(of: "\r", with: " ")
+            .replacingOccurrences(of: "\n", with: " ")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !singleLine.isEmpty else { return nil }
+        return String(singleLine.prefix(120))
+    }
+}
+
+enum MCPToolReceiptIdentity {
+    static func serverName(
+        explicitName: String?,
+        qualifiedToolName: String?,
+        knownServerNames: some Sequence<String>
+    ) -> String? {
+        if let explicitName {
+            let value = normalized(explicitName)
+            if !value.isEmpty { return value }
+        }
+        guard let qualifiedToolName else { return nil }
+        let knownMatch = Set(knownServerNames.map(normalized).filter { !$0.isEmpty })
+            .filter { qualifiedToolName.hasPrefix("\($0)__") }
+            .max { $0.count < $1.count }
+        if let knownMatch { return knownMatch }
+
+        // Grok's MCP tool namespace is `<server>__<tool>`. The qualified tool
+        // receipt remains authoritative even when discovery and the tool event
+        // race, provided the namespace itself is a bounded safe name.
+        guard let separator = qualifiedToolName.range(of: "__") else { return nil }
+        let namespace = normalized(String(qualifiedToolName[..<separator.lowerBound]))
+        let allowed = CharacterSet.alphanumerics.union(CharacterSet(charactersIn: "-._"))
+        guard !namespace.isEmpty,
+              namespace.unicodeScalars.allSatisfy(allowed.contains) else {
+            return nil
+        }
+        return namespace
+    }
+
+    private static func normalized(_ value: String) -> String {
+        TranscriptTextPresentation.singleLine(value, maxLength: 120)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+}
+
 enum AttachmentPromptBuilder {
     /// Build attachment text for the user prompt. Uses plain paths — not `@` references,
     /// which tell grok to read the whole file (bad for large text and binaries).

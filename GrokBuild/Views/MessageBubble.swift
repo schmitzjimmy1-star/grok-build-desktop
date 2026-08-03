@@ -5,6 +5,7 @@ struct MessageBubble: View {
     /// When true, render assistant text plainly — `RichMessageView` re-parses the full
     /// body on every chunk and can freeze the UI on long streaming turns.
     var isStreaming: Bool = false
+    var showsAssistantHeader: Bool = true
 
     var body: some View {
         switch message.role {
@@ -33,9 +34,11 @@ struct MessageBubble: View {
             if !message.content.isEmpty {
                 let streamingPresentation = StreamingMarkdownPresentation.make(message.content)
                 VStack(alignment: .leading, spacing: 7) {
-                    Text("Build agent")
-                        .font(AppTheme.Typography.section)
-                        .foregroundStyle(AppTheme.Palette.textMuted)
+                    if showsAssistantHeader {
+                        Text("Build agent")
+                            .font(AppTheme.Typography.section)
+                            .foregroundStyle(AppTheme.Palette.textMuted)
+                    }
 
                     if isStreaming {
                         if !streamingPresentation.visibleText.isEmpty {

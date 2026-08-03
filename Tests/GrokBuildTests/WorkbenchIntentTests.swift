@@ -54,12 +54,15 @@ final class WorkbenchIntentTests: XCTestCase {
         let primaryEnd = try XCTUnwrap(source.range(of: "private var composerActionControls", range: primaryStart.upperBound..<source.endIndex))
         let primarySource = String(source[primaryStart.lowerBound..<primaryEnd.lowerBound])
         XCTAssertFalse(primarySource.contains("modeSelector"))
-        XCTAssertFalse(primarySource.contains("modelSelector"))
+        XCTAssertTrue(primarySource.contains("composerMCPMenu"))
+        XCTAssertTrue(primarySource.contains("composerCommandMenu"))
+        XCTAssertTrue(primarySource.contains("composerDetailsToggle"))
+        XCTAssertTrue(primarySource.contains("modelSelector"))
 
         let detailsStart = try XCTUnwrap(source.range(of: "private var composerDetailLeadingControls"))
         let detailsEnd = try XCTUnwrap(source.range(of: "private var composerDetailActionControls", range: detailsStart.upperBound..<source.endIndex))
         let detailsSource = String(source[detailsStart.lowerBound..<detailsEnd.lowerBound])
         XCTAssertTrue(detailsSource.contains("modeSelector"))
-        XCTAssertTrue(detailsSource.contains("modelSelector"))
+        XCTAssertFalse(detailsSource.contains("modelSelector"))
     }
 }

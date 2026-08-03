@@ -270,6 +270,7 @@ final class ChatStore {
                 kind: tool.kind,
                 status: status,
                 detail: tool.terminalStatus == .succeeded ? nil : tool.detail,
+                mcpServerName: tool.mcpServerName,
                 isActive: isActive
             )
         }
@@ -329,8 +330,35 @@ final class ChatStore {
         let detail: String?
         let diagnosticDetail: String?
         let target: String?
+        let mcpServerName: String?
         let retryOfToolCallID: String?
         let recoveredByToolCallID: String?
+
+        init(
+            id: String,
+            title: String,
+            kind: String,
+            status: String?,
+            terminalStatus: ToolCallTerminalStatus?,
+            detail: String?,
+            diagnosticDetail: String?,
+            target: String?,
+            mcpServerName: String? = nil,
+            retryOfToolCallID: String?,
+            recoveredByToolCallID: String?
+        ) {
+            self.id = id
+            self.title = title
+            self.kind = kind
+            self.status = status
+            self.terminalStatus = terminalStatus
+            self.detail = detail
+            self.diagnosticDetail = diagnosticDetail
+            self.target = target
+            self.mcpServerName = mcpServerName
+            self.retryOfToolCallID = retryOfToolCallID
+            self.recoveredByToolCallID = recoveredByToolCallID
+        }
 
         var isFailed: Bool {
             terminalStatus == .failed
@@ -363,6 +391,7 @@ final class ChatStore {
                 detail: detail,
                 diagnosticDetail: diagnosticDetail,
                 target: target,
+                mcpServerName: mcpServerName,
                 retryOfToolCallID: retryOfToolCallID,
                 recoveredByToolCallID: recoveryID
             )
@@ -386,6 +415,14 @@ final class ChatStore {
     /// Local goal state updated when the user sends `/goal …`; cleared on new session.
     private(set) var goalState: SessionGoalState?
     private(set) var fileAttachments: [FileAttachment] = []
+    /// Connected/configured MCPs available to attach to the next prompt. The
+    /// selection is in-memory per tab and is consumed only after a turn starts.
+    private(set) var promptMCPOptions: [PromptMCPOption] = PromptMCPInventoryCatalog.cached()
+    private(set) var selectedPromptMCPNames: Set<String> = []
+    private(set) var promptMCPInventoryIsLoading = false
+    private(set) var promptMCPInventoryUnavailable = false
+    private var configuredPromptMCPOptions: [PromptMCPOption] = PromptMCPInventoryCatalog.cached()
+    private var loadedPromptMCPWorkspaceID: UUID?
     private(set) var isYolo: Bool = false
 
     var grokSessionId: String? { process.sessionId }
@@ -609,6 +646,10 @@ final class ChatStore {
     private var closedTurnAssistantID: UUID?
     private var closedTurnHasAuthoritativeHistory = false
     private var pendingLateChunkPersistence = false
+    /// Successful completion is authoritative immediately, but backend-tail
+    /// reconciliation waits until already-received text has visibly drained.
+    /// Otherwise one large final ACP chunk bypasses the paced reveal and snaps in.
+    private var pendingCompletionReconciliation = false
     private var firstChunkInterval: GrokBuildPerformanceInterval?
 
     init(process: GrokProcess? = nil, continuityKeyOverride: Data? = nil) {
@@ -2240,7 +2281,15 @@ final class ChatStore {
         turnStartedAt = Date()
         startStallWatchdog()
 
-        if let attachmentBlock = AttachmentPromptBuilder.build(from: fileAttachments) {
+        var attachmentBlocks: [String] = []
+        if let mcpBlock = PromptMCPAttachmentPromptBuilder.build(from: selectedPromptMCPNames) {
+            attachmentBlocks.append(mcpBlock)
+        }
+        if let fileBlock = AttachmentPromptBuilder.build(from: fileAttachments) {
+            attachmentBlocks.append(fileBlock)
+        }
+        if !attachmentBlocks.isEmpty {
+            let attachmentBlock = attachmentBlocks.joined(separator: "\n\n")
             trimmed = trimmed.isEmpty ? attachmentBlock : "\(attachmentBlock)\n\n\(trimmed)"
         }
         if let goalCommand = GoalCommand.parse(from: trimmed) {
@@ -2250,6 +2299,7 @@ final class ChatStore {
             pendingBtw = true
         }
         fileAttachments.removeAll()
+        selectedPromptMCPNames.removeAll()
 
         let userMsg = Message(role: .user, content: trimmed)
         messages.append(userMsg)
@@ -2304,6 +2354,7 @@ final class ChatStore {
         firstChunkInterval?.end()
         firstChunkInterval = nil
         let settledAssistantID = authoritativeTailAssistantID ?? assistantID
+        attachCurrentTurnTrace(to: settledAssistantID)
         if ok, let idx = messages.firstIndex(where: { $0.id == settledAssistantID }) {
             captureAsideAndShare(from: messages[idx].content)
         }
@@ -2416,6 +2467,7 @@ final class ChatStore {
 
     func stop() async {
         let wasActiveTurn = isStreaming || isGrokking
+        let stoppedAssistantID = streamingMessageID
         let stoppedBackendID = process.sessionId ?? savedGrokSessionID
         let stoppedGeneration = process.activeProcessGeneration
         let stoppedBinding = RunEvidenceSnapshot.Binding(
@@ -2435,6 +2487,7 @@ final class ChatStore {
         firstChunkInterval?.end()
         firstChunkInterval = nil
         cancelStreamingTextFlush()
+        attachCurrentTurnTrace(to: stoppedAssistantID)
         invalidateTurnSettlement()
         isStreaming = false
         isGrokking = false
@@ -2606,6 +2659,69 @@ final class ChatStore {
         fileAttachments.contains { !$0.isHidden }
     }
 
+    var selectedPromptMCPOptions: [PromptMCPOption] {
+        promptMCPOptions.filter { selectedPromptMCPNames.contains($0.name) }
+    }
+
+    func refreshPromptMCPOptions(force: Bool = false) async {
+        let workspaceID = currentWorkspace?.id
+        if force || loadedPromptMCPWorkspaceID != workspaceID {
+            promptMCPInventoryIsLoading = true
+            defer { promptMCPInventoryIsLoading = false }
+            do {
+                let inventory = try await GrokCLIService().listMCPServers(cwd: currentWorkspace?.path)
+                configuredPromptMCPOptions = inventory
+                    .filter { $0.isEnabled != false }
+                    .map { server in
+                        let source = switch server.source.lowercased() {
+                        case "project": "Project connection"
+                        case "user": "User connection"
+                        default: "Connected MCP"
+                        }
+                        let transport = server.transport.trimmingCharacters(in: .whitespacesAndNewlines)
+                        let detail = transport.isEmpty ? source : "\(source) · \(transport.uppercased())"
+                        return PromptMCPOption(name: server.name, detail: detail, isReady: true)
+                    }
+                PromptMCPInventoryCatalog.record(configuredPromptMCPOptions)
+                loadedPromptMCPWorkspaceID = workspaceID
+                promptMCPInventoryUnavailable = false
+            } catch {
+                promptMCPInventoryUnavailable = configuredPromptMCPOptions.isEmpty
+            }
+        }
+
+        var merged: [String: PromptMCPOption] = [:]
+        for option in configuredPromptMCPOptions {
+            merged[option.name] = option
+        }
+        for status in mcpServerStatuses {
+            guard status.state != .disabled else { continue }
+            merged[status.name] = PromptMCPOption(
+                name: status.name,
+                detail: "Live app connection · \(status.state.displayName)",
+                isReady: status.state == .ready
+            )
+        }
+        promptMCPOptions = merged.values.sorted {
+            $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending
+        }
+        let availableNames = Set(promptMCPOptions.map(\.name))
+        selectedPromptMCPNames.formIntersection(availableNames)
+    }
+
+    func togglePromptMCPAttachment(named name: String) {
+        guard promptMCPOptions.contains(where: { $0.name == name }) else { return }
+        if selectedPromptMCPNames.contains(name) {
+            selectedPromptMCPNames.remove(name)
+        } else {
+            selectedPromptMCPNames.insert(name)
+        }
+    }
+
+    func removePromptMCPAttachment(named name: String) {
+        selectedPromptMCPNames.remove(name)
+    }
+
     func respondToPermission(_ request: PermissionRequest, with optionId: String) {
         guard pendingPermissions.contains(where: {
             ACPInteractionRequestIdentity.matches(
@@ -2670,6 +2786,7 @@ final class ChatStore {
                 : "Denied automatically by the live \(mode.displayName) policy.",
             diagnosticDetail: request.toolCall.diagnosticDetail,
             target: request.toolCall.target,
+            mcpServerName: mcpServerName(from: request.toolCall),
             retryOfToolCallID: request.toolCall.retryOfToolCallID,
             recoveredByToolCallID: nil
         )
@@ -3144,9 +3261,12 @@ final class ChatStore {
             }
             // This event shares the same AsyncStream queue as text/tool updates. By
             // acknowledging only here, `process.send` cannot outrun already-yielded
-            // synthesis chunks and detach them from their assistant message.
-            flushAllPendingAssistantText()
-            reconcileActiveTurnFromBackend()
+            // synthesis chunks and detach them from their assistant message. Keep
+            // those accepted chunks in the display buffer: reconciliation after the
+            // paced reveal verifies the same backend tail without replacing the
+            // growing answer with one instantaneous full-message snap.
+            pendingCompletionReconciliation = true
+            reconcileCompletedTurnIfDisplayBufferIsSettled()
             refreshBoundContinuityCountsAfterSettlement()
             // The event queue is ordered: all worker receipts yielded before this
             // barrier have already crossed ChatStore. Any worker still active here
@@ -3155,6 +3275,7 @@ final class ChatStore {
             backgroundTaskTracker.markUnsettledSubagents(only: currentTurnWorkerActivityIDs)
             backgroundActivities = backgroundTaskTracker.activities
             settleToolCallsAtTurnBarrier()
+            attachCurrentTurnTrace(to: streamingMessageID)
             latestTurnOutcome = .completed
             runEvidenceSnapshot = makeRunEvidenceSnapshot(completion: completion)
             requestGitRefresh()
@@ -3171,6 +3292,7 @@ final class ChatStore {
             backgroundTaskTracker.markUnsettledSubagents(only: currentTurnWorkerActivityIDs)
             backgroundActivities = backgroundTaskTracker.activities
             settleToolCallsAtTurnBarrier()
+            attachCurrentTurnTrace(to: streamingMessageID)
             latestTurnOutcome = .completionReceiptMissing
             lastError = failure.reason
             runEvidenceSnapshot = makeRunEvidenceSnapshot(completion: TurnCompletionReceipt(
@@ -3277,6 +3399,7 @@ final class ChatStore {
             detail: toolCall.detail,
             diagnosticDetail: toolCall.diagnosticDetail,
             target: toolCall.target,
+            mcpServerName: mcpServerName(from: toolCall),
             retryOfToolCallID: toolCall.retryOfToolCallID,
             recoveredByToolCallID: nil
         )
@@ -3505,6 +3628,7 @@ final class ChatStore {
             detail: update.detail ?? existing.detail,
             diagnosticDetail: update.diagnosticDetail ?? existing.diagnosticDetail,
             target: update.target ?? existing.target,
+            mcpServerName: mcpServerName(from: update) ?? existing.mcpServerName,
             retryOfToolCallID: update.retryOfToolCallID ?? existing.retryOfToolCallID,
             recoveredByToolCallID: nil
         )
@@ -3513,6 +3637,38 @@ final class ChatStore {
     private func settleToolCallsAtTurnBarrier() {
         let observedCalls = liveToolCalls
         liveToolCalls = observedCalls.map { $0.settled(against: observedCalls) }
+    }
+
+    private func attachCurrentTurnTrace(to messageID: UUID?) {
+        guard let messageID,
+              let index = messages.firstIndex(where: { $0.id == messageID && $0.role == .assistant }) else {
+            return
+        }
+        let summary = reasoningSummaryChunks
+            .map(TranscriptTextPresentation.normalize)
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+        let duration = thinkingDuration ?? thinkingStartedAt.map {
+            max(0, Date().timeIntervalSince($0))
+        }
+        let tools = liveToolCalls.map { tool in
+            AssistantTurnTrace.Tool(
+                id: tool.id,
+                title: TranscriptTextPresentation.singleLine(tool.title, maxLength: 160),
+                status: tool.terminalStatus.map { String(describing: $0).capitalized }
+                    ?? tool.status.map(ActivitySidebarPresentation.activityStatus)
+                    ?? "Status not settled",
+                mcpServerName: tool.mcpServerName
+            )
+        }
+        let trace = AssistantTurnTrace(
+            reasoningSummaryChunks: summary,
+            thinkingDuration: duration,
+            tools: tools
+        )
+        if trace.hasContent {
+            messages[index].assistantTrace = trace
+        }
     }
 
     private func displayTitle(for toolCall: ToolCall) -> String {
@@ -3527,6 +3683,22 @@ final class ChatStore {
                 .capitalized
         }
         return "Tool call"
+    }
+
+    private func mcpServerName(from toolCall: ToolCall) -> String? {
+        let explicitName = toolCall.rawInput?["serverName"] as? String
+            ?? toolCall.rawInput?["server_name"] as? String
+        let toolName = toolCall.rawInput?["toolName"] as? String
+            ?? toolCall.rawInput?["tool_name"] as? String
+            ?? toolCall.rawInput?["name"] as? String
+            ?? toolCall.rawInput?["tool"] as? String
+            ?? toolCall.title
+        let knownNames = Set(promptMCPOptions.map(\.name) + configuredPromptMCPOptions.map(\.name))
+        return MCPToolReceiptIdentity.serverName(
+            explicitName: explicitName,
+            qualifiedToolName: toolName,
+            knownServerNames: knownNames
+        )
     }
 
     private func displayKind(for toolCall: ToolCall) -> String {
@@ -3613,7 +3785,9 @@ final class ChatStore {
         streamingTextFlushTask = Task { [weak self] in
             while !Task.isCancelled {
                 do {
-                    try await Task.sleep(for: .milliseconds(20))
+                    try await Task.sleep(
+                        for: .milliseconds(StreamingTextBuffer.displayCadenceMilliseconds)
+                    )
                 } catch {
                     return
                 }
@@ -3655,8 +3829,9 @@ final class ChatStore {
     }
 
     private func finishDeferredPromptIfNeeded() {
-        guard streamingTextBuffer.isEmpty,
-              let deferredPromptCompletion else { return }
+        guard streamingTextBuffer.isEmpty else { return }
+        reconcileCompletedTurnIfDisplayBufferIsSettled()
+        guard let deferredPromptCompletion else { return }
         self.deferredPromptCompletion = nil
         finishPromptNow(
             assistantID: deferredPromptCompletion.assistantID,
@@ -3682,6 +3857,14 @@ final class ChatStore {
         streamingTextBuffer.clear()
         deferredPromptCompletion = nil
         pendingLateChunkPersistence = false
+        pendingCompletionReconciliation = false
+    }
+
+    private func reconcileCompletedTurnIfDisplayBufferIsSettled() {
+        guard pendingCompletionReconciliation,
+              streamingTextBuffer.isEmpty else { return }
+        pendingCompletionReconciliation = false
+        reconcileActiveTurnFromBackend()
     }
 
     private func appendSystem(_ text: String) {

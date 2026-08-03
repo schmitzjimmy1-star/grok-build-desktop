@@ -22,25 +22,50 @@ struct TranscriptMessageProvenance: Codable, Sendable, Hashable {
     let opaqueContentTag: String?
 }
 
+/// Safe, local presentation receipts for one assistant turn. The summary is
+/// the public ACP reasoning summary, never hidden chain-of-thought. Tool rows
+/// retain only redacted labels, terminal state, and an authoritative MCP server
+/// name when the backend reported one. This travels with GrokBuild's local
+/// transcript and never rewrites Grok's backend history.
+struct AssistantTurnTrace: Codable, Sendable, Hashable {
+    struct Tool: Codable, Sendable, Hashable, Identifiable {
+        let id: String
+        let title: String
+        let status: String
+        let mcpServerName: String?
+    }
+
+    let reasoningSummaryChunks: [String]
+    let thinkingDuration: TimeInterval?
+    let tools: [Tool]
+
+    var hasContent: Bool {
+        !reasoningSummaryChunks.isEmpty || thinkingDuration != nil || !tools.isEmpty
+    }
+}
+
 struct Message: Identifiable, Codable, Sendable, Hashable {
     let id: UUID
     let role: MessageRole
     var content: String
     let timestamp: Date
     let provenance: TranscriptMessageProvenance?
+    var assistantTrace: AssistantTurnTrace?
 
     init(
         id: UUID = UUID(),
         role: MessageRole,
         content: String,
         timestamp: Date = Date(),
-        provenance: TranscriptMessageProvenance? = nil
+        provenance: TranscriptMessageProvenance? = nil,
+        assistantTrace: AssistantTurnTrace? = nil
     ) {
         self.id = id
         self.role = role
         self.content = content
         self.timestamp = timestamp
         self.provenance = provenance
+        self.assistantTrace = assistantTrace
     }
 }
 

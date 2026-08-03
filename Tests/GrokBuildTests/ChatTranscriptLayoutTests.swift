@@ -15,8 +15,8 @@ final class ChatTranscriptLayoutTests: XCTestCase {
     func testAutoScrollRetriesThroughLateRichTextLayout() {
         let gaps = ChatAutoScrollPolicy.layoutSettleGapsMilliseconds
         XCTAssertEqual(gaps.first, 0)
-        XCTAssertGreaterThanOrEqual(gaps.count, 4)
-        XCTAssertGreaterThanOrEqual(gaps.reduce(0, +), 800)
+        XCTAssertGreaterThanOrEqual(gaps.count, 6)
+        XCTAssertGreaterThanOrEqual(gaps.reduce(0, +), 3_000)
         XCTAssertTrue(gaps.allSatisfy { $0 >= 0 })
     }
 
@@ -94,10 +94,190 @@ final class ChatTranscriptLayoutTests: XCTestCase {
             batches.append(buffer.popNextBatch())
         }
 
-        XCTAssertGreaterThan(batches.count, 1)
-        XCTAssertLessThan(batches.count, 24)
+        XCTAssertGreaterThanOrEqual(batches.count, 12)
+        XCTAssertLessThanOrEqual(batches.count, StreamingTextBuffer.targetRevealFrames)
         XCTAssertEqual(batches.joined(), text)
         XCTAssertTrue(batches.allSatisfy { !$0.isEmpty })
+        XCTAssertGreaterThanOrEqual(
+            batches.count * StreamingTextBuffer.displayCadenceMilliseconds,
+            350
+        )
+    }
+
+    func testThinkingAndToolActivityAlwaysPrecedeTheirAnswer() {
+        XCTAssertEqual(
+            ChatTranscriptLayout.messageBlockOrder(
+                containsAgentHeader: true,
+                traceExpanded: true,
+                containsThinking: true,
+                containsToolActivity: true,
+                containsLiveProgress: true
+            ),
+            [.agentHeader, .thinking, .toolActivity, .liveProgress, .answer]
+        )
+        XCTAssertEqual(
+            ChatTranscriptLayout.messageBlockOrder(
+                containsAgentHeader: true,
+                traceExpanded: false,
+                containsThinking: true,
+                containsToolActivity: true,
+                containsLiveProgress: true
+            ),
+            [.agentHeader, .liveProgress, .answer]
+        )
+        XCTAssertEqual(
+            ChatTranscriptLayout.messageBlockOrder(
+                containsAgentHeader: false,
+                traceExpanded: false,
+                containsThinking: false,
+                containsToolActivity: false
+            ),
+            [.answer]
+        )
+    }
+
+    func testPromptMCPAttachmentIsTruthfulSanitizedAndDeterministic() throws {
+        let prompt = try XCTUnwrap(
+            PromptMCPAttachmentPromptBuilder.build(
+                from: [" zeta ", "alpha\nconnection", "zeta", "  "]
+            )
+        )
+
+        XCTAssertTrue(prompt.contains("- alpha connection\n- zeta"))
+        XCTAssertTrue(prompt.contains("If no attached MCP tool is actually called"))
+        XCTAssertFalse(prompt.contains("alpha\nconnection"))
+        XCTAssertNil(PromptMCPAttachmentPromptBuilder.build(from: [" ", "\n"]))
+    }
+
+    func testPromptMCPInventoryCatalogRoundTripsOnlyPresentationMetadata() throws {
+        let suite = "grokbuild-mcp-catalog-\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let options = [
+            PromptMCPOption(
+                name: "chrome-devtools",
+                detail: "User connection · STDIO",
+                isReady: true
+            )
+        ]
+
+        PromptMCPInventoryCatalog.record(options, defaults: defaults)
+
+        XCTAssertEqual(PromptMCPInventoryCatalog.cached(defaults: defaults), options)
+        let raw = try XCTUnwrap(defaults.data(forKey: "grokbuild.promptMCPInventory.v1"))
+        let text = String(decoding: raw, as: UTF8.self)
+        XCTAssertFalse(text.localizedCaseInsensitiveContains("environment"))
+        XCTAssertFalse(text.localizedCaseInsensitiveContains("command"))
+        XCTAssertFalse(text.localizedCaseInsensitiveContains("secret"))
+    }
+
+    func testMCPIdentityRequiresExplicitOrProviderQualifiedReceipt() {
+        XCTAssertEqual(
+            MCPToolReceiptIdentity.serverName(
+                explicitName: " chrome-devtools ",
+                qualifiedToolName: nil,
+                knownServerNames: []
+            ),
+            "chrome-devtools"
+        )
+        XCTAssertEqual(
+            MCPToolReceiptIdentity.serverName(
+                explicitName: nil,
+                qualifiedToolName: "chrome-devtools__list_pages",
+                knownServerNames: ["chrome", "chrome-devtools"]
+            ),
+            "chrome-devtools"
+        )
+        XCTAssertEqual(
+            MCPToolReceiptIdentity.serverName(
+                explicitName: nil,
+                qualifiedToolName: "chrome-devtools__list_pages",
+                knownServerNames: ["unrelated"]
+            ),
+            "chrome-devtools"
+        )
+        XCTAssertNil(
+            MCPToolReceiptIdentity.serverName(
+                explicitName: nil,
+                qualifiedToolName: "list_pages",
+                knownServerNames: ["chrome-devtools"]
+            )
+        )
+        XCTAssertNil(
+            MCPToolReceiptIdentity.serverName(
+                explicitName: nil,
+                qualifiedToolName: "not a safe server__tool",
+                knownServerNames: []
+            )
+        )
+    }
+
+    func testRestoredToolDisclosureDerivesMCPNameFromQualifiedReceiptTitle() throws {
+        let repositoryRoot = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        let composerViews = try String(
+            contentsOf: repositoryRoot.appendingPathComponent("GrokBuild/Views/ComposerViews.swift"),
+            encoding: .utf8
+        )
+        let toolViewStart = try XCTUnwrap(composerViews.range(of: "struct AssistantToolTraceView"))
+        let toolViewEnd = try XCTUnwrap(
+            composerViews.range(of: "// MARK: - Workflow chips", range: toolViewStart.upperBound..<composerViews.endIndex)
+        )
+        let toolView = String(composerViews[toolViewStart.lowerBound..<toolViewEnd.lowerBound])
+
+        XCTAssertTrue(toolView.contains("qualifiedToolName: tool.title"))
+        XCTAssertTrue(toolView.contains("if let server = displayedMCPServer"))
+        XCTAssertTrue(toolView.contains("Text(\"Using \\(server)\")"))
+    }
+
+    func testComposerOrdersMCPHammerDetailsThenModel() throws {
+        let repositoryRoot = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        let source = try String(
+            contentsOf: repositoryRoot.appendingPathComponent("GrokBuild/Views/ChatView.swift"),
+            encoding: .utf8
+        )
+        let start = try XCTUnwrap(source.range(of: "private var composerPrimaryControls"))
+        let end = try XCTUnwrap(
+            source.range(of: "private var composerMCPMenu", range: start.upperBound..<source.endIndex)
+        )
+        let controls = String(source[start.lowerBound..<end.lowerBound])
+
+        let mcp = try XCTUnwrap(controls.range(of: "composerMCPMenu"))
+        let hammer = try XCTUnwrap(controls.range(of: "composerCommandMenu"))
+        let details = try XCTUnwrap(controls.range(of: "composerDetailsToggle"))
+        let model = try XCTUnwrap(controls.range(of: "modelSelector"))
+        XCTAssertLessThan(mcp.lowerBound, hammer.lowerBound)
+        XCTAssertLessThan(hammer.lowerBound, details.lowerBound)
+        XCTAssertLessThan(details.lowerBound, model.lowerBound)
+        XCTAssertTrue(source.contains(".task(id: promptMCPRefreshIdentity)"))
+        XCTAssertTrue(source.contains("store.currentWorkspace?.id.uuidString"))
+        XCTAssertTrue(source.contains("store.tabSessionID?.uuidString"))
+        XCTAssertTrue(source.contains("await store.refreshPromptMCPOptions()"))
+
+        let storeSource = try String(
+            contentsOf: repositoryRoot.appendingPathComponent("GrokBuild/Services/ChatStore.swift"),
+            encoding: .utf8
+        )
+        XCTAssertTrue(storeSource.contains("?? toolCall.title"))
+        XCTAssertTrue(storeSource.contains("toolCall.rawInput?[\"name\"] as? String"))
+
+        let composerViews = try String(
+            contentsOf: repositoryRoot.appendingPathComponent("GrokBuild/Views/ComposerViews.swift"),
+            encoding: .utf8
+        )
+        let reasoningStart = try XCTUnwrap(composerViews.range(of: "struct AssistantReasoningTraceView"))
+        let reasoningEnd = try XCTUnwrap(
+            composerViews.range(of: "struct AssistantToolTraceView", range: reasoningStart.upperBound..<composerViews.endIndex)
+        )
+        let reasoningView = String(composerViews[reasoningStart.lowerBound..<reasoningEnd.lowerBound])
+        XCTAssertFalse(reasoningView.contains("Text(summary)"))
+        XCTAssertFalse(reasoningView.contains("presentationOnlyText"))
+        XCTAssertTrue(reasoningView.contains("Label(durationLabel"))
     }
 
     func testThinkingUsesStreamingAssistantWhenAvailable() {

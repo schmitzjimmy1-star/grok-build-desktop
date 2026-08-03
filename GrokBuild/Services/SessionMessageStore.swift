@@ -355,7 +355,15 @@ enum SessionMessageStore {
                 let oldText = existing[index].content
                 let newText = incoming[index].content
                 if oldText.count > newText.count && oldText.hasPrefix(newText) {
-                    result[index] = existing[index]
+                    var preserved = existing[index]
+                    // Reconciliation may briefly hand persistence a shorter
+                    // display prefix after the trace has settled. Keep the
+                    // longer authoritative body without discarding the newer,
+                    // safe assistant disclosure.
+                    if let trace = incoming[index].assistantTrace {
+                        preserved.assistantTrace = trace
+                    }
+                    result[index] = preserved
                 }
             }
             return result
@@ -434,6 +442,7 @@ enum SessionMessageStore {
                 && left.role == right.role
                 && left.content == right.content
                 && left.provenance == right.provenance
+                && left.assistantTrace == right.assistantTrace
                 && abs(left.timestamp.timeIntervalSince(right.timestamp)) < 0.001
         }
     }

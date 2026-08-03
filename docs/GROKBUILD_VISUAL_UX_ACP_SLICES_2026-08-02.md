@@ -164,15 +164,49 @@ Exact installed quit/relaunch restored Jimmy's weather transcript and preserved 
 
 ## Slice 10 — glanceable live progress
 
-Project one compact, answer-adjacent live status line for meaningful work: current phase, active workers, active tool, elapsed time, and budget status. Expanding it opens the existing generation-bound Activity truth; collapsing it never hides a question, plan decision, failure, or budget warning. Settled evidence still replaces live projection atomically.
+Project one compact, answer-adjacent live status line for meaningful work: current phase, active workers, active tool, and elapsed time. Expanding it opens the existing generation-bound Activity truth; collapsing it never hides a question, plan decision, or failure. Settled evidence still replaces live projection atomically. Budget and token estimates are intentionally absent: only authoritative settled usage belongs in Activity.
 
-**Gate:** the parallel fixture is understandable without opening Details, then expands to the exact same workers/tools/receipts already owned by Activity; no outcome or usage is fabricated before settlement.
+**Gate:** the parallel fixture is understandable without opening Details, then expands to the exact same workers/tools/receipts already owned by Activity; no outcome or usage is fabricated before settlement. Three sequential live prompts in one native thread begin visibly without material click-to-start delay, stream while attached to the true bottom, and leave each complete response—including turns two and three—fully visible above the composer.
 
-## Slice 11 — adaptive result surfaces
+**Acceptance (2026-08-02):** The signed installed app now replaces the generic working row with `grok-live-progress`, a compact control that reads only the existing generation-bound live projection. It reports phase, active workers, the first active tool when present, and event-driven elapsed time, then opens Activity; it contains no budget, token, usage, or pre-settlement outcome claim. The attached transcript's bounded rich-layout follow-through increased from roughly 0.8 seconds to 3.1 seconds, while deliberate scroll-away and Jump to latest behavior remain unchanged.
 
-Give wide tables an obvious horizontal affordance plus an alternate stacked-card reading mode, retain full exact table text for copy/accessibility, and prevent preamble text from welding itself to the next heading. Preserve native nested lists, source links, code, Mermaid fallback, and developer-grade exactness.
+Three authorized Grok 4.5 prompts ran sequentially in one native thread/backend `019fc5b5-06a1-7c73-b351-d8231fcc33b8`. Return-to-backend-turn-start measured 3,545 ms for the cold first process and 80 ms / 71 ms for warm turns two and three; backend stream-start followed Return by 4,095 ms / 507 ms / 495 ms. Native accessibility observed the live control within 1,236 ms on turn two and 891 ms on turn three. The provider emitted each short answer as one final ACP message chunk rather than token-sized chunks, so the installed pass proves immediate live-state disclosure, buffered final-chunk rendering, and bottom settlement; burst coalescing remains pinned by the focused streaming-buffer test rather than misrepresented as provider behavior.
 
-**Gate:** the five-column rainy-day comparison is fully readable at the minimum window width by sight, keyboard, and VoiceOver without losing a cell; the same fixture still copies as an exact Markdown table.
+**Follow-up correction:** the final-chunk caveat is now handled deliberately instead of merely disclosed. One large ACP message chunk drains through a bounded fourteen-frame display reveal, and successful completion defers authoritative reconciliation until that display buffer is empty. A real fake-ACP integration emits thought, one large answer chunk, and immediate completion; it proves the first visible answer is partial, the turn remains live during reveal, the exact answer settles afterward, and thinking survives. Transcript layout now has one explicit block order—thinking, tools, live progress, answer—after native evidence caught the `Writing answer` control below a partial answer. The screenshot-driven regression assertion includes that live-progress row, not just persisted reasoning.
+
+`SLICE10_STREAM_1_OK`, `SLICE10_STREAM_2_OK`, and `SLICE10_STREAM_3_OK` all completed with authoritative `end_turn` receipts in that one backend. The second and third markers were fully visible immediately above the empty composer without a manual scroll; exact quit/relaunch restored the same three-turn local transcript and the third marker at the bottom. The compact control's Activity-click path is deterministic-test covered; the short live calls settled in a single final chunk before Computer Use could re-use the changing live element identifier, so no installed click-through claim is made.
+
+Focused `ChatTranscriptLayoutTests` passed **16/16**, the live single-final-chunk ACP integration passed **1/1**, and `ActivitySidebarTests` passed **11/11**; complete `make test` passed **562/562** in 22.180 seconds. The final dist/install executable SHA-256 is `5bd7a51579cade63f9c686895c51693b97ad5e20bec9e12b8b5226a568be0726`; both bundles pass deep/strict Team `DD2GCQJVB4` signing and quarantine is absent. Native partial-answer evidence ordered `Show thinking` → `Live progress` → `Build agent`, visibly kept the writing row above the growing answer, settled `LIVE PROGRESS ABOVE ANSWER OK` above the composer, and restored it after exact quit/relaunch. All 207 baseline transcript files and 257 baseline Grok histories remained byte-identical. Immediate rollback is `/Users/jimmyschmitz/.Trash/GrokBuild-pre-live-progress-order-20260802-230353.app`. No path was staged, committed, pushed, published, or opened as a PR.
+
+## Slice 11 — prompt-attached MCPs and inspectable agent work
+
+Add a compact per-prompt MCP picker sourced from the enabled Grok CLI connection inventory. The control sits immediately left of the hammer; attached MCPs appear as removable prompt chips. The attachment is guidance for that one prompt, not evidence that a tool ran. **Using <MCP>** requires an authoritative ACP tool receipt: either its explicit `serverName` / `server_name`, or the bounded safe namespace from a provider-qualified `<server>__<tool>` receipt when that route omits the separate server field.
+
+Make every assistant **Build agent** label a disclosure. Expanding it reveals a compact thinking-duration row and redacted tool/MCP receipts directly underneath and always above the answer. The verbose running reasoning body is not rendered because it can push the useful answer out of the viewport. Live progress remains visible while collapsed. New completed/stopped turns retain the safe trace in GrokBuild's optional local transcript field so it survives exact relaunch; older turns without retained trace say so plainly. Grok backend histories and durable logs are never rewritten. New VoiceOver-specific expansion work is deferred at Jimmy's request; existing control labels, hints, identifiers, keyboard behavior, and semantic order remain intact.
+
+The composer control order is **MCP → hammer → Details → model**. Developer mode, context, review, Activity, project, branch, Browser, and Computer Use remain inside Details, so consumer access gets one calm escape hatch without reducing developer power.
+
+**Gate:** the native signed app lists the current enabled `chrome-devtools` connection without exposing its command or environment, attaching it creates one removable chip and one truthful prompt request, and no MCP-use claim appears without a matching tool receipt. Clicking Build agent reveals thinking and tool use beneath the label and above the settled answer; exact quit/relaunch restores the same trace. Existing transcript and Grok history baselines remain byte-identical, except for new user-authorized acceptance turns.
+
+**Acceptance (2026-08-03):** The signed installed app exposed the secret-free
+`chrome-devtools` inventory immediately on a fresh tab, created and consumed one removable
+prompt chip, and completed `SLICE11_FINAL_ALIGNED_MCP_OK` after exactly one read-only
+`chrome-devtools__list_pages` call. Expanding **Build agent** after completion—and again
+after an exact Command-Q/relaunch—rendered only `Thought for 5s`, the redacted tool rows,
+and **Using chrome-devtools** above the answer. The verbose running reasoning body from the
+reported screenshot is no longer rendered, so it cannot displace the useful answer.
+
+Focused `ChatTranscriptLayoutTests` passed **21/21** and complete `make test` passed
+**571/571** in 22.727 seconds. The final dist/install executable SHA-256 is
+`433db661ba241299eee88456d40211c976b512d7d35a2b85ed6a84ca71bf2622`; both bundles pass
+deep/strict signing under `Apple Development: jhschmitz1993@gmail.com (LS4SUB57QL)` / Team
+`DD2GCQJVB4`, quarantine is absent, and the installed stamp is personal `main` at
+`e7ad9525fc11ad7261eb342235655f15b7e1c644`, dirty `true`. All **213/213** baseline local
+transcript files and **260/260** baseline Grok histories remain byte-identical; the six
+native acceptance threads added 12 local transcript/metadata files and six new Grok
+histories without rewriting an existing durable file. The signed rollback is
+`/Users/jimmyschmitz/.Trash/GrokBuild-pre-slice11-mcp-disclosure-20260802-2335.app`. No path
+was staged, committed, pushed, published, or opened as a PR.
 
 ## Slice 12 — concise, durable plan decisions
 
@@ -193,6 +227,12 @@ Also single-flight model-catalog discovery across restored tab shells. Final Sli
 Attach restrained native actions to settled developer results: rerun/copy a command, open the named test/source, reveal or copy an artifact path, and promote a successful result into a follow-up draft. Actions must derive from successful receipts and keep external artifacts, repository changes, hypothetical code, and assistant prose in separate authorities.
 
 **Gate:** the focused-test and `/tmp` artifact fixtures expose the correct actions; no action mutates Git without a separate user decision, and an external artifact never enters Files in review.
+
+## Slice 15 — adaptive result surfaces
+
+Give wide tables an obvious horizontal affordance plus an alternate stacked-card reading mode, retain full exact table text for copy/accessibility, and prevent preamble text from welding itself to the next heading. Preserve native nested lists, source links, code, Mermaid fallback, and developer-grade exactness.
+
+**Gate:** the five-column rainy-day comparison is fully readable at the minimum window width by sight and keyboard without losing a cell; the same fixture still copies as an exact Markdown table. New VoiceOver-specific acceptance remains deferred until Jimmy reopens it.
 
 ## Release gates
 

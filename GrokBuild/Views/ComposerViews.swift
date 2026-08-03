@@ -57,6 +57,109 @@ private struct FileChipView: View {
     }
 }
 
+// MARK: - MCP prompt attachments
+
+struct PromptMCPChipBar: View {
+    let names: [String]
+    var onRemove: (String) -> Void
+
+    var body: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 6) {
+                ForEach(names, id: \.self) { name in
+                    HStack(spacing: 5) {
+                        Image(systemName: "network")
+                            .font(.caption2.weight(.semibold))
+                            .foregroundStyle(.tint)
+                        Text(name)
+                            .font(.caption)
+                            .lineLimit(1)
+                        Button {
+                            onRemove(name)
+                        } label: {
+                            Image(systemName: "xmark")
+                                .font(.caption2)
+                        }
+                        .buttonStyle(.plain)
+                        .help("Detach \(name) from this prompt")
+                        .accessibilityLabel("Detach \(name) from this prompt")
+                    }
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 4)
+                    .background(Color.accentColor.opacity(0.10), in: Capsule())
+                    .accessibilityElement(children: .combine)
+                    .accessibilityLabel("MCP attached to prompt: \(name)")
+                }
+            }
+        }
+        .accessibilityIdentifier("grok-mcp-prompt-attachments")
+    }
+}
+
+struct AssistantReasoningTraceView: View {
+    let summaryChunks: [String]
+    let duration: TimeInterval?
+    var emptyMessage: String? = nil
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 7) {
+            Label(durationLabel, systemImage: "brain.head.profile")
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.secondary)
+            if summaryChunks.isEmpty, let emptyMessage {
+                Text(emptyMessage)
+                    .font(.caption)
+                    .foregroundStyle(.tertiary)
+            }
+        }
+        .padding(.leading, 12)
+        .accessibilityValue(durationLabel)
+        .accessibilityIdentifier("grok-assistant-thinking-details")
+    }
+
+    private var durationLabel: String {
+        guard let duration else { return "Thinking" }
+        return "Thought for \(max(1, Int(duration.rounded())))s"
+    }
+}
+
+struct AssistantToolTraceView: View {
+    let tools: [AssistantTurnTrace.Tool]
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 7) {
+            Label("Tool use", systemImage: "wrench.and.screwdriver")
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.secondary)
+            ForEach(tools) { tool in
+                let displayedMCPServer = MCPToolReceiptIdentity.serverName(
+                    explicitName: tool.mcpServerName,
+                    qualifiedToolName: tool.title,
+                    knownServerNames: []
+                )
+                HStack(alignment: .firstTextBaseline, spacing: 7) {
+                    Image(systemName: displayedMCPServer == nil ? "wrench" : "network")
+                        .font(.caption2.weight(.semibold))
+                        .foregroundStyle(displayedMCPServer == nil ? Color.secondary : Color.accentColor)
+                    VStack(alignment: .leading, spacing: 2) {
+                        if let server = displayedMCPServer {
+                            Text("Using \(server)")
+                                .font(.caption.weight(.semibold))
+                        }
+                        Text(tool.title)
+                            .font(.caption)
+                        Text(tool.status)
+                            .font(.caption2)
+                            .foregroundStyle(.tertiary)
+                    }
+                }
+            }
+        }
+        .padding(.leading, 12)
+        .accessibilityIdentifier("grok-assistant-tool-details")
+    }
+}
+
 // MARK: - Workflow chips
 
 // MARK: - Goal banner

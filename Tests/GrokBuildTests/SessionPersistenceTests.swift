@@ -330,6 +330,72 @@ final class SessionPersistenceTests: XCTestCase {
         XCTAssertTrue(SessionMessageStore.messages(for: sessionID).isEmpty)
     }
 
+    func testSessionMessageStoreRoundTripsAssistantThinkingAndToolTrace() {
+        let sessionID = UUID()
+        let trace = AssistantTurnTrace(
+            reasoningSummaryChunks: ["Checked the connected source."],
+            thinkingDuration: 2.4,
+            tools: [
+                .init(
+                    id: "tool-1",
+                    title: "List pages",
+                    status: "Completed",
+                    mcpServerName: "chrome-devtools"
+                )
+            ]
+        )
+        let messages = [
+            Message(role: .user, content: "Inspect the page"),
+            Message(role: .assistant, content: "Done", assistantTrace: trace),
+        ]
+
+        SessionMessageStore.save(messages, for: sessionID)
+        defer { SessionMessageStore.remove(for: sessionID) }
+
+        XCTAssertEqual(SessionMessageStore.messages(for: sessionID), messages)
+        XCTAssertEqual(
+            SessionMessageStore.messages(for: sessionID).last?.assistantTrace?.tools.first?.mcpServerName,
+            "chrome-devtools"
+        )
+    }
+
+    func testLongerTranscriptMergeKeepsNewAssistantTrace() {
+        let root = temporaryTranscriptRoot()
+        defer { try? FileManager.default.removeItem(at: root.deletingLastPathComponent()) }
+        let sessionID = UUID()
+        let assistantID = UUID()
+        let timestamp = Date()
+        let original = [
+            Message(
+                id: assistantID,
+                role: .assistant,
+                content: "A complete authoritative answer",
+                timestamp: timestamp
+            )
+        ]
+        _ = SessionMessageStore.save(original, for: sessionID, rootURL: root)
+
+        let trace = AssistantTurnTrace(
+            reasoningSummaryChunks: ["Verified the source."],
+            thinkingDuration: 1,
+            tools: []
+        )
+        let shorterWithTrace = [
+            Message(
+                id: assistantID,
+                role: .assistant,
+                content: "A complete",
+                timestamp: timestamp,
+                assistantTrace: trace
+            )
+        ]
+        _ = SessionMessageStore.save(shorterWithTrace, for: sessionID, rootURL: root)
+
+        let restored = SessionMessageStore.messages(for: sessionID, rootURL: root)
+        XCTAssertEqual(restored.first?.content, "A complete authoritative answer")
+        XCTAssertEqual(restored.first?.assistantTrace, trace)
+    }
+
     func testFileBackedTranscriptUsesMetadataAndDirtyGenerations() throws {
         let root = temporaryTranscriptRoot()
         defer { try? FileManager.default.removeItem(at: root.deletingLastPathComponent()) }

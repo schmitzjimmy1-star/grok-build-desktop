@@ -105,6 +105,33 @@ enum ProjectOpenTarget {
 }
 
 enum ChatTranscriptLayout {
+    enum MessageBlock: Hashable {
+        case agentHeader
+        case thinking
+        case toolActivity
+        case liveProgress
+        case answer
+    }
+
+    /// One turn has one stable semantic order. Thinking and tool receipts may
+    /// appear or settle at any point in the event stream, but neither is allowed
+    /// to migrate below the answer it explains.
+    static func messageBlockOrder(
+        containsAgentHeader: Bool,
+        traceExpanded: Bool,
+        containsThinking: Bool,
+        containsToolActivity: Bool,
+        containsLiveProgress: Bool = false
+    ) -> [MessageBlock] {
+        var blocks: [MessageBlock] = []
+        if containsAgentHeader { blocks.append(.agentHeader) }
+        if traceExpanded && containsThinking { blocks.append(.thinking) }
+        if traceExpanded && containsToolActivity { blocks.append(.toolActivity) }
+        if containsLiveProgress { blocks.append(.liveProgress) }
+        blocks.append(.answer)
+        return blocks
+    }
+
     static func activeAssistantMessageID(
         messages: [Message],
         streamingMessageID: UUID?
@@ -138,8 +165,12 @@ enum ChatAutoScrollPolicy {
     /// Follow-up passes after the first scroll. GPT/DeepSeek and rich Markdown can
     /// deliver one large final chunk whose SwiftUI/WebKit height settles after the
     /// stream event; a single pre-layout scroll then leaves the answer below the fold.
-    /// These gaps yield immediately, then cover the next ~800 ms of layout settling.
-    static let layoutSettleGapsMilliseconds = [0, 120, 240, 440]
+    /// These gaps yield immediately, then cover the next ~3.1 seconds of bounded
+    /// layout settling. Later turns commonly reuse warm WebKit views whose final
+    /// intrinsic height lands well after the ACP completion event; keeping the
+    /// true bottom attached through that window prevents turns two and three from
+    /// ending behind the composer without introducing an unbounded timer.
+    static let layoutSettleGapsMilliseconds = [0, 100, 200, 400, 800, 1_600]
 }
 
 enum ChatTranscriptScrollPolicy {
@@ -239,6 +270,7 @@ struct ChatView: View {
     @State private var slashSkillsExpanded = false
     @State private var slashCommandsExpanded = false
     @State private var toolActivityExpanded = false
+    @State private var expandedAssistantTraceIDs: Set<UUID> = []
     @State private var autoScrollTask: Task<Void, Never>?
     @State private var programmaticScrollReleaseTask: Task<Void, Never>?
     @State private var isProgrammaticTranscriptScroll = false
@@ -354,6 +386,157 @@ struct ChatView: View {
         }
     }
 
+    private func assistantTurnHeader(
+        message: Message,
+        isExpanded: Bool,
+        trace: AssistantTurnTrace?,
+        hasLiveTrace: Bool
+    ) -> some View {
+        Button {
+            if isExpanded {
+                expandedAssistantTraceIDs.remove(message.id)
+            } else {
+                expandedAssistantTraceIDs.insert(message.id)
+            }
+        } label: {
+            HStack(spacing: 7) {
+                Text("Build agent")
+                    .font(AppTheme.Typography.section)
+                Image(systemName: isExpanded ? "chevron.down" : "chevron.right")
+                    .font(.system(size: 9, weight: .semibold))
+                    .foregroundStyle(.tertiary)
+                if let label = assistantTraceSummary(trace: trace, hasLiveTrace: hasLiveTrace) {
+                    Text(label)
+                        .font(.caption2)
+                        .foregroundStyle(.tertiary)
+                }
+                Spacer(minLength: 8)
+            }
+            .frame(maxWidth: .infinity, minHeight: 24, alignment: .leading)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .foregroundStyle(AppTheme.Palette.textMuted)
+        .help(isExpanded ? "Hide thinking and tool use" : "Show thinking and tool use")
+        .accessibilityLabel("Build agent")
+        .accessibilityValue(isExpanded ? "Thinking and tool use expanded" : "Thinking and tool use collapsed")
+        .accessibilityHint(isExpanded ? "Hides this turn's thinking and tool receipts." : "Shows this turn's thinking and tool receipts.")
+        .accessibilityIdentifier("grok-assistant-trace-\(message.id.uuidString)")
+    }
+
+    private func assistantTraceSummary(trace: AssistantTurnTrace?, hasLiveTrace: Bool) -> String? {
+        if hasLiveTrace && store.isStreaming { return "Live details" }
+        guard let trace else { return "Details" }
+        var parts: [String] = []
+        if let duration = trace.thinkingDuration {
+            parts.append("\(max(1, Int(duration.rounded())))s thought")
+        } else if !trace.reasoningSummaryChunks.isEmpty {
+            parts.append("Thinking")
+        }
+        if !trace.tools.isEmpty {
+            parts.append("\(trace.tools.count) \(trace.tools.count == 1 ? "tool" : "tools")")
+        }
+        return parts.isEmpty ? "Details" : parts.joined(separator: " · ")
+    }
+
+    @ViewBuilder
+    private func assistantThinkingDetails(
+        message: Message,
+        useLiveTrace: Bool,
+        hasAnyTrace: Bool
+    ) -> some View {
+        if useLiveTrace {
+            AssistantReasoningTraceView(
+                summaryChunks: store.reasoningSummaryChunks,
+                duration: store.thinkingDuration,
+                emptyMessage: store.isStreaming ? "Waiting for a public reasoning summary." : nil
+            )
+        } else if let trace = message.assistantTrace,
+                  !trace.reasoningSummaryChunks.isEmpty || trace.thinkingDuration != nil {
+            AssistantReasoningTraceView(
+                summaryChunks: trace.reasoningSummaryChunks,
+                duration: trace.thinkingDuration
+            )
+        } else if !hasAnyTrace {
+            AssistantReasoningTraceView(
+                summaryChunks: [],
+                duration: nil,
+                emptyMessage: "No thinking or tool receipts were retained for this earlier turn."
+            )
+        }
+    }
+
+    @ViewBuilder
+    private func assistantToolDetails(message: Message, useLiveTrace: Bool) -> some View {
+        if useLiveTrace {
+            AssistantToolTraceView(tools: store.liveToolCalls.map(Self.assistantTraceTool))
+        } else if let tools = message.assistantTrace?.tools, !tools.isEmpty {
+            AssistantToolTraceView(tools: tools)
+        }
+    }
+
+    private static func assistantTraceTool(_ tool: ChatStore.LiveToolCall) -> AssistantTurnTrace.Tool {
+        AssistantTurnTrace.Tool(
+            id: tool.id,
+            title: tool.title,
+            status: tool.terminalStatus.map { String(describing: $0).capitalized }
+                ?? tool.status.map(ActivitySidebarPresentation.activityStatus)
+                ?? "Running",
+            mcpServerName: tool.mcpServerName
+        )
+    }
+
+    private var currentAssistantHasText: Bool {
+        guard let id = store.streamingMessageID else { return false }
+        return store.messages.first(where: { $0.id == id })?.content.isEmpty == false
+    }
+
+    @ViewBuilder
+    private var liveProgressControl: some View {
+        if let projection = store.liveRunEvidenceProjection {
+            let presentation = LiveProgressPresentation.make(
+                projection: projection,
+                startedAt: store.turnStartedAt,
+                now: Date(),
+                hasAssistantText: currentAssistantHasText
+            )
+            Button {
+                if reduceMotion {
+                    showActivitySidebar = true
+                } else {
+                    withAnimation(.easeInOut(duration: 0.18)) {
+                        showActivitySidebar = true
+                    }
+                }
+            } label: {
+                HStack(spacing: 7) {
+                    Image(systemName: "waveform.path")
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundStyle(.tint)
+                    Text(presentation.compactText)
+                        .font(AppTheme.Typography.caption)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                    Image(systemName: "chevron.right")
+                        .font(.system(size: 9, weight: .semibold))
+                        .foregroundStyle(.tertiary)
+                }
+                .padding(.horizontal, 10)
+                .frame(minHeight: ComposerControlMetrics.minimumHitTarget)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .help("Open the Activity evidence for this live run")
+            .accessibilityLabel("Live progress")
+            .accessibilityValue(presentation.accessibilityValue)
+            .accessibilityHint("Opens the generation-bound workers, tools, and receipts in Activity.")
+            .accessibilityIdentifier("grok-live-progress")
+        } else if store.isGrokking {
+            GrokkingIndicator(startedAt: store.turnStartedAt)
+                .padding(.leading, 2)
+        }
+    }
+
     var body: some View {
         HStack(spacing: 0) {
             VStack(spacing: 0) {
@@ -409,28 +592,59 @@ struct ChatView: View {
                         }
 
                         ForEach(store.messages) { msg in
-                            if thinkingMessageID == msg.id {
-                                thinkingBlock
+                            let traceExpanded = expandedAssistantTraceIDs.contains(msg.id)
+                            let persistedTrace = msg.assistantTrace
+                            let hasLiveThinking = thinkingMessageID == msg.id
+                            let hasLiveTools = toolActivityMessageID == msg.id
+                            let hasPersistedThinking = persistedTrace?.reasoningSummaryChunks.isEmpty == false
+                                || persistedTrace?.thinkingDuration != nil
+                            let hasPersistedTools = persistedTrace?.tools.isEmpty == false
+                            let hasAnyTrace = hasLiveThinking || hasLiveTools
+                                || hasPersistedThinking || hasPersistedTools
+                            ForEach(
+                                ChatTranscriptLayout.messageBlockOrder(
+                                    containsAgentHeader: msg.role == .assistant,
+                                    traceExpanded: traceExpanded,
+                                    containsThinking: hasLiveThinking || hasPersistedThinking
+                                        || (msg.role == .assistant && !hasAnyTrace),
+                                    containsToolActivity: hasLiveTools || hasPersistedTools,
+                                    containsLiveProgress: msg.role == .assistant
+                                        && msg.id == store.streamingMessageID
+                                        && (store.liveRunEvidenceProjection != nil || store.isGrokking)
+                                ),
+                                id: \.self
+                            ) { block in
+                                switch block {
+                                case .agentHeader:
+                                    assistantTurnHeader(
+                                        message: msg,
+                                        isExpanded: traceExpanded,
+                                        trace: persistedTrace,
+                                        hasLiveTrace: hasLiveThinking || hasLiveTools
+                                    )
+                                case .thinking:
+                                    assistantThinkingDetails(
+                                        message: msg,
+                                        useLiveTrace: hasLiveThinking,
+                                        hasAnyTrace: hasAnyTrace
+                                    )
+                                case .toolActivity:
+                                    assistantToolDetails(message: msg, useLiveTrace: hasLiveTools)
+                                case .liveProgress:
+                                    liveProgressControl
+                                case .answer:
+                                    MessageBubble(
+                                        message: msg,
+                                        isStreaming: store.isStreaming && msg.id == store.streamingMessageID,
+                                        showsAssistantHeader: msg.role != .assistant
+                                    )
+                                    .id(msg.id)
+                                }
                             }
-
-                            if toolActivityMessageID == msg.id {
-                                toolActivityBlock
-                            }
-
-                            MessageBubble(
-                                message: msg,
-                                isStreaming: store.isStreaming && msg.id == store.streamingMessageID
-                            )
-                            .id(msg.id)
                         }
 
                         if showThinkingAtTail {
                             thinkingBlock
-                        }
-
-                        if store.isGrokking {
-                            GrokkingIndicator(startedAt: store.turnStartedAt)
-                                .padding(.leading, 2)
                         }
 
                         if showToolActivityAtTail {
@@ -764,6 +978,9 @@ struct ChatView: View {
             workflowsEnabled = WorkflowsConfigStore.loadEnabled()
             input = store.composerDraft
         }
+        .task(id: promptMCPRefreshIdentity) {
+            await store.refreshPromptMCPOptions()
+        }
         .onChange(of: input) { _, newValue in
             store.composerDraft = newValue
         }
@@ -776,6 +993,7 @@ struct ChatView: View {
                 if store.authRequiredMessage != nil {
                     store.authRequiredMessage = nil
                 }
+                Task { await store.refreshPromptMCPOptions() }
             } else if case .failed(let msg) = newState,
                       (msg.lowercased().contains("login") || msg.lowercased().contains("auth")),
                       store.authRequiredMessage == nil {
@@ -1061,6 +1279,12 @@ struct ChatView: View {
             + ImagineSlashCommands.filter(store.availableSlashCommands)
     }
 
+    private var promptMCPRefreshIdentity: String {
+        let workspace = store.currentWorkspace?.id.uuidString ?? "no-workspace"
+        let tab = store.tabSessionID?.uuidString ?? "no-tab"
+        return "\(workspace):\(tab)"
+    }
+
     private var composerCommandMenu: some View {
         Menu {
             if composerChips.isEmpty {
@@ -1120,6 +1344,13 @@ struct ChatView: View {
                     attachments: store.fileAttachments,
                     onToggleHidden: { store.toggleFileAttachmentHidden(id: $0) },
                     onRemove: { store.removeFileAttachment(id: $0) }
+                )
+            }
+
+            if !store.selectedPromptMCPOptions.isEmpty {
+                PromptMCPChipBar(
+                    names: store.selectedPromptMCPOptions.map(\.name),
+                    onRemove: { store.removePromptMCPAttachment(named: $0) }
                 )
             }
 
@@ -1251,9 +1482,65 @@ struct ChatView: View {
 
     private var composerPrimaryControls: some View {
         HStack(spacing: 9) {
+            composerMCPMenu
             composerCommandMenu
             composerDetailsToggle
+            modelSelector
         }
+    }
+
+    private var composerMCPMenu: some View {
+        Menu {
+            if store.promptMCPInventoryIsLoading && store.promptMCPOptions.isEmpty {
+                Text("Checking connections…")
+            } else if store.promptMCPOptions.isEmpty {
+                Text(store.promptMCPInventoryUnavailable ? "MCP connections unavailable" : "No connected MCPs")
+            } else {
+                ForEach(store.promptMCPOptions) { option in
+                    Button {
+                        store.togglePromptMCPAttachment(named: option.name)
+                    } label: {
+                        Label(
+                            option.name,
+                            systemImage: store.selectedPromptMCPNames.contains(option.name)
+                                ? "checkmark.circle.fill"
+                                : (option.isReady ? "circle" : "circle.dashed")
+                        )
+                    }
+                    .help(option.detail)
+                }
+            }
+
+            Divider()
+            Button {
+                Task { await store.refreshPromptMCPOptions(force: true) }
+            } label: {
+                Label("Refresh Connections", systemImage: "arrow.clockwise")
+            }
+        } label: {
+            HStack(spacing: 4) {
+                Image(systemName: "network")
+                    .font(.caption.weight(.semibold))
+                if !store.selectedPromptMCPNames.isEmpty {
+                    Text("\(store.selectedPromptMCPNames.count)")
+                        .font(.caption2.weight(.semibold))
+                }
+            }
+            .frame(minWidth: ComposerControlMetrics.minimumHitTarget, minHeight: ComposerControlMetrics.minimumHitTarget)
+            .contentShape(Rectangle())
+        }
+        .menuStyle(.borderlessButton)
+        .menuIndicator(.hidden)
+        .fixedSize()
+        .foregroundStyle(store.selectedPromptMCPNames.isEmpty ? Color.secondary : Color.accentColor)
+        .disabled(store.isStreaming)
+        .help("Attach connected MCPs to this prompt")
+        .accessibilityLabel("MCP connections")
+        .accessibilityValue(
+            "\(store.selectedPromptMCPNames.count) attached, \(store.promptMCPOptions.count) available"
+        )
+        .accessibilityHint("Choose connected MCPs that may be used for the next prompt.")
+        .accessibilityIdentifier("grok-mcp-attachment-menu")
     }
 
     private var composerActionControls: some View {
@@ -1348,7 +1635,6 @@ struct ChatView: View {
     private var composerDetailLeadingControls: some View {
         HStack(spacing: 9) {
             modeSelector
-            modelSelector
             ContextUsageIndicator(
                 label: store.currentModelContextLabel,
                 fraction: store.contextUsageFraction

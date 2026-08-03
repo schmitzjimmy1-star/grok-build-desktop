@@ -2,6 +2,160 @@ import XCTest
 @testable import GrokBuild
 
 final class ActivitySidebarTests: XCTestCase {
+    func testLiveProgressProjectsExistingReceiptsWithoutUsageOrBudgetCopy() {
+        let projection = RunEvidenceLiveProjection(
+            binding: .init(
+                localTabID: UUID(),
+                workspaceID: UUID(),
+                backendSessionID: "backend-1",
+                processGeneration: 4
+            ),
+            goalSummary: "Build it",
+            plan: [],
+            workers: [
+                .init(
+                    id: "worker-1",
+                    title: "UI lane",
+                    status: "running",
+                    childID: nil,
+                    durationMilliseconds: nil,
+                    toolCallCount: nil,
+                    redactedError: nil
+                )
+            ],
+            tools: [
+                .init(
+                    id: "tool-1",
+                    title: "Read workspace",
+                    kind: "read",
+                    status: "Running",
+                    detail: nil,
+                    isActive: true
+                )
+            ],
+            artifacts: [],
+            process: .init(state: "In progress — not settled", model: "grok-4.5", mcps: [])
+        )
+        let start = Date(timeIntervalSince1970: 1_000)
+        let presentation = LiveProgressPresentation.make(
+            projection: projection,
+            startedAt: start,
+            now: start.addingTimeInterval(12.8),
+            hasAssistantText: false
+        )
+
+        XCTAssertEqual(presentation.phase, "Using tools")
+        XCTAssertEqual(presentation.activeWorkers, 1)
+        XCTAssertEqual(presentation.activeTool, "Read workspace")
+        XCTAssertEqual(presentation.elapsedSeconds, 12)
+        XCTAssertEqual(
+            presentation.compactText,
+            "Using tools · 1 active worker · Read workspace · 12s elapsed"
+        )
+        XCTAssertFalse(presentation.compactText.localizedCaseInsensitiveContains("budget"))
+        XCTAssertFalse(presentation.compactText.localizedCaseInsensitiveContains("token"))
+        XCTAssertFalse(presentation.compactText.localizedCaseInsensitiveContains("usage"))
+    }
+
+    func testLiveProgressNamesMCPOnlyFromItsToolReceipt() {
+        let projection = RunEvidenceLiveProjection(
+            binding: .init(
+                localTabID: UUID(),
+                workspaceID: UUID(),
+                backendSessionID: "backend-mcp",
+                processGeneration: 7
+            ),
+            goalSummary: nil,
+            plan: [],
+            workers: [],
+            tools: [
+                .init(
+                    id: "mcp-tool",
+                    title: "List pages",
+                    kind: "read",
+                    status: "Running",
+                    detail: nil,
+                    mcpServerName: "chrome-devtools",
+                    isActive: true
+                )
+            ],
+            artifacts: [],
+            process: .init(state: "In progress — not settled", model: "gpt-5.6-terra", mcps: [])
+        )
+        let presentation = LiveProgressPresentation.make(
+            projection: projection,
+            startedAt: nil,
+            now: Date(),
+            hasAssistantText: false
+        )
+
+        XCTAssertEqual(presentation.phase, "Using chrome-devtools")
+        XCTAssertEqual(presentation.activeMCP, "chrome-devtools")
+        XCTAssertEqual(presentation.activeTool, "List pages")
+        XCTAssertEqual(presentation.compactText, "Using chrome-devtools · 0 active workers · List pages")
+    }
+
+    func testLiveProgressPhaseTracksWritingAndWorkerCoordination() {
+        let binding = RunEvidenceLiveProjection.Binding(
+            localTabID: UUID(),
+            workspaceID: nil,
+            backendSessionID: "backend-2",
+            processGeneration: 5
+        )
+        let process = RunEvidenceSnapshot.ProcessReceipt(
+            state: "In progress — not settled",
+            model: nil,
+            mcps: []
+        )
+        let writing = RunEvidenceLiveProjection(
+            binding: binding,
+            goalSummary: nil,
+            plan: [],
+            workers: [],
+            tools: [],
+            artifacts: [],
+            process: process
+        )
+        XCTAssertEqual(
+            LiveProgressPresentation.make(
+                projection: writing,
+                startedAt: nil,
+                now: Date(),
+                hasAssistantText: true
+            ).phase,
+            "Writing answer"
+        )
+
+        let workers = RunEvidenceLiveProjection(
+            binding: binding,
+            goalSummary: nil,
+            plan: [],
+            workers: [
+                .init(
+                    id: "worker-2",
+                    title: "Research lane",
+                    status: "in_progress",
+                    childID: nil,
+                    durationMilliseconds: nil,
+                    toolCallCount: nil,
+                    redactedError: nil
+                )
+            ],
+            tools: [],
+            artifacts: [],
+            process: process
+        )
+        XCTAssertEqual(
+            LiveProgressPresentation.make(
+                projection: workers,
+                startedAt: nil,
+                now: Date(),
+                hasAssistantText: false
+            ).phase,
+            "Coordinating workers"
+        )
+    }
+
     func testTranscriptNormalizationPreservesMarkdownLinesButRemovesTransportNoise() {
         XCTAssertEqual(
             TranscriptTextPresentation.normalize("one\r\ntwo\u{00A0}three\u{200B}"),
@@ -138,6 +292,8 @@ final class ActivitySidebarTests: XCTestCase {
         XCTAssertTrue(sidebar.contains(".accessibilityElement(children: .ignore)"))
         XCTAssertFalse(sidebar.contains(".regularMaterial"))
         XCTAssertTrue(chat.contains("Text(\"Activity\")"))
+        XCTAssertTrue(chat.contains("grok-live-progress"))
+        XCTAssertTrue(chat.contains("LiveProgressPresentation.make"))
         XCTAssertTrue(chat.contains("outcome == .completionReceiptMissing"))
         XCTAssertTrue(chat.contains(".userStopped"))
         XCTAssertTrue(chat.contains("local stop outcome and next action"))
