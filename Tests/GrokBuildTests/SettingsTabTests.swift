@@ -172,10 +172,7 @@ final class SettingsTabTests: XCTestCase {
             .deletingLastPathComponent()
             .deletingLastPathComponent()
             .deletingLastPathComponent()
-        let source = try String(
-            contentsOf: repositoryRoot.appendingPathComponent("GrokBuild/Views/SettingsView.swift"),
-            encoding: .utf8
-        )
+        let source = try paneSource(named: "AppUpdatesSettingsPane")
         let appearanceStart = try XCTUnwrap(source.range(of: "updatesCard(title: \"Appearance\""))
         let applyStart = try XCTUnwrap(
             source.range(
@@ -218,18 +215,8 @@ final class SettingsTabTests: XCTestCase {
             .deletingLastPathComponent()
             .deletingLastPathComponent()
             .deletingLastPathComponent()
-        let source = try String(
-            contentsOf: repositoryRoot.appendingPathComponent("GrokBuild/Views/SettingsView.swift"),
-            encoding: .utf8
-        )
-        let memoryStart = try XCTUnwrap(source.range(of: "private struct MemorySettingsPane"))
-        let workflowStart = try XCTUnwrap(
-            source.range(
-                of: "private struct WorkflowsSettingsPane",
-                range: memoryStart.upperBound..<source.endIndex
-            )
-        )
-        let memory = String(source[memoryStart.lowerBound..<workflowStart.lowerBound])
+        // The Memory pane's own file is the exact contract scope now.
+        let memory = try paneSource(named: "MemorySettingsPane")
 
         XCTAssertFalse(memory.contains("@AppStorage"))
         XCTAssertTrue(memory.contains("@Binding var valueState: SettingsValueState<Bool>"))
@@ -243,10 +230,6 @@ final class SettingsTabTests: XCTestCase {
             .deletingLastPathComponent()
             .deletingLastPathComponent()
             .deletingLastPathComponent()
-        let source = try String(
-            contentsOf: repositoryRoot.appendingPathComponent("GrokBuild/Views/SettingsView.swift"),
-            encoding: .utf8
-        )
         let paneNames = [
             "AgentsSettingsPane",
             "CustomModelsSettingsPane",
@@ -256,17 +239,19 @@ final class SettingsTabTests: XCTestCase {
             "ComputerUseSettingsPane",
         ]
         for pane in paneNames {
-            let start = try XCTUnwrap(source.range(of: "private struct \(pane)"))
-            let remainder = source[start.lowerBound...]
-            let next = remainder.dropFirst().range(of: "\nprivate struct ")?.lowerBound
-                ?? remainder.endIndex
-            let body = String(remainder[..<next])
+            let body = try paneSource(named: pane)
+            XCTAssertTrue(body.contains("struct \(pane)"))
             XCTAssertTrue(body.contains("@Binding var valueState"), "\(pane) must receive parent-owned state")
             XCTAssertFalse(body.contains("@AppStorage"), "\(pane) must not persist while a control is edited")
         }
 
-        XCTAssertTrue(source.contains("Hidden panes unmount and"))
-        XCTAssertTrue(source.contains("guard !Task.isCancelled else { return }"))
+        let shell = try String(
+            contentsOf: repositoryRoot.appendingPathComponent("GrokBuild/Views/SettingsView.swift"),
+            encoding: .utf8
+        )
+        XCTAssertTrue(shell.contains("Hidden panes unmount and"))
+        XCTAssertTrue(try paneSource(named: "AppUpdatesSettingsPane")
+            .contains("guard !Task.isCancelled else { return }"))
     }
 
     func testPermissionDraftPersistsOnlyAtExplicitBoundary() {
@@ -312,10 +297,7 @@ final class SettingsTabTests: XCTestCase {
             .deletingLastPathComponent()
             .deletingLastPathComponent()
             .deletingLastPathComponent()
-        let source = try String(
-            contentsOf: repositoryRoot.appendingPathComponent("GrokBuild/Views/SettingsView.swift"),
-            encoding: .utf8
-        )
+        let source = ""
 
         for pane in ["WorkflowsSettingsPane", "CompatibilitySettingsPane", "AppUpdatesSettingsPane"] {
             let body = try paneBody(named: pane, source: source)
@@ -352,12 +334,22 @@ final class SettingsTabTests: XCTestCase {
         XCTAssertTrue(compatibility.contains("Codex currently exposes sessions only"))
     }
 
+    /// Slice 10: each pane lives in its own file under Views/Settings, so a pane's
+    /// "body" for contract scanning is that whole file — a stricter scope than the old
+    /// next-struct slicing inside the monolithic SettingsView.swift.
+    private func paneSource(named pane: String) throws -> String {
+        let repositoryRoot = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        return try String(
+            contentsOf: repositoryRoot.appendingPathComponent("GrokBuild/Views/Settings/\(pane).swift"),
+            encoding: .utf8
+        )
+    }
+
     private func paneBody(named pane: String, source: String) throws -> String {
-        let start = try XCTUnwrap(source.range(of: "private struct \(pane)"))
-        let remainder = source[start.lowerBound...]
-        let next = remainder.dropFirst().range(of: "\nprivate struct ")?.lowerBound
-            ?? remainder.endIndex
-        return String(remainder[..<next])
+        try paneSource(named: pane)
     }
 }
 

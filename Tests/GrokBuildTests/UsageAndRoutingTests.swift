@@ -242,7 +242,7 @@ final class UsageAndRoutingTests: XCTestCase {
                       "the Details bar surfaces the session usage HUD")
 
         let settingsSource = try String(
-            contentsOf: repositoryRoot.appendingPathComponent("GrokBuild/Views/SettingsView.swift"),
+            contentsOf: repositoryRoot.appendingPathComponent("GrokBuild/Views/Settings/CustomModelsSettingsPane.swift"),
             encoding: .utf8
         )
         XCTAssertTrue(settingsSource.contains("ModelPricingStore.record(result.models)"),

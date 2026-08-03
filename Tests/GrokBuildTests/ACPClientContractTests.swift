@@ -1197,10 +1197,10 @@ final class ACPClientContractTests: XCTestCase {
             .deletingLastPathComponent()
             .deletingLastPathComponent()
         let sourceURL = repositoryRoot
-            .appendingPathComponent("GrokBuild/Views/SettingsView.swift")
+            .appendingPathComponent("GrokBuild/Views/Settings/AppUpdatesSettingsPane.swift")
         let source = try String(contentsOf: sourceURL, encoding: .utf8)
 
-        XCTAssertTrue(source.contains("private struct AppUpdatesSettingsPane"))
+        XCTAssertTrue(source.contains("struct AppUpdatesSettingsPane"))
         XCTAssertTrue(source.contains("publisher(for: .grokBuildUpdateStateChanged)"))
         XCTAssertTrue(source.contains("updateRevision &+= 1"))
     }
