@@ -98,7 +98,11 @@ enum AppTheme {
     /// glyph sizing inside a fixed frame, not a member of this ladder —
     /// those stay local to their view on purpose.
     enum Typography {
-        static let body = Font.system(size: 14, weight: .regular, design: .default)
+        /// Transcript reading size. Deliberately one point above the 14 pt control
+        /// scale: answers are the product, chrome is not.
+        static let body = Font.system(size: 15, weight: .regular, design: .default)
+        /// Thinking/tool trace text — readable, but visually subordinate to answers.
+        static let thinking = Font.system(size: 13, weight: .regular, design: .default)
         static let composer = Font.system(size: 14, weight: .regular, design: .default)
         static let heading = Font.system(size: 17, weight: .semibold, design: .default)
         static let section = Font.system(size: 11, weight: .semibold, design: .default)
@@ -115,9 +119,9 @@ enum AppTheme {
         /// system scale so transcript headings do not shout.
         static func markdownHeading(level: Int) -> Font {
             switch level {
-            case 1: return .system(size: 19, weight: .semibold)
-            case 2: return .system(size: 16, weight: .semibold)
-            default: return .system(size: 14, weight: .semibold)
+            case 1: return .system(size: 20, weight: .semibold)
+            case 2: return .system(size: 17, weight: .semibold)
+            default: return .system(size: 15, weight: .semibold)
             }
         }
     }

@@ -401,18 +401,18 @@ struct ChatView: View {
         } label: {
             HStack(spacing: 7) {
                 Text("Build agent")
-                    .font(AppTheme.Typography.section)
+                    .font(.system(size: 13, weight: .semibold))
                 Image(systemName: isExpanded ? "chevron.down" : "chevron.right")
-                    .font(.system(size: 9, weight: .semibold))
+                    .font(.system(size: 10, weight: .semibold))
                     .foregroundStyle(.tertiary)
                 if let label = assistantTraceSummary(trace: trace, hasLiveTrace: hasLiveTrace) {
                     Text(label)
-                        .font(.caption2)
+                        .font(AppTheme.Typography.caption)
                         .foregroundStyle(.tertiary)
                 }
                 Spacer(minLength: 8)
             }
-            .frame(maxWidth: .infinity, minHeight: 24, alignment: .leading)
+            .frame(maxWidth: .infinity, minHeight: 26, alignment: .leading)
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
@@ -1182,7 +1182,6 @@ struct ChatView: View {
                     .multilineTextAlignment(.center)
             }
 
-            starterModelSelector
 
             LazyVGrid(
                 columns: Array(
@@ -2674,37 +2673,6 @@ struct ChatView: View {
         .accessibilityIdentifier("grok-model-effort-selector")
         .accessibilityHint("Choose the model and, when supported, reasoning effort.")
         .help(modelSelectorHelp)
-    }
-
-    private var starterModelSelector: some View {
-        Menu {
-            modelChoiceItems
-        } label: {
-            HStack(spacing: 7) {
-                Image(systemName: "sparkles")
-                    .font(.caption.weight(.semibold))
-                Text("Model")
-                    .font(.caption.weight(.medium))
-                    .foregroundStyle(.secondary)
-                Text(store.modelDisplayName(store.currentModel))
-                    .font(.caption.weight(.semibold))
-                    .lineLimit(1)
-                    .truncationMode(.middle)
-                Image(systemName: "chevron.down")
-                    .font(.system(size: 8, weight: .semibold))
-                    .foregroundStyle(.tertiary)
-            }
-            .padding(.horizontal, 10)
-            .frame(minHeight: ComposerControlMetrics.minimumHitTarget)
-            .contentShape(Rectangle())
-        }
-        .menuStyle(.button)
-        .buttonStyle(.bordered)
-        .accessibilityLabel("Model for this session")
-        .accessibilityValue(store.modelAccessibilityValue)
-        .accessibilityHint("Choose the model before sending. Model status and reasoning effort remain available in Details.")
-        .accessibilityIdentifier("grok-starter-model-selector")
-        .help("Choose the model for this session")
     }
 
     @ViewBuilder

@@ -27,7 +27,7 @@ You can also install GrokBuild just to manage custom OpenAI-compatible models in
 2. Use the signed personal build at `/Applications/GrokBuild.app`, or build it from this canonical checkout. Upstream releases do not contain the personal repair line.
 3. Open GrokBuild Desktop App and choose **Add Project**.
 4. Pick a folder. It can be a code repo, a docs folder, or a scratch workspace.
-5. Start a session, choose **Ask**, **Build**, or **Review**, and edit the suggested request—or type your own. A simple model menu is available before the first send; full model status, reasoning effort, and developer controls remain under **Details**.
+5. Start a session, choose **Ask**, **Build**, or **Review**, and edit the suggested request—or type your own. Pick your model from the composer's grouped menu (Grok and your providers side by side); full model status, reasoning effort, and developer controls remain under **Details**.
 
 ### Custom models only
 

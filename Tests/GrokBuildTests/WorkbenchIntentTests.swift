@@ -46,7 +46,9 @@ final class WorkbenchIntentTests: XCTestCase {
 
         XCTAssertTrue(source.contains("Text(\"What would you like to do?\")"))
         XCTAssertTrue(source.contains("ForEach(WorkbenchIntent.defaults)"))
-        XCTAssertTrue(source.contains("grok-starter-model-selector"))
+        // The welcome model pill was removed 2026-08-03 (redundant with the composer's
+        // always-visible model menu); model choice must not reappear mid-canvas.
+        XCTAssertFalse(source.contains("grok-starter-model-selector"))
         XCTAssertTrue(source.contains("TextField(\"Ask, build, or review…  / for skills\""))
         XCTAssertTrue(source.contains("@State private var showComposerDetails = false"))
 

@@ -104,11 +104,11 @@ struct AssistantReasoningTraceView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 7) {
             Label(durationLabel, systemImage: "brain.head.profile")
-                .font(.caption.weight(.semibold))
+                .font(.system(size: 13, weight: .semibold))
                 .foregroundStyle(.secondary)
             if summaryChunks.isEmpty, let emptyMessage {
                 Text(emptyMessage)
-                    .font(.caption)
+                    .font(AppTheme.Typography.thinking)
                     .foregroundStyle(.tertiary)
             }
         }
@@ -129,7 +129,7 @@ struct AssistantToolTraceView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 7) {
             Label("Tool use", systemImage: "wrench.and.screwdriver")
-                .font(.caption.weight(.semibold))
+                .font(.system(size: 13, weight: .semibold))
                 .foregroundStyle(.secondary)
             ForEach(tools) { tool in
                 let displayedMCPServer = MCPToolReceiptIdentity.serverName(
@@ -144,12 +144,12 @@ struct AssistantToolTraceView: View {
                     VStack(alignment: .leading, spacing: 2) {
                         if let server = displayedMCPServer {
                             Text("Using \(server)")
-                                .font(.caption.weight(.semibold))
+                                .font(.system(size: 13, weight: .semibold))
                         }
                         Text(tool.title)
-                            .font(.caption)
+                            .font(AppTheme.Typography.thinking)
                         Text(tool.status)
-                            .font(.caption2)
+                            .font(AppTheme.Typography.caption)
                             .foregroundStyle(.tertiary)
                     }
                 }
