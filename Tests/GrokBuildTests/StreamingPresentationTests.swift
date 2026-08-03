@@ -164,3 +164,48 @@ final class StreamingPresentationTests: XCTestCase {
                       "the terminate hook must be observed")
     }
 }
+
+/// 2026-08-03 hang + stuck-Stop regressions (system hang report
+/// GrokBuild_2026-08-03-073202.hang: 28 s in one main-thread SwiftUI layout pass).
+extension StreamingPresentationTests {
+    func testLayoutBudgetKeepsOversizedAnswersOnThePlainTextPath() throws {
+        XCTAssertFalse(RichContentLayoutBudget.exceeds(RichContentLayoutBudget.maxImmediateBlocks))
+        XCTAssertTrue(RichContentLayoutBudget.exceeds(RichContentLayoutBudget.maxImmediateBlocks + 1))
+
+        let repositoryRoot = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        let source = try String(
+            contentsOf: repositoryRoot.appendingPathComponent("GrokBuild/Views/RichMessageView.swift"),
+            encoding: .utf8
+        )
+        // Both the cached and freshly parsed paths must honor the budget, and the
+        // plain-text fallback must disclose why formatting was withheld.
+        XCTAssertEqual(source.components(separatedBy: "RichContentLayoutBudget.exceeds(").count - 1, 3,
+                       "init-cache + task-cache + parse-complete paths must all honor the budget")
+        XCTAssertTrue(source.contains("grok-rich-layout-budget-note"))
+        XCTAssertTrue(source.contains("showing plain text so the app stays responsive"))
+    }
+
+    func testAuthoritativeCompletionForceFinishesAStuckPrompt() throws {
+        let repositoryRoot = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        let source = try String(
+            contentsOf: repositoryRoot.appendingPathComponent("GrokBuild/Services/ChatStore.swift"),
+            encoding: .utf8
+        )
+        let settle = try XCTUnwrap(source.range(of: "latestTurnOutcome = .completed"))
+        let after = String(source[settle.upperBound...].prefix(1_600))
+        XCTAssertTrue(after.contains("finishPromptNow(assistantID: stuckAssistantID, ok: true)"),
+                      "turn_completed must finish a turn whose prompt response never resolved")
+        XCTAssertTrue(after.contains("deferredPromptCompletion == nil"),
+                      "the deferred-drain path keeps ownership when it is already pending")
+        XCTAssertTrue(after.contains("streamingTextBuffer.isEmpty"),
+                      "never cut off a paced reveal that is still draining")
+        XCTAssertTrue(source.contains("guard isStreaming || isGrokking else { return }"),
+                      "finishPromptNow must be idempotent so a late response is a no-op")
+    }
+}

@@ -1007,19 +1007,44 @@ struct RichMessageView: View {
     }
 }
 
+/// Guardrail against the 2026-08-03 hang: a ~100k-token answer parsed into thousands
+/// of fine-grained blocks, and SwiftUI spent 28 s in ONE synchronous main-thread layout
+/// pass sizing that plain VStack (system hang report
+/// GrokBuild_2026-08-03-073202.hang — pure LazyStack/StackLayout frames, no app code).
+/// Above this block count the view keeps the always-cheap plain-text presentation
+/// (full content, selectable) and says so, instead of freezing the app. The parser,
+/// cache, and streaming pipeline are untouched — this is a render-tree size budget.
+enum RichContentLayoutBudget {
+    static let maxImmediateBlocks = 350
+
+    static func exceeds(_ blockCount: Int) -> Bool {
+        blockCount > maxImmediateBlocks
+    }
+}
+
 private struct MarkdownTextView: View {
     let text: String
     private let cacheKey: RichContentCache.TextKey
     @State private var parsedBlocks: [MarkdownTextBlock]?
     @State private var parsedKey: RichContentCache.TextKey?
+    /// Set when the parse result exceeds the layout budget; the plain-text
+    /// presentation stays and a one-line note explains why.
+    @State private var layoutBudgetOverflowCount: Int?
 
     init(text: String) {
         self.text = text
         let key = RichContentCache.textKey(text)
         cacheKey = key
         let cached = RichContentCache.textBlocks(for: key)
-        _parsedBlocks = State(initialValue: cached)
-        _parsedKey = State(initialValue: cached == nil ? nil : key)
+        if let cached, RichContentLayoutBudget.exceeds(cached.count) {
+            _parsedBlocks = State(initialValue: nil)
+            _parsedKey = State(initialValue: nil)
+            _layoutBudgetOverflowCount = State(initialValue: cached.count)
+        } else {
+            _parsedBlocks = State(initialValue: cached)
+            _parsedKey = State(initialValue: cached == nil ? nil : key)
+            _layoutBudgetOverflowCount = State(initialValue: nil)
+        }
     }
 
     var body: some View {
@@ -1032,6 +1057,15 @@ private struct MarkdownTextView: View {
                     }
                 }
             } else {
+                if let overflow = layoutBudgetOverflowCount {
+                    Label(
+                        "Very long answer (\(overflow) sections) — showing plain text so the app stays responsive.",
+                        systemImage: "text.alignleft"
+                    )
+                    .font(AppTheme.Typography.caption)
+                    .foregroundStyle(.secondary)
+                    .accessibilityIdentifier("grok-rich-layout-budget-note")
+                }
                 Text(text)
                     .font(AppTheme.Typography.body)
                     .lineSpacing(4)
@@ -1042,6 +1076,10 @@ private struct MarkdownTextView: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .task(id: cacheKey) {
             if let cached = RichContentCache.textBlocks(for: cacheKey) {
+                if RichContentLayoutBudget.exceeds(cached.count) {
+                    layoutBudgetOverflowCount = cached.count
+                    return
+                }
                 parsedBlocks = cached
                 parsedKey = cacheKey
                 return
@@ -1053,6 +1091,10 @@ private struct MarkdownTextView: View {
             )
             guard !Task.isCancelled else { return }
             RichContentCache.store(parsed, for: cacheKey)
+            if RichContentLayoutBudget.exceeds(parsed.count) {
+                layoutBudgetOverflowCount = parsed.count
+                return
+            }
             parsedBlocks = parsed
             parsedKey = cacheKey
         }

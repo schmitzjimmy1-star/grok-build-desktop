@@ -2477,6 +2477,10 @@ final class ChatStore {
     }
 
     private func finishPromptNow(assistantID: UUID, ok: Bool) {
+        // Idempotent: the authoritative-completion force-finish (below) can settle the
+        // turn before a late/stuck JSON-RPC prompt response arrives; the second call
+        // must not re-run capture or flip state that already settled.
+        guard isStreaming || isGrokking else { return }
         firstChunkInterval?.end()
         firstChunkInterval = nil
         let settledAssistantID = authoritativeTailAssistantID ?? assistantID
@@ -3410,6 +3414,18 @@ final class ChatStore {
                 modelCalls: completion.modelCalls
             )
             runEvidenceSnapshot = makeRunEvidenceSnapshot(completion: completion)
+            // turn_completed is the lifecycle authority. Observed live 2026-08-03
+            // (gpt-5.6-terra): the usage receipt settled while the prompt's JSON-RPC
+            // response never resolved, leaving a stuck Stop button on a finished turn.
+            // With the display buffer drained and no deferred completion pending, the
+            // turn must finish now; a late response is a no-op via finishPromptNow's
+            // idempotence guard.
+            if isStreaming,
+               deferredPromptCompletion == nil,
+               streamingTextBuffer.isEmpty,
+               let stuckAssistantID = streamingMessageID ?? closedTurnAssistantID {
+                finishPromptNow(assistantID: stuckAssistantID, ok: true)
+            }
             requestGitRefresh()
             process.acknowledgeTurnCompletionBridge(authoritative: true)
             applyTurnSettlementDecision(turnSettlement.recordCompletionConsumed())
