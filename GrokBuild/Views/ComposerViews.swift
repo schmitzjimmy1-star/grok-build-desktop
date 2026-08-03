@@ -206,9 +206,7 @@ struct BtwAsideBanner: View {
 
 struct PlanReviewCard: View {
     let plan: ExitPlanRequest
-    var onRespond: (ExitPlanRequest.PlanVerdict, String) -> Void
-
-    @State private var comment = ""
+    var onRespond: (ExitPlanRequest.PlanVerdict) -> Void
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
@@ -223,24 +221,27 @@ struct PlanReviewCard: View {
                     .frame(maxHeight: 240)
             }
 
-            TextField("Optional comment…", text: $comment)
-                .textFieldStyle(.roundedBorder)
-
             HStack(spacing: 8) {
-                Button("Approve & implement") {
-                    onRespond(.approved, comment)
+                Button("Approve & continue") {
+                    onRespond(.approved)
                 }
                 .buttonStyle(.borderedProminent)
+                .accessibilityIdentifier("grok-plan-approve")
+                .accessibilityHint("Approves this plan through the current ACP request and continues the same turn.")
 
                 Button("Reject") {
-                    onRespond(.rejected, comment)
+                    onRespond(.rejected)
                 }
                 .buttonStyle(.bordered)
+                .accessibilityIdentifier("grok-plan-reject")
+                .accessibilityHint("Rejects this plan through the current ACP request.")
 
                 Button("Cancel") {
-                    onRespond(.abandoned, comment)
+                    onRespond(.abandoned)
                 }
                 .buttonStyle(.bordered)
+                .accessibilityIdentifier("grok-plan-cancel")
+                .accessibilityHint("Abandons this plan through the current ACP request.")
             }
         }
         .padding(12)
@@ -249,6 +250,8 @@ struct PlanReviewCard: View {
             RoundedRectangle(cornerRadius: AppTheme.Radius.large)
                 .stroke(Color.blue.opacity(0.35), lineWidth: 1)
         )
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("grok-plan-review-card")
     }
 }
 

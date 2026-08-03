@@ -420,9 +420,10 @@ final class GrokSessionTranscriptImporterTests: XCTestCase {
             path: URL(fileURLWithPath: "/tmp/continue-as-new")
         )
         let store = ChatStore(continuityKeyOverride: Data(0..<32))
+        let tabID = UUID()
         store.prepare(workspace: workspace, savedGrokSessionID: "missing-backend")
         store.bindTabSession(
-            UUID(),
+            tabID,
             modelIntent: .inheritProjectDefault,
             savedGrokSessionID: "missing-backend",
             savedBackendBinding: SessionBackendBinding(
@@ -438,6 +439,9 @@ final class GrokSessionTranscriptImporterTests: XCTestCase {
         ])
         let missingStatus = await store.verifyContinuityBeforeResume()
         XCTAssertEqual(missingStatus, .backendMissing)
+        XCTAssertEqual(store.continuityReceipt.localTabID, tabID)
+        XCTAssertEqual(store.continuityReceipt.backendID, "missing-backend")
+        XCTAssertNil(store.continuityReceipt.processGeneration)
 
         let continued = await store.continueAsNew()
         XCTAssertTrue(continued)
@@ -528,6 +532,7 @@ final class GrokSessionTranscriptImporterTests: XCTestCase {
 
     func testSendGateAllowsOnlySafeContinuityStates() {
         XCTAssertEqual(SessionSendGate.decision(for: .localOnly), .allowLocalBackendCreation)
+        XCTAssertEqual(SessionSendGate.decision(for: .backendBound), .allowVerifiedBackend)
         XCTAssertEqual(SessionSendGate.decision(for: .verified), .allowVerifiedBackend)
         XCTAssertEqual(SessionSendGate.decision(for: .backendOnly), .allowVerifiedBackend)
         XCTAssertEqual(SessionSendGate.decision(for: .recoveryForked), .allowRecoveryFork)

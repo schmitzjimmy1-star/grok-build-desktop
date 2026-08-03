@@ -31,17 +31,26 @@ struct MessageBubble: View {
             .accessibilityLabel("You: \(message.content)")
         case .assistant:
             if !message.content.isEmpty {
+                let streamingPresentation = StreamingMarkdownPresentation.make(message.content)
                 VStack(alignment: .leading, spacing: 7) {
                     Text("Build agent")
                         .font(AppTheme.Typography.section)
                         .foregroundStyle(AppTheme.Palette.textMuted)
 
                     if isStreaming {
-                        Text(message.content)
-                            .textSelection(.enabled)
-                            .font(AppTheme.Typography.body)
-                            .lineSpacing(3)
-                            .frame(maxWidth: .infinity, alignment: .leading)
+                        if !streamingPresentation.visibleText.isEmpty {
+                            Text(streamingPresentation.visibleText)
+                                .textSelection(.enabled)
+                                .font(AppTheme.Typography.body)
+                                .lineSpacing(3)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                        }
+                        if let withheld = streamingPresentation.withheldConstruct {
+                            Label(withheld.displayLabel, systemImage: "text.line.first.and.arrowtriangle.forward")
+                                .font(.caption)
+                                .foregroundStyle(AppTheme.Palette.textMuted)
+                                .accessibilityLabel(withheld.displayLabel)
+                        }
                     } else {
                         RichMessageView(text: message.content, messageID: message.id)
                             .frame(maxWidth: .infinity, alignment: .leading)

@@ -2,6 +2,7 @@ import Foundation
 
 enum SessionContinuityStatus: String, Codable, Hashable, Sendable {
     case localOnly
+    case backendBound
     case backendOnly
     case verifying
     case verified
@@ -14,6 +15,7 @@ enum SessionContinuityStatus: String, Codable, Hashable, Sendable {
 
 enum SessionContinuityReason: String, Codable, Hashable, Sendable {
     case noBackendBinding
+    case freshBackendBound
     case verificationPending
     case exactMatch
     case localVerifiedPrefix
@@ -42,6 +44,42 @@ struct SessionContinuityReceipt: Codable, Hashable, Sendable {
     let localTranscriptTag: String?
     let backendTranscriptTag: String?
     let verifiedAt: Date
+    /// Runtime binding identity. Older v3 receipts decode these as `nil`; the
+    /// next successful bind stamps all three so a stale receipt cannot describe
+    /// a different tab, backend, or process generation as live.
+    let localTabID: UUID?
+    let backendID: String?
+    let processGeneration: UInt64?
+
+    init(
+        status: SessionContinuityStatus,
+        reason: SessionContinuityReason,
+        normalizationVersion: Int,
+        authenticationSchemaVersion: Int,
+        localMessageCount: Int,
+        backendMessageCount: Int,
+        matchingPrefixCount: Int,
+        localTranscriptTag: String?,
+        backendTranscriptTag: String?,
+        verifiedAt: Date,
+        localTabID: UUID? = nil,
+        backendID: String? = nil,
+        processGeneration: UInt64? = nil
+    ) {
+        self.status = status
+        self.reason = reason
+        self.normalizationVersion = normalizationVersion
+        self.authenticationSchemaVersion = authenticationSchemaVersion
+        self.localMessageCount = localMessageCount
+        self.backendMessageCount = backendMessageCount
+        self.matchingPrefixCount = matchingPrefixCount
+        self.localTranscriptTag = localTranscriptTag
+        self.backendTranscriptTag = backendTranscriptTag
+        self.verifiedAt = verifiedAt
+        self.localTabID = localTabID
+        self.backendID = backendID
+        self.processGeneration = processGeneration
+    }
 
     static let localOnly = SessionContinuityReceipt(
         status: .localOnly,
@@ -53,7 +91,10 @@ struct SessionContinuityReceipt: Codable, Hashable, Sendable {
         matchingPrefixCount: 0,
         localTranscriptTag: nil,
         backendTranscriptTag: nil,
-        verifiedAt: .distantPast
+        verifiedAt: .distantPast,
+        localTabID: nil,
+        backendID: nil,
+        processGeneration: nil
     )
 }
 
@@ -98,7 +139,7 @@ enum SessionSendGate {
         switch status {
         case .localOnly:
             return .allowLocalBackendCreation
-        case .verified, .backendOnly:
+        case .backendBound, .verified, .backendOnly:
             return .allowVerifiedBackend
         case .recoveryForked:
             return .allowRecoveryFork
@@ -119,6 +160,12 @@ enum SessionTranscriptRecovery {
         let messages: [Message]
         let changed: Bool
         let authoritativeTailAssistantID: UUID?
+    }
+
+    /// Uses the exact role/provenance normalization applied by continuity
+    /// verification, so settled UI counts cannot drift from verification truth.
+    static func normalizedMessageCount(_ messages: [Message]) -> Int {
+        identityMessages(messages).count
     }
 
     /// Explicit, bounded recovery review. The returned candidates are evidence only;

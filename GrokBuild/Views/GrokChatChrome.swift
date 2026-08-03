@@ -17,11 +17,12 @@ struct GrokkingIndicator: View {
 }
 
 struct ThinkingBlock: View {
-    let text: String
+    let summaryChunks: [String]
     let duration: TimeInterval?
     let isExpanded: Bool
     let isLive: Bool
     var onToggle: () -> Void
+    @State private var showsMoreSummary = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 5) {
@@ -39,16 +40,54 @@ struct ThinkingBlock: View {
             .accessibilityValue("\(headerTitle). \(isExpanded ? "Expanded" : "Collapsed")")
             .accessibilityHint("Reveals or hides the agent's reasoning summary.")
 
-            if isExpanded, !text.isEmpty {
-                Text(text)
-                    .font(AppTheme.Typography.caption)
-                    .lineSpacing(2)
-                    .foregroundStyle(.tertiary)
-                    .textSelection(.enabled)
-                    .frame(maxWidth: .infinity, alignment: .leading)
+            if isExpanded, !summaryChunks.isEmpty {
+                let presentation = ReasoningSummaryPresentation.make(
+                    chunks: summaryChunks,
+                    expanded: showsMoreSummary
+                )
+                VStack(alignment: .leading, spacing: 9) {
+                    ForEach(presentation.stages) { stage in
+                        VStack(alignment: .leading, spacing: 3) {
+                            Text(stage.kind.displayName)
+                                .font(AppTheme.Typography.badge)
+                                .foregroundStyle(.secondary)
+                            Text(stage.text)
+                                .font(AppTheme.Typography.caption)
+                                .lineSpacing(2)
+                                .foregroundStyle(.tertiary)
+                                .textSelection(.enabled)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                        }
+                        .accessibilityElement(children: .ignore)
+                        .accessibilityLabel(
+                            "\(stage.kind.displayName), reasoning summary stage \(stage.ordinal) of \(presentation.sourceStageCount)"
+                        )
+                        .accessibilityValue(stage.text)
+                        .accessibilitySortPriority(Double(presentation.sourceStageCount - stage.ordinal))
+                    }
+
+                    if presentation.isTruncated || showsMoreSummary {
+                        Button(showsMoreSummary ? "Show less summary" : "Show more summary") {
+                            showsMoreSummary.toggle()
+                        }
+                        .buttonStyle(.plain)
+                        .font(AppTheme.Typography.caption)
+                        .accessibilityHint("Changes the bounded number of visible reasoning summary stages.")
+
+                        if showsMoreSummary, presentation.isTruncated {
+                            Text("Showing the first \(presentation.stages.count) of \(presentation.sourceStageCount) public summary stages within the display limit.")
+                                .font(.caption2)
+                                .foregroundStyle(.tertiary)
+                        }
+                    }
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
             }
         }
         .padding(.bottom, 3)
+        .onChange(of: isExpanded) { _, expanded in
+            if !expanded { showsMoreSummary = false }
+        }
     }
 
     private var headerTitle: String {
@@ -85,14 +124,32 @@ struct ToolCallRow: View {
             }
 
             if isExpanded, let detail = tool.detail {
-                Text(detail)
-                    .font(.system(.caption2, design: .monospaced))
-                    .foregroundStyle(tool.isFailed ? Color.red : Color.secondary)
-                    .textSelection(.enabled)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .padding(.leading, 22)
-                    .padding(.trailing, 4)
-                    .accessibilityLabel("Tool details: \(detail)")
+                VStack(alignment: .leading, spacing: 5) {
+                    if let target = tool.target {
+                        Text("Target: \(target)")
+                            .font(.system(.caption2, design: .monospaced))
+                            .foregroundStyle(.secondary)
+                            .textSelection(.enabled)
+                    }
+                    Text(tool.isFailed ? "Error: \(detail)" : detail)
+                        .font(.system(.caption2, design: .monospaced))
+                        .foregroundStyle(tool.isFailed ? Color.red : Color.secondary)
+                        .textSelection(.enabled)
+                    if let diagnostic = tool.diagnosticDetail {
+                        DisclosureGroup("Diagnostic payload") {
+                            Text(diagnostic)
+                                .font(.system(.caption2, design: .monospaced))
+                                .foregroundStyle(.secondary)
+                                .textSelection(.enabled)
+                                .padding(.top, 3)
+                        }
+                        .font(.caption2)
+                    }
+                }
+                .fixedSize(horizontal: false, vertical: true)
+                .padding(.leading, 22)
+                .padding(.trailing, 4)
+                .accessibilityLabel("Tool details: \(detail)")
             }
         }
         .padding(.vertical, 2)
@@ -144,20 +201,29 @@ struct ToolCallRow: View {
 
     private var statusLabel: String? {
         guard let status = tool.status?.lowercased() else { return nil }
-        if tool.isFailed { return "Failed" }
-        if tool.isComplete { return "Done" }
+        if tool.isRecovered { return "Failed · Recovered" }
+        switch tool.terminalStatus {
+        case .succeeded: return "Succeeded"
+        case .failed: return "Failed"
+        case .cancelled: return "Cancelled"
+        case .stale: return "Stale"
+        case .unknown: return "Unknown"
+        case nil: break
+        }
         if status == "in_progress" || status == "running" { return "Running" }
         if status == "pending" { return "Pending" }
         return status.replacingOccurrences(of: "_", with: " ").capitalized
     }
 
     private var statusIconName: String {
+        if tool.isRecovered { return "arrow.clockwise.circle.fill" }
         if tool.isFailed { return "exclamationmark.triangle.fill" }
         if tool.isComplete { return "checkmark.circle.fill" }
         return "circle.dotted"
     }
 
     private var statusColor: Color {
+        if tool.isRecovered { return .orange }
         if tool.isFailed { return .red }
         if tool.isComplete { return .green }
         return .secondary
@@ -166,6 +232,7 @@ struct ToolCallRow: View {
 
 struct ToolActivityGroup: View {
     let tools: [ChatStore.LiveToolCall]
+    let turnOutcome: ChatStore.TurnOutcome?
     let isExpanded: Bool
     var onToggle: () -> Void
 
@@ -210,6 +277,31 @@ struct ToolActivityGroup: View {
                 }
                 .padding(.leading, 20)
             }
+
+            if let turnOutcome {
+                VStack(alignment: .leading, spacing: 3) {
+                    HStack(spacing: 6) {
+                        Text("Run summary")
+                            .font(.caption2)
+                            .foregroundStyle(.tertiary)
+                        Label(turnOutcome.displayName, systemImage: "checkmark.circle")
+                            .font(.caption2.weight(.semibold))
+                            .foregroundStyle(.secondary)
+                    }
+                    if unresolvedFailureCount > 0 {
+                        Text("Next: inspect the failed call details. A recovery label requires an explicit backend retry correlation.")
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                }
+                .padding(.leading, 20)
+                .accessibilityElement(children: .combine)
+                .accessibilityLabel("Run summary: \(turnOutcome.displayName)")
+                .accessibilityValue(unresolvedFailureCount == 0
+                    ? "No unresolved tool failures"
+                    : "\(unresolvedFailureCount) tool calls still need review")
+            }
         }
         .padding(.vertical, 3)
     }
@@ -217,7 +309,7 @@ struct ToolActivityGroup: View {
     private var summaryTitle: String {
         let failures = tools.filter(\.isFailed).count
         if failures > 0 {
-            return "Tool activity · \(failures) failed"
+            return "\(failures) tool calls failed"
         }
         if tools.count == 1, let tool = tools.first {
             return tool.title
@@ -233,6 +325,10 @@ struct ToolActivityGroup: View {
 
     private var summaryIconName: String {
         browserToolCount > 0 ? "globe" : "wrench"
+    }
+
+    private var unresolvedFailureCount: Int {
+        tools.filter { $0.isFailed && !$0.isRecovered }.count
     }
 
     private var browserToolCount: Int {

@@ -1,12 +1,9 @@
 import SwiftUI
 
 struct PreviewPane: View {
-    let message: Message?
     let diffs: [ChatStore.DetectedDiff]
     let workspace: Workspace?
     var onClose: () -> Void = {}
-    let onApply: (Message) -> Void
-    let onApplySingle: ((ChatStore.DetectedDiff) -> Void)?
 
     @State private var selectedID: UUID?
     @State private var branchName = "No branch"
@@ -40,7 +37,7 @@ struct PreviewPane: View {
             Divider()
 
             if !diffs.isEmpty {
-                content(for: message)
+                content
             } else {
                 empty
             }
@@ -84,7 +81,7 @@ struct PreviewPane: View {
         .background(.bar)
     }
 
-    private func content(for msg: Message?) -> some View {
+    private var content: some View {
         GeometryReader { proxy in
             VStack(spacing: 0) {
                 environmentPanel(defaultListHeight: defaultChangedFilesListHeight(for: proxy.size.height))
@@ -98,7 +95,7 @@ struct PreviewPane: View {
 
                 Divider()
 
-                actions(for: msg)
+                actions
             }
         }
     }
@@ -479,38 +476,12 @@ struct PreviewPane: View {
         return (added, removed)
     }
 
-    private func actions(for msg: Message?) -> some View {
+    private var actions: some View {
         HStack(spacing: 8) {
-            if msg == nil {
-                Label("Existing project changes", systemImage: "checkmark.circle")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                Spacer()
-            } else if let msg {
-                Button {
-                    // future: reject / annotate
-                } label: {
-                    Label("Reject", systemImage: "xmark")
-                }
-                .disabled(true)
-
-                Spacer()
-
-                if let d = selected, let applySingle = onApplySingle {
-                    Button {
-                        applySingle(d)
-                    } label: {
-                        Label("Apply File", systemImage: "arrow.down.doc")
-                    }
-                }
-
-                Button {
-                    onApply(msg)
-                } label: {
-                    Label("Apply All", systemImage: "arrow.down.doc.fill")
-                }
-                .buttonStyle(.borderedProminent)
-            }
+            Label("Repository changes from Git", systemImage: "checkmark.circle")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            Spacer()
         }
         .padding(12)
         .buttonStyle(.bordered)
@@ -524,7 +495,7 @@ struct PreviewPane: View {
             Text("No code changes")
                 .font(.callout.weight(.medium))
                 .foregroundStyle(.secondary)
-            Text("When Grok emits diffs or patches they appear here for review and apply.")
+            Text("This panel reflects a fresh Git working-tree snapshot. Assistant examples never appear here.")
                 .font(.caption)
                 .foregroundStyle(.tertiary)
                 .multilineTextAlignment(.center)

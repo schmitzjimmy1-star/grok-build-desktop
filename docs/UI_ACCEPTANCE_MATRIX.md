@@ -137,6 +137,8 @@ Fix: `ChatStore.streamRevision` bumps on every thinking/answer chunk; the transc
 | Thinking default | **Pass** — collapsed "Thought for Ns" chip by default; click expands to the reasoning; confirmed for grok reasoning turns |
 | Earlier stranded answer | **Pass** — the previously below-the-fold "17×23=391" answer now renders in view too |
 
+Slice 6 retains that collapsed disclosure but renders each backend-provided public summary chunk as one ordered accessible stage instead of concatenating adjacent updates. Compact and expanded surfaces are hard-bounded, every stage remains selectable, and the presentation is deliberately excluded from transcript persistence and diagnostics; installed fixture/provider receipts are recorded in `docs/FRONTEND_BACKEND_PARITY_REPAIR_SLICES_2026-08-02.md`.
+
 ## Reported terminal, model, and click failures — full-send pass (2026-07-31, eighth install)
 
 Build: same branch + ACP client-terminal support, tool receipts, dynamic CLI model catalog, unified 32-point composer targets, off-main Models loading, explicit turn-completion gating, and the OAuth loopback cancellation repair found during full-suite closeout. `make test`: **365 tests, 0 failures**. The Apple signing identity's timestamp step stalled, so this personal-use build was packaged with the repository's ad-hoc path; `/Applications/GrokBuild.app` passes deep/strict code-sign verification and its main executable is byte-identical to `dist/GrokBuild.app`. The previous installed copy was moved to the Trash as a recoverable backup.
@@ -461,3 +463,18 @@ installed-UI claim.
 | Exact backend truth | **Pass** — bundled-resource tests prove 2 spawned workers, 2 completed workers, 5 failed `web_fetch` calls, 1 completed write to the evidence-packet path, 1 completed parent turn, 1,276,441 total tokens, and 15 model calls. |
 | Automated verification | **Pass** — focused `ActivityParityFixtureTests` 2/2; full `make test` 508/508; `git diff --check` clean. |
 | Runtime boundary | **Pass** — no GrokBuild runtime behavior, bundle, install, provider, live session, config, or user artifact was mutated; Computer Use is deferred because Slice 0 contains no code behavior change. |
+
+## ACP completion bridge and evidence workbench — installed acceptance (2026-08-02)
+
+| Check | Installed-app result |
+|---|---|
+| Authoritative completion | **Pass** — the exact installed app consumed Grok 0.2.118's live `_x.ai/session_notification` `turn_completed` frame, then reported **Turn completed / Process Settled / Fresh backend bound**. The watchdog can report missing authority only; it cannot synthesize success. |
+| Worker lifecycle | **Pass** — two parallel read-only workers appeared with exact child identities, settled as **Completed** at 36.1 sec / 16 tools and 29.1 sec / 8 tools, and left zero active workers. Worker rows expose combined status, duration, tool count, and error semantics to accessibility. |
+| Tool truth | **Pass** — the parent displayed **5 succeeded / 1 failed**. The deliberate bare `/usr/bin/test` command's terminal `exit_code = 127` overrode ACP's generic outer `completed` status and remained an unresolved receipt rather than being laundered into success. |
+| Artifact truth | **Pass** — `/tmp/grokbuild-main-acp-final2-0802.txt` contained exact marker `GB_MAIN_ACP_ARTIFACT_FINAL2_OK_0802` and appeared under **Run artifacts** as an external completed artifact, separate from the 31-file Git review list. |
+| Usage / model / MCP | **Pass** — final receipt reported **275,078 tokens / 13 model calls**, live model Grok 4.5, and both `grokbuild-browser` and `grokbuild-computer-use` Ready. Neither MCP was used by the acceptance prompt. |
+| Native information design | **Pass** — the visible layout leads with **Activity / Authoritative run evidence**, outcome, artifacts, workers, and a progressive Execution receipts disclosure. The 300–400 pt native drawer, compact metrics, deliberate typography, outcome-valued toggle, and sparse outcome-specific VoiceOver announcements read as a workbench rather than a chat sidebar. |
+| Relaunch / continuity | **Pass** — Command-Q removed the app and its owned Grok stdio child. Relaunch restored the full transcript and final marker, withheld the ephemeral Activity snapshot, showed no live backend receipt, and kept continuation blocked instead of silently creating false continuity. |
+| Performance / process ownership | **Pass** — the settled installed app sampled 0.0% CPU twice; its one live Grok stdio child had the app PID as parent and sampled 0.0%. Quit left neither app nor child process. |
+| Automated / installed identity | **Pass** — `make test` completed **539 / 539**; deep/strict signing passed; dist/install executable SHA-256 matched at `7c75a72e6272525015e12a00aee1d5208b6756eb573fbabec51257463ef706f1`; canonical personal dirty-worktree stamps matched branch `codex/activity-parity-slice-0` and commit `a9bc1845ec07b40301874f66cfb7ac6a84e15965`. |
+| Durable-log boundary | **Pass with upstream trim disclosed** — the bridge settled from live ACP, and GrokBuild contains no `unified.jsonl` read/write path. The original log-prefix check failed because Grok CLI's own `xai-grok-telemetry/src/unified_log.rs` executed its native trim/rewrite; this was not hidden or repaired by mutating the log. |

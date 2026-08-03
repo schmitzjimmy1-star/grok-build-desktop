@@ -2,6 +2,16 @@ import XCTest
 @testable import GrokBuild
 
 final class ChatTranscriptLayoutTests: XCTestCase {
+    func testComposerStartsAtOneAccessibleLineAndGrowsForLongWork() {
+        XCTAssertEqual(ComposerDensityPolicy.minimumLineCount, 1)
+        XCTAssertEqual(ComposerDensityPolicy.maximumLineCount, 8)
+        XCTAssertEqual(
+            ComposerDensityPolicy.editorMinimumHeight,
+            ComposerControlMetrics.minimumHitTarget
+        )
+        XCTAssertGreaterThanOrEqual(ComposerDensityPolicy.editorMinimumHeight, 36)
+    }
+
     func testAutoScrollRetriesThroughLateRichTextLayout() {
         let gaps = ChatAutoScrollPolicy.layoutSettleGapsMilliseconds
         XCTAssertEqual(gaps.first, 0)
@@ -159,14 +169,11 @@ final class ChatTranscriptLayoutTests: XCTestCase {
         )
     }
 
-    /// Diff auto-selection runs at prompt boundaries and relies on this
-    /// predicate; guard the fence and git markers it matches.
-    func testHasDiffMatchesDiffMarkersInAssistantMessagesOnly() {
-        XCTAssertTrue(Message(role: .assistant, content: "diff --git a/x b/x").hasDiff)
-        XCTAssertTrue(Message(role: .assistant, content: "```diff\n+x\n```").hasDiff)
-        XCTAssertTrue(Message(role: .assistant, content: "```patch\n+x\n```").hasDiff)
-        XCTAssertFalse(Message(role: .assistant, content: "no changes here").hasDiff)
-        XCTAssertFalse(Message(role: .user, content: "diff --git a/x b/x").hasDiff)
+    func testAssistantDiffLanguagesArePresentedAsExamples() {
+        XCTAssertTrue(AssistantDiffPresentation.isExample(language: "diff"))
+        XCTAssertTrue(AssistantDiffPresentation.isExample(language: " PATCH "))
+        XCTAssertFalse(AssistantDiffPresentation.isExample(language: "swift"))
+        XCTAssertFalse(AssistantDiffPresentation.isExample(language: nil))
     }
 
     func testCompactModelMenuUsesHumanReadableEffortNames() {

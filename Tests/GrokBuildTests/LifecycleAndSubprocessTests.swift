@@ -6,6 +6,47 @@ import XCTest
 /// streaming turn.
 @MainActor
 final class SessionLifecycleTests: XCTestCase {
+    func testSubagentLifecycleRejectsWrongTabBackendAndGeneration() {
+        let tabID = UUID()
+        let identity = ACPEventIdentity(
+            localTabID: tabID,
+            backendSessionID: "backend-a",
+            processGeneration: 9,
+            backendEventID: "event"
+        )
+
+        XCTAssertTrue(SubagentLifecycleEventPolicy.ownsActiveSession(
+            identity,
+            localTabID: tabID,
+            backendSessionID: "backend-a",
+            processGeneration: 9
+        ))
+        XCTAssertFalse(SubagentLifecycleEventPolicy.ownsActiveSession(
+            identity,
+            localTabID: UUID(),
+            backendSessionID: "backend-a",
+            processGeneration: 9
+        ))
+        XCTAssertFalse(SubagentLifecycleEventPolicy.ownsActiveSession(
+            identity,
+            localTabID: tabID,
+            backendSessionID: "backend-b",
+            processGeneration: 9
+        ))
+        XCTAssertFalse(SubagentLifecycleEventPolicy.ownsActiveSession(
+            identity,
+            localTabID: tabID,
+            backendSessionID: "backend-a",
+            processGeneration: 10
+        ))
+        XCTAssertFalse(SubagentLifecycleEventPolicy.ownsActiveSession(
+            identity,
+            localTabID: tabID,
+            backendSessionID: "backend-a",
+            processGeneration: nil
+        ))
+    }
+
     func testShutdownPermanentlyReleasesStoreAndProcess() async throws {
         weak var weakStore: ChatStore?
         weak var weakProcess: GrokProcess?
@@ -61,7 +102,7 @@ final class SessionLifecycleTests: XCTestCase {
         store.evaluateTurnStall(now: Date())
         XCTAssertNotNil(store.turnStalledSince, "a two-minute-quiet stream must surface as stalled")
 
-        store.stop()
+        await store.stop()
         XCTAssertNil(store.turnStalledSince, "Stop must clear the stall banner")
 
         store.setStreamingForTests(false)
@@ -326,6 +367,11 @@ final class SettingsRuntimeContractTests: XCTestCase {
         )
         XCTAssertEqual(store.connectionState, .ready)
         XCTAssertEqual(store.effectiveSessionReceipt?.processGeneration, 1)
+        XCTAssertEqual(store.continuityStatus, .verified)
+        XCTAssertEqual(store.continuityReceipt.reason, .exactMatch)
+        XCTAssertEqual(store.continuityReceipt.localTabID, tabID)
+        XCTAssertEqual(store.continuityReceipt.backendID, backendID)
+        XCTAssertEqual(store.continuityReceipt.processGeneration, 1)
 
         store.setStreamingForTests(true)
         let first = request(tabID: tabID, backendID: backendID, generation: 1)
@@ -355,6 +401,9 @@ final class SettingsRuntimeContractTests: XCTestCase {
         XCTAssertEqual(store.effectiveSessionReceipt?.processGeneration, 2)
         XCTAssertEqual(store.effectiveSessionReceipt?.backendSessionID, backendID)
         XCTAssertEqual(store.effectiveSessionReceipt?.localTabID, tabID)
+        XCTAssertEqual(store.continuityStatus, .verified)
+        XCTAssertEqual(store.continuityReceipt.backendID, backendID)
+        XCTAssertEqual(store.continuityReceipt.processGeneration, 2)
 
         let launches = try String(contentsOf: launchLog, encoding: .utf8)
             .split(whereSeparator: \.isNewline)

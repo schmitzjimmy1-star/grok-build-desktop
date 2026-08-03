@@ -227,4 +227,33 @@ final class MarkdownBlockParserTests: XCTestCase {
         )
     }
 
+    func testStreamingPresentationWithholdsIncompleteCodeAndTableConstructs() {
+        let code = StreamingMarkdownPresentation.make("Before\n```swift\nlet ready = false")
+        XCTAssertEqual(code.visibleText, "Before\n")
+        XCTAssertEqual(code.withheldConstruct, .codeFence)
+
+        let table = StreamingMarkdownPresentation.make(
+            "| Tool | State |\n| --- | --- |\n| MCP | Ready |"
+        )
+        XCTAssertEqual(table.withheldConstruct, .table)
+
+        XCTAssertNil(
+            StreamingMarkdownPresentation.make("```swift\nlet ready = true\n```").withheldConstruct
+        )
+    }
+
+    func testTableLayoutUsesReadingWidthAndWeightsLongerColumns() {
+        let widths = MarkdownTableLayout.columnWidths(
+            headers: ["Area", "Ownership", "Status"],
+            rows: [["ACP", "ChatStore owns the generation-bound completion barrier", "Ready"]],
+            availableWidth: 720
+        )
+
+        XCTAssertEqual(widths.count, 3)
+        XCTAssertEqual(widths.reduce(0, +), 720, accuracy: 0.5)
+        XCTAssertGreaterThan(widths[1], widths[0])
+        XCTAssertGreaterThan(widths[1], widths[2])
+        XCTAssertTrue(widths.allSatisfy { $0 >= MarkdownTableLayout.minimumColumnWidth })
+    }
+
 }

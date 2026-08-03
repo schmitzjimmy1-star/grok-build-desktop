@@ -1,0 +1,5 @@
+{"jsonrpc":"2.0","method":"_x.ai/session/update","params":{"sessionId":"slice-6-public-summary-fixture","update":{"sessionUpdate":"agent_thought_chunk","content":{"text":"Plan: compare the two evidence lanes before drafting."}}}}
+{"jsonrpc":"2.0","method":"_x.ai/session/update","params":{"sessionId":"slice-6-public-summary-fixture","update":{"sessionUpdate":"agent_thought_chunk","content":{"text":"Checking the education worker results now."}}}}
+{"jsonrpc":"2.0","method":"_x.ai/session/update","params":{"sessionId":"slice-6-public-summary-fixture","update":{"sessionUpdate":"agent_thought_chunk","content":{"text":"Fallback: web_fetch failed; using the archived source instead."}}}}
+{"jsonrpc":"2.0","method":"_x.ai/session/update","params":{"sessionId":"slice-6-public-summary-fixture","update":{"sessionUpdate":"agent_thought_chunk","content":{"text":"Synthesis: combining the verified findings into the evidence packet."}}}}
+{"jsonrpc":"2.0","method":"_x.ai/session/update","params":{"sessionId":"slice-6-public-summary-fixture","update":{"sessionUpdate":"agent_thought_chunk","content":{"text":"Completed: the packet and citations are ready for review."}}}}

@@ -6,6 +6,95 @@ enum ComposerControlMetrics {
     static let minimumHitTarget: CGFloat = 36
 }
 
+enum ComposerDensityPolicy {
+    static let minimumLineCount = 1
+    static let maximumLineCount = 8
+    static let editorMinimumHeight = ComposerControlMetrics.minimumHitTarget
+}
+
+/// Owns one stable AppKit cursor rectangle for the text-entry portion of the
+/// composer. SwiftUI's transparent, vertically-growing TextField otherwise
+/// exposes alternating editor and container hit regions, which can make the
+/// pointer flicker between an I-beam and arrow while it is still visibly over
+/// the editor. The view never intercepts clicks and does not use cursor stacks,
+/// hover callbacks, or timers.
+final class ComposerCursorRectView: NSView {
+    private var composerTrackingArea: NSTrackingArea?
+
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        window?.invalidateCursorRects(for: self)
+    }
+
+    override func setFrameSize(_ newSize: NSSize) {
+        super.setFrameSize(newSize)
+        window?.invalidateCursorRects(for: self)
+    }
+
+    override func resetCursorRects() {
+        super.resetCursorRects()
+        addCursorRect(bounds, cursor: .iBeam)
+    }
+
+    override func updateTrackingAreas() {
+        if let composerTrackingArea {
+            removeTrackingArea(composerTrackingArea)
+        }
+        let trackingArea = NSTrackingArea(
+            rect: bounds,
+            options: [
+                .activeInKeyWindow,
+                .inVisibleRect,
+                .mouseEnteredAndExited,
+                .mouseMoved,
+                .cursorUpdate,
+            ],
+            owner: self
+        )
+        addTrackingArea(trackingArea)
+        composerTrackingArea = trackingArea
+        super.updateTrackingAreas()
+    }
+
+    override func mouseEntered(with event: NSEvent) {
+        applyComposerCursor()
+    }
+
+    override func mouseMoved(with event: NSEvent) {
+        applyComposerCursor()
+    }
+
+    override func cursorUpdate(with event: NSEvent) {
+        applyComposerCursor()
+    }
+
+    override func mouseExited(with event: NSEvent) {
+        applyWorkbenchCursor()
+    }
+
+    func applyComposerCursor() {
+        NSCursor.iBeam.set()
+    }
+
+    func applyWorkbenchCursor() {
+        NSCursor.arrow.set()
+    }
+
+    override func hitTest(_ point: NSPoint) -> NSView? {
+        nil
+    }
+}
+
+struct ComposerCursorRegion: NSViewRepresentable {
+    func makeNSView(context: Context) -> ComposerCursorRectView {
+        ComposerCursorRectView()
+    }
+
+    func updateNSView(_ nsView: ComposerCursorRectView, context: Context) {
+        nsView.window?.invalidateCursorRects(for: nsView)
+    }
+}
+
 enum ProjectOpenTarget {
     case finder
     case cursor
@@ -123,6 +212,7 @@ struct ChatView: View {
     var onToggleSidebar: () -> Void = {}
     var onOpenSettings: () -> Void = {}
     var reviewFileCount: Int = 0
+    var reviewFileNames: [String] = []
     var isReviewVisible: Bool = false
     var onToggleReview: () -> Void = {}
     var onSelectSession: (UUID) -> Void = { _ in }
@@ -141,6 +231,7 @@ struct ChatView: View {
     var onForkSession: () -> Void = {}
     var onOpenDashboard: () -> Void = {}
     var onSwitchBranch: () -> Void = {}
+    var onRevealArtifact: (ChatStore.RunArtifact) -> Void = { _ in }
 
     @State private var input: String = ""
     @State private var isFileDropTargeted = false
@@ -149,6 +240,8 @@ struct ChatView: View {
     @State private var slashCommandsExpanded = false
     @State private var toolActivityExpanded = false
     @State private var autoScrollTask: Task<Void, Never>?
+    @State private var programmaticScrollReleaseTask: Task<Void, Never>?
+    @State private var isProgrammaticTranscriptScroll = false
     @State private var lastAutoScroll: Date = .distantPast
     @State private var transcriptIsAttachedToBottom = true
     @State private var transcriptHasUserScrolled = false
@@ -158,9 +251,10 @@ struct ChatView: View {
     @State private var wasStreaming = false
     @State private var voiceInput = VoiceInputService()
     @State private var pendingReasoningEffortChange: String?
-    // GrokBuild is a project workbench, not a generic chat window. Keep branch,
-    // agent, tools, workflows, and background-task state visible by default.
-    @State private var showSessionControls = true
+    // Keep the composer calm. Backend receipts and worker/file evidence live in
+    // the optional right-side activity drawer instead of permanent chrome.
+    @State private var showActivitySidebar = false
+    @State private var showComposerDetails = false
     @State private var toolPillStatus = ToolPillStatus()
     @State private var branchLabel = "No branch"
     @FocusState private var inputFocused: Bool
@@ -251,7 +345,7 @@ struct ChatView: View {
 
     private var thinkingBlock: some View {
         ThinkingBlock(
-            text: store.thinkingText,
+            summaryChunks: store.reasoningSummaryChunks,
             duration: store.thinkingDuration,
             isExpanded: store.isThinkingExpanded,
             isLive: store.isStreaming && store.thinkingDuration == nil
@@ -261,7 +355,8 @@ struct ChatView: View {
     }
 
     var body: some View {
-        VStack(spacing: 0) {
+        HStack(spacing: 0) {
+            VStack(spacing: 0) {
             topBar
 
             if let authMsg = store.authRequiredMessage {
@@ -278,7 +373,7 @@ struct ChatView: View {
 
             if let stalledSince = store.turnStalledSince {
                 TurnStalledBanner(since: stalledSince) {
-                    store.stop()
+                    store.requestStop()
                 }
             }
 
@@ -294,22 +389,6 @@ struct ChatView: View {
                     onDismiss: {
                         store.modelSwitchError = nil
                         store.modelSwitchNeedsNewSession = false
-                    }
-                )
-            }
-
-            if store.shouldShowContinuityBanner {
-                SessionContinuityBanner(
-                    status: store.continuityStatus,
-                    headline: store.continuityHeadline,
-                    message: store.continuityMessage,
-                    details: store.continuityDetails,
-                    onContinueAsNew: {
-                        Task { _ = await store.continueAsNew() }
-                    },
-                    onRelink: {
-                        showRecoveryReview = true
-                        Task { await store.reviewRecoveryCandidates() }
                     }
                 )
             }
@@ -359,8 +438,8 @@ struct ChatView: View {
                         }
 
                         if let plan = store.pendingExitPlan {
-                            PlanReviewCard(plan: plan) { verdict, comment in
-                                store.respondToExitPlan(plan, verdict: verdict, comment: comment)
+                            PlanReviewCard(plan: plan) { verdict in
+                                store.respondToExitPlan(plan, verdict: verdict)
                             }
                         }
 
@@ -411,7 +490,10 @@ struct ChatView: View {
                     wasStreaming = store.isStreaming
                 }
                 .onScrollPhaseChange { _, phase in
-                    if phase == .tracking || phase == .interacting {
+                    // Programmatic proxy scrolling can emit a tracking phase as
+                    // the layout settles. Only an actual interacting phase can
+                    // detach the reader; proxy movement is guarded separately.
+                    if phase == .interacting && !isProgrammaticTranscriptScroll {
                         transcriptHasUserScrolled = true
                     }
                 }
@@ -445,7 +527,10 @@ struct ChatView: View {
                 }
                 .onChange(of: store.isStreaming) { _, isStreaming in
                     if wasStreaming && !isStreaming {
-                        VoiceOverAnnouncer.announce("Build agent finished.")
+                        if store.latestTurnOutcome != .completionReceiptMissing {
+                            let outcome = store.latestTurnOutcome?.displayName ?? "Turn ended"
+                            VoiceOverAnnouncer.announce("Build agent finished. \(outcome).")
+                        }
                     }
                     wasStreaming = isStreaming
                     if !isStreaming, (transcriptIsAttachedToBottom || !transcriptHasUserScrolled) {
@@ -470,6 +555,17 @@ struct ChatView: View {
                     if now.timeIntervalSince(lastAutoScroll) > 0.08 {
                         lastAutoScroll = now
                         scrollToBottom(proxy: proxy, instant: true)
+                    }
+                    scheduleSettledAutoScroll(proxy: proxy)
+                }
+                .onChange(of: toolActivityExpanded) { _, _ in
+                    // Expanding tool receipts changes the LazyVStack's height
+                    // without changing the message or stream revision. Keep a
+                    // reader already attached to the tail attached after that
+                    // layout mutation, while respecting an intentional manual
+                    // scroll away from the latest content.
+                    guard transcriptIsAttachedToBottom || !transcriptHasUserScrolled else {
+                        return
                     }
                     scheduleSettledAutoScroll(proxy: proxy)
                 }
@@ -529,11 +625,40 @@ struct ChatView: View {
             composer
                 .accessibilitySortPriority(1)
                 .focusSection()
+            }
+
+            if showActivitySidebar {
+                ActivitySidebar(
+                    snapshot: store.runEvidenceSnapshot,
+                    liveProjection: store.liveRunEvidenceProjection,
+                    workspace: store.currentWorkspace?.path,
+                    onClose: {
+                        if reduceMotion {
+                            showActivitySidebar = false
+                        } else {
+                            withAnimation(.easeInOut(duration: 0.18)) {
+                                showActivitySidebar = false
+                            }
+                        }
+                    },
+                    onContinueAsNew: {
+                        Task { _ = await store.continueAsNew() }
+                    },
+                    onReviewRecovery: {
+                        showRecoveryReview = true
+                        Task { await store.reviewRecoveryCandidates() }
+                    },
+                    onRevealArtifact: onRevealArtifact
+                )
+                .transition(.move(edge: .trailing).combined(with: .opacity))
+            }
         }
         .onAppear { inputFocused = true }
         .onDisappear {
             autoScrollTask?.cancel()
             autoScrollTask = nil
+            programmaticScrollReleaseTask?.cancel()
+            programmaticScrollReleaseTask = nil
         }
         .onChange(of: store.liveToolCalls.isEmpty) { _, isEmpty in
             if isEmpty { toolActivityExpanded = false }
@@ -552,6 +677,19 @@ struct ChatView: View {
             if error != nil {
                 VoiceOverAnnouncer.announce("Model change was not confirmed. Review the model status.")
             }
+        }
+        .onChange(of: store.runEvidenceSnapshot?.outcome) { _, outcome in
+            guard outcome == .completionReceiptMissing, !showActivitySidebar else { return }
+            if reduceMotion {
+                showActivitySidebar = true
+            } else {
+                withAnimation(.easeInOut(duration: 0.18)) {
+                    showActivitySidebar = true
+                }
+            }
+            VoiceOverAnnouncer.announce(
+                "Completion receipt missing. Activity opened with the preserved run evidence."
+            )
         }
         .confirmationDialog(
             "Change reasoning effort?",
@@ -629,11 +767,6 @@ struct ChatView: View {
         }
         .onReceive(NotificationCenter.default.publisher(for: .workflowsConfigChanged)) { _ in
             workflowsEnabled = WorkflowsConfigStore.loadEnabled()
-        }
-        .onChange(of: store.isStreaming) { wasStreaming, isStreamingNow in
-            if wasStreaming && !isStreamingNow {
-                AccessibilityNotification.Announcement("Build agent finished").post()
-            }
         }
         .onChange(of: store.connectionState) { _, newState in
             if case .ready = newState {
@@ -850,43 +983,6 @@ struct ChatView: View {
         .padding(.horizontal, 24)
     }
 
-    private var connectionStatusColor: Color {
-        switch store.continuityStatus {
-        case .verifying:
-            return .yellow
-        case .diverged, .compositeSuspected, .backendMissing, .verificationIncomplete:
-            return .orange
-        case .localOnly:
-            if store.hasUserMessages { return .secondary }
-        case .verified, .backendOnly, .recoveryForked:
-            break
-        }
-        switch store.connectionState {
-        case .starting: return .yellow
-        case .ready, .busy: return .green
-        case .failed: return .red
-        case .idle: return store.currentWorkspace == nil ? .secondary : .green
-        }
-    }
-
-    private var connectionSubtitle: String {
-        switch store.continuityStatus {
-        case .verifying:
-            return "Checking continuity…"
-        case .diverged, .compositeSuspected, .backendMissing, .verificationIncomplete:
-            return "Continuity blocked"
-        case .localOnly where store.hasUserMessages:
-            return "Local only"
-        case .localOnly, .verified, .backendOnly, .recoveryForked:
-            break
-        }
-        return ConnectionStatusPresentation.subtitle(
-            state: store.connectionState,
-            isResumedSession: store.isResumedSessionTab,
-            hasWorkspace: store.currentWorkspace != nil
-        )
-    }
-
     static let bottomAnchorID = "transcript-bottom-anchor"
     static let transcriptCoordinateSpace = "grokbuild-transcript"
 
@@ -909,6 +1005,13 @@ struct ChatView: View {
 
     private func scrollToBottom(proxy: ScrollViewProxy, instant: Bool = false) {
         guard !store.messages.isEmpty else { return }
+        isProgrammaticTranscriptScroll = true
+        programmaticScrollReleaseTask?.cancel()
+        programmaticScrollReleaseTask = Task { @MainActor in
+            try? await Task.sleep(for: .milliseconds(140))
+            guard !Task.isCancelled else { return }
+            isProgrammaticTranscriptScroll = false
+        }
         // Instant while streaming (animating every ~80ms would stutter); a gentle ease
         // for one-off jumps like a finished turn or a newly-added message.
         if instant || reduceMotion || store.isStreaming {
@@ -995,6 +1098,7 @@ struct ChatView: View {
     private var toolActivityBlock: some View {
         ToolActivityGroup(
             tools: store.liveToolCalls,
+            turnOutcome: store.latestTurnOutcome,
             isExpanded: toolActivityExpanded
         ) {
             toolActivityExpanded.toggle()
@@ -1033,12 +1137,15 @@ struct ChatView: View {
                         )
                     }
 
-                    TextField("Plan, Build, / for skills", text: $input, axis: .vertical)
+                    TextField("Plan or build…  / for skills", text: $input, axis: .vertical)
                     .textFieldStyle(.plain)
                     .font(AppTheme.Typography.composer)
                     .lineSpacing(4)
                     .focused($inputFocused)
-                    .lineLimit(1...6)
+                    .lineLimit(ComposerDensityPolicy.minimumLineCount...ComposerDensityPolicy.maximumLineCount)
+                    .frame(minHeight: ComposerDensityPolicy.editorMinimumHeight, alignment: .topLeading)
+                    .contentShape(Rectangle())
+                    .overlay(ComposerCursorRegion())
                     .submitLabel(.send)
                     .accessibilityLabel("Message composer")
                     .accessibilityValue(input.isEmpty ? "Empty" : "\(input.count) characters")
@@ -1128,31 +1235,22 @@ struct ChatView: View {
             }
             .frame(maxWidth: .infinity, alignment: .center)
 
-            sessionControlsDisclosure
+            composerDetailsDisclosure
         }
         .padding(.horizontal, 20)
-        .padding(.vertical, 12)
+        .padding(.vertical, 8)
     }
 
     private var composerPrimaryControls: some View {
         HStack(spacing: 9) {
             modeSelector
-            modelSelector
             composerCommandMenu
-            ContextUsageIndicator(
-                label: store.currentModelContextLabel,
-                fraction: store.contextUsageFraction
-            )
-            .help("Context usage")
-            .accessibilityLabel("Context usage")
-            .accessibilityValue(store.currentModelContextLabel)
+            composerDetailsToggle
         }
     }
 
     private var composerActionControls: some View {
         HStack(spacing: 9) {
-            reviewControls
-
             MicButton(voice: voiceInput, input: $input)
 
             Button {
@@ -1172,48 +1270,155 @@ struct ChatView: View {
         }
     }
 
-    private var sessionControlsDisclosure: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Button {
-                if reduceMotion {
-                    showSessionControls.toggle()
-                } else {
-                    withAnimation(.easeInOut(duration: 0.18)) {
-                        showSessionControls.toggle()
+    private var composerDetailsToggle: some View {
+        Button {
+            if reduceMotion {
+                showComposerDetails.toggle()
+            } else {
+                withAnimation(.easeInOut(duration: 0.18)) {
+                    showComposerDetails.toggle()
+                }
+            }
+        } label: {
+            HStack(spacing: 5) {
+                Image(systemName: "slider.horizontal.3")
+                    .font(.caption.weight(.semibold))
+                Text("Details")
+                    .font(.caption.weight(.medium))
+                Image(systemName: showComposerDetails ? "chevron.up" : "chevron.down")
+                    .font(.system(size: 8, weight: .semibold))
+                    .foregroundStyle(.tertiary)
+                if let snapshot = store.runEvidenceSnapshot {
+                    Circle()
+                        .fill(snapshot.outcome == .completionReceiptMissing ? Color.orange : Color.secondary)
+                        .frame(width: 6, height: 6)
+                        .accessibilityHidden(true)
+                } else if store.liveRunEvidenceProjection != nil {
+                    Circle()
+                        .fill(Color.accentColor)
+                        .frame(width: 6, height: 6)
+                        .accessibilityHidden(true)
+                }
+            }
+            .padding(.horizontal, 7)
+            .frame(minHeight: ComposerControlMetrics.minimumHitTarget)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .foregroundStyle(.secondary)
+        .help(showComposerDetails ? "Hide workspace details" : "Show workspace details")
+        .accessibilityLabel(showComposerDetails ? "Hide workspace details" : "Show workspace details")
+        .accessibilityValue(composerDetailsAccessibilityValue)
+        .accessibilityHint("Shows model, context, changed files, project tools, branch, and Activity.")
+        .accessibilityIdentifier("grok-composer-details-toggle")
+    }
+
+    @ViewBuilder
+    private var composerDetailsDisclosure: some View {
+        if showComposerDetails {
+            VStack(alignment: .leading, spacing: 7) {
+                ViewThatFits(in: .horizontal) {
+                    HStack(spacing: 9) {
+                        composerDetailLeadingControls
+                        Spacer(minLength: 4)
+                        composerDetailActionControls
+                    }
+                    VStack(alignment: .leading, spacing: 5) {
+                        composerDetailLeadingControls
+                        composerDetailActionControls
                     }
                 }
-            } label: {
-                HStack(spacing: 7) {
-                    Circle()
-                        .fill(connectionStatusColor)
-                        .frame(width: 6, height: 6)
-                    Text(store.currentWorkspace?.displayName ?? "No project selected")
-                        .lineLimit(1)
-                    Text(connectionSubtitle)
-                        .foregroundStyle(.tertiary)
-                    Spacer()
-                    Text(showSessionControls ? "Hide session controls" : "Session controls")
-                        .foregroundStyle(.tertiary)
-                    Image(systemName: showSessionControls ? "chevron.down" : "chevron.right")
-                        .font(.system(size: 8, weight: .semibold))
-                        .foregroundStyle(.tertiary)
-                }
-                .font(.caption.weight(.medium))
-                .foregroundStyle(.secondary)
-                .contentShape(Rectangle())
-            }
-            .buttonStyle(.plain)
-            .accessibilityLabel(showSessionControls ? "Hide session controls" : "Show session controls")
-            .accessibilityValue("\(store.currentWorkspace?.displayName ?? "No project selected"), \(connectionSubtitle)")
-            .accessibilityHint("Reveals or hides project, branch, and session status.")
 
-            if showSessionControls {
                 projectStatusRow
-                    .transition(.opacity.combined(with: .move(edge: .top)))
             }
+            .padding(.horizontal, 4)
+            .frame(maxWidth: AppTheme.Layout.composerMaxWidth)
+            .frame(maxWidth: .infinity, alignment: .center)
+            .transition(.move(edge: .bottom).combined(with: .opacity))
         }
-        .frame(maxWidth: AppTheme.Layout.composerMaxWidth)
-        .frame(maxWidth: .infinity, alignment: .center)
+    }
+
+    private var composerDetailLeadingControls: some View {
+        HStack(spacing: 9) {
+            modelSelector
+            ContextUsageIndicator(
+                label: store.currentModelContextLabel,
+                fraction: store.contextUsageFraction
+            )
+            .help("Context usage")
+            .accessibilityLabel("Context usage")
+            .accessibilityValue(store.currentModelContextLabel)
+        }
+    }
+
+    private var composerDetailActionControls: some View {
+        HStack(spacing: 9) {
+            reviewControls
+            activitySidebarToggle
+        }
+    }
+
+    private var composerDetailsAccessibilityValue: String {
+        var parts = [showComposerDetails ? "Expanded" : "Collapsed"]
+        if reviewFileCount > 0 {
+            parts.append("\(reviewFileCount) changed \(reviewFileCount == 1 ? "file" : "files")")
+        }
+        if let snapshot = store.runEvidenceSnapshot {
+            parts.append(snapshot.outcome.displayName)
+        } else if store.liveRunEvidenceProjection != nil {
+            parts.append("Live run evidence, not settled")
+        }
+        return parts.joined(separator: ", ")
+    }
+
+    private var activitySidebarToggle: some View {
+        Button {
+            if reduceMotion {
+                showActivitySidebar.toggle()
+            } else {
+                withAnimation(.easeInOut(duration: 0.18)) {
+                    showActivitySidebar.toggle()
+                }
+            }
+        } label: {
+            HStack(spacing: 6) {
+                Image(systemName: showActivitySidebar ? "chevron.right" : "sidebar.right")
+                    .font(.system(size: 12, weight: .semibold))
+                Text("Activity")
+                    .font(AppTheme.Typography.label)
+                if let snapshot = store.runEvidenceSnapshot {
+                    Circle()
+                        .fill(snapshot.outcome == .completionReceiptMissing ? Color.orange : Color.secondary)
+                        .frame(width: 6, height: 6)
+                        .accessibilityHidden(true)
+                } else if store.liveRunEvidenceProjection != nil {
+                    Circle()
+                        .fill(Color.accentColor)
+                        .frame(width: 6, height: 6)
+                        .accessibilityHidden(true)
+                }
+            }
+            .padding(.horizontal, 8)
+            .frame(minHeight: ComposerControlMetrics.minimumHitTarget)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(GrokChromeButtonStyle())
+        .foregroundStyle(.secondary)
+        .help(showActivitySidebar ? "Hide activity sidebar" : "Show activity sidebar")
+        .accessibilityLabel(showActivitySidebar ? "Hide activity sidebar" : "Show activity sidebar")
+        .accessibilityValue(activityEvidenceAccessibilityValue)
+        .accessibilityHint("Shows live generation-bound receipts during a turn and authoritative receipts after settlement.")
+        .accessibilityIdentifier("grok-activity-sidebar-toggle")
+    }
+
+    private var activityEvidenceAccessibilityValue: String {
+        if let snapshot = store.runEvidenceSnapshot {
+            return "Settled: \(snapshot.outcome.displayName)"
+        }
+        if store.liveRunEvidenceProjection != nil {
+            return "Live run evidence, not settled"
+        }
+        return "No run evidence"
     }
 
     private var projectStatusRow: some View {
@@ -1234,17 +1439,8 @@ struct ChatView: View {
                     }
                     .buttonStyle(.plain)
                     .help("Branches & worktrees")
-                    sessionReceiptMenu
-                    agentStatusPill
-                    browserStatusPill
-                    computerUseStatusPill
-                    if showWorkflowsPill {
-                        workflowsStatusPill
-                    }
-                    tasksStatusPill
-                    if memoryEnabled {
-                        memoryStatusPill
-                    }
+                    browserStatusIndicator
+                    computerUseStatusIndicator
                 } else {
                     Label("No project selected", systemImage: "folder")
                 }
@@ -1253,9 +1449,8 @@ struct ChatView: View {
         .font(.caption.weight(.medium))
         .foregroundStyle(.secondary)
         .padding(.horizontal, 4)
+        .frame(maxWidth: .infinity, alignment: .leading)
         .task(id: store.currentWorkspace?.id) {
-            await store.loadDiscoveredAgentsIfNeeded()
-            cachedCustomSubagentNames = SubagentRoleStore.load().map(\.name)
             await refreshToolPillStatus()
             if let path = store.currentWorkspace?.path {
                 await refreshBranchLabel(path)
@@ -1274,9 +1469,6 @@ struct ChatView: View {
         .onChange(of: store.messages.count) { _, _ in
             guard let path = store.currentWorkspace?.path else { return }
             Task { await refreshBranchLabel(path) }
-        }
-        .onReceive(NotificationCenter.default.publisher(for: .subagentRolesChanged)) { _ in
-            cachedCustomSubagentNames = SubagentRoleStore.load().map(\.name)
         }
     }
 
@@ -1577,20 +1769,18 @@ struct ChatView: View {
             }
         } else {
             Menu(backgroundActivityTitle(activity)) {
-                if !activity.detail.isEmpty {
-                    Text(activity.detail)
+                let detail = ActivitySidebarPresentation.activityDetail(activity)
+                if !detail.isEmpty {
+                    Text(detail)
                 }
-                if !activity.status.isEmpty {
-                    Text("Status: \(activity.status)")
-                }
+                Text("Status: \(ActivitySidebarPresentation.activityStatus(activity.status))")
             }
         }
     }
 
     private func backgroundActivityTitle(_ activity: BackgroundActivity) -> String {
-        let label = activity.title
-        let short = label.count > 32 ? String(label.prefix(32)) + "…" : label
-        return activity.status.isEmpty ? short : "\(short) · \(activity.status)"
+        let title = ActivitySidebarPresentation.activityTitle(activity)
+        return "\(title) · \(ActivitySidebarPresentation.activityStatus(activity.status))"
     }
 
     private var promptQueueBar: some View {
@@ -1775,10 +1965,11 @@ struct ChatView: View {
         toolPillStatus = status
     }
 
-    private var browserStatusPill: some View {
+    private var browserStatusIndicator: some View {
         let configurationIssue = toolPillStatus.browserIssue
         let canChooseRuntime = toolPillStatus.canChooseRuntime
         let runtimeMode = toolPillStatus.browserRuntimeMode
+        let lifecycle = store.mcpServerStatus(named: "grokbuild-browser")
         let isConfigured = configurationIssue == nil
         let needsSetup = browserToolsEnabled && !isConfigured
         let title = needsSetup ? "Browser Setup Needed" : "Browser Tools"
@@ -1788,6 +1979,12 @@ struct ChatView: View {
                 Button(browserToolsEnabled ? "Turn Browser Tools Off" : "Turn Browser Tools On") {
                     onToggleBrowserTools()
                 }
+            }
+
+            if let lifecycle {
+                Divider()
+                Button(lifecycle.accessibilitySummary) {}
+                    .disabled(true)
             }
 
             if canChooseRuntime {
@@ -1819,35 +2016,41 @@ struct ChatView: View {
                 Label("Open Browser Settings", systemImage: "gearshape")
             }
         } label: {
-            Group {
-                if needsSetup {
-                    Label(title, systemImage: icon)
-                } else {
-                    Image(systemName: icon)
-                        .accessibilityLabel(title)
-                }
-            }
+            Image(systemName: icon)
+                .accessibilityLabel(title)
             .font(.caption2.weight(.semibold))
             .padding(.horizontal, 2)
             .padding(.vertical, 2)
-            .foregroundStyle(needsSetup ? Color.primary : Color.secondary)
+            .foregroundStyle(needsSetup ? Color.orange : Color.secondary)
         }
         .menuStyle(.borderlessButton)
         .fixedSize()
-        .help(browserStatusHelp(isConfigured: isConfigured, issue: configurationIssue))
+        .help(browserStatusHelp(isConfigured: isConfigured, issue: configurationIssue, lifecycle: lifecycle))
     }
 
-    private func browserStatusHelp(isConfigured: Bool, issue: String?) -> String {
+    private func browserStatusHelp(
+        isConfigured: Bool,
+        issue: String?,
+        lifecycle: MCPServerStatus?
+    ) -> String {
         if !isConfigured {
             return issue ?? "Finish browser setup in Settings before using the quick toggle."
+        }
+        if let lifecycle {
+            return "\(lifecycle.accessibilitySummary). " + (
+                browserToolsEnabled
+                    ? "Disable browser MCP tools and restart the Grok connection."
+                    : "Enable browser MCP tools and restart the Grok connection."
+            )
         }
         return browserToolsEnabled
             ? "Disable browser MCP tools and restart the Grok connection."
             : "Enable browser MCP tools and restart the Grok connection."
     }
 
-    private var computerUseStatusPill: some View {
+    private var computerUseStatusIndicator: some View {
         let configurationIssue = toolPillStatus.computerUseIssue
+        let lifecycle = store.mcpServerStatus(named: "grokbuild-computer-use")
         let isConfigured = configurationIssue == nil
         let needsSetup = computerUseEnabled && !isConfigured
         let title = needsSetup ? "Computer Use Setup Needed" : "Computer Use"
@@ -1857,6 +2060,12 @@ struct ChatView: View {
                 Button(computerUseEnabled ? "Turn Computer Use Off" : "Turn Computer Use On") {
                     onToggleComputerUse()
                 }
+            }
+
+            if let lifecycle {
+                Divider()
+                Button(lifecycle.accessibilitySummary) {}
+                    .disabled(true)
             }
 
             if let configurationIssue {
@@ -1875,27 +2084,32 @@ struct ChatView: View {
                 Label("Open Computer Use Settings", systemImage: "gearshape")
             }
         } label: {
-            Group {
-                if needsSetup {
-                    Label(title, systemImage: icon)
-                } else {
-                    Image(systemName: icon)
-                        .accessibilityLabel(title)
-                }
-            }
+            Image(systemName: icon)
+                .accessibilityLabel(title)
             .font(.caption2.weight(.semibold))
             .padding(.horizontal, 2)
             .padding(.vertical, 2)
-            .foregroundStyle(needsSetup ? Color.primary : Color.secondary)
+            .foregroundStyle(needsSetup ? Color.orange : Color.secondary)
         }
         .menuStyle(.borderlessButton)
         .fixedSize()
-        .help(computerUseStatusHelp(isConfigured: isConfigured, issue: configurationIssue))
+        .help(computerUseStatusHelp(isConfigured: isConfigured, issue: configurationIssue, lifecycle: lifecycle))
     }
 
-    private func computerUseStatusHelp(isConfigured: Bool, issue: String?) -> String {
+    private func computerUseStatusHelp(
+        isConfigured: Bool,
+        issue: String?,
+        lifecycle: MCPServerStatus?
+    ) -> String {
         if !isConfigured {
             return issue ?? "Finish Computer Use setup in Settings before using the quick toggle."
+        }
+        if let lifecycle {
+            return "\(lifecycle.accessibilitySummary). " + (
+                computerUseEnabled
+                    ? "Disable Computer Use MCP tools and restart the Grok connection."
+                    : "Enable Computer Use MCP tools if Accessibility permission is ready."
+            )
         }
         return computerUseEnabled
             ? "Disable Computer Use MCP tools and restart the Grok connection."
@@ -1906,7 +2120,7 @@ struct ChatView: View {
     private var sessionActionButton: some View {
         if store.isStreaming {
             Button {
-                store.stop()
+                store.requestStop()
             } label: {
                 // An indeterminate ProgressView here invalidated the entire transcript's
                 // LazyVStack every animation frame. A long web/tool wait could therefore
@@ -1944,7 +2158,8 @@ struct ChatView: View {
             .disabled(input.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && !store.hasVisibleFileAttachments ||
                       store.currentWorkspace == nil ||
                       store.authRequiredMessage != nil ||
-                      store.continuityBlocksSend)
+                      store.continuityBlocksSend ||
+                      store.connectionState == .starting)
             .keyboardShortcut(.return, modifiers: .command)
         }
     }
@@ -2362,97 +2577,6 @@ private struct ErrorBanner: View {
         .background(.regularMaterial, in: RoundedRectangle(cornerRadius: AppTheme.Radius.large))
         .padding(.horizontal, 20)
         .padding(.top, 10)
-    }
-}
-
-private struct SessionContinuityBanner: View {
-    let status: SessionContinuityStatus
-    let headline: String
-    let message: String
-    let details: String
-    let onContinueAsNew: () -> Void
-    let onRelink: () -> Void
-
-    @State private var showsDetails = false
-    @State private var confirmsContinueAsNew = false
-
-    private var color: Color {
-        switch status {
-        case .diverged, .compositeSuspected, .backendMissing, .verificationIncomplete:
-            return .orange
-        case .verifying:
-            return .secondary
-        case .localOnly, .backendOnly, .verified, .recoveryForked:
-            return .accentColor
-        }
-    }
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 7) {
-            HStack(alignment: .top, spacing: 8) {
-                Image(systemName: status == .verifying ? "checkmark.shield" : "exclamationmark.shield")
-                    .foregroundStyle(color)
-                VStack(alignment: .leading, spacing: 3) {
-                    Text(headline)
-                        .font(.caption.weight(.semibold))
-                    Text(message)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-                Spacer()
-            }
-            DisclosureGroup("View redacted continuity details", isExpanded: $showsDetails) {
-                Text(details)
-                    .font(.caption.monospaced())
-                    .foregroundStyle(.secondary)
-                    .textSelection(.enabled)
-                    .padding(.top, 4)
-            }
-            .font(.caption)
-            if [.diverged, .compositeSuspected, .backendMissing, .verificationIncomplete].contains(status) {
-                HStack(spacing: 8) {
-                    Button("Continue as New") {
-                        confirmsContinueAsNew = true
-                    }
-                    .buttonStyle(.borderedProminent)
-                    .controlSize(.small)
-                    .accessibilityHint(
-                        "Keeps the local transcript and creates a new backend only when you next send."
-                    )
-                    Button("Relink…", action: onRelink)
-                        .buttonStyle(.bordered)
-                        .controlSize(.small)
-                        .accessibilityHint(
-                            "Reviews provenance-safe candidate histories before any binding changes."
-                        )
-                }
-            }
-        }
-        .padding(10)
-        .background(color.opacity(0.08), in: RoundedRectangle(cornerRadius: AppTheme.Radius.large))
-        .overlay(
-            RoundedRectangle(cornerRadius: AppTheme.Radius.large)
-                .stroke(color.opacity(0.24), lineWidth: 1)
-        )
-        .padding(.horizontal, 20)
-        .padding(.top, 10)
-        .accessibilityElement(children: .contain)
-        .accessibilityLabel(headline)
-        .accessibilityValue(message)
-        .accessibilityHint("Send remains blocked when the saved backend cannot be verified. Your local transcript is unchanged.")
-        .confirmationDialog(
-            "Continue this transcript as a new conversation?",
-            isPresented: $confirmsContinueAsNew,
-            titleVisibility: .visible
-        ) {
-            Button("Continue as New", role: .destructive, action: onContinueAsNew)
-            Button("Cancel", role: .cancel) {}
-        } message: {
-            Text(
-                "Your local messages stay in this tab. The previous backend is preserved, and no new backend starts until you send."
-            )
-        }
     }
 }
 

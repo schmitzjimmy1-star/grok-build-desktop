@@ -29,13 +29,6 @@ struct Message: Identifiable, Codable, Sendable, Hashable {
     let timestamp: Date
     let provenance: TranscriptMessageProvenance?
 
-    var hasDiff: Bool {
-        guard role == .assistant else { return false }
-        return content.contains("diff --git") ||
-               content.contains("```diff") ||
-               content.contains("```patch")
-    }
-
     init(
         id: UUID = UUID(),
         role: MessageRole,
@@ -48,5 +41,12 @@ struct Message: Identifiable, Codable, Sendable, Hashable {
         self.content = content
         self.timestamp = timestamp
         self.provenance = provenance
+    }
+}
+
+enum AssistantDiffPresentation {
+    static func isExample(language: String?) -> Bool {
+        guard let language else { return false }
+        return ["diff", "patch"].contains(language.trimmingCharacters(in: .whitespacesAndNewlines).lowercased())
     }
 }

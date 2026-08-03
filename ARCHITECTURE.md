@@ -67,7 +67,7 @@ can share the same marketing version.
 2. **Reuse services** — extend `GrokProcess`, `GrokCLIService`, `ChatStore`, `WorkspaceStore`, `SessionLayoutStore`, and feature services below.
 3. **Match conventions** — read surrounding code before editing; minimize diff scope.
 4. **Draft vs applied settings** — migrated panes edit parent-owned `SettingsValueState` drafts; storage changes only at the explicit Apply boundary, and `EffectiveSessionReceipt` separately proves what the current process launched (see [Settings system](#settings-system)).
-5. **Post notifications** — message/turn changes → `.liveSessionMessagesChanged` (titles, transcript save, diff detection); settings that affect MCP → `reloadConfiguration()`.
+5. **Post notifications** — message/turn changes → `.liveSessionMessagesChanged` (titles, transcript save, bounded Git review refresh); settings that affect MCP → `reloadConfiguration()`.
 6. **Docs + tests with every code change** — run `make test`, add/extend `Tests/GrokBuildTests/`, update this file and other relevant docs in the same session (`.cursor/rules/docs-and-tests.mdc`).
 7. **Commit only when asked** — user rule in this repo.
 
@@ -84,8 +84,9 @@ grok-build-desktop/
 │   ├── AppTheme.swift            # Neutral graphite palette, typography, radii, shared surface modifier
 │   ├── ContentView.swift         # Root view: multi-session orchestration
 │   ├── Views/                    # SwiftUI screens (SettingsView is large)
+│   │   └── ActivitySidebar.swift # Optional right-side run-evidence drawer
 │   ├── Services/                 # Business logic, CLI integration
-│   ├── Models/                   # Workspace, Message, Composer types
+│   ├── Models/                   # Workspace, Message, Composer, RunEvidenceSnapshot types
 │   ├── Resources/
 │   │   ├── Assets.xcassets/      # Brand mark, app icon
 │   │   └── Skills/               # Bundled grok skills (copied at build)
@@ -147,6 +148,7 @@ flowchart TB
         CV[ContentView]
         SV[SidebarView]
         CHV[ChatView]
+        ASV[ActivitySidebar]
         STV[SettingsView]
     end
 
@@ -176,6 +178,7 @@ flowchart TB
     CV --> CS
     CV --> SL
     CHV --> CS
+    ASV --> CS
     STV --> MV
     MV --> KC
     MV --> GR
@@ -193,7 +196,7 @@ flowchart TB
 3. Appends user `Message`, creates empty assistant `Message`, sets `isStreaming`.
 4. `GrokProcess.send(prompt)` → ACP `session/prompt` JSON-RPC on stdin.
 5. `GrokProcess` reader parses stdout → `AcpEvent` stream.
-6. `ChatStore.consumeOutput()` maps events → message text, tool cards, permissions, thinking blocks.
+6. `ChatStore.consumeOutput()` maps events → message text, tool activity, authoritative interaction cards, and thinking blocks. Question, permission, and plan cards require the exact live backend-session/request identity; tool-call rows never acquire response authority.
 7. On completion → `isStreaming = false`, posts `.liveSessionMessagesChanged` (also on user send).
 
 ### CLI discovery (shared)
@@ -242,12 +245,15 @@ Permission launch arguments are centralized in `GrokPermissionLaunchArguments`. 
 2. `createSession(workspace:mcpServers:)` **or** `loadSession(id:…)` if resuming. When `session/load` fails with `FS_NOT_FOUND` / “Path not found” (stale on-disk grok session), GrokBuild falls back to `session/new`, sets `sessionLoadStartedFreshFallback`, and `ChatStore` adds a system note — local transcript is preserved. During load, the CLI replays prior turn history via `session/update` with `_meta.isReplay: true`; `GrokProcess` skips routing those to `ChatStore` (still applies `contextUsage` / `totalTokens`) so resume does not re-drive live tool/thinking UI.
 3. If launch requested an explicit model, `confirmRequestedLaunchModel` compares the session readback and, when necessary, sends `session/set_model`. `.ready` is withheld unless ACP explicitly confirms the exact requested ID. This compensates for grok 0.2.118 accepting `--model` while `session/new` still starts at the default model, and prevents a custom-provider tab from silently billing Grok.
 4. MCP servers from `MCPServerConfig` passed in `session/new` (browser, computer use when enabled).
-5. `send(_:)` — prompt during `.ready`/`.busy`.
-6. `stop()` — tear down process (LRU cap, settings reload, app shutdown).
+5. `MCPReadinessPolicy` records a secret-free per-server lifecycle receipt. Configured servers are `Connecting` while ACP and MCP startup settle, become `Ready` only after ACP session creation/model confirmation plus the bounded settle window, become `Failed` when the current generation cannot reach that boundary, and become `Stopped` when the owning process is torn down. The receipt intentionally reports no invented tool count because the installed CLI does not expose a stable per-server capability event.
+6. `send(_:)` — prompt during `.ready`/`.busy`.
+7. `stop()` — tear down process (LRU cap, settings reload, app shutdown).
 
-The initialize handshake advertises ACP client terminal support. Grok-owned shell calls are served by `ACPClientTerminalManager` (`terminal/create`, `terminal/output`, `terminal/wait_for_exit`, `terminal/kill`, and `terminal/release`): commands run in the approved working directory with an explicit environment, stdout/stderr are combined into a bounded UTF-8 buffer, exit state is retained until release, and all outstanding terminals are released during process cleanup. Current grok builds sometimes put a complete shell command in ACP's `command` field with an empty `args` array; when that string is not an executable path, the manager preserves it as one exact `/bin/zsh -lc` argument instead of re-tokenizing it.
+The initialize handshake advertises ACP client terminal support. Grok-owned shell calls are served by `ACPClientTerminalManager` (`terminal/create`, `terminal/output`, `terminal/wait_for_exit`, `terminal/kill`, and `terminal/release`): commands run in the approved working directory with an explicit environment, stdout/stderr are combined into a bounded UTF-8 buffer, exit state is retained until release, and all outstanding terminals are released during process cleanup. Current grok builds sometimes put a complete shell command in ACP's `command` field with an empty `args` array; when that string is not an executable path, the manager preserves it as one exact `/bin/zsh -lc` argument instead of re-tokenizing it. Grok's outer tool status can be `completed` even when terminal `rawOutput.exit_code` is nonzero, timed out, or signal-terminated; `GrokProcess` treats that native exit receipt as authoritative failure. A successful terminal call becomes a run artifact only when its original command contains a conservative explicit `>`/`>>` file target; terminal capture logs, stdout-only commands, `/dev/null`, and dynamic shell expressions are not promoted as user artifacts.
 
-`session/prompt` can resolve before grok's final `_x.ai/session/update` `turn_completed` notification. `GrokProcess` now yields `.turnCompleted` through the same `AcpEvent` queue as chunks and waits until `ChatStore` calls `GrokProcess.acknowledgeTurnCompleted()`. `TurnSettlementCoordinator` finalizes exactly once only after both the RPC result and queue-barrier consumption; a turn generation rejects stale Stop/restart completions. `ChatStore` flushes buffered text and reconciles the exact backend history receipt before acknowledging. A closed-turn assistant target survives until the next prompt/Stop/restart for contract-breaking late chunks, while an already-reconciled authoritative backend final suppresses a duplicate late ACP copy. The bounded grace timeout emits the same queue event for older CLIs; it never clears the message from a side channel.
+`session/prompt` can resolve after grok's terminal private notifications. Grok 0.2.118 emits live `response_completed` and `turn_completed` frames as `_x.ai/session_notification`, while its on-disk `updates.jsonl` normalizes the same lifecycle fact as `_x.ai/session/update`; `GrokProcess` accepts both wire spellings plus standard `session/update`. It routes a completion receipt through the same `AcpEvent` queue as chunks only when its local tab, backend session, process generation, and prompt identity match the active turn. While that exact turn owns the process, `ChatStore.liveRunEvidenceProjection` derives a non-persisted **Live** read model from observed plan, tool, artifact, and current-turn worker state. It has no usage or outcome field and cannot settle anything. `ChatStore` consumes the exact completion barrier, flushes buffered text, reconciles the exact backend history receipt, replaces the live projection with `RunEvidenceSnapshot`, and calls `GrokProcess.acknowledgeTurnCompletionBridge(authoritative: true)`. `TurnSettlementCoordinator` finalizes exactly once only after both the RPC result and authoritative queue-barrier consumption; stale Stop/restart completions and wrong-session notifications are rejected. A closed-turn assistant target survives until the next prompt/Stop/restart for contract-breaking late chunks, while an already-reconciled authoritative backend final suppresses a duplicate late ACP copy. The bounded transport watchdog can emit `.turnCompletionReceiptMissing`, but can never synthesize `.turnCompleted`: the missing-receipt path preserves partial worker, tool, artifact, and transcript evidence, withholds usage and settled continuity, marks the run incomplete, tears down the broken process generation, and requires reconnect. A receipt rejected at the ChatStore identity boundary fails immediately with the mismatched field rather than silently aging into the watchdog.
+
+Pipe readers capture the process generation that created them. `_x.ai/session/update` `subagent_spawned` and `subagent_finished` updates become typed lifecycle events carrying the local tab, parent backend, process generation, backend event ID, and exact child identity. Terminal receipts retain status, duration, turns, tool-call count, token count, and only a bounded redacted error; worker result bodies never enter this state. `ChatStore` accepts a lifecycle event only when tab, backend, and active generation all match, then deduplicates the lifecycle fact before recording it. Slice 2 correlates those receipts with the worker row created by the exact `spawn_subagent` tool call; wait/collection and kill calls update existing rows and never create workers. The background tracker remains session-wide for durable work, while `currentTurnWorkerActivityIDs` admits only rows created or changed during this parent turn into its Live or Settled evidence. At the parent `turn_completed` barrier, only those owned rows can be marked unresolved: a worker without terminal evidence is shown as `Unknown` when its child identity is missing or `Orphaned` when the child is known, never as successful by implication from parent prose.
 
 ### ACP events (`AcpEvent`)
 
@@ -258,14 +264,17 @@ Consumed by `ChatStore.consumeOutput()`:
 | `.messageChunk` | Append to streaming assistant message |
 | `.thoughtChunk` | Thinking panel text |
 | `.toolCall` / `.toolCallUpdate` | Live tool call cards |
-| `.permissionRequest` | Permission dialog in chat |
-| `.exitPlanRequest` | Plan mode approval UI |
-| `.questionRequest` | Ask-user question UI |
+| `.subagentSpawned` / `.subagentFinished` | Correlate exact-once, generation-bound worker lifecycle receipts with spawn-created rows and terminal metadata |
+| `.permissionRequest` | One permission card keyed by backend session + ACP request id |
+| `.exitPlanRequest` | One plan-review card keyed by backend session + ACP request id; approval resumes the same turn |
+| `.questionRequest` | Ask-user question card keyed by backend session + ACP request id |
 | `.modeChanged` | Agent / Plan / Yolo selector |
 | `.contextUsage` | Token usage indicator |
 | `.availableCommands` | Slash command autocomplete |
 | `.schedulerActivity` | Update the scheduled-tasks mirror (`ChatStore.scheduledTasks`) |
 | `.error` | Error banner |
+
+`ACPInteractionRequestIdentity` is the shared interaction ownership boundary. `GrokProcess` rejects direct interaction requests for a backend other than its active session, and `ChatStore` accepts or answers only the exact request still pending in that session. Replays for the same id update one card. Distinct authoritative question ids remain distinct even when their text is identical. An ask-shaped tool call stays in tool activity and cannot mint a reply-capable question with a tool-call id. `_x.ai/exit_plan_mode` approval writes the one JSON-RPC result expected by the CLI; it does not enqueue a second user message or mutate Grok's durable transcript/log files. The native plan card intentionally omits the old comment field because that text had no ACP response field and was previously delivered only through the invalid synthetic prompt.
 
 ### Agent modes
 
@@ -293,6 +302,7 @@ One `ChatStore` per live session tab. Owns a `GrokProcess`.
 |----------|---------|
 | `messages` | Chat history (`Message` model) |
 | `connectionState` | Mirrors `GrokProcess.state` |
+| `mcpServerStatuses` | Secret-free lifecycle receipts for configured Browser/Computer Use MCP servers |
 | `isStreaming` / `isGrokking` | Turn in progress |
 | `currentModel` / `availableModels` | Model picker (from ACP + custom models) |
 | `modelExecutionState` | Persisted, generation-bound requested/effective model receipt |
@@ -336,7 +346,7 @@ On every (re)start, `ChatStore`:
 
 **Model intent** is **per session tab** (`SavedSessionRecord.modelIntent` in `GrokBuild.sessionLayout.v3`), matching grok's per-ACP-session `session/set_model`. The intent is `inheritProjectDefault`, `explicit(modelID)`, or migration-only `legacyUnknown(modelID)`. `SavedSessionRecord.modelExecutionState` separately retains the last generation-bound request/effective receipt; a historical confirmed receipt is labeled Last live until a new process independently confirms. Changing model in the composer settles the tab to explicit and posts `.liveSessionModelChanged` at request and terminal receipt boundaries. Tab switch calls the intent-aware `bindTabSession` + `syncTabModelToLiveProcessIfNeeded()`; the latter reads only that tab's live receipt and never issues a cosmetic model RPC. Resolving a project/app default never freezes inheritance into an explicit tab value. A CLI lookup, process spawn, or ACP initialization failure closes the active generation and rejects any launch-model request, so a dead process can never retain a Requested/live-looking receipt.
 
-**Transcript continuity** is a separate pre-launch authority from process and model readiness. A saved backend enters `verifying`; `ChatStore.verifyContinuityBeforeResume` streams only that backend's history off-main through the 2 MB / 2,000-row soft bound and five-second cancellable extension. `SessionTranscriptRecovery` compares versioned, Keychain-keyed HMAC tags for normalized root-conversation role, order, and content. Exact matches, verified local prefixes, and valid backend-only histories may start; missing, unreadable, incomplete, divergent, and composite-suspected histories leave the process stopped and the composer draft editable with Send blocked. Ordinary startup never searches neighboring histories. **Relink** is an explicit bounded candidate review: one shared prompt is review-only, and the chosen candidate is re-read and re-verified before its exact ID is saved. **Continue as New** clears the active binding, persists a predecessor intent, and creates no backend until the next real submission records the successor ledger entry. Local-only tabs create a backend lazily on first send. Re-selecting the same live binding preserves its verified receipt instead of resetting it to an unfinishable checking state.
+**Transcript continuity** is a separate pre-launch authority from process and model readiness. A saved backend enters `verifying`; `ChatStore.verifyContinuityBeforeResume` streams only that backend's history off-main through the 2 MB / 2,000-row soft bound and five-second cancellable extension. `SessionTranscriptRecovery` compares versioned, Keychain-keyed HMAC tags for normalized root-conversation role, order, and content. Exact matches, verified local prefixes, and valid backend-only histories may start; missing, unreadable, incomplete, divergent, and composite-suspected histories leave the process stopped and the composer draft editable with Send blocked. Ordinary startup never searches neighboring histories. **Relink** is an explicit bounded candidate review: one shared prompt is review-only, and the chosen candidate is re-read and re-verified before its exact ID is saved. **Continue as New** clears the active binding, persists a predecessor intent, and creates no backend until the next real submission records the successor ledger entry. Local-only tabs create a backend lazily on first send; successful `session/new` changes the receipt to `backendBound / freshBackendBound`, never `verified`, because no prior backend history existed to compare. Every live receipt is stamped with local tab UUID, backend ID, and process generation, and the ordered `turn_completed` barrier refreshes counts through the same normalized root-message authority used by verification. Re-selecting an LRU-retained live binding adopts that exact process receipt instead of restoring stale `noBackendBinding` or an unfinishable checking state.
 
 **Project default model** (`WorkspaceAgentSettings.model`) is followed by new/inherited tabs. It is **not** updated when you change model in chat.
 
@@ -382,6 +392,8 @@ ContentView.LiveSession {
 Only an intentional tab activation increments `lastActivationOrdinal` and updates `lastAccessed`. Streaming, background recovery, persistence, process readiness, and LRU eviction do not manufacture recency. The activation is recorded before the v3 layout write, so a rapid A → B → quit restores B deterministically.
 
 **Transcript reconciliation:** Empty, partial, and already-populated tabs with a `grokSessionID` reconcile against exactly one known `~/.grok/sessions/{encoded-cwd}/{grokSessionID}/chat_history.jsonl` only after the continuity relationship is permitted, and again at successful turn completion. `GrokSessionTranscriptImporter` first retains ordered row provenance: backend ID, row index, parent/root/worker relation, agent identity, terminal marker, keyed content tag, and quarantine classification. Synthetic/runtime context, reasoning/tool output, and assistant tool-call preambles remain non-conversational. Known worker output may be retained for display, but binding verification and root identity use only authoritative user/root-final rows; unknown or non-final assistant rows fail closed. `SessionTranscriptReconciler` aligns normalized user prompts occurrence-by-occurrence, preserves local UUIDs, extends prefix answers in place, preserves divergent/newer local text, appends a missing root final or authoritative suffix once, and is idempotent across repeated restore. `SessionMessageStore` also refuses an equal-count partial save that would shorten a completed assistant. `encodeWorkspacePath` matches grok's layout: `%2FUsers%2F…%2Fproject` with **no** trailing `%2F`. The ordinary path reads the exact saved binding; it never scans all histories.
+
+**Public reasoning-summary presentation:** `agent_thought_chunk` remains ordered, ephemeral ACP presentation input in `ChatStore.reasoningSummaryChunks`; it is not a `Message`, layout field, transcript row, or diagnostic export. `ReasoningSummaryPresentation` normalizes transport noise per chunk without trimming explicit whitespace, joins token-sized deltas only when leading/trailing whitespace or punctuation proves continuation, and inserts an accessible presentation-stage boundary between word-like updates that otherwise would fuse. It derives only coarse public cue labels and adds blank lines only in its plain-text presentation fallback. The disclosure collapses at turn settlement; compact display is limited to 5 stages/4,000 characters and selectable expanded display to 20 stages/12,000 characters, with an explicit truncation receipt. GrokBuild never requests, reconstructs, stores, or exports hidden chain-of-thought.
 
 **Eviction:** `enforceConnectionCap()` stops processes for sessions beyond MRU cap (keeps selected + busy sessions). It snapshots candidate tab IDs rather than array indices, re-resolves each tab after asynchronous teardown, and accepts a backend receipt only through `SessionProcessLRUPolicy`: local tab, backend, and active process generation must all match. A mismatched process is stopped but its backend ID is never adopted by the tab.
 
@@ -502,6 +514,12 @@ Do **not** commit exported plist files from repo root (`.gitignore`).
 
 ## Feature subsystems
 
+### Activity drawer and progressive session chrome
+
+`ChatView` keeps mode, commands, voice, attachments, and Send permanently available. Its editor starts at one accessible 36-point line and grows through eight lines. One native **Details** disclosure holds the model, context usage, changed files, project, branch/worktree, icon-only Browser and Computer Use indicators, and the labeled **Activity** control; the disclosure is presentation-only and defaults closed for each fresh `ChatView`. `ChatStore` creates exactly one ephemeral `RunEvidenceSnapshot` at an ordered completion barrier, bound to local tab, workspace, backend, process generation, and backend prompt ID. Authoritative `turn_completed` produces a settled snapshot; `.turnCompletionReceiptMissing` produces an explicitly incomplete snapshot and automatically opens Activity so a critical bridge failure cannot hide behind transcript prose. The outcome-first Activity summary presents compact worker, failed-tool, artifact, and usage metrics before placing detailed model/process/MCP and continuity receipts under a native disclosure. It derives all content from the existing authorities; it is cleared at the next turn boundary and is never persisted in transcripts or layout. `ActivitySidebar` receives only that snapshot and formats it; it does not create lifecycle, worker, tool, continuity, or run state. `ChatStore.runArtifacts` admits a path only after the exact write/edit tool call reaches a successful terminal status and labels paths outside the active workspace as external; reveal-in-Finder is an explicit user action. Separately, **Files in review** remains sourced from `GitService.changedFiles`, including pre-existing dirty and untracked files. A monotonic `gitRefreshRevision` requests one cancellable 250 ms refresh after a successful write/edit and after the ordered settlement barrier, coalescing nearby requests without polling; `ContentView` may attach that Git result only to the still-matching snapshot and cannot create or settle one. Worker receipts retain spawn-call/child identity, authoritative duration/tool counts, wait receipts, and explicit `Unknown`/`Orphaned` status when the backend does not provide a terminal receipt.
+
+The continuity gate remains authoritative in `ChatStore`. Removing the top continuity banner is a presentation change only: blocked recovery actions remain available from the drawer, and `SessionRecoveryReviewSheet` still performs the same bounded review/relink flow.
+
 ### Browser control
 
 | Piece | Location |
@@ -511,7 +529,7 @@ Do **not** commit exported plist files from repo root (`.gitignore`).
 | MCP | Name: `grokbuild-browser`; config from `browserMCPConfig` |
 | Skill | `Resources/Skills/grokbuild-browser-control/` + `grokbuild-grok-web/` → `BrowserSkillInstaller` (installs both when browser tools enabled) |
 | Presets | `BrowserPreset` (e.g. `.grokCom`) — one-click runtime/session-name setup in `BrowserSettings.swift`, applied from the Browser pane |
-| Chat UI | Status pill in `ChatView` (composer chrome). Menu offers on/off toggle, **runtime choice** (managed ↔ existing Chromium), and Open Browser Settings |
+| Chat UI | Icon-only menu indicator in `ChatView` (composer chrome). Menu offers on/off toggle, **runtime choice** (managed ↔ existing Chromium), and Open Browser Settings; detailed lifecycle receipt is in `ActivitySidebar` |
 
 **Backend:** the bundled `agent-browser` CLI exposed to grok as an stdio MCP server (`grokbuild-browser`). Managed Chromium vs external browser (Chrome/Brave/Edge/Arc) via CDP URL.
 
@@ -524,9 +542,9 @@ Do **not** commit exported plist files from repo root (`.gitignore`).
 | Piece | Location |
 |-------|----------|
 | Default (new sessions) | `SettingsView` → `.agents` tab (viewer + "Default agent for new sessions" picker → `grokbuild.selectedAgent`) |
-| Per-session override | `ChatView.agentStatusPill` → `ChatStore.setSessionAgent` (persisted in `SavedSessionRecord.agent`) |
-| Discovery | `GrokCLIService.listAgents(cwd:)` → `GrokAgentInfo` (parses `agents` from `grok inspect --json`); loaded lazily by `ChatStore.loadDiscoveredAgentsIfNeeded` for the pill |
-| Built-in options | `GrokAgentProfiles.builtInOptions` (Default only) — shared by Settings + pill |
+| Per-session override | `ChatStore.setSessionAgent` (persisted in `SavedSessionRecord.agent`); the picker is not permanent chat chrome |
+| Discovery | `GrokCLIService.listAgents(cwd:)` → `GrokAgentInfo` (parses `agents` from `grok inspect --json`) |
+| Built-in options | `GrokAgentProfiles.builtInOptions` (Default only), used by Settings and backend launch policy |
 | Selection → launch | `ChatStore.effectiveAgentSelection` → `GrokAgentProfiles.launchArgument(for:)` → `--agent` |
 | **Custom subagents (roles)** | `SettingsView` → `.agents` tab "Custom subagents" section (`SubagentRoleEditor`) → `SubagentRoleStore` writes `[subagents.roles.*]` in `~/.grok/config.toml` + prompt files |
 
@@ -543,22 +561,22 @@ grok owns scheduling (`scheduler_create` / `scheduler_list` / `scheduler_delete`
 | Model + parsing | `ScheduledTaskStore.swift` — `ScheduledTask`, `SchedulerToolParsing` (detect/parse scheduler `session/update` payloads), `ScheduledTaskTracker` (accumulates list, correlating `tool_call` rawInput with completing `tool_call_update` rawOutput) |
 | ACP event | `GrokProcess` yields `AcpEvent.schedulerActivity(payload:)` for any `tool_call`/`tool_call_update` whose `_meta."x.ai/tool".name` starts `scheduler_` (or rawOutput `type` starts `scheduler`) |
 | Store | `ChatStore.scheduledTasks` (updated from `schedulerActivity`); actions `refreshScheduledTasks()` (drives `scheduler_list`), `createScheduledTask(interval:prompt:)` (sends `/loop`), `cancelScheduledTask(_:)` (drives `scheduler_delete`) — all via prompts, so they cost a turn |
-| Chat UI | `ChatView.tasksStatusPill` — lists tasks (interval + prompt + next fire), Cancel per task, Refresh Tasks |
+| Chat UI | No permanent task pill; `/loop` remains a backend/CLI command and its observed state stays in `ChatStore.scheduledTasks` |
 
 `scheduler_list` output is authoritative (replaces the mirror); create/delete update it incrementally. It only reflects activity seen in the live session — tasks made in the grok TUI or another session appear after a refresh. Schedules fire only while the session's grok process is alive (LRU-capped).
 
 **Wire caveats (verified live, grok 0.2.93):** the completing `tool_call_update` carries `rawOutput` but no `_meta`, and `rawOutput.type` is CamelCase (`SchedulerList`), so detection matches `_meta` name **or** a case-insensitive `rawOutput.type` prefix. The `/loop` slash command is handled by the CLI and emits **no** scheduler tool call, so the pill updates on **Refresh** (or when grok schedules via its tool, e.g. natural-language requests).
 
-### Background tasks (richer Tasks pill)
+### Background tasks and subagent evidence
 
 Extends the Tasks pill beyond scheduled `/loop` tasks to mirror background shells, monitors, and subagents observed via ACP.
 
 | Piece | Location |
 |-------|----------|
 | Model + parsing | `BackgroundTaskStore.swift` — `BackgroundActivity`, `BackgroundToolParsing`, `BackgroundTaskTracker` |
-| ACP event | `GrokProcess` yields `AcpEvent.backgroundActivity(payload:)` for `run_terminal_command` (when `background` in rawInput), `monitor`, `spawn_subagent`, `kill_command_or_subagent`, `get_command_or_subagent_output`, plus scheduler tools |
-| Store | `ChatStore.backgroundActivities` (also keeps `scheduledTasks` in sync) |
-| Chat UI | `ChatView.tasksStatusPill` — sections: Scheduled, Background commands, Monitors, Subagents |
+| ACP event | `GrokProcess` yields `AcpEvent.backgroundActivity(payload:)` for observed background tool calls and typed `subagentSpawned` / `subagentFinished` events for authoritative backend lifecycle updates |
+| Store | `ChatStore.backgroundActivities` is the correlated presentation projection; `subagentSpawnedEvents` / `subagentFinishedEvents` retain exact-once, generation-bound authoritative receipts |
+| Chat UI | `ActivitySidebar` shows every spawn-created worker with terminal receipt metadata, wait receipts, and explicit unknown/orphaned status; the rest remains backend/store evidence rather than permanent chrome |
 
 ### Rhai workflows (distinct from skill chips)
 
@@ -569,7 +587,7 @@ grok's **Rhai workflow engine** (`.grok/workflows/`, `/workflow`, `/workflows`) 
 | Config toggle | `WorkflowsConfigStore` — `[workflows] enabled` in `~/.grok/config.toml` (shared with grok TUI); `SettingsView` → `.workflows` (`WorkflowsSettingsPane`); posts `.workflowsConfigChanged` |
 | Runs mirror | `WorkflowRunStore.swift`, `ChatStore.workflowRuns`, `AcpEvent.workflowActivity` |
 | Saved scripts | `SavedWorkflowStore.swift`, `SavedWorkflowsPanel.swift` |
-| Chat UI | `ChatView.workflowsStatusPill` — runs, saved workflows, deep research, Open Workflow Settings |
+| Chat UI | Composer command menu/slash commands; workflow runs remain backend/CLI state and are not rendered as a permanent status pill |
 
 ### Session goals (`/goal`)
 
@@ -625,7 +643,7 @@ grok owns memory storage, indexing, search, and first-turn injection ([`13-memor
 | Launch flag | `GrokLaunchOptions.experimentalMemory`; `GrokMemoryFlag.argument(noMemory:experimentalMemory:)` resolves the single flag; `ChatStore.restartProcess` sets `experimentalMemory: memoryEnabled`, `noMemory: !memoryEnabled` |
 | Files | `MemoryStore.swift` — enumerate `~/.grok/memory/` (global `MEMORY.md`, `<slug-hash>/MEMORY.md`, `<slug-hash>/sessions/*.md` newest-first); `readContents`, `deleteSessionFile` (session-only guard), `appendGlobalNote` (+ pure `appendingNote`), `revealInFinder` |
 | Browser UI | `MemoryBrowserPanel.swift` — grouped list + read-only preview; copy path / reveal / delete session log (with confirm) |
-| Chat UI | `ChatView.memoryStatusPill` — **shown only while memory is enabled** (hidden when off; label is just "Memory"): Browse Memory Files…, Remember… (writes global note via `ChatStore.remember`), Open Memory Settings |
+| Chat UI | No permanent memory control in the session strip; memory stays in Settings/backend launch state |
 
 **Enable/disable is a launch flag, app-scoped** (not `config.toml`), so the grok TUI is unaffected. `--no-memory` has absolute priority in grok, so the app never emits both flags.
 
@@ -830,9 +848,9 @@ Menu **Simulate Updates** (`#if DEBUG` only — use `make run-debug`, not `make 
 
 ### Main window (`ContentView`)
 
-Minimum size **1100×720** and default logical canvas **1440×900** (`MainWindowLayout` via `AppDelegate`). On first launch (no saved frame) new main windows fill the current display's available frame, matching the usable canvas of a 13-inch Apple Silicon MacBook Air instead of opening as a floating utility; on later launches the user's saved window frame is restored via the `"MainWindow"` autosave. Displays smaller than the minimum get a minimum-size frame with the title bar pinned on-screen. The titlebar and chat toolbar omit separator rules. The project sidebar stays compact (220–280 pt) when visible and can collapse into a full-width work canvas; the leading toolbar button restores it. `SidebarVisibility` owns the persisted session preference, while Settings always suppresses the project sidebar and uses only its own compact navigation rail. The toolbar keeps sidebar/new-session controls visible on the leading edge, with direct Settings access and one overflow menu on the trailing edge. The transcript centers in a 760 pt reading column, the matte composer is bounded at 820 pt, and every Settings pane uses the shared centered 760 pt detail column. Project/session controls are visible by default because project, branch, process/model receipt, agent, automation, workflow, task, and memory state are primary workbench context. The compact receipt menu is keyboard reachable and exposes only redacted generation-bound fields. Skills, workflows, research, and imagine commands share one menu instead of occupying permanent chip rows. The empty state is titled **Build Workspace** and its four cards map architecture, implement a scoped change, review the working tree, and diagnose build/test failures.
+Minimum size **1100×720** and default logical canvas **1440×900** (`MainWindowLayout` via `AppDelegate`). On first launch (no saved frame) new main windows fill the current display's available frame, matching the usable canvas of a 13-inch Apple Silicon MacBook Air instead of opening as a floating utility; on later launches the user's saved window frame is restored via the `"MainWindow"` autosave. Displays smaller than the minimum get a minimum-size frame with the title bar pinned on-screen. The titlebar and chat toolbar omit separator rules. The project sidebar stays compact (220–280 pt) when visible and can collapse into a full-width work canvas; the leading toolbar button restores it. `SidebarVisibility` owns the persisted session preference, while Settings always suppresses the project sidebar and uses only its own compact navigation rail. The toolbar keeps sidebar/new-session controls visible on the leading edge, with direct Settings access and one overflow menu on the trailing edge. The transcript centers in a 760 pt reading column, the matte composer is bounded at 820 pt, and every Settings pane uses the shared centered 760 pt detail column. Mode and submission actions remain visible by default; workspace telemetry and advanced session controls are one click away under **Details**. The compact receipt menu is keyboard reachable and exposes only redacted generation-bound fields. Skills, workflows, research, and imagine commands share one menu instead of occupying permanent chip rows. The empty state is titled **Build Workspace** and its four cards map architecture, implement a scoped change, review the working tree, and diagnose build/test failures.
 
-`AppTheme.swift` owns the monochrome graphite palette, flat matte surfaces, compact 11/14/17 pt native SF type scale, restrained 4/6/8 pt radii, layout widths, `GrokChromeButtonStyle`, and the `grokGlassSurface` modifier. Main/Settings toolbar controls and every composer action use at least 36×36 hit targets with content shapes plus hover, pressed, focus, disabled, and busy-compatible states. `ContentView.AppRoute` is the single main/settings route; Settings reopens its last tab, contextual links select a requested tab, and Session or Escape returns to the same active session. Decorative color, assistant avatars, and capsule treatments are removed; assistant output is labeled **Build agent**, and monospace is reserved for actual commands, code, and diagnostic logs. `ChatTranscriptLayout` attaches the current turn's Thinking disclosure and live Tool activity immediately before the streaming or most recent assistant message, so a web page or tool receipt cannot mount below the answer and hijack bottom-follow; when the latest turn has no assistant answer (a failed turn removes its empty reply), the disclosures fall back to the transcript tail below the prompt so the trace is never lost or attached to an older answer. ACP text is passed through `StreamingTextBuffer`, which coalesces tiny chunks and paces unusually large web-answer bursts over adaptive 20 ms frames before finalizing the turn. The transcript follows a dedicated bottom anchor during streaming and repeats instant scroll passes through the next ~800 ms of layout settlement; this covers one-shot final chunks and delayed rich-text/WebKit sizing that would otherwise put the answer below the composer after the first pre-layout scroll. Stop and the **Agent working…** status use static symbols/text: a periodic indicator inside the transcript's `LazyVStack` can continuously invalidate a long session while a provider is silent and pin a CPU core. The composer model control is one native `Menu` with model choices directly visible and a compact Effort submenu; stable accessibility identifiers keep it distinct from the neighboring mode menu. Fresh lazy tabs seed the hammer menu from `GrokCommandCatalog`; an empty catalog still opens a `/`-browse action, so the control is never a dead button before the first process launch. Tool rows use the same 36-point target, show running/done/failed state, and expose selectable expandable failure receipts. The legacy modifier name remains to avoid pointless call-site churn; its implementation has no material or highlight gradient and only a minimal composer shadow. `AppDelegate` forces the dark appearance, transparent title bar, and screen-filling launch frame.
+`AppTheme.swift` owns the monochrome graphite palette, flat matte surfaces, compact 11/14/17 pt native SF type scale, restrained 4/6/8 pt radii, layout widths, `GrokChromeButtonStyle`, and the `grokGlassSurface` modifier. Main/Settings toolbar controls and every composer action use at least 36×36 hit targets with content shapes plus hover, pressed, focus, disabled, and busy-compatible states. The vertically growing text editor overlays `ComposerCursorRegion`, a click-through `NSViewRepresentable` with one AppKit I-beam cursor rectangle exactly matching the editor bounds. A native tracking area reasserts that cursor on enter, movement, and cursor-update events and restores the arrow on exit; controls and the surrounding workbench therefore retain the normal arrow without SwiftUI `onHover`, cursor push/pop stacks, or timing heuristics. `ContentView.AppRoute` is the single main/settings route; Settings reopens its last tab, contextual links select a requested tab, and Session or Escape returns to the same active session. Decorative color, assistant avatars, and capsule treatments are removed; assistant output is labeled **Build agent**, and monospace is reserved for actual commands, code, and diagnostic logs. `ChatTranscriptLayout` attaches the current turn's Thinking disclosure and live Tool activity immediately before the streaming or most recent assistant message, so a web page or tool receipt cannot mount below the answer and hijack bottom-follow; when the latest turn has no assistant answer (a failed turn removes its empty reply), the disclosures fall back to the transcript tail below the prompt so the trace is never lost or attached to an older answer. ACP text is passed through `StreamingTextBuffer`, which coalesces tiny chunks and paces unusually large web-answer bursts over adaptive 20 ms frames before finalizing the turn. `StreamingMarkdownPresentation` withholds only an unfinished code fence or table behind an explicit formatting label; it never rewrites message content or durable logs. Once settled, `MarkdownTableLayout` fills the actual transcript width using bounded content-aware columns and uses horizontal scrolling only when minimum readable widths do not fit. Mermaid is either rendered by its visible-only WebKit wrapper or shown as a labeled, copyable Mermaid code fallback. The transcript follows a dedicated bottom anchor during streaming and repeats instant scroll passes through the next ~800 ms of layout settlement; this covers one-shot final chunks and delayed rich-text/WebKit sizing that would otherwise put the answer below the composer after the first pre-layout scroll. Stop and the **Agent working…** status use static symbols/text: a periodic indicator inside the transcript's `LazyVStack` can continuously invalidate a long session while a provider is silent and pin a CPU core. The composer model control is one native `Menu` with model choices directly visible and a compact Effort submenu; stable accessibility identifiers keep it distinct from the neighboring mode menu. Fresh lazy tabs seed the hammer menu from `GrokCommandCatalog`; an empty catalog still opens a `/`-browse action, so the control is never a dead button before the first process launch. Tool rows use the same 36-point target, show running/done/failed state, and expose selectable expandable failure receipts. The legacy modifier name remains to avoid pointless call-site churn; its implementation has no material or highlight gradient and only a minimal composer shadow. `AppDelegate` forces the dark appearance, transparent title bar, and screen-filling launch frame.
 
 `ContentView` keys `ChatView` by `ChatStore.tabSessionID`. Switching tabs therefore creates a fresh scroll/input view identity instead of carrying a long transcript's scroll offset into a new session and hiding the welcome state off-screen. The composer draft is exempt from that reset: `ChatView` mirrors its input into `ChatStore.composerDraft` (in-memory, per tab, not persisted) and restores it on appear, so switching tabs and back does not lose a half-written prompt. `ComposerSubmissionPolicy` clears the draft only after `ChatStore.send` accepts it and only if the user has not changed the text while startup was resolving; a failed lazy resume or typing race cannot erase work. Starting-state copy distinguishes **Starting agent…** from **Resuming session…**.
 
@@ -854,11 +872,12 @@ Minimum size **1100×720** and default logical canvas **1440×900** (`MainWindow
 |------|------|
 | `AppTheme.swift` | Neutral graphite palette, typography, layout widths, radii, and reusable matte surface |
 | `SidebarView.swift` | Collapsible project/session navigation, pins, on-demand filter, model/running/last-used metadata, hover/context rename and close actions, settings entry |
-| `ChatView.swift` | Centered work transcript, matte composer, compact model/effort menu, consolidated command menu, visible workbench status controls, goal banner, build-oriented four-card empty state |
+| `ChatView.swift` | Centered work transcript, one-to-eight-line matte composer, visible mode/command/submission controls, progressive model/context/Git/project/tool/Activity details, goal banner, build-oriented four-card empty state |
+| `ActivitySidebar.swift` | Pure native renderer for separate generation-bound `Live` and authoritative `Settled` read models; no lifecycle or worker state lives in SwiftUI |
 | `ComposerViews.swift` | File chips, workflow chips, goal banner, plan/question cards |
 | `GrokChatChrome.swift` | Shared session chrome |
-| `RichMessageView.swift` / `MessageBubble.swift` | Compact avatar-free build-agent results, structured Markdown blocks (headings, lists, quotes, one- or multi-column tables, code, dividers), thinking, tools, and permissions. Thinking is attached above its answer by `ChatTranscriptLayout`. Markdown parsing runs in detached utility work and reuses the bounded process-local `RichContentCache`, keyed by message identity, content digest, width, and render version. Native Markdown links receive accent/underline treatment and distinct accessibility link elements. Mermaid/display-LaTeX (`$$…$$` and `\\[…\\]`) use visible-only `WKWebView` wrappers with cached sizing, deterministic accessibility fallback labels, and explicit dismantling that stops loading and clears delegates/HTML. Tables expose a summary plus header/cell labels. Inline `$…$`/`\\(…\\)` math is normalized to readable native text inside its original paragraph or table cell, so formulas cannot split Markdown tables; dollar spans still require math signals (not currency/`$PATH`). |
-| `PreviewPane.swift` | Diff detection from assistant messages; apply/commit |
+| `RichMessageView.swift` / `MessageBubble.swift` | Compact avatar-free build-agent results, structured Markdown blocks (headings, lists, quotes, one- or multi-column tables, code, dividers), thinking, tools, and permissions. Thinking is attached above its answer by `ChatTranscriptLayout`. `StreamingMarkdownPresentation` holds incomplete code/table constructs behind an explicit temporary label; it is presentation-only. Final Markdown parsing runs in detached utility work and reuses the bounded process-local `RichContentCache`, keyed by message identity, content digest, width, and render version. `MarkdownTableLayout` gives fitting tables the reading width with content-aware bounded columns and retains horizontal overflow for genuinely wide data. Native Markdown links receive accent/underline treatment and distinct accessibility link elements. Mermaid/display-LaTeX (`$$…$$` and `\\[…\\]`) use visible-only `WKWebView` wrappers with cached sizing, deterministic accessibility fallback labels, and explicit dismantling that stops loading and clears delegates/HTML; Mermaid fallback is a labeled, copyable code block. Tables expose a summary plus header/cell labels. Inline `$…$`/`\\(…\\)` math is normalized to readable native text inside its original paragraph or table cell, so formulas cannot split Markdown tables; dollar spans still require math signals (not currency/`$PATH`). |
+| `PreviewPane.swift` | Selected-workspace Git status/diff review; commit/PR controls |
 | `SessionBrowserView.swift` | Resume historical grok sessions; per-row **delete** + **Clear Empty** bulk cleanup (`GrokCLIService.deleteSession` + `SessionNameStore.removeName`) |
 | `GitCheckoutSheet.swift` | Branch switch / worktree create |
 | `WorkspacePicker.swift` | Add project folder |
@@ -891,9 +910,9 @@ Defined in `ContentView.swift` (`extension Notification.Name`).
 | `.openSettingsRequested` | Settings from the application menu or toolbar (⌘,) | `ContentView.openSettings` (`.app` tab when update pending, else `.agents`) |
 | `.workspaceAgentSettingsChanged` | Reasoning effort saved | Sync effort to sibling sessions in project |
 | `.liveSessionModelChanged` | Tab model changed in composer | `persistSessionLayout()` |
-| `.liveSessionAgentChanged` | Tab session agent changed via pill | `persistSessionLayout()` |
-| `.liveSessionMessagesChanged` | Messages updated (prompt boundaries: send / turn complete / failure) | Bumps `sessionListRevision` → sidebar title cache refresh; saves that session's transcript; diff auto-selection for the active session |
-| `.subagentRolesChanged` | Custom subagent roles saved in Settings | `ChatView` refreshes `cachedCustomSubagentNames` in the agent pill |
+| `.liveSessionAgentChanged` | Tab session agent changed by backend/settings flow | `persistSessionLayout()` |
+| `.liveSessionMessagesChanged` | Messages updated (prompt boundaries: send / turn complete / failure) | Bumps `sessionListRevision` → sidebar title cache refresh; saves that session's transcript; refreshes the active selected-workspace Git snapshot without inspecting transcript text |
+| `.subagentRolesChanged` | Custom subagent roles saved in Settings | Settings/launch state refreshes; the lean chat strip stays unchanged |
 
 
 ### Updates
@@ -965,12 +984,12 @@ See `BUILDING.md` for signing, notarization, CI workflow.
 | **Permissions UI** | `ChatStore.pendingPermissions`, `MessageBubble` |
 | **Model / effort picker** | `ChatView`, `ChatStore.setModel`, `applyReasoningEffort` |
 | **Per-tab model/process truth** | `ModelExecutionState`, `GrokLaunchReceipt`, `SavedSessionRecord.modelIntent` / `modelExecutionState`, `ChatStore.bindTabSession`, `.liveSessionModelChanged` |
-| **Per-tab session agent** | `SavedSessionRecord.agentIntent`, `ChatStore.setSessionAgent` / `effectiveAgentSelection`, `ChatView.agentStatusPill`, `.liveSessionAgentChanged` |
+| **Per-tab session agent** | `SavedSessionRecord.agentIntent`, `ChatStore.setSessionAgent` / `effectiveAgentSelection`, `.liveSessionAgentChanged` |
 | **Per-project reasoning effort** | `SessionLayoutStore.saveAgentSettings`, `ChatStore.loadWorkspaceReasoningEffort` |
 | **New / resume session** | `ChatStore.startNewSession`, `resumeSession`, `GrokProcess.loadSession` |
 | **Sidebar sessions** | `ContentView` (`selectSession`, `persistSessionLayout`, LRU) |
 | **Session restore at launch** | `ContentView.restorePersistedSessions`, `SessionRestorePolicy`, `SessionTranscriptRecovery`, `ensureSessionStarted` |
-| **Continuity verifier / send gate** | `GrokSessionTranscriptImporter.importMessagesBounded`, `SessionTranscriptRecovery.verifyContinuity`, `SessionSendGate`, `ChatStore.verifyContinuityBeforeResume`, `SessionContinuityBanner` |
+| **Continuity verifier / send gate** | `GrokSessionTranscriptImporter.importMessagesBounded`, `SessionTranscriptRecovery.verifyContinuity`, `SessionSendGate`, `ChatStore.verifyContinuityBeforeResume`, `ActivitySidebar` |
 | **Recovery candidate review / Continue as New / Relink** | `GrokSessionTranscriptImporter.importTranscriptBounded`, `SessionTranscriptRecovery.recoveryCandidates`, `ChatStore.reviewRecoveryCandidates` / `continueAsNew` / `relink`, `RecoveryCandidateReviewSheet` |
 | **Lifecycle migration/integrity** | `SessionLayoutStore`, `SessionLifecycleIntegrity`, `SessionLifecycleV3Tests` |
 | **Performance signposts** | `PerformanceInstrumentation`, plus call sites in app/session/process/settings/render services |
@@ -978,22 +997,23 @@ See `BUILDING.md` for signing, notarization, CI workflow.
 | **Browser tools** | `AgentBrowserService`, `BrowserSettingsStore`, settings `.browser` (agent-browser CLI over MCP) |
 | **Session agent** | `GrokAgentProfiles`, `GrokCLIService.listAgents`, settings `.agents` |
 | **Custom subagents (roles)** | `SubagentRole` / `SubagentRoleStore` (`CustomModelSettings.swift`), `SubagentRoleEditor` in `SettingsView`, `~/.grok/config.toml` `[subagents.roles.*]` + `~/.grok/prompts/` |
-| **Scheduled tasks** | `ScheduledTaskStore.swift`, `ChatStore.scheduledTasks` + refresh/create/cancel, `ChatView.tasksStatusPill`, `AcpEvent.schedulerActivity` |
-| **Background tasks** | `BackgroundTaskStore.swift`, `ChatStore.backgroundActivities`, `AcpEvent.backgroundActivity` |
-| **Rhai workflows** | `WorkflowsConfigStore`, `WorkflowRunStore`, `SavedWorkflowStore`, `ChatView.workflowsStatusPill`, `.workflowsConfigChanged` |
+| **Scheduled tasks** | `ScheduledTaskStore.swift`, `ChatStore.scheduledTasks` + refresh/create/cancel, `AcpEvent.schedulerActivity` |
+| **Background tasks** | `BackgroundTaskStore.swift`, `ChatStore.backgroundActivities`, `ActivitySidebar`, `AcpEvent.backgroundActivity` |
+| **Run evidence projection and snapshot** | `RunEvidenceLiveProjection.swift`, `RunEvidenceSnapshot.swift`, `ChatStore.liveRunEvidenceProjection`, `ChatStore.runEvidenceSnapshot`, ordered `AcpEvent.turnCompleted`, `ContentView.recordGitReviewFiles` |
+| **Rhai workflows** | `WorkflowsConfigStore`, `WorkflowRunStore`, `SavedWorkflowStore`, composer command menu, `.workflowsConfigChanged` |
 | **Fork / share / queue** | `GrokLaunchOptions.forkSession`, `ChatStore.startForked`, `shareSession`, `promptQueue`, `btwAsideText` |
 | **Dashboard** | `SessionDashboardPanel.swift`, `ContentView.dashboardEntries` |
 | **Compat** | `CompatConfigStore`, `CompatibilitySettingsPane`, `listExternalCompat` |
 | **MCP Settings editor** | `GrokMCPServerDraft`, `GrokCLIService.mcpAddArguments` / `listMCPServers` / `doctorMCPServer`, `MCPSettingsPane` |
 | **Extension Settings inventories** | `SettingsInventoryState`, `SettingsRowOperationReceipt`, Skills/Plugins/Marketplace/Hooks panes |
-| **Memory (cross-session)** | `MemoryStore.swift`, `MemoryBrowserPanel.swift`, settings `.memory`, `GrokMemoryFlag`, `ChatView.memoryStatusPill`, `ChatStore.remember`/`isMemoryEnabled` |
+| **Memory (cross-session)** | `MemoryStore.swift`, `MemoryBrowserPanel.swift`, settings `.memory`, `GrokMemoryFlag`, `ChatStore.remember`/`isMemoryEnabled` |
 | **Computer Use** | `ComputerUseService`, `GrokBuildComputerUseMCP/main.swift`, `.computerUse` |
 | **Custom models** | `CustomModelsSettingsViewModel`, `ProviderStore`, `KeychainProviderCredentialStore`, `CustomModelStore`, `GrokConfigRepository`, `~/.grok/config.toml` |
 | **Settings state/apply contract** | `SettingsState`, `SettingsView` shared components, `ContentView.handleConfigurationChange(SettingsApplyRequest)`, `ChatStore.applySettingsRequest` / `RuntimeConfigurationReloadQueue` |
 | **Settings tab** | `SettingsView` — search pane struct by tab |
 | **MCP injection** | `ChatStore.restartProcess` → `browserMCPConfig` / `computerUseMCPConfig` |
 | **Skill install** | `BrowserSkillInstaller`, `ComputerUseSkillInstaller` |
-| **Diff review / apply** | `PreviewPane`, `ChatStore` diff detection on `Message.hasDiff` |
+| **Diff review** | `PreviewPane`, `GitService.changedFiles`, and `GitService.diffForChangedFile`; assistant diff fences are presentation-only examples |
 | **Application menus / auth UI** | `AppDelegate`, `ChatStore.authRequiredMessage`, `ChatView` |
 | **Main window / single instance** | `AppDelegate` |
 | **In-app updates** | `UpdateScheduler`, `UpdateChecker`, `AppUpdater`, `GrokCLIUpdater`, `UpdatePanel` |
@@ -1018,6 +1038,7 @@ make test    # Tests/GrokBuildTests/
 | `SliceNinePerformanceTests.swift` | Off-main restore/parsing contracts, rich-content cache identity and separation, bounded cache behavior, and WebKit sizing-cache boundaries |
 | `SessionLifecycleV3Tests.swift` | Untouched/idempotent v2 migration, authenticated v3 rollback, semantic intent/model-receipt cycles, continuity-receipt/fork-ledger/pending-recovery cycles, true MRU/ties/A→B, divergence/no-candidate decisions, flush receipts, normalization/HMAC vectors, and Slice 0 fixture/signpost coverage |
 | `GrokSessionTranscriptImporterTests.swift` | Provenance-rich row import, root-final/worker separation, quarantine fail-closed behavior, exact-binding idempotence, explicit candidate evidence, no heuristic auto-binding, and Continue as New / Relink lifecycle contracts |
+| `ReasoningSummaryPresentationTests.swift` | Secret-safe ACP summary fixture order/uniqueness, explicit chunk whitespace, presentation-only boundaries, compact/expanded bounds, collapsed settlement, and ordered accessibility/source-persistence contracts |
 | `BrowserIntegrationTests.swift` | Browser MCP config, skill install, settings round-trip, external browser launch args, presets |
 | `AgentsAndCapabilitiesTests.swift` | Agent-profile mapping/discovery, permission-mode labels and exact launch arguments, and custom subagent role validation/TOML rewrite |
 | `ScheduledTaskTests.swift` | Scheduler tool detection + `ScheduledTaskTracker` (list authoritative, create prompt-correlation, delete, casing tolerance) |
@@ -1030,7 +1051,7 @@ make test    # Tests/GrokBuildTests/
 | `SettingsExtensionContractTests.swift` | Current/legacy/malformed compatibility schema, exact MCP argument/env/header/scope serialization, secret redaction, and stale inventory retention |
 | `AppMenuTests.swift` | Standard application-menu update title helpers |
 | `MarkdownBlockParserTests.swift` | Inline-math normalization/table preservation; Markdown blocks; display-LaTeX delimiters; native link parsing/styling; spoken equation and table accessibility labels |
-| `ChatTranscriptLayoutTests.swift` | Thinking placement, post-layout auto-scroll, diff markers, model-menu effort names, starting/resuming copy, and draft-retention policy |
+| `ChatTranscriptLayoutTests.swift` | Thinking placement, post-layout auto-scroll, assistant diff-example labels, model-menu effort names, starting/resuming copy, and draft-retention policy |
 | `AcpLineBufferTests.swift` | Byte-wise ACP line framing incl. UTF-8 codepoints split across pipe reads |
 | `ACPClientContractTests.swift` | Terminal lifecycle, bounded UTF-8 output, command compatibility, tool failure parsing, generation-bound model reducer/ACP fixtures, model fallback, composer targets, static progress, off-main settings work, restored-view bottom-follow, updater freshness, and workbench-not-chatbot source contracts |
 | `OpenRouterOAuthTests.swift` | PKCE/authorization/exchange parsing plus real loopback capture and a cancellation-safe timeout |
@@ -1082,7 +1103,7 @@ The Settings App pane observes `.grokBuildUpdateStateChanged` while mounted and 
 
 The follow-up workbench pass adds five contracts:
 
-4. **GrokBuild is presented as a project workbench.** Session controls are visible by default, the empty state is a Build Workspace with build/review actions, and assistant output uses the neutral Build agent label.
+4. **GrokBuild is presented as a project workbench.** The empty state is a Build Workspace with build/review actions, the permanent status strip is lean, optional run evidence lives in the native Activity drawer, and assistant output uses the neutral Build agent label.
 5. **Permission names must match CLI semantics.** Ask, Auto, and Always approve are interactive choices. `dontAsk` is Deny unapproved (CI); Always approve alone emits `--always-approve`. Never silently widen a stored deny-by-default preference.
 6. **Draft clearing is transactional.** Clear only after an accepted send and only when the draft still matches what was submitted. Lazy-resume failure and concurrent typing preserve the current draft.
 7. **Rich output exposes semantic artifacts.** Links are separate accessibility children; equations and diagrams hide WebKit fragments behind one spoken label; tables expose summaries, headers, and cells.

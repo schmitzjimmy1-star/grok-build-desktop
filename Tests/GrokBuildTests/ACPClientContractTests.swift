@@ -2,6 +2,263 @@ import XCTest
 @testable import GrokBuild
 
 final class ACPClientContractTests: XCTestCase {
+    func testQuestionReducerCoalescesOnlyTheSameAuthoritativeRequestIdentity() {
+        let question = QuestionItem(
+            id: "audience",
+            text: "Which audience should this target?",
+            options: [QuestionOption(label: "Consumer", description: nil)],
+            multiSelect: false
+        )
+        let original = QuestionRequest(
+            id: AnyHashable(42),
+            sessionId: "session",
+            questions: [question],
+            isResolved: false,
+            answerSummary: nil
+        )
+        let replay = QuestionRequest(
+            id: AnyHashable(42),
+            sessionId: "session",
+            questions: [question],
+            isResolved: false,
+            answerSummary: "updated"
+        )
+
+        var pending = QuestionRequest.merging(original, into: [])
+        pending = QuestionRequest.merging(replay, into: pending)
+
+        XCTAssertEqual(pending.count, 1)
+        XCTAssertEqual(pending[0].id, replay.id)
+        XCTAssertEqual(pending[0].answerSummary, "updated")
+    }
+
+    func testIdenticalQuestionContentWithDifferentRPCIDsRemainsTwoRequests() {
+        let question = QuestionItem(
+            id: "audience",
+            text: "Which audience should this target?",
+            options: [],
+            multiSelect: false
+        )
+        let first = QuestionRequest(
+            id: AnyHashable(42),
+            sessionId: "session",
+            questions: [question],
+            isResolved: false,
+            answerSummary: nil
+        )
+        let second = QuestionRequest(
+            id: AnyHashable(43),
+            sessionId: "session",
+            questions: [question],
+            isResolved: false,
+            answerSummary: nil
+        )
+
+        var pending = QuestionRequest.merging(first, into: [])
+        pending = QuestionRequest.merging(second, into: pending)
+
+        XCTAssertEqual(pending.map(\.id), [first.id, second.id])
+    }
+
+    func testDifferentQuestionsRemainIndependent() {
+        let first = QuestionRequest(
+            id: AnyHashable(1),
+            sessionId: "session",
+            questions: [QuestionItem(id: "one", text: "First?", options: [], multiSelect: false)],
+            isResolved: false,
+            answerSummary: nil
+        )
+        let second = QuestionRequest(
+            id: AnyHashable(2),
+            sessionId: "session",
+            questions: [QuestionItem(id: "two", text: "Second?", options: [], multiSelect: false)],
+            isResolved: false,
+            answerSummary: nil
+        )
+
+        var pending = QuestionRequest.merging(first, into: [])
+        pending = QuestionRequest.merging(second, into: pending)
+
+        XCTAssertEqual(pending.map(\.id), [first.id, second.id])
+    }
+
+    func testInteractionIdentityIncludesBackendSession() {
+        XCTAssertTrue(ACPInteractionRequestIdentity.matches(
+            lhsID: AnyHashable(7),
+            lhsSessionID: "backend-a",
+            rhsID: AnyHashable(7),
+            rhsSessionID: "backend-a"
+        ))
+        XCTAssertFalse(ACPInteractionRequestIdentity.matches(
+            lhsID: AnyHashable(7),
+            lhsSessionID: "backend-a",
+            rhsID: AnyHashable(7),
+            rhsSessionID: "backend-b"
+        ))
+        XCTAssertFalse(ACPInteractionRequestIdentity.ownsActiveSession(
+            "backend-a",
+            activeSessionID: "backend-b"
+        ))
+    }
+
+    func testPlanReplayPreservesPreviouslyObservedPlanText() {
+        let current = ExitPlanRequest(
+            id: AnyHashable(9),
+            sessionId: "backend",
+            planText: "# Native plan",
+            isResolved: false,
+            verdict: nil
+        )
+        let replay = ExitPlanRequest(
+            id: AnyHashable(9),
+            sessionId: "backend",
+            planText: "",
+            isResolved: false,
+            verdict: nil
+        )
+
+        XCTAssertEqual(ExitPlanRequest.merging(replay, into: current).planText, "# Native plan")
+    }
+
+    @MainActor
+    func testPlanApprovalAnswersOneACPRequestWithoutCreatingASecondPrompt() async throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("grokbuild-plan-interaction-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let rpcLogURL = root.appendingPathComponent("rpc.log")
+        let scriptURL = root.appendingPathComponent("fake-grok")
+        let script = """
+        #!/bin/sh
+        prompt_rpc_id=''
+        while IFS= read -r line; do
+          printf '%s\n' "$line" >> '\(rpcLogURL.path)'
+          id=$(printf '%s' "$line" | sed -E 's/.*"id":([0-9]+).*/\\1/')
+          case "$line" in
+            *'"method":"initialize"'*) printf '{"jsonrpc":"2.0","id":%s,"result":{}}\n' "$id" ;;
+            *'"method":"session/new"'*) printf '{"jsonrpc":"2.0","id":%s,"result":{"sessionId":"plan-backend","models":{"currentModelId":"grok-4.5","availableModels":[]}}}\n' "$id" ;;
+            *'"method":"session/set_model"'*) printf '{"jsonrpc":"2.0","id":%s,"result":{"_meta":{"model":{"Ok":"grok-4.5"}}}}\n' "$id" ;;
+            *'"method":"session/prompt"'*)
+              prompt_rpc_id="$id"
+              printf '{"jsonrpc":"2.0","id":77,"method":"_x.ai/exit_plan_mode","params":{"sessionId":"plan-backend","toolCallId":"plan-tool","planContent":"# One native plan"}}\n'
+              ;;
+            *'"outcome":"approved"'*)
+              printf '{"jsonrpc":"2.0","method":"_x.ai/session_notification","params":{"sessionId":"plan-backend","update":{"sessionUpdate":"turn_completed","stop_reason":"end_turn"}}}\n'
+              printf '{"jsonrpc":"2.0","id":%s,"result":{"stopReason":"end_turn"}}\n' "$prompt_rpc_id"
+              ;;
+          esac
+        done
+        """
+        try script.write(to: scriptURL, atomically: true, encoding: .utf8)
+        try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: scriptURL.path)
+
+        GrokProcess.cliOverrideForTests = scriptURL
+        defer { GrokProcess.cliOverrideForTests = nil }
+        let store = ChatStore()
+        store.bindTabSession(UUID(), savedModel: "grok-4.5")
+        await store.start(workspace: Workspace(name: "plan-interaction", path: root))
+
+        let sendTask = Task { @MainActor in await store.sendAndWait("Show one native plan") }
+        for _ in 0..<200 where store.pendingExitPlan == nil {
+            await Task.yield()
+            try await Task.sleep(for: .milliseconds(5))
+        }
+        guard let request = store.pendingExitPlan else {
+            let rpc = (try? String(contentsOf: rpcLogURL, encoding: .utf8)) ?? "missing log"
+            let failure = store.lastError ?? "none"
+            XCTFail("Missing plan request; process=\(store.process.state), connection=\(store.connectionState), error=\(failure), rpc=\(rpc)")
+            await store.shutdownPermanently()
+            _ = await sendTask.value
+            return
+        }
+        XCTAssertEqual(request.id, AnyHashable(77))
+        XCTAssertEqual(request.sessionId, "plan-backend")
+        store.respondToExitPlan(request, verdict: .approved)
+
+        let sent = await sendTask.value
+        XCTAssertTrue(sent)
+        XCTAssertNil(store.pendingExitPlan)
+        XCTAssertEqual(store.messages.filter { $0.role == .user }.map(\.content), ["Show one native plan"])
+
+        let rpcLines = try String(contentsOf: rpcLogURL, encoding: .utf8)
+            .split(whereSeparator: \.isNewline)
+        XCTAssertEqual(rpcLines.filter { $0.contains("\"method\":\"session/prompt\"") }.count, 1)
+        XCTAssertEqual(rpcLines.filter {
+            $0.contains("\"id\":77") && $0.contains("\"outcome\":\"approved\"")
+        }.count, 1)
+        XCTAssertFalse(rpcLines.contains { $0.contains("[Plan approved]") })
+        await store.shutdownPermanently()
+    }
+
+    func testSubagentTerminalDeduplicationUsesWorkerLifecycleIdentity() {
+        let tabID = UUID()
+        let first = SubagentFinishedEvent(
+            identity: ACPEventIdentity(
+                localTabID: tabID,
+                backendSessionID: "parent",
+                processGeneration: 4,
+                backendEventID: "event-a"
+            ),
+            childID: "child",
+            status: "completed",
+            durationMilliseconds: 100,
+            turns: 1,
+            toolCallCount: 2,
+            tokenCount: 3,
+            redactedError: nil
+        )
+        let replay = SubagentFinishedEvent(
+            identity: ACPEventIdentity(
+                localTabID: tabID,
+                backendSessionID: "parent",
+                processGeneration: 4,
+                backendEventID: "event-b"
+            ),
+            childID: "child",
+            status: "completed",
+            durationMilliseconds: 100,
+            turns: 1,
+            toolCallCount: 2,
+            tokenCount: 3,
+            redactedError: nil
+        )
+
+        XCTAssertEqual(first.deduplicationKey, replay.deduplicationKey)
+        XCTAssertFalse(first.deduplicationKey.contains("event-a"))
+    }
+
+    func testSubagentLifecycleErrorsAreRedactedAndBounded() throws {
+        let secret = "super-secret-worker-token"
+        let raw = "token=\(secret) " + String(repeating: "failure ", count: 80)
+        let redacted = try XCTUnwrap(GrokProcess.redactedLifecycleText(raw))
+
+        XCTAssertFalse(redacted.contains(secret))
+        XCTAssertTrue(redacted.contains("<redacted>"))
+        XCTAssertLessThanOrEqual(redacted.count, 280)
+    }
+
+    func testACPEventsStayOnTheParentSessionWhenWorkerSessionsStream() {
+        let params: [String: Any] = [
+            "sessionId": "worker-session",
+            "update": ["sessionUpdate": "agent_message_chunk"]
+        ]
+        let update = params["update"] as? [String: Any]
+
+        XCTAssertEqual(
+            GrokProcess.eventSessionID(from: params, update: update),
+            "worker-session"
+        )
+        XCTAssertFalse(
+            GrokProcess.eventBelongsToSession("worker-session", currentSessionID: "parent-session")
+        )
+        XCTAssertTrue(
+            GrokProcess.eventBelongsToSession(nil, currentSessionID: "parent-session")
+        )
+        XCTAssertTrue(
+            GrokProcess.eventBelongsToSession("parent-session", currentSessionID: "parent-session")
+        )
+    }
+
     private enum TurnFixtureEvent {
         case chunk(String)
         case tool(String)
@@ -556,6 +813,109 @@ final class ACPClientContractTests: XCTestCase {
         XCTAssertEqual(parsed?.id, "call-1")
         XCTAssertEqual(parsed?.status, "failed")
         XCTAssertEqual(parsed?.detail, "Terminal exited with status 2")
+        XCTAssertEqual(parsed?.terminalStatus, .failed)
+        XCTAssertEqual(parsed?.diagnosticDetail, #"{"error":"tool_execution_failed","message":"Terminal exited with status 2"}"#)
+    }
+
+    func testTerminalExitReceiptOverridesTransportCompletedStatus() {
+        let parsed = GrokProcess().parseToolCall(from: [
+            "sessionUpdate": "tool_call_update",
+            "toolCallId": "call-nonzero",
+            "kind": "execute",
+            "title": "Run command",
+            "status": "completed",
+            "rawOutput": [
+                "type": "Bash",
+                "exit_code": 127,
+                "timed_out": false,
+            ],
+        ])
+
+        XCTAssertEqual(parsed?.status, "failed")
+        XCTAssertEqual(parsed?.terminalStatus, .failed)
+        XCTAssertEqual(parsed?.detail, "Command exited with status 127.")
+    }
+
+    func testTerminalArtifactReceiptRequiresAnExplicitSafeRedirection() {
+        let artifact = ToolCall(
+            id: "artifact",
+            kind: "execute",
+            title: "Write marker",
+            rawInput: [
+                "command": "printf '%s\\n' marker > /tmp/grokbuild-artifact.txt && cat /tmp/grokbuild-artifact.txt"
+            ]
+        )
+        let stdoutOnly = ToolCall(
+            id: "stdout",
+            kind: "execute",
+            title: "Print marker",
+            rawInput: ["command": "printf '%s\\n' marker"]
+        )
+        let discarded = ToolCall(
+            id: "discarded",
+            kind: "execute",
+            title: "Discard marker",
+            rawInput: ["command": "printf marker > /dev/null"]
+        )
+
+        XCTAssertEqual(artifact.writtenFilePath, "/tmp/grokbuild-artifact.txt")
+        XCTAssertNil(stdoutOnly.writtenFilePath)
+        XCTAssertNil(discarded.writtenFilePath)
+    }
+
+    func testToolCallParserKeepsTargetAndExplicitRetryCorrelationWithoutInventingIt() {
+        let process = GrokProcess()
+        let correlated = process.parseToolCall(from: [
+            "sessionUpdate": "tool_call_update",
+            "toolCallId": "call-retry",
+            "status": "completed",
+            "retryOfToolCallId": "call-failed",
+            "rawInput": ["url": "https://example.com/source"],
+        ])
+        let uncorrelated = process.parseToolCall(from: [
+            "sessionUpdate": "tool_call_update",
+            "toolCallId": "call-unrelated",
+            "status": "completed",
+            "rawInput": ["url": "https://example.com/source"],
+        ])
+
+        XCTAssertEqual(correlated?.target, "https://example.com/source")
+        XCTAssertEqual(correlated?.retryOfToolCallID, "call-failed")
+        XCTAssertNil(uncorrelated?.retryOfToolCallID)
+    }
+
+    func testToolTerminalStatusNormalizationKeepsOnlyKnownTerminalStates() {
+        XCTAssertEqual(ToolCallTerminalStatus.from(rawStatus: "completed"), .succeeded)
+        XCTAssertEqual(ToolCallTerminalStatus.from(rawStatus: "rejected"), .failed)
+        XCTAssertEqual(ToolCallTerminalStatus.from(rawStatus: "canceled"), .cancelled)
+        XCTAssertEqual(ToolCallTerminalStatus.from(rawStatus: "superseded"), .stale)
+        XCTAssertEqual(ToolCallTerminalStatus.from(rawStatus: "backend_mystery"), .unknown)
+        XCTAssertNil(ToolCallTerminalStatus.from(rawStatus: "running"))
+        XCTAssertNil(ToolCallTerminalStatus.from(rawStatus: nil))
+    }
+
+    func testToolSettlementChromeKeepsFailureSeparateFromParentCompletion() throws {
+        let repositoryRoot = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        let chrome = try String(
+            contentsOf: repositoryRoot.appendingPathComponent("GrokBuild/Views/GrokChatChrome.swift"),
+            encoding: .utf8
+        )
+        let store = try String(
+            contentsOf: repositoryRoot.appendingPathComponent("GrokBuild/Services/ChatStore.swift"),
+            encoding: .utf8
+        )
+
+        XCTAssertTrue(chrome.contains("Diagnostic payload"))
+        XCTAssertTrue(chrome.contains("Failed · Recovered"))
+        XCTAssertTrue(chrome.contains("tool calls failed"))
+        XCTAssertTrue(chrome.contains("Run summary"))
+        XCTAssertTrue(chrome.contains("explicit backend retry correlation"))
+        XCTAssertTrue(chrome.contains("turnOutcome.displayName"))
+        XCTAssertTrue(store.contains("settleToolCallsAtTurnBarrier()"))
+        XCTAssertTrue(store.contains("latestTurnOutcome = .completed"))
     }
 
     func testFreshModelCatalogFallbackIsCurrentGrok() {
@@ -725,7 +1085,7 @@ final class ACPClientContractTests: XCTestCase {
         XCTAssertTrue(source.contains("updateRevision &+= 1"))
     }
 
-    func testWorkbenchStatusIsVisibleAndAgentIsNotPresentedAsAChatbot() throws {
+    func testWorkbenchChromeKeepsBackendReceiptsInTheActivityDrawer() throws {
         let repositoryRoot = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent()
             .deletingLastPathComponent()
@@ -734,14 +1094,65 @@ final class ACPClientContractTests: XCTestCase {
             contentsOf: repositoryRoot.appendingPathComponent("GrokBuild/Views/ChatView.swift"),
             encoding: .utf8
         )
+        let contentSource = try String(
+            contentsOf: repositoryRoot.appendingPathComponent("GrokBuild/ContentView.swift"),
+            encoding: .utf8
+        )
         let bubbleSource = try String(
             contentsOf: repositoryRoot.appendingPathComponent("GrokBuild/Views/MessageBubble.swift"),
             encoding: .utf8
         )
 
-        XCTAssertTrue(chatSource.contains("@State private var showSessionControls = true"))
+        XCTAssertTrue(chatSource.contains("@State private var showActivitySidebar = false"))
+        XCTAssertTrue(chatSource.contains("private var activitySidebarToggle"))
+        XCTAssertTrue(chatSource.contains("snapshot: store.runEvidenceSnapshot"))
+        XCTAssertTrue(contentSource.contains("activeStore.recordGitReviewFiles"))
+        XCTAssertTrue(contentSource.contains("refreshGitReviewFromTranscriptBoundary"))
+        XCTAssertFalse(contentSource.contains("detectedDiffs(in:"))
+        XCTAssertFalse(contentSource.contains("applyDiffs(from:"))
+        let previewSource = try String(
+            contentsOf: repositoryRoot.appendingPathComponent("GrokBuild/Views/PreviewPane.swift"),
+            encoding: .utf8
+        )
+        XCTAssertTrue(previewSource.contains("Repository changes from Git"))
+        XCTAssertTrue(previewSource.contains("Assistant examples never appear here"))
+        XCTAssertFalse(previewSource.contains("Apply All"))
+        XCTAssertFalse(chatSource.contains("SessionContinuityBanner("))
         XCTAssertTrue(chatSource.contains("Build Workspace"))
-        XCTAssertTrue(chatSource.contains("Text(connectionSubtitle)"))
+        XCTAssertTrue(chatSource.contains("private var browserStatusIndicator"))
+        XCTAssertTrue(chatSource.contains("private var computerUseStatusIndicator"))
+        XCTAssertTrue(chatSource.contains("TextField(\"Plan or build…  / for skills\""))
+        XCTAssertTrue(chatSource.contains("@State private var showComposerDetails = false"))
+        XCTAssertTrue(chatSource.contains("private var composerDetailsToggle"))
+        XCTAssertTrue(chatSource.contains("private var composerDetailsDisclosure"))
+        XCTAssertTrue(chatSource.contains("grok-composer-details-toggle"))
+        XCTAssertTrue(chatSource.contains("ComposerDensityPolicy.minimumLineCount...ComposerDensityPolicy.maximumLineCount"))
+
+        let statusStart = try XCTUnwrap(chatSource.range(of: "private var projectStatusRow"))
+        let statusEnd = try XCTUnwrap(chatSource.range(of: "private func refreshBranchLabel", range: statusStart.upperBound..<chatSource.endIndex))
+        let statusSource = String(chatSource[statusStart.lowerBound..<statusEnd.lowerBound])
+        XCTAssertFalse(statusSource.contains("agentStatusPill"))
+        XCTAssertFalse(statusSource.contains("sessionReceiptMenu"))
+        XCTAssertFalse(statusSource.contains("workflowsStatusPill"))
+        XCTAssertFalse(statusSource.contains("tasksStatusPill"))
+        XCTAssertFalse(statusSource.contains("memoryStatusPill"))
+
+        let sidebarSource = try String(
+            contentsOf: repositoryRoot.appendingPathComponent("GrokBuild/Views/ActivitySidebar.swift"),
+            encoding: .utf8
+        )
+        let artifactSection = try XCTUnwrap(sidebarSource.range(of: "section(\"Run artifacts\""))
+        let reviewSection = try XCTUnwrap(sidebarSource.range(of: "section(\"Files in review\""))
+        XCTAssertLessThan(artifactSection.lowerBound, reviewSection.lowerBound)
+        XCTAssertTrue(sidebarSource.contains("External artifact"))
+        XCTAssertTrue(sidebarSource.contains("Files in review"))
+        XCTAssertTrue(sidebarSource.contains("section(\"Workers\""))
+        XCTAssertTrue(sidebarSource.contains("grok-activity-sidebar"))
+        XCTAssertTrue(sidebarSource.contains("let snapshot: RunEvidenceSnapshot?"))
+        XCTAssertFalse(sidebarSource.contains("store."))
+        XCTAssertTrue(contentSource.contains(".onChange(of: activeStore.gitRefreshRevision)"))
+        XCTAssertTrue(contentSource.contains("Task.sleep(for: .milliseconds(250))"))
+        XCTAssertTrue(contentSource.contains("boundedGitRefreshTask?.cancel()"))
         XCTAssertTrue(bubbleSource.contains("Text(\"Build agent\")"))
         XCTAssertFalse(bubbleSource.contains("Text(\"Grok\")"))
     }

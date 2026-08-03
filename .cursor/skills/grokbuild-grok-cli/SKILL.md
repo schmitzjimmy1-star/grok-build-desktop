@@ -42,6 +42,10 @@ The running process exposes a credential-free `GrokLaunchReceipt`. Cards and ACP
 
 Configuration reloads resume `ChatStore.durableGrokSessionID`; do not derive continuity from transient `process.sessionId` alone. A legitimate stale-load fallback reconciles the prior exact backend file and persists an explicit old-ID → new-ID recovery fork before another prompt.
 
+## Native interaction ownership
+
+Question, permission, and plan controls are thin views over direct ACP requests. Identity is the exact backend session plus JSON-RPC request id; a tool-call row may explain the request but must never supply an id to `respondToQuestion`, `respondToPermission`, or `respondToExitPlan`. Replays of one identity update one card, while distinct authoritative ids remain distinct. A decision writes one ACP response and resumes the blocked turn—never send a second marker prompt such as `[Plan approved]`, and never rewrite Grok's durable logs to make the UI appear settled.
+
 ## Session agent (`--agent`) — per tab
 
 - **Per session tab.** Each tab launches with `ChatStore.effectiveAgentSelection` → `GrokAgentProfiles.launchArgument(for:)` → `GrokLaunchOptions.agent` → `grok --agent`.

@@ -538,6 +538,57 @@ enum MarkdownTableAccessibility {
     }
 }
 
+/// Pure table sizing policy. A table fills the reading column when it fits,
+/// but preserves a usable minimum cell width and falls back to horizontal
+/// scrolling rather than crushing technical text into a fake grid.
+enum MarkdownTableLayout {
+    static let minimumColumnWidth: CGFloat = 96
+    static let maximumColumnWidth: CGFloat = 360
+
+    static func columnWidths(
+        headers: [String],
+        rows: [[String]],
+        availableWidth: CGFloat
+    ) -> [CGFloat] {
+        guard !headers.isEmpty else { return [] }
+        let columnCount = headers.count
+        let minimumTotal = minimumColumnWidth * CGFloat(columnCount)
+        let targetTotal = max(minimumTotal, availableWidth)
+        let weights = (0..<columnCount).map { column in
+            let values = [headers[column]] + rows.compactMap { row in
+                row.indices.contains(column) ? row[column] : nil
+            }
+            return CGFloat(min(max(values.map { $0.count }.max() ?? 1, 8), 42))
+        }
+        let totalWeight = weights.reduce(0, +)
+        guard totalWeight > 0 else {
+            return Array(repeating: targetTotal / CGFloat(columnCount), count: columnCount)
+        }
+
+        var widths = Array(repeating: minimumColumnWidth, count: columnCount)
+        var remaining = targetTotal - minimumTotal
+        var eligible = Set(widths.indices)
+        while remaining > 0.5, !eligible.isEmpty {
+            let eligibleWeight = eligible.reduce(CGFloat.zero) { $0 + weights[$1] }
+            guard eligibleWeight > 0 else { break }
+            var allocated: CGFloat = 0
+            var capped: [Int] = []
+            for column in eligible {
+                let share = remaining * (weights[column] / eligibleWeight)
+                let room = maximumColumnWidth - widths[column]
+                let addition = min(share, room)
+                widths[column] += addition
+                allocated += addition
+                if room - addition < 0.5 { capped.append(column) }
+            }
+            guard allocated > 0 else { break }
+            remaining -= allocated
+            capped.forEach { eligible.remove($0) }
+        }
+        return widths
+    }
+}
+
 enum RichContentFallback {
     static func mermaid(source: String) -> String {
         "Diagram preview unavailable. Mermaid source: \(source)"
@@ -1004,19 +1055,50 @@ private struct MarkdownTextView: View {
     }
 
     private func markdownTable(headers: [String], rows: [[String]]) -> some View {
+        MarkdownTableView(headers: headers, rows: rows)
+    }
+
+    private func headingFont(level: Int) -> Font {
+        AppTheme.Typography.markdownHeading(level: level)
+    }
+
+    private func renderedInlineMarkdown(_ chunk: String) -> AttributedString {
+        InlineMarkdownPresentation.rendered(chunk)
+    }
+}
+
+private struct MarkdownTableView: View {
+    let headers: [String]
+    let rows: [[String]]
+    @State private var availableWidth: CGFloat = 0
+
+    var body: some View {
+        let widths = MarkdownTableLayout.columnWidths(
+            headers: headers,
+            rows: rows,
+            availableWidth: availableWidth
+        )
         ScrollView(.horizontal, showsIndicators: false) {
             VStack(alignment: .leading, spacing: 0) {
-                tableRow(headers, headers: headers, rowIndex: nil, emphasized: true)
+                tableRow(headers, rowIndex: nil, emphasized: true, widths: widths)
                 ForEach(Array(rows.enumerated()), id: \.offset) { index, row in
-                    tableRow(row, headers: headers, rowIndex: index, emphasized: false)
+                    tableRow(row, rowIndex: index, emphasized: false, widths: widths)
                         .background(index.isMultiple(of: 2) ? AppTheme.Palette.accentSoft.opacity(0.33) : .clear)
                 }
+            }
+            .frame(minWidth: widths.reduce(0, +), alignment: .leading)
+        }
+        .background {
+            GeometryReader { proxy in
+                Color.clear
+                    .onAppear { availableWidth = proxy.size.width }
+                    .onChange(of: proxy.size.width) { _, width in availableWidth = width }
             }
         }
         .background(AppTheme.Palette.richTableBackground, in: RoundedRectangle(cornerRadius: AppTheme.Radius.small))
         .overlay {
-                RoundedRectangle(cornerRadius: AppTheme.Radius.small)
-                    .stroke(AppTheme.Palette.glassBorder)
+            RoundedRectangle(cornerRadius: AppTheme.Radius.small)
+                .stroke(AppTheme.Palette.glassBorder)
         }
         .accessibilityElement(children: .contain)
         .accessibilityLabel(MarkdownTableAccessibility.summary(headers: headers, rows: rows))
@@ -1028,16 +1110,21 @@ private struct MarkdownTextView: View {
 
     private func tableRow(
         _ cells: [String],
-        headers: [String],
         rowIndex: Int?,
-        emphasized: Bool
+        emphasized: Bool,
+        widths: [CGFloat]
     ) -> some View {
         HStack(spacing: 0) {
             ForEach(Array(cells.enumerated()), id: \.offset) { column, cell in
-                Text(renderedInlineMarkdown(cell))
+                Text(InlineMarkdownPresentation.rendered(cell))
                     .font(.system(size: 13, weight: emphasized ? .semibold : .regular))
                     .foregroundStyle(emphasized ? Color.primary : AppTheme.Palette.textMuted)
-                    .frame(width: 172, alignment: .leading)
+                    .frame(
+                        width: widths.indices.contains(column)
+                            ? widths[column]
+                            : MarkdownTableLayout.minimumColumnWidth,
+                        alignment: .leading
+                    )
                     .padding(.horizontal, 10)
                     .padding(.vertical, 9)
                     .overlay(alignment: .trailing) {
@@ -1057,14 +1144,6 @@ private struct MarkdownTextView: View {
         .accessibilityElement(children: .contain)
         .accessibilityLabel(rowIndex.map { "Row \($0 + 1)" } ?? "Column headers")
     }
-
-    private func headingFont(level: Int) -> Font {
-        AppTheme.Typography.markdownHeading(level: level)
-    }
-
-    private func renderedInlineMarkdown(_ chunk: String) -> AttributedString {
-        InlineMarkdownPresentation.rendered(chunk)
-    }
 }
 
 private struct CodeBlockView: View {
@@ -1072,10 +1151,18 @@ private struct CodeBlockView: View {
     let text: String
     @State private var didCopy = false
 
+    private var isAssistantDiffExample: Bool {
+        AssistantDiffPresentation.isExample(language: language)
+    }
+
+    private var displayLanguage: String {
+        isAssistantDiffExample ? "EXAMPLE DIFF" : (language?.uppercased() ?? "CODE")
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             HStack(spacing: 8) {
-                Text(language?.uppercased() ?? "CODE")
+                Text(displayLanguage)
                     .font(.system(size: 10, weight: .semibold, design: .rounded))
                     .foregroundStyle(AppTheme.Palette.textMuted)
                 Spacer()
@@ -1090,7 +1177,7 @@ private struct CodeBlockView: View {
                 .buttonStyle(.borderless)
                 .font(.caption)
                 .accessibilityLabel(didCopy ? "Code copied" : "Copy code")
-                .accessibilityHint("Copies the complete code block to the clipboard.")
+                .accessibilityHint(isAssistantDiffExample ? "Copies this assistant-provided example. It is not a repository change." : "Copies the complete code block to the clipboard.")
             }
             .padding(.horizontal, 12)
             .padding(.top, 8)
@@ -1110,7 +1197,7 @@ private struct CodeBlockView: View {
                 .stroke(AppTheme.Palette.glassBorder)
         }
         .accessibilityElement(children: .contain)
-        .accessibilityLabel("\(language ?? "Code") code block")
+        .accessibilityLabel(isAssistantDiffExample ? "Assistant-provided diff example" : "\(language ?? "Code") code block")
         .accessibilityValue("\(text.split(whereSeparator: \.isNewline).count) lines")
     }
 }
@@ -1157,13 +1244,12 @@ private struct SizedMermaidWebView: View {
     var body: some View {
         Group {
             if renderFailed {
-                Text(RichContentFallback.mermaid(source: source))
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .textSelection(.enabled)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(8)
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("Diagram preview unavailable — showing Mermaid source.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    CodeBlockView(language: "mermaid", text: source)
+                }
             } else if isMounted {
                 MermaidWebView(source: source, appearance: appearance, onFailure: {
                     renderFailed = true
@@ -1189,7 +1275,7 @@ private struct SizedMermaidWebView: View {
             }
         }
         .frame(height: renderFailed ? nil : height)
-        .accessibilityElement(children: .ignore)
+        .accessibilityElement(children: renderFailed ? .contain : .ignore)
         .accessibilityLabel(
             renderFailed
                 ? RichContentFallback.mermaid(source: source)

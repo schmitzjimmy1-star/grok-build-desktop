@@ -439,7 +439,11 @@ enum GrokMCPRedactor {
         }
         let patterns = [
             #"(?i)((?:authorization|proxy-authorization)\s*[:=]\s*)[^\r\n,]+"#,
-            #"(?i)((?:api[_-]?key|token|secret|password)\s*[:=]\s*)[^\s,;]+"#,
+            // Covers both shell-like diagnostics (`token=value`) and JSON/log
+            // fields (`"refresh_token":"value"`). Prefixes are secrets too:
+            // keeping even a short credential prefix in a receipt makes the
+            // client a second copy of the upstream CLI log leak.
+            #"(?i)((?:[\"']?(?:api[_-]?key|access[_-]?token|refresh[_-]?token|id[_-]?token|key[_-]?prefix|credential(?:[_-]?prefix)?|token|secret|password)[\"']?)\s*[:=]\s*)[\"']?[^\s,;\"']+[\"']?"#,
             #"(?i)(bearer\s+)[A-Za-z0-9._~+/-]+"#,
         ]
         for pattern in patterns {

@@ -92,6 +92,20 @@ enum PermissionRequestPolicy {
 @Observable
 @MainActor
 final class ChatStore {
+    struct RunArtifact: Identifiable, Hashable {
+        enum Location: String, Hashable {
+            case workspace
+            case external
+        }
+
+        let toolCallID: String
+        let path: String
+        let status: String
+        let location: Location
+
+        var id: String { "\(toolCallID)|\(path)" }
+    }
+
     private struct SessionSelection: Codable {
         var mode: String?
         var model: String?
@@ -133,7 +147,16 @@ final class ChatStore {
 
     // VS Code extension-style turn state
     private(set) var isGrokking = false
-    private(set) var thinkingText = ""
+    /// Ordered public summary chunks emitted by ACP for the active turn. These are
+    /// ephemeral presentation input only: they are not transcript messages and are
+    /// never written by the session/layout stores or diagnostic exporters.
+    private(set) var reasoningSummaryChunks: [String] = []
+    var thinkingText: String {
+        ReasoningSummaryPresentation.make(
+            chunks: reasoningSummaryChunks,
+            expanded: true
+        ).presentationOnlyText
+    }
     private(set) var thinkingDuration: TimeInterval?
     private(set) var isThinkingExpanded = false
     /// Bumped on every streamed thinking/answer chunk. A streaming answer appends to the
@@ -142,25 +165,167 @@ final class ChatStore {
     /// view instead of stranding it below the fold behind the thinking chip.
     private(set) var streamRevision = 0
     private(set) var liveToolCalls: [LiveToolCall] = []
+    /// A completed parent turn is an outcome of the run, not evidence that each
+    /// individual tool call succeeded or recovered.
+    private(set) var latestTurnOutcome: TurnOutcome?
+    /// Successful write/edit receipts for the current turn. This is deliberately
+    /// independent from Git review state: a write can be external, ignored, or
+    /// otherwise absent from `git status`.
+    private(set) var runArtifacts: [RunArtifact] = []
+    /// The sole sidebar read model for a settled parent turn. It is ephemeral
+    /// and replaced at the next turn boundary; no transcript or layout state is
+    /// mutated to make a run look complete.
+    private(set) var runEvidenceSnapshot: RunEvidenceSnapshot?
+    private var currentRunPlan: [RunEvidenceSnapshot.PlanStep] = []
+
+    /// Current receipts projected only while this exact tab/backend/process
+    /// generation owns an active turn. This computed value is presentation-only:
+    /// it never crosses a persistence boundary and cannot manufacture a settled
+    /// lifecycle, usage receipt, or worker outcome.
+    var liveRunEvidenceProjection: RunEvidenceLiveProjection? {
+        guard isStreaming,
+              runEvidenceSnapshot == nil,
+              let localTabID = tabSessionID,
+              let backendSessionID = activeTurnBackendSessionID,
+              backendSessionID == process.sessionId,
+              let processGeneration = process.activeProcessGeneration else { return nil }
+
+        let workers = backgroundActivities.filter {
+            $0.kind == .subagent && currentTurnWorkerActivityIDs.contains($0.id)
+        }.map {
+            RunEvidenceSnapshot.Worker(
+                id: $0.id,
+                title: $0.title,
+                status: $0.status,
+                childID: $0.childID,
+                durationMilliseconds: $0.durationMilliseconds,
+                toolCallCount: $0.toolCallCount,
+                redactedError: $0.redactedError
+            )
+        }
+        let tools = liveToolCalls.map { tool in
+            let status: String
+            let isActive: Bool
+            switch tool.terminalStatus {
+            case .succeeded:
+                status = "Succeeded"
+                isActive = false
+            case .failed:
+                status = tool.isRecovered ? "Recovered" : "Failed"
+                isActive = false
+            case .cancelled:
+                status = "Cancelled"
+                isActive = false
+            case .stale:
+                status = "Stale"
+                isActive = false
+            case .unknown:
+                status = "Status not settled"
+                isActive = false
+            case nil:
+                status = tool.status.map(ActivitySidebarPresentation.activityStatus) ?? "Running"
+                isActive = true
+            }
+            return RunEvidenceLiveProjection.Tool(
+                id: tool.id,
+                title: tool.title,
+                kind: tool.kind,
+                status: status,
+                detail: tool.terminalStatus == .succeeded ? nil : tool.detail,
+                isActive: isActive
+            )
+        }
+        let latestUserMessage = messages.last(where: { $0.role == .user })?.content
+        return RunEvidenceLiveProjection(
+            binding: .init(
+                localTabID: localTabID,
+                workspaceID: currentWorkspace?.id,
+                backendSessionID: backendSessionID,
+                processGeneration: processGeneration
+            ),
+            goalSummary: goalState?.objective ?? latestUserMessage.map {
+                TranscriptTextPresentation.singleLine($0, maxLength: 240)
+            },
+            plan: currentRunPlan,
+            workers: workers,
+            tools: tools,
+            artifacts: runArtifacts,
+            process: .init(
+                state: "In progress — not settled",
+                model: modelExecutionState.effectiveModelID ?? modelExecutionState.requestedModelID,
+                mcps: mcpServerStatuses.map {
+                    .init(name: $0.name, state: $0.state.rawValue, reason: $0.reason)
+                }
+            )
+        )
+    }
+    /// Monotonic event-driven request observed by ContentView. Successful writes
+    /// and the ordered turn-settlement barrier request a bounded Git refresh; no
+    /// filesystem watcher or polling loop is involved.
+    private(set) var gitRefreshRevision = 0
+    private var pendingArtifactPathsByToolCallID: [String: String] = [:]
     private var thinkingStartedAt: Date?
     /// When the current turn began — drives the elapsed/"warming up" indicator.
     private(set) var turnStartedAt: Date?
+
+    enum TurnOutcome: String, Hashable {
+        case completed
+        case completionReceiptMissing
+
+        var displayName: String {
+            switch self {
+            case .completed: "Turn completed"
+            case .completionReceiptMissing: "Completion receipt missing"
+            }
+        }
+    }
 
     struct LiveToolCall: Identifiable, Hashable {
         let id: String
         let title: String
         let kind: String
         let status: String?
+        let terminalStatus: ToolCallTerminalStatus?
         let detail: String?
+        let diagnosticDetail: String?
+        let target: String?
+        let retryOfToolCallID: String?
+        let recoveredByToolCallID: String?
 
         var isFailed: Bool {
-            guard let status else { return false }
-            return ["failed", "error", "rejected"].contains(status.lowercased())
+            terminalStatus == .failed
         }
 
         var isComplete: Bool {
-            guard let status else { return false }
-            return ["completed", "complete", "success", "succeeded"].contains(status.lowercased())
+            terminalStatus == .succeeded
+        }
+
+        var isRecovered: Bool {
+            recoveredByToolCallID != nil
+        }
+
+        func settled(against calls: [LiveToolCall]) -> LiveToolCall {
+            let normalizedTerminalStatus = terminalStatus ?? .unknown
+            let recoveryID: String?
+            if normalizedTerminalStatus == .failed {
+                recoveryID = calls.first(where: {
+                    $0.retryOfToolCallID == id && $0.terminalStatus == .succeeded
+                })?.id
+            } else {
+                recoveryID = nil
+            }
+            return LiveToolCall(
+                id: id,
+                title: title,
+                kind: kind,
+                status: status,
+                terminalStatus: normalizedTerminalStatus,
+                detail: detail,
+                diagnosticDetail: diagnosticDetail,
+                target: target,
+                retryOfToolCallID: retryOfToolCallID,
+                recoveredByToolCallID: recoveryID
+            )
         }
     }
 
@@ -169,6 +334,9 @@ final class ChatStore {
 
     // MARK: - ACP Rich State
     private(set) var connectionState: GrokProcessState = .idle
+    /// Secret-free MCP lifecycle receipts for the current process generation.
+    /// These are derived from the GrokProcess launch boundary, not Settings drafts.
+    private(set) var mcpServerStatuses: [MCPServerStatus] = []
     private(set) var currentMode: AgentMode = .agent
     private(set) var availableModes: [AgentMode] = [.agent, .plan, .yolo]
     private(set) var pendingPermissions: [PermissionRequest] = []
@@ -200,6 +368,10 @@ final class ChatStore {
         process.launchReceipt?.permissionMode ?? .ask
     }
 
+    func mcpServerStatus(named name: String) -> MCPServerStatus? {
+        mcpServerStatuses.first { $0.name == name }
+    }
+
     var continuityStatus: SessionContinuityStatus { continuityReceipt.status }
 
     var continuityBlocksSend: Bool {
@@ -208,7 +380,7 @@ final class ChatStore {
 
     var continuityPermitsAuthoritativeReconciliation: Bool {
         switch continuityStatus {
-        case .verified, .backendOnly, .recoveryForked:
+        case .backendBound, .verified, .backendOnly, .recoveryForked:
             return true
         case .localOnly, .verifying, .diverged, .compositeSuspected, .backendMissing,
              .verificationIncomplete:
@@ -218,7 +390,7 @@ final class ChatStore {
 
     var shouldShowContinuityBanner: Bool {
         switch continuityStatus {
-        case .verified, .backendOnly, .recoveryForked:
+        case .backendBound, .verified, .backendOnly, .recoveryForked:
             return false
         case .localOnly:
             return hasUserMessages
@@ -231,6 +403,7 @@ final class ChatStore {
     var continuityHeadline: String {
         switch continuityStatus {
         case .localOnly: return "Messages restored locally"
+        case .backendBound: return "New backend bound"
         case .verifying: return "Checking conversation continuity"
         case .diverged: return "Conversation continuity does not match"
         case .compositeSuspected: return "This transcript may combine multiple conversations"
@@ -246,6 +419,8 @@ final class ChatStore {
         switch continuityStatus {
         case .localOnly:
             return "Your local messages are safe. Grok will start a new conversation when you send."
+        case .backendBound:
+            return "This fresh Grok backend is bound to the current tab and process. There was no prior backend history to verify."
         case .verifying:
             return "GrokBuild is comparing this local transcript with its exact saved backend before starting it."
         case .diverged, .compositeSuspected:
@@ -265,7 +440,8 @@ final class ChatStore {
 
     var continuityDetails: String {
         let backend = continuityBackendID.map { "…\($0.suffix(8))" } ?? "none"
-        return "Backend \(backend) · local \(continuityReceipt.localMessageCount) rows · backend \(continuityReceipt.backendMessageCount) rows · matched prefix \(continuityReceipt.matchingPrefixCount) · reason \(continuityReceipt.reason.rawValue)"
+        let generation = continuityReceipt.processGeneration.map(String.init) ?? "none"
+        return "Backend \(backend) · generation \(generation) · local \(continuityReceipt.localMessageCount) rows · backend \(continuityReceipt.backendMessageCount) rows · matched prefix \(continuityReceipt.matchingPrefixCount) · reason \(continuityReceipt.reason.rawValue)"
     }
 
     // MARK: - Model selection (real models from `grok models` + initialize modelState)
@@ -324,6 +500,15 @@ final class ChatStore {
     // MARK: - Background activity (scheduled + background shells, monitors, subagents)
     private(set) var backgroundActivities: [BackgroundActivity] = []
     private var backgroundTaskTracker = BackgroundTaskTracker()
+    /// Authoritative ACP lifecycle receipts. Slice 1 records these without changing
+    /// worker presentation; Slice 2 owns correlation with visible worker activities.
+    private(set) var subagentSpawnedEvents: [SubagentSpawnedEvent] = []
+    private(set) var subagentFinishedEvents: [SubagentFinishedEvent] = []
+    private var seenSubagentLifecycleKeys: Set<String> = []
+    /// Session-wide background tracking remains available for durable tasks,
+    /// but run evidence may include only worker rows created or changed during
+    /// the active parent turn.
+    private var currentTurnWorkerActivityIDs: Set<String> = []
 
     // MARK: - Prompt queue (send while streaming)
     private(set) var promptQueue: [String] = []
@@ -345,6 +530,7 @@ final class ChatStore {
     /// Test-only: force streaming so queue-send guards can be exercised without a live process.
     func setStreamingForTests(_ value: Bool) {
         isStreaming = value
+        activeTurnBackendSessionID = value ? process.sessionId : nil
     }
 
     var pendingRuntimeReloadForTests: Bool { runtimeReloadQueue.hasPending }
@@ -511,6 +697,28 @@ final class ChatStore {
         case .legacyUnknown(let savedModel):
             applyLegacyModelIfAvailable(savedModel)
         }
+        // A selected tab may already own an LRU-retained process. Its live
+        // backend receipt outranks an older or absent layout binding.
+        if let liveBackendID = process.sessionId,
+           let generation = process.activeProcessGeneration,
+           process.launchReceipt?.localTabID == id {
+            self.savedGrokSessionID = liveBackendID
+            continuityBackendID = liveBackendID
+            continuityReceipt = continuityReceipt.reason == .noBackendBinding
+                ? Self.freshBackendBoundContinuityReceipt(
+                    localTabID: id,
+                    backendID: liveBackendID,
+                    processGeneration: generation,
+                    localMessageCount: SessionTranscriptRecovery.normalizedMessageCount(messages)
+                )
+                : Self.identifiedContinuityReceipt(
+                    continuityReceipt,
+                    localTabID: id,
+                    backendID: liveBackendID,
+                    processGeneration: generation
+                )
+            persistedContinuityReceipt = continuityReceipt
+        }
     }
 
     @discardableResult
@@ -609,8 +817,14 @@ final class ChatStore {
             return continuityStatus
         }
 
-        continuityReceipt = verification.receipt
-        persistedContinuityReceipt = verification.receipt
+        let identifiedReceipt = Self.identifiedContinuityReceipt(
+            verification.receipt,
+            localTabID: expectedTabID,
+            backendID: targetBackendID,
+            processGeneration: nil
+        )
+        continuityReceipt = identifiedReceipt
+        persistedContinuityReceipt = identifiedReceipt
         if [.verified, .backendOnly].contains(verification.receipt.status),
            !verification.backendMessages.isEmpty {
             let reconciledSuffix = SessionTranscriptReconciler.reconcile(
@@ -800,8 +1014,13 @@ final class ChatStore {
         pendingRecoveryIntent = nil
         savedGrokSessionID = candidate.backendID
         continuityBackendID = candidate.backendID
-        continuityReceipt = verification.receipt
-        persistedContinuityReceipt = verification.receipt
+        continuityReceipt = Self.identifiedContinuityReceipt(
+            verification.receipt,
+            localTabID: tabSessionID,
+            backendID: candidate.backendID,
+            processGeneration: nil
+        )
+        persistedContinuityReceipt = continuityReceipt
         recoveryCandidateError = nil
         appendSystemNote(
             "Recovery choice: Relinked to verified backend …\(candidate.backendID.suffix(8))."
@@ -826,6 +1045,52 @@ final class ChatStore {
             localTranscriptTag: nil,
             backendTranscriptTag: nil,
             verifiedAt: Date()
+        )
+    }
+
+    private static func freshBackendBoundContinuityReceipt(
+        localTabID: UUID?,
+        backendID: String,
+        processGeneration: UInt64,
+        localMessageCount: Int
+    ) -> SessionContinuityReceipt {
+        SessionContinuityReceipt(
+            status: .backendBound,
+            reason: .freshBackendBound,
+            normalizationVersion: VersionedOpaqueTag.transcriptNormalizationVersion,
+            authenticationSchemaVersion: VersionedOpaqueTag.transcriptAuthenticationSchemaVersion,
+            localMessageCount: localMessageCount,
+            backendMessageCount: localMessageCount,
+            matchingPrefixCount: localMessageCount,
+            localTranscriptTag: nil,
+            backendTranscriptTag: nil,
+            verifiedAt: Date(),
+            localTabID: localTabID,
+            backendID: backendID,
+            processGeneration: processGeneration
+        )
+    }
+
+    private static func identifiedContinuityReceipt(
+        _ receipt: SessionContinuityReceipt,
+        localTabID: UUID?,
+        backendID: String?,
+        processGeneration: UInt64?
+    ) -> SessionContinuityReceipt {
+        SessionContinuityReceipt(
+            status: receipt.status,
+            reason: receipt.reason,
+            normalizationVersion: receipt.normalizationVersion,
+            authenticationSchemaVersion: receipt.authenticationSchemaVersion,
+            localMessageCount: receipt.localMessageCount,
+            backendMessageCount: receipt.backendMessageCount,
+            matchingPrefixCount: receipt.matchingPrefixCount,
+            localTranscriptTag: receipt.localTranscriptTag,
+            backendTranscriptTag: receipt.backendTranscriptTag,
+            verifiedAt: receipt.verifiedAt,
+            localTabID: localTabID,
+            backendID: backendID,
+            processGeneration: processGeneration
         )
     }
 
@@ -963,6 +1228,7 @@ final class ChatStore {
         goalState = nil
         clearWorkflowRunState()
         clearBackgroundTaskState()
+        clearSubagentLifecycleState()
         promptQueue.removeAll()
         btwAsideText = nil
         pendingBtw = false
@@ -1295,6 +1561,7 @@ final class ChatStore {
         goalState = nil
         messages.removeAll()
         clearWorkflowRunState()
+        clearSubagentLifecycleState()
         clearTurnState()
     }
 
@@ -1306,6 +1573,12 @@ final class ChatStore {
     private func clearBackgroundTaskState() {
         backgroundTaskTracker.reset()
         backgroundActivities = []
+    }
+
+    private func clearSubagentLifecycleState() {
+        subagentSpawnedEvents = []
+        subagentFinishedEvents = []
+        seenSubagentLifecycleKeys = []
     }
 
     private func restartProcess(resumeSessionID: String? = nil) async {
@@ -1377,6 +1650,7 @@ final class ChatStore {
             AgentBrowserService.browserMCPConfig(settings: browserSettings),
             ComputerUseService.computerUseMCPConfig(settings: computerUseSettings)
         ].compactMap { $0 }
+        mcpServerStatuses = MCPReadinessPolicy.connectingStatuses(for: mcpServers)
         let opts = GrokLaunchOptions(
             localTabID: tabSessionID,
             agent: GrokAgentProfiles.launchArgument(for: effectiveAgentSelection),
@@ -1402,6 +1676,7 @@ final class ChatStore {
         let spawnInterval = GrokBuildPerformance.begin(.processSpawnToACPReady)
         await process.start(workspace: ws, options: opts)
         spawnInterval.end()
+        mcpServerStatuses = process.mcpServerStatuses
         connectionWatchdogTask?.cancel()
         connectionState = process.state
         if case .failed(let message) = process.state {
@@ -1423,30 +1698,51 @@ final class ChatStore {
                 streamRevision &+= 1
             }
         }
-        savedGrokSessionID = process.sessionId ?? effectiveResumeSessionID
-        continuityBackendID = savedGrokSessionID
-        if let successorBackendID = process.sessionId {
-            let forkReason: SessionForkLedgerReason? = {
-                if process.sessionLoadStartedFreshFallback { return .resumeFallback }
-                if launchForkSession { return .explicitBackendFork }
-                if effectiveResumeSessionID == nil, hadLocalConversationBeforeStart {
-                    return pendingRecoveryIntent?.action == .continueAsNew
-                        ? .explicitContinueAsNew
-                        : .localOnlyStart
-                }
-                return nil
-            }()
-            if let forkReason {
-                await recordRecoveryFork(
-                    predecessorBackendID: pendingRecoveryIntent?.predecessorBackendID
-                        ?? effectiveResumeSessionID,
-                    successorBackendID: successorBackendID,
-                    reason: forkReason
-                )
-                if forkReason == .explicitContinueAsNew {
-                    pendingRecoveryIntent = nil
-                }
+        guard let successorBackendID = process.sessionId,
+              let processGeneration = process.activeProcessGeneration else {
+            lastError = "Grok started without an authoritative backend binding receipt."
+            connectionState = .failed(lastError ?? "Backend binding failed.")
+            await process.stop()
+            return
+        }
+        savedGrokSessionID = successorBackendID
+        continuityBackendID = successorBackendID
+        let forkReason: SessionForkLedgerReason? = {
+            if process.sessionLoadStartedFreshFallback { return .resumeFallback }
+            if launchForkSession { return .explicitBackendFork }
+            if effectiveResumeSessionID == nil, hadLocalConversationBeforeStart {
+                return pendingRecoveryIntent?.action == .continueAsNew
+                    ? .explicitContinueAsNew
+                    : .localOnlyStart
             }
+            return nil
+        }()
+        if let forkReason {
+            await recordRecoveryFork(
+                predecessorBackendID: pendingRecoveryIntent?.predecessorBackendID
+                    ?? effectiveResumeSessionID,
+                successorBackendID: successorBackendID,
+                reason: forkReason
+            )
+            if forkReason == .explicitContinueAsNew {
+                pendingRecoveryIntent = nil
+            }
+        } else if effectiveResumeSessionID == nil {
+            continuityReceipt = Self.freshBackendBoundContinuityReceipt(
+                localTabID: tabSessionID,
+                backendID: successorBackendID,
+                processGeneration: processGeneration,
+                localMessageCount: SessionTranscriptRecovery.normalizedMessageCount(messages)
+            )
+            persistedContinuityReceipt = continuityReceipt
+        } else {
+            continuityReceipt = Self.identifiedContinuityReceipt(
+                continuityReceipt,
+                localTabID: tabSessionID,
+                backendID: successorBackendID,
+                processGeneration: processGeneration
+            )
+            persistedContinuityReceipt = continuityReceipt
         }
         modelExecutionState = process.modelExecutionState
         availableModes = process.availableModes
@@ -1517,7 +1813,10 @@ final class ChatStore {
             matchingPrefixCount: 0,
             localTranscriptTag: entry.transcriptTag,
             backendTranscriptTag: nil,
-            verifiedAt: Date()
+            verifiedAt: Date(),
+            localTabID: tabSessionID,
+            backendID: successorBackendID,
+            processGeneration: process.activeProcessGeneration
         )
         persistedContinuityReceipt = continuityReceipt
         boundForkLedgerEntry = entry
@@ -1565,6 +1864,10 @@ final class ChatStore {
     private func markConnectionTimedOutIfNeeded() async {
         guard connectionState == .starting else { return }
         lastError = process.state.errorMessage ?? "Timed out while connecting to grok."
+        mcpServerStatuses = MCPReadinessPolicy.failedStatuses(
+            for: mcpServerStatuses.map(\.name),
+            reason: "The process did not reach ACP readiness before the connection timeout."
+        )
         connectionState = .failed(lastError ?? "Timed out while connecting to grok.")
         await process.stop()
     }
@@ -1947,6 +2250,7 @@ final class ChatStore {
         stopStallWatchdog()
         if let start = thinkingStartedAt, !thinkingText.isEmpty {
             thinkingDuration = Date().timeIntervalSince(start)
+            isThinkingExpanded = false
         }
         if ok {
             connectionState = .ready
@@ -2022,12 +2326,18 @@ final class ChatStore {
         cancelStreamingTextFlush()
         invalidateTurnSettlement()
         isGrokking = false
-        thinkingText = ""
+        reasoningSummaryChunks = []
         thinkingDuration = nil
         thinkingStartedAt = nil
         turnStartedAt = nil
         isThinkingExpanded = false
         liveToolCalls = []
+        latestTurnOutcome = nil
+        runArtifacts = []
+        runEvidenceSnapshot = nil
+        currentRunPlan = []
+        currentTurnWorkerActivityIDs = []
+        pendingArtifactPathsByToolCallID = [:]
     }
 
     private func invalidateTurnSettlement() {
@@ -2038,7 +2348,7 @@ final class ChatStore {
         closedTurnHasAuthoritativeHistory = false
     }
 
-    func stop() {
+    func stop() async {
         firstChunkInterval?.end()
         firstChunkInterval = nil
         cancelStreamingTextFlush()
@@ -2051,8 +2361,22 @@ final class ChatStore {
         pendingPermissions.removeAll()
         pendingExitPlan = nil
         pendingQuestions.removeAll()
-        process.interrupt()
-        connectionState = .ready
+        // Cancelling the parent ACP turn is not enough for Grok's background
+        // workers: they can keep running after the visible answer stops. Tear
+        // down this exact session so Stop is a real stop, then lazily restart
+        // it on the next send.
+        await process.stop()
+        backgroundTaskTracker.markActiveActivitiesStopped()
+        backgroundActivities = backgroundTaskTracker.activities
+        mcpServerStatuses = MCPReadinessPolicy.stoppedStatuses(for: mcpServerStatuses.map(\.name))
+        connectionState = .idle
+    }
+
+    /// Synchronous UI/notification entry point for the serialized async stop.
+    /// Keeping the Task boundary here avoids making every SwiftUI notification
+    /// modifier carry an async closure.
+    func requestStop() {
+        Task { await stop() }
     }
 
     func shutdown() async {
@@ -2066,6 +2390,7 @@ final class ChatStore {
         isGrokking = false
         streamingMessageID = nil
         await process.stop()
+        mcpServerStatuses = MCPReadinessPolicy.stoppedStatuses(for: mcpServerStatuses.map(\.name))
         connectionState = .idle
     }
 
@@ -2100,31 +2425,70 @@ final class ChatStore {
         isGrokking = false
         streamingMessageID = nil
         await process.shutdown()
+        mcpServerStatuses = MCPReadinessPolicy.stoppedStatuses(for: mcpServerStatuses.map(\.name))
         connectionState = .idle
     }
 
-    func respondToExitPlan(_ request: ExitPlanRequest, verdict: ExitPlanRequest.PlanVerdict, comment: String = "") {
+    func respondToExitPlan(_ request: ExitPlanRequest, verdict: ExitPlanRequest.PlanVerdict) {
+        guard let pendingExitPlan,
+              ACPInteractionRequestIdentity.matches(
+                lhsID: pendingExitPlan.id,
+                lhsSessionID: pendingExitPlan.sessionId,
+                rhsID: request.id,
+                rhsSessionID: request.sessionId
+              ),
+              ACPInteractionRequestIdentity.ownsActiveSession(
+                request.sessionId,
+                activeSessionID: process.sessionId
+              ) else { return }
         process.respondToExitPlan(request.id.base, verdict: verdict)
-        let marker: String
-        switch verdict {
-        case .approved: marker = "[Plan approved]"
-        case .rejected: marker = "[Plan rejected]"
-        case .abandoned: marker = "[Plan cancelled]"
-        }
-        let trimmedComment = comment.trimmingCharacters(in: .whitespacesAndNewlines)
-        let payload = trimmedComment.isEmpty ? marker : "\(marker) \(trimmedComment)"
-        Task { _ = await send(payload) }
-        pendingExitPlan = nil
+        self.pendingExitPlan = nil
     }
 
     func respondToQuestion(_ request: QuestionRequest, answers: [String: String]) {
+        guard pendingQuestions.contains(where: {
+            ACPInteractionRequestIdentity.matches(
+                lhsID: $0.id,
+                lhsSessionID: $0.sessionId,
+                rhsID: request.id,
+                rhsSessionID: request.sessionId
+            )
+        }), ACPInteractionRequestIdentity.ownsActiveSession(
+            request.sessionId,
+            activeSessionID: process.sessionId
+        ) else { return }
         process.respondToQuestion(request.id.base, answers: answers)
-        pendingQuestions.removeAll { $0.id == request.id }
+        pendingQuestions.removeAll {
+            ACPInteractionRequestIdentity.matches(
+                lhsID: $0.id,
+                lhsSessionID: $0.sessionId,
+                rhsID: request.id,
+                rhsSessionID: request.sessionId
+            )
+        }
     }
 
     func cancelQuestion(_ request: QuestionRequest) {
+        guard pendingQuestions.contains(where: {
+            ACPInteractionRequestIdentity.matches(
+                lhsID: $0.id,
+                lhsSessionID: $0.sessionId,
+                rhsID: request.id,
+                rhsSessionID: request.sessionId
+            )
+        }), ACPInteractionRequestIdentity.ownsActiveSession(
+            request.sessionId,
+            activeSessionID: process.sessionId
+        ) else { return }
         process.respondToQuestionCancelled(request.id.base)
-        pendingQuestions.removeAll { $0.id == request.id }
+        pendingQuestions.removeAll {
+            ACPInteractionRequestIdentity.matches(
+                lhsID: $0.id,
+                lhsSessionID: $0.sessionId,
+                rhsID: request.id,
+                rhsSessionID: request.sessionId
+            )
+        }
     }
 
     func addFileAttachment(path: String) {
@@ -2147,10 +2511,32 @@ final class ChatStore {
     }
 
     func respondToPermission(_ request: PermissionRequest, with optionId: String) {
+        guard pendingPermissions.contains(where: {
+            ACPInteractionRequestIdentity.matches(
+                lhsID: $0.id,
+                lhsSessionID: $0.sessionId,
+                rhsID: request.id,
+                rhsSessionID: request.sessionId
+            )
+        }), ACPInteractionRequestIdentity.ownsActiveSession(
+            request.sessionId,
+            activeSessionID: process.sessionId
+        ) else { return }
+        answerPermissionRequest(request, with: optionId)
+    }
+
+    private func answerPermissionRequest(_ request: PermissionRequest, with optionId: String) {
         // Permission is an ACP decision only. The CLI remains the sole executor so its
         // sandbox, deny rules, and hooks cannot be bypassed by a client-side file write.
         process.respondToPermission(request, with: optionId)
-        pendingPermissions.removeAll { $0.id == request.id }
+        pendingPermissions.removeAll {
+            ACPInteractionRequestIdentity.matches(
+                lhsID: $0.id,
+                lhsSessionID: $0.sessionId,
+                rhsID: request.id,
+                rhsSessionID: request.sessionId
+            )
+        }
     }
 
     private func denyPermission(_ request: PermissionRequest, optionID: String?) {
@@ -2162,7 +2548,14 @@ final class ChatStore {
                 reason: "The effective GrokBuild launch policy denied this unapproved tool request."
             )
         }
-        pendingPermissions.removeAll { $0.id == request.id }
+        pendingPermissions.removeAll {
+            ACPInteractionRequestIdentity.matches(
+                lhsID: $0.id,
+                lhsSessionID: $0.sessionId,
+                rhsID: request.id,
+                rhsSessionID: request.sessionId
+            )
+        }
     }
 
     private func recordAutomaticPermissionDecision(
@@ -2175,9 +2568,14 @@ final class ChatStore {
             title: displayTitle(for: request.toolCall),
             kind: displayKind(for: request.toolCall),
             status: allowed ? "completed" : "rejected",
+            terminalStatus: allowed ? .succeeded : .failed,
             detail: allowed
                 ? "Allowed automatically by the live \(mode.displayName) policy."
-                : "Denied automatically by the live \(mode.displayName) policy."
+                : "Denied automatically by the live \(mode.displayName) policy.",
+            diagnosticDetail: request.toolCall.diagnosticDetail,
+            target: request.toolCall.target,
+            retryOfToolCallID: request.toolCall.retryOfToolCallID,
+            recoveredByToolCallID: nil
         )
         if let index = liveToolCalls.firstIndex(where: { $0.id == receipt.id }) {
             liveToolCalls[index] = receipt
@@ -2360,7 +2758,10 @@ final class ChatStore {
     }
 
     var sessionReceiptDetailLines: [String] {
-        var lines = [modelAccessibilityValue]
+        var lines = [
+            modelAccessibilityValue,
+            "Continuity: \(continuityHeadline). \(continuityDetails)",
+        ]
         guard let receipt = process.launchReceipt else {
             lines.append("No process launch receipt for this tab.")
             return lines
@@ -2505,63 +2906,12 @@ final class ChatStore {
         return ""
     }
 
-    // MARK: Diffs + Apply (public API used by preview)
+    // MARK: Git review snapshot model
 
     struct DetectedDiff: Identifiable, Hashable {
         let id = UUID()
         let raw: String
         let filePath: String?
-    }
-
-    func detectedDiffs(in message: Message) -> [DetectedDiff] {
-        guard message.role == .assistant else { return [] }
-        var out: [DetectedDiff] = []
-        let content = message.content
-
-        // ```diff / ```patch blocks
-        if let re = try? NSRegularExpression(pattern: "```(?:diff|patch)\\s*([\\s\\S]*?)```", options: .caseInsensitive) {
-            let ns = content as NSString
-            for m in re.matches(in: content, range: NSRange(location: 0, length: ns.length)) {
-                if m.numberOfRanges > 1 {
-                    let d = ns.substring(with: m.range(at: 1)).trimmingCharacters(in: .whitespacesAndNewlines)
-                    out.append(.init(raw: d, filePath: DiffUtils.firstFilePath(in: d)))
-                }
-            }
-        }
-
-        if out.isEmpty && content.contains("diff --git") {
-            let parts = content.components(separatedBy: "\ndiff --git")
-            for (i, p) in parts.enumerated() {
-                var block = p
-                if i > 0 { block = "diff --git" + block }
-                if block.contains("diff --git") {
-                    let trimmed = block.trimmingCharacters(in: .whitespacesAndNewlines)
-                    out.append(.init(raw: trimmed, filePath: DiffUtils.firstFilePath(in: trimmed)))
-                }
-            }
-        }
-        return out
-    }
-
-    @discardableResult
-    func applyDiffs(from message: Message, workspace: Workspace) async -> (applied: Int, errors: [String]) {
-        let diffs = detectedDiffs(in: message)
-        guard !diffs.isEmpty else { return (0, []) }
-
-        var applied = 0
-        var errs: [String] = []
-        for d in diffs {
-            do {
-                try await DiffUtils.applyUnifiedDiff(d.raw, root: workspace.path)
-                applied += 1
-            } catch {
-                errs.append("\(d.filePath ?? "file"): \(error.localizedDescription)")
-            }
-        }
-        if applied > 0 {
-            appendSystem("Applied \(applied) patch(es).")
-        }
-        return (applied, errs)
     }
 
     // MARK: Internal
@@ -2615,11 +2965,14 @@ final class ChatStore {
         switch event {
         case .messageChunk(let text):
             isGrokking = false
-            appendAssistantText(text)
+            appendAssistantText(TranscriptTextPresentation.normalize(text))
         case .thoughtChunk(let text):
             isGrokking = false
             if thinkingStartedAt == nil { thinkingStartedAt = Date() }
-            thinkingText += text
+            let publicSummary = TranscriptTextPresentation.normalize(text)
+            if !publicSummary.isEmpty {
+                reasoningSummaryChunks.append(publicSummary)
+            }
             streamRevision &+= 1
         case .toolCall(let tc):
             flushAllPendingAssistantText()
@@ -2627,47 +2980,49 @@ final class ChatStore {
             if !liveToolCalls.contains(where: { $0.id == tc.id }) {
                 liveToolCalls.append(liveToolCall(from: tc))
             }
-            if QuestionRequest.isQuestionTool(tc),
-               let items = QuestionRequest.questionsFromToolCall(tc),
-               !pendingQuestions.contains(where: { $0.id == AnyHashable(tc.id) }) {
-                pendingQuestions.append(QuestionRequest(
-                    id: AnyHashable(tc.id),
-                    sessionId: process.sessionId ?? "",
-                    questions: items,
-                    isResolved: false,
-                    answerSummary: nil
-                ))
-            }
+            observeArtifactReceipt(tc)
         case .toolCallUpdate(let tc):
             if let idx = liveToolCalls.firstIndex(where: { $0.id == tc.id }) {
                 liveToolCalls[idx] = mergedToolCall(existing: liveToolCalls[idx], update: tc)
             } else {
                 liveToolCalls.append(liveToolCall(from: tc))
             }
-            if QuestionRequest.isQuestionTool(tc),
-               let items = QuestionRequest.questionsFromToolCall(tc),
-               !pendingQuestions.contains(where: { $0.id == AnyHashable(tc.id) }) {
-                pendingQuestions.append(QuestionRequest(
-                    id: AnyHashable(tc.id),
-                    sessionId: process.sessionId ?? "",
-                    questions: items,
-                    isResolved: false,
-                    answerSummary: nil
-                ))
-            }
-        case .plan:
-            break
+            observeArtifactReceipt(tc)
+        case .subagentSpawned(let event):
+            guard ownsActiveLifecycleEvent(event.identity),
+                  seenSubagentLifecycleKeys.insert(event.deduplicationKey).inserted else { break }
+            subagentSpawnedEvents.append(event)
+            let previousActivities = backgroundTaskTracker.activities
+            backgroundTaskTracker.apply(spawned: event)
+            backgroundActivities = backgroundTaskTracker.activities
+            recordCurrentTurnWorkerChanges(since: previousActivities)
+        case .subagentFinished(let event):
+            guard ownsActiveLifecycleEvent(event.identity),
+                  seenSubagentLifecycleKeys.insert(event.deduplicationKey).inserted else { break }
+            subagentFinishedEvents.append(event)
+            let previousActivities = backgroundTaskTracker.activities
+            backgroundTaskTracker.apply(finished: event)
+            backgroundActivities = backgroundTaskTracker.activities
+            recordCurrentTurnWorkerChanges(since: previousActivities)
+        case .plan(let payload):
+            currentRunPlan = Self.planSteps(from: payload)
         case .planFileContent(let content):
             if !content.isEmpty, var plan = pendingExitPlan {
                 plan.planText = content
                 pendingExitPlan = plan
             }
         case .exitPlanRequest(let req):
-            pendingExitPlan = req
+            guard ACPInteractionRequestIdentity.ownsActiveSession(
+                req.sessionId,
+                activeSessionID: process.sessionId
+            ) else { break }
+            pendingExitPlan = ExitPlanRequest.merging(req, into: pendingExitPlan)
         case .questionRequest(let req):
-            if !pendingQuestions.contains(where: { $0.id == req.id }) {
-                pendingQuestions.append(req)
-            }
+            guard ACPInteractionRequestIdentity.ownsActiveSession(
+                req.sessionId,
+                activeSessionID: process.sessionId
+            ) else { break }
+            pendingQuestions = QuestionRequest.merging(req, into: pendingQuestions)
         case .availableCommands(let commands):
             applyAvailableSlashCommands(commands)
         case .schedulerActivity(let payload):
@@ -2679,18 +3034,64 @@ final class ChatStore {
             workflowRunTracker.apply(update: payload)
             workflowRuns = workflowRunTracker.runs
         case .backgroundActivity(let payload):
+            let previousActivities = backgroundTaskTracker.activities
             backgroundTaskTracker.apply(update: payload)
             backgroundActivities = backgroundTaskTracker.activities
+            recordCurrentTurnWorkerChanges(since: previousActivities)
             scheduledTasks = backgroundTaskTracker.activities.compactMap(\.scheduledTask)
-        case .turnCompleted:
+        case .turnCompleted(let completion):
+            guard ownsActiveCompletionEvent(completion.identity) else {
+                process.rejectTurnCompletionBridge(
+                    reason: completionOwnershipFailureReason(for: completion.identity)
+                )
+                break
+            }
             // This event shares the same AsyncStream queue as text/tool updates. By
             // acknowledging only here, `process.send` cannot outrun already-yielded
             // synthesis chunks and detach them from their assistant message.
             flushAllPendingAssistantText()
             reconcileActiveTurnFromBackend()
-            process.acknowledgeTurnCompleted()
+            refreshBoundContinuityCountsAfterSettlement()
+            // The event queue is ordered: all worker receipts yielded before this
+            // barrier have already crossed ChatStore. Any worker still active here
+            // is explicitly unresolved, never successful by implication from the
+            // parent answer.
+            backgroundTaskTracker.markUnsettledSubagents(only: currentTurnWorkerActivityIDs)
+            backgroundActivities = backgroundTaskTracker.activities
+            settleToolCallsAtTurnBarrier()
+            latestTurnOutcome = .completed
+            runEvidenceSnapshot = makeRunEvidenceSnapshot(completion: completion)
+            requestGitRefresh()
+            process.acknowledgeTurnCompletionBridge(authoritative: true)
             applyTurnSettlementDecision(turnSettlement.recordCompletionConsumed())
+        case .turnCompletionReceiptMissing(let failure):
+            guard ownsActiveCompletionEvent(failure.identity) else { break }
+            // The watchdog is a failure boundary, never a synthetic completion.
+            // Preserve every already-observed receipt, reconcile the backend tail
+            // read-only, and make unresolved state explicit without claiming usage,
+            // worker success, or settled continuity.
+            flushAllPendingAssistantText()
+            reconcileActiveTurnFromBackend()
+            backgroundTaskTracker.markUnsettledSubagents(only: currentTurnWorkerActivityIDs)
+            backgroundActivities = backgroundTaskTracker.activities
+            settleToolCallsAtTurnBarrier()
+            latestTurnOutcome = .completionReceiptMissing
+            lastError = failure.reason
+            runEvidenceSnapshot = makeRunEvidenceSnapshot(completion: TurnCompletionReceipt(
+                identity: failure.identity,
+                promptID: nil,
+                stopReason: nil,
+                totalTokens: nil,
+                modelCalls: nil,
+                turnCount: nil
+            ))
+            requestGitRefresh()
+            process.acknowledgeTurnCompletionBridge(authoritative: false)
         case .permissionRequest(let req):
+            guard ACPInteractionRequestIdentity.ownsActiveSession(
+                req.sessionId,
+                activeSessionID: process.sessionId
+            ) else { break }
             let liveMode = effectivePermissionMode
             switch PermissionRequestPolicy.disposition(
                 mode: liveMode,
@@ -2698,7 +3099,7 @@ final class ChatStore {
                 options: req.options
             ) {
             case .allow(let optionID):
-                respondToPermission(req, with: optionID)
+                answerPermissionRequest(req, with: optionID)
                 recordAutomaticPermissionDecision(req, allowed: true, mode: liveMode)
             case .deny(let optionID):
                 denyPermission(req, optionID: optionID)
@@ -2715,11 +3116,59 @@ final class ChatStore {
         case .contextUsage(let totalTokens):
             usedContextTokens = totalTokens
 
-        case .rawLine(let line):
-            appendAssistantText(line, allowClosedTurn: false)
+        case .rawLine:
+            // Plain stdout is not an assistant message. Grok can write child
+            // worker/progress chatter there while structured ACP updates for the
+            // parent session are still arriving. Rendering it as prose produced
+            // the interleaved, unreadable transcript seen during multi-agent runs.
+            break
         case .error(let msg):
             lastError = msg
         }
+    }
+
+    private func ownsActiveLifecycleEvent(_ identity: ACPEventIdentity) -> Bool {
+        SubagentLifecycleEventPolicy.ownsActiveSession(
+            identity,
+            localTabID: tabSessionID,
+            backendSessionID: process.sessionId,
+            processGeneration: process.activeProcessGeneration
+        )
+    }
+
+    private func recordCurrentTurnWorkerChanges(since previous: [BackgroundActivity]) {
+        let previousByID = Dictionary(uniqueKeysWithValues: previous.map { ($0.id, $0) })
+        for activity in backgroundTaskTracker.activities where activity.kind == .subagent {
+            if previousByID[activity.id] != activity {
+                currentTurnWorkerActivityIDs.insert(activity.id)
+            }
+        }
+    }
+
+    private func ownsActiveCompletionEvent(_ identity: ACPEventIdentity) -> Bool {
+        guard isStreaming,
+              activeTurnBackendSessionID == identity.backendSessionID else { return false }
+        return SubagentLifecycleEventPolicy.ownsActiveSession(
+            identity,
+            localTabID: tabSessionID,
+            backendSessionID: process.sessionId,
+            processGeneration: process.activeProcessGeneration
+        )
+    }
+
+    private func completionOwnershipFailureReason(for identity: ACPEventIdentity) -> String {
+        var mismatches: [String] = []
+        if !isStreaming { mismatches.append("no active streaming turn") }
+        if activeTurnBackendSessionID != identity.backendSessionID {
+            mismatches.append("turn backend")
+        }
+        if identity.localTabID != tabSessionID { mismatches.append("local tab") }
+        if identity.backendSessionID != process.sessionId { mismatches.append("live backend") }
+        if identity.processGeneration != process.activeProcessGeneration {
+            mismatches.append("process generation")
+        }
+        let detail = mismatches.isEmpty ? "unknown ownership mismatch" : mismatches.joined(separator: ", ")
+        return "ACP turn_completed was rejected at the ChatStore ownership boundary: \(detail)."
     }
 
     private func liveToolCall(from toolCall: ToolCall) -> LiveToolCall {
@@ -2728,8 +3177,213 @@ final class ChatStore {
             title: displayTitle(for: toolCall),
             kind: displayKind(for: toolCall),
             status: toolCall.status,
-            detail: toolCall.detail
+            terminalStatus: toolCall.terminalStatus,
+            detail: toolCall.detail,
+            diagnosticDetail: toolCall.diagnosticDetail,
+            target: toolCall.target,
+            retryOfToolCallID: toolCall.retryOfToolCallID,
+            recoveredByToolCallID: nil
         )
+    }
+
+    private func observeArtifactReceipt(_ toolCall: ToolCall) {
+        if let path = normalizedArtifactPath(toolCall.writtenFilePath) {
+            pendingArtifactPathsByToolCallID[toolCall.id] = path
+        }
+
+        guard isSuccessfulToolStatus(toolCall.status),
+              let path = pendingArtifactPathsByToolCallID.removeValue(forKey: toolCall.id) else {
+            return
+        }
+
+        let artifact = RunArtifact(
+            toolCallID: toolCall.id,
+            path: path,
+            status: "Completed",
+            location: artifactLocation(for: path)
+        )
+        if let index = runArtifacts.firstIndex(where: { $0.path == artifact.path }) {
+            runArtifacts[index] = artifact
+        } else {
+            runArtifacts.append(artifact)
+        }
+        requestGitRefresh()
+    }
+
+    private func normalizedArtifactPath(_ rawPath: String?) -> String? {
+        guard let rawPath else { return nil }
+        let trimmed = rawPath.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty, !trimmed.contains("\0") else { return nil }
+        if trimmed.hasPrefix("/") {
+            return URL(fileURLWithPath: trimmed).standardizedFileURL.path
+        }
+        guard let workspace = currentWorkspace?.path else { return trimmed }
+        return workspace.appendingPathComponent(trimmed).standardizedFileURL.path
+    }
+
+    private func artifactLocation(for path: String) -> RunArtifact.Location {
+        guard let workspaceRoot = currentWorkspace?.path.standardizedFileURL.path else {
+            return .external
+        }
+        let standardizedPath = URL(fileURLWithPath: path).standardizedFileURL.path
+        return standardizedPath == workspaceRoot || standardizedPath.hasPrefix(workspaceRoot + "/")
+            ? .workspace
+            : .external
+    }
+
+    private func isSuccessfulToolStatus(_ status: String?) -> Bool {
+        guard let status else { return false }
+        return ["completed", "complete", "success", "succeeded"]
+            .contains(status.trimmingCharacters(in: .whitespacesAndNewlines).lowercased())
+    }
+
+    private func requestGitRefresh() {
+        gitRefreshRevision &+= 1
+    }
+
+    /// ContentView owns the bounded `GitService` query. It may attach the
+    /// resulting Git authority only to the current snapshot for the same tab,
+    /// workspace, backend, and process generation; it cannot create a run or
+    /// settle lifecycle state.
+    func recordGitReviewFiles(_ paths: [String], workspaceID: UUID) {
+        guard let snapshot = runEvidenceSnapshot,
+              snapshot.binding.localTabID == tabSessionID,
+              snapshot.binding.workspaceID == workspaceID,
+              snapshot.binding.backendSessionID == process.sessionId,
+              snapshot.binding.processGeneration == process.activeProcessGeneration else { return }
+        runEvidenceSnapshot = snapshot.replacingGitReviewFiles(
+            ActivitySidebarPresentation.uniqueFilePaths(paths)
+        )
+    }
+
+    private static func planSteps(from payload: [String: Any]) -> [RunEvidenceSnapshot.PlanStep] {
+        guard let entries = payload["entries"] as? [[String: Any]] else { return [] }
+        return entries.enumerated().compactMap { index, entry in
+            guard let rawTitle = entry["title"] as? String else { return nil }
+            let title = TranscriptTextPresentation.singleLine(rawTitle, maxLength: 240)
+            guard !title.isEmpty else { return nil }
+            let status = (entry["status"] as? String ?? "not_reported")
+            return RunEvidenceSnapshot.PlanStep(
+                id: "\(index)|\(title)",
+                title: title,
+                status: status
+            )
+        }
+    }
+
+    private func makeRunEvidenceSnapshot(completion: TurnCompletionReceipt) -> RunEvidenceSnapshot {
+        let workers = backgroundActivities.filter {
+            $0.kind == .subagent && currentTurnWorkerActivityIDs.contains($0.id)
+        }.map {
+            RunEvidenceSnapshot.Worker(
+                id: $0.id,
+                title: $0.title,
+                status: $0.status,
+                childID: $0.childID,
+                durationMilliseconds: $0.durationMilliseconds,
+                toolCallCount: $0.toolCallCount,
+                redactedError: $0.redactedError
+            )
+        }
+        let toolSummary = RunEvidenceSnapshot.ToolSummary(
+            succeeded: liveToolCalls.filter { $0.terminalStatus == .succeeded }.count,
+            failed: liveToolCalls.filter { $0.terminalStatus == .failed }.count,
+            cancelled: liveToolCalls.filter { $0.terminalStatus == .cancelled }.count,
+            unknown: liveToolCalls.filter { $0.terminalStatus == .unknown || $0.terminalStatus == nil }.count
+        )
+        let unresolvedErrors = liveToolCalls.compactMap { tool -> String? in
+            guard tool.terminalStatus == .failed, !tool.isRecovered else { return nil }
+            return TranscriptTextPresentation.singleLine(tool.detail ?? tool.title, maxLength: 180)
+        } + workers.compactMap { $0.redactedError }
+        let provenance: String = switch continuityStatus {
+        case .localOnly: "Local only"
+        case .backendBound: "Fresh backend bound"
+        case .backendOnly: "Backend only"
+        case .verifying: "Verification in progress"
+        case .verified: "Verified continuity"
+        case .recoveryForked: "Recovery fork"
+        case .diverged, .compositeSuspected, .backendMissing, .verificationIncomplete: "Continuity needs review"
+        }
+        let outcome = latestTurnOutcome ?? .completionReceiptMissing
+        // Only `turn_completed` is the parent lifecycle authority. A bridge
+        // watchdog can preserve evidence, but it cannot paint the process settled.
+        let processState = outcome == .completed
+            ? "Settled"
+            : "Incomplete — completion receipt missing"
+        let nextAction: String
+        if outcome == .completionReceiptMissing {
+            nextAction = "Reconnect before sending another turn; the backend completion receipt was not reported."
+        } else if workers.contains(where: \.isActive) {
+            nextAction = "Waiting for worker receipts."
+        } else if !unresolvedErrors.isEmpty {
+            nextAction = "Review unresolved tool or worker errors."
+        } else {
+            nextAction = "No further action reported."
+        }
+        let latestUserMessage = messages.last(where: { $0.role == .user })?.content
+        return RunEvidenceSnapshot(
+            binding: .init(
+                localTabID: tabSessionID,
+                workspaceID: currentWorkspace?.id,
+                backendSessionID: process.sessionId,
+                processGeneration: process.activeProcessGeneration,
+                requestID: completion.promptID,
+                isSettled: outcome == .completed
+            ),
+            goalSummary: goalState?.objective ?? latestUserMessage.map {
+                TranscriptTextPresentation.singleLine($0, maxLength: 240)
+            },
+            plan: currentRunPlan,
+            workers: workers,
+            tools: toolSummary,
+            artifacts: runArtifacts,
+            gitReviewFiles: [],
+            process: .init(
+                state: processState,
+                model: modelExecutionState.effectiveModelID ?? modelExecutionState.requestedModelID,
+                mcps: mcpServerStatuses.map { .init(name: $0.name, state: $0.state.rawValue, reason: $0.reason) }
+            ),
+            continuity: .init(
+                status: continuityStatus.rawValue,
+                reason: continuityReceipt.reason.rawValue,
+                provenance: provenance,
+                requiresRecoveryAction: shouldShowContinuityBanner
+                    && continuityBlocksSend
+            ),
+            usage: .init(
+                totalTokens: completion.totalTokens,
+                modelCalls: completion.modelCalls,
+                turnCount: completion.turnCount
+            ),
+            outcome: outcome,
+            unresolvedErrors: unresolvedErrors,
+            nextAction: nextAction
+        )
+    }
+
+    private func refreshBoundContinuityCountsAfterSettlement() {
+        guard let backendID = process.sessionId,
+              let generation = process.activeProcessGeneration,
+              continuityReceipt.reason != .noBackendBinding else { return }
+        let backendRelativeMessages = boundForkLedgerEntry?
+            .localMessagesForBackendVerification(messages) ?? messages
+        let count = SessionTranscriptRecovery.normalizedMessageCount(backendRelativeMessages)
+        continuityReceipt = SessionContinuityReceipt(
+            status: continuityReceipt.status,
+            reason: continuityReceipt.reason,
+            normalizationVersion: continuityReceipt.normalizationVersion,
+            authenticationSchemaVersion: continuityReceipt.authenticationSchemaVersion,
+            localMessageCount: count,
+            backendMessageCount: count,
+            matchingPrefixCount: count,
+            localTranscriptTag: continuityReceipt.localTranscriptTag,
+            backendTranscriptTag: continuityReceipt.backendTranscriptTag,
+            verifiedAt: Date(),
+            localTabID: tabSessionID,
+            backendID: backendID,
+            processGeneration: generation
+        )
+        persistedContinuityReceipt = continuityReceipt
     }
 
     private func mergedToolCall(existing: LiveToolCall, update: ToolCall) -> LiveToolCall {
@@ -2740,8 +3394,18 @@ final class ChatStore {
             title: title,
             kind: kind,
             status: update.status ?? existing.status,
-            detail: update.detail ?? existing.detail
+            terminalStatus: update.terminalStatus ?? existing.terminalStatus,
+            detail: update.detail ?? existing.detail,
+            diagnosticDetail: update.diagnosticDetail ?? existing.diagnosticDetail,
+            target: update.target ?? existing.target,
+            retryOfToolCallID: update.retryOfToolCallID ?? existing.retryOfToolCallID,
+            recoveredByToolCallID: nil
         )
+    }
+
+    private func settleToolCallsAtTurnBarrier() {
+        let observedCalls = liveToolCalls
+        liveToolCalls = observedCalls.map { $0.settled(against: observedCalls) }
     }
 
     private func displayTitle(for toolCall: ToolCall) -> String {
@@ -2813,7 +3477,8 @@ final class ChatStore {
         guard let id = targetID,
               let idx = messages.firstIndex(where: { $0.id == id }) else { return }
 
-        let clean = text.replacingOccurrences(of: "<<USER>> ", with: "")
+        let clean = TranscriptTextPresentation.normalize(text)
+            .replacingOccurrences(of: "<<USER>> ", with: "")
         if clean.trimmingCharacters(in: .whitespacesAndNewlines).hasPrefix(">") &&
            !clean.contains("diff") { return }
 

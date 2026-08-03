@@ -343,6 +343,46 @@ struct ExitPlanRequest: Identifiable, Hashable, @unchecked Sendable {
     enum PlanVerdict: String, Sendable {
         case approved, rejected, abandoned
     }
+
+    /// Replayed frames for the same ACP request may fill in plan text after the
+    /// request first arrives. They update that one card; a distinct request
+    /// replaces it because the backend can block on only one plan approval at a
+    /// time in a session.
+    static func merging(_ incoming: ExitPlanRequest, into current: ExitPlanRequest?) -> ExitPlanRequest {
+        guard let current,
+              ACPInteractionRequestIdentity.matches(
+                lhsID: current.id,
+                lhsSessionID: current.sessionId,
+                rhsID: incoming.id,
+                rhsSessionID: incoming.sessionId
+              ),
+              incoming.planText.isEmpty else {
+            return incoming
+        }
+        var merged = incoming
+        merged.planText = current.planText
+        return merged
+    }
+}
+
+/// The JSON-RPC request id is meaningful only inside its backend session. This
+/// policy is deliberately transport-shaped: visible interaction cards may be
+/// rendered from these requests, but tool-call ids and transcript content never
+/// become response authority.
+enum ACPInteractionRequestIdentity {
+    static func ownsActiveSession(_ requestSessionID: String, activeSessionID: String?) -> Bool {
+        guard !requestSessionID.isEmpty, let activeSessionID else { return false }
+        return requestSessionID == activeSessionID
+    }
+
+    static func matches(
+        lhsID: AnyHashable,
+        lhsSessionID: String,
+        rhsID: AnyHashable,
+        rhsSessionID: String
+    ) -> Bool {
+        lhsID == rhsID && lhsSessionID == rhsSessionID
+    }
 }
 
 struct QuestionOption: Identifiable, Hashable, Sendable {
@@ -381,32 +421,24 @@ struct QuestionRequest: Identifiable, Hashable, @unchecked Sendable {
     var isResolved: Bool
     var answerSummary: String?
 
-    static func isQuestionTool(_ toolCall: ToolCall) -> Bool {
-        if questionsFromToolCall(toolCall) != nil { return true }
-        let normalized = toolCall.title
-            .replacingOccurrences(of: "_", with: "")
-            .replacingOccurrences(of: " ", with: "")
-            .lowercased()
-        return normalized == "askuserquestion" || normalized == "askquestion"
-    }
-
-    static func questionsFromToolCall(_ toolCall: ToolCall) -> [QuestionItem]? {
-        if let raw = toolCall.rawInput?["questions"] as? [[String: Any]] {
-            let parsed = raw.compactMap { QuestionItem.parse(from: $0) }
-            if !parsed.isEmpty { return parsed }
+    /// Only an authoritative `x.ai/ask_user_question` request enters this
+    /// reducer. Tool activity remains visible as activity, never as a card that
+    /// could answer with a tool-call id.
+    static func merging(_ incoming: QuestionRequest, into existing: [QuestionRequest]) -> [QuestionRequest] {
+        var merged = existing
+        if let index = merged.firstIndex(where: {
+            ACPInteractionRequestIdentity.matches(
+                lhsID: $0.id,
+                lhsSessionID: $0.sessionId,
+                rhsID: incoming.id,
+                rhsSessionID: incoming.sessionId
+            )
+        }) {
+            merged[index] = incoming
+            return merged
         }
-        let title = toolCall.title
-        if title.range(of: #"^ask[:\s]"#, options: [.regularExpression, .caseInsensitive]) != nil {
-            let text = title.replacingOccurrences(
-                of: #"^ask[:\s]+"#,
-                with: "",
-                options: [.regularExpression, .caseInsensitive]
-            ).trimmingCharacters(in: .whitespacesAndNewlines)
-            if !text.isEmpty {
-                return [QuestionItem(id: text, text: text, options: [], multiSelect: false)]
-            }
-        }
-        return nil
+        merged.append(incoming)
+        return merged
     }
 }
 

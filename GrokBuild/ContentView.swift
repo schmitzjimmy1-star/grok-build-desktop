@@ -38,9 +38,8 @@ struct ContentView: View {
     @State private var showPreview = false
     @State private var gitCheckoutRequest: GitCheckoutRequest?
     @State private var gitError: String?
-    @State private var previewMessageID: UUID?
-    @State private var previewDiffs: [ChatStore.DetectedDiff] = []
     @State private var projectChangedDiffs: [ChatStore.DetectedDiff] = []
+    @State private var boundedGitRefreshTask: Task<Void, Never>?
     @State private var didBootstrap = false
     @State private var isRestoringSessions = false
     @State private var restoredSessionCount = 0
@@ -176,6 +175,7 @@ struct ContentView: View {
                         onToggleSidebar: { isSidebarVisible.toggle() },
                         onOpenSettings: { openSettings(tab: selectedSettingsTab) },
                         reviewFileCount: activeReviewDiffs.count,
+                        reviewFileNames: activeReviewDiffs.compactMap(\.filePath),
                         isReviewVisible: showPreview,
                         onToggleReview: {
                             if !activeReviewDiffs.isEmpty {
@@ -201,19 +201,17 @@ struct ContentView: View {
                             if let workspace = currentWorkspace {
                                 gitCheckoutRequest = GitCheckoutRequest(project: workspace)
                             }
-                        }
+                        },
+                        onRevealArtifact: revealArtifact
                     )
                     .id(activeStore.tabSessionID)
                     .frame(minWidth: 360, maxWidth: .infinity, maxHeight: .infinity)
 
                     if showPreview {
                         PreviewPane(
-                            message: activeReviewMessage,
                             diffs: activeReviewDiffs,
                             workspace: currentWorkspace,
-                            onClose: { showPreview = false },
-                            onApply: applyDiffs,
-                            onApplySingle: applySingle
+                            onClose: { showPreview = false }
                         )
                         .frame(minWidth: 360, idealWidth: 460, maxWidth: 620, maxHeight: .infinity)
                     }
@@ -235,6 +233,9 @@ struct ContentView: View {
         .onAppear { refreshSessionTitles() }
         .onChange(of: sessionListRevision) { _, _ in
             refreshSessionTitles()
+        }
+        .onChange(of: activeStore.gitRefreshRevision) { _, _ in
+            scheduleBoundedGitRefresh(for: activeStore)
         }
         .onReceive(NotificationCenter.default.publisher(for: .grokBuildUpdateAvailable)) { _ in
             isUpgradeBannerDismissed = false
@@ -302,7 +303,7 @@ struct ContentView: View {
             showPicker: $showPicker,
             showSessions: $showSessions,
             onWorkspaceChange: handleWorkspaceChange,
-            onAutoSelectLatestDiff: autoSelectLatestDiffMessage,
+            onRefreshGitReview: refreshGitReviewFromTranscriptBoundary,
             onNewSession: startNewSessionForCurrentProject,
             onPersistSessionLayout: { persistSessionLayout(saveMessages: $0) },
             onTranscriptBoundary: markTranscriptDirtyAndPersist,
@@ -361,11 +362,7 @@ struct ContentView: View {
     }
 
     private var activeReviewDiffs: [ChatStore.DetectedDiff] {
-        previewDiffs.isEmpty ? projectChangedDiffs : previewDiffs
-    }
-
-    private var activeReviewMessage: Message? {
-        previewDiffs.isEmpty ? nil : previewMessage
+        projectChangedDiffs
     }
 
     private func openSettings(tab: SettingsTab) {
@@ -541,11 +538,6 @@ struct ContentView: View {
                 openSettings(tab: .computerUse)
             }
         }
-    }
-
-    private var previewMessage: Message? {
-        guard let id = previewMessageID else { return nil }
-        return activeStore.messages.first { $0.id == id }
     }
 
     private var liveSessionsByGrokID: [String: UUID] {
@@ -806,7 +798,7 @@ struct ContentView: View {
                         return .verified
                     case .diverged, .compositeSuspected, .backendMissing:
                         return .failed
-                    case .localOnly, .verifying, .verificationIncomplete, nil:
+                    case .localOnly, .backendBound, .verifying, .verificationIncomplete, nil:
                         return .unverified
                     }
                 }()
@@ -1101,13 +1093,9 @@ struct ContentView: View {
         persistSessionLayout()
     }
 
-    private func autoSelectLatestDiffMessage() {
-        if let last = activeStore.messages.last(where: { $0.role == .assistant && $0.hasDiff }) {
-            if previewMessageID != last.id {
-                previewMessageID = last.id
-                previewDiffs = activeStore.detectedDiffs(in: last)
-                showPreview = true
-            }
+    private func refreshGitReviewFromTranscriptBoundary() {
+        Task { @MainActor in
+            await refreshProjectChangedFiles()
         }
     }
 
@@ -1127,7 +1115,8 @@ struct ContentView: View {
             }
             guard currentWorkspace?.id == workspace.id else { return }
             projectChangedDiffs = diffs
-            if diffs.isEmpty, previewDiffs.isEmpty {
+            activeStore.recordGitReviewFiles(diffs.compactMap(\.filePath), workspaceID: workspace.id)
+            if diffs.isEmpty {
                 showPreview = false
             }
         } catch {
@@ -1136,23 +1125,22 @@ struct ContentView: View {
         }
     }
 
-    private func applyDiffs(from message: Message) {
-        guard let ws = activeStore.currentWorkspace else { return }
-        Task {
-            _ = await activeStore.applyDiffs(from: message, workspace: ws)
+    @MainActor
+    private func scheduleBoundedGitRefresh(for store: ChatStore) {
+        boundedGitRefreshTask?.cancel()
+        guard store === activeStore,
+              let workspaceID = store.currentWorkspace?.id else { return }
+        boundedGitRefreshTask = Task { @MainActor in
+            try? await Task.sleep(for: .milliseconds(250))
+            guard !Task.isCancelled,
+                  store === activeStore,
+                  currentWorkspace?.id == workspaceID else { return }
             await refreshProjectChangedFiles()
         }
     }
 
-    private func applySingle(_ diff: ChatStore.DetectedDiff) {
-        guard let ws = activeStore.currentWorkspace else { return }
-
-        // Apply only one diff by temporarily synthesizing a message with just that diff
-        let single = Message(role: .assistant, content: "```diff\n\(diff.raw)\n```")
-        Task {
-            _ = await activeStore.applyDiffs(from: single, workspace: ws)
-            await refreshProjectChangedFiles()
-        }
+    private func revealArtifact(_ artifact: ChatStore.RunArtifact) {
+        NSWorkspace.shared.activateFileViewerSelecting([URL(fileURLWithPath: artifact.path)])
     }
 
     private func openCurrentProject(in target: ProjectOpenTarget) {
@@ -1258,9 +1246,7 @@ struct ContentView: View {
         session.store.syncTabModelToLiveProcessIfNeeded()
         selectedSessionID = id
         selectedWorkspaceID = session.workspace.id
-        previewMessageID = nil
-        previewDiffs = []
-        autoSelectLatestDiffMessage()
+        refreshGitReviewFromTranscriptBoundary()
         if recordsActivation {
             noteSessionUsed(id)
         }
@@ -1301,7 +1287,7 @@ struct ContentView: View {
                         session.store.restorePersistedMessages(recovered)
                     }
                 }
-                autoSelectLatestDiffMessage()
+                refreshGitReviewFromTranscriptBoundary()
             }
             // Slice 3 verifies the exact bound history before any resume. The old
             // defer flag now means "verify before start", not "wait until Send and
@@ -1387,7 +1373,7 @@ struct ContentView: View {
                        let currentIndex = liveSessions.firstIndex(where: { $0.id == id }),
                        liveSessions[currentIndex].store.messages.isEmpty {
                         liveSessions[currentIndex].store.restorePersistedMessages(recovered ?? saved)
-                        autoSelectLatestDiffMessage()
+                        refreshGitReviewFromTranscriptBoundary()
                     }
                 }
             }
@@ -1438,8 +1424,7 @@ struct ContentView: View {
         )
         selectedSessionID = id
         selectedWorkspaceID = workspace.id
-        previewMessageID = nil
-        previewDiffs = []
+        projectChangedDiffs = []
         noteSessionUsed(id)
         Task { await refreshProjectChangedFiles() }
         sessionListRevision &+= 1
@@ -1624,7 +1609,7 @@ private struct ContentViewNotificationHandlers: ViewModifier {
     @Binding var showPicker: Bool
     @Binding var showSessions: Bool
     let onWorkspaceChange: (Workspace.ID?) -> Void
-    let onAutoSelectLatestDiff: () -> Void
+    let onRefreshGitReview: () -> Void
     let onNewSession: () -> Void
     let onPersistSessionLayout: (Bool) -> Void
     let onTranscriptBoundary: (UUID) -> Void
@@ -1640,7 +1625,7 @@ private struct ContentViewNotificationHandlers: ViewModifier {
                 showSessions = true
             }
             .onReceive(NotificationCenter.default.publisher(for: .stopGenerationRequested)) { _ in
-                activeStore.stop()
+                activeStore.requestStop()
             }
             .onReceive(NotificationCenter.default.publisher(for: .focusInputRequested)) { _ in
                 // handled inside ChatView via focus
@@ -1691,12 +1676,11 @@ private struct ContentViewNotificationHandlers: ViewModifier {
            let session = liveSessions.first(where: { $0.store === store }) {
             onTranscriptBoundary(session.id)
         }
-        // Diff detection runs at prompt boundaries (send / turn complete /
-        // failure), not per streamed chunk: a mid-stream diff is incomplete
-        // anyway, and the per-chunk transcript rescan was the app's clearest
-        // quadratic cost. This notification is those boundaries.
+        // Git review refreshes only at prompt boundaries (send / turn complete /
+        // failure), never per streamed chunk. Assistant transcript text is not a
+        // repository snapshot and never opens review or becomes an apply input.
         if notifyingStore == nil || notifyingStore === activeStore {
-            onAutoSelectLatestDiff()
+            onRefreshGitReview()
         }
     }
 

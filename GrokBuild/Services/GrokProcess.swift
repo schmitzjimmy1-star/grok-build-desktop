@@ -159,6 +159,26 @@ struct AgentMode: RawRepresentable, Sendable, Hashable, Equatable {
     static let yolo  = AgentMode(rawValue: "yolo")
 }
 
+enum ToolCallTerminalStatus: String, Sendable, Hashable {
+    case succeeded
+    case failed
+    case cancelled
+    case stale
+    case unknown
+
+    static func from(rawStatus: String?) -> ToolCallTerminalStatus? {
+        guard let rawStatus else { return nil }
+        switch rawStatus.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() {
+        case "completed", "complete", "success", "succeeded": return .succeeded
+        case "failed", "error", "rejected": return .failed
+        case "cancelled", "canceled", "cancel": return .cancelled
+        case "stale", "superseded": return .stale
+        case "running", "in_progress", "pending", "queued", "": return nil
+        default: return .unknown
+        }
+    }
+}
+
 struct ToolCall: @unchecked Sendable, Identifiable, Hashable {
     let id: String          // toolCallId
     let kind: String
@@ -166,6 +186,10 @@ struct ToolCall: @unchecked Sendable, Identifiable, Hashable {
     let rawInput: [String: Any]?
     let status: String?
     let detail: String?
+    let diagnosticDetail: String?
+    let target: String?
+    /// Only backend-supplied metadata may link one invocation to the call it retried.
+    let retryOfToolCallID: String?
 
     init(
         id: String,
@@ -173,7 +197,10 @@ struct ToolCall: @unchecked Sendable, Identifiable, Hashable {
         title: String,
         rawInput: [String: Any]?,
         status: String? = nil,
-        detail: String? = nil
+        detail: String? = nil,
+        diagnosticDetail: String? = nil,
+        target: String? = nil,
+        retryOfToolCallID: String? = nil
     ) {
         self.id = id
         self.kind = kind
@@ -181,6 +208,13 @@ struct ToolCall: @unchecked Sendable, Identifiable, Hashable {
         self.rawInput = rawInput
         self.status = status
         self.detail = detail
+        self.diagnosticDetail = diagnosticDetail
+        self.target = target
+        self.retryOfToolCallID = retryOfToolCallID
+    }
+
+    var terminalStatus: ToolCallTerminalStatus? {
+        ToolCallTerminalStatus.from(rawStatus: status)
     }
 
     var identifier: String { id }
@@ -198,11 +232,21 @@ struct ToolCall: @unchecked Sendable, Identifiable, Hashable {
 
     var filePath: String? {
         if let path = rawInput?["path"] as? String { return path }
+        if let path = rawInput?["file_path"] as? String { return path }
         if let file = rawInput?["file"] as? String { return file }
         if let args = rawInput?["args"] as? [String], let first = args.first, first.hasPrefix("/") || first.contains(".") {
             return first
         }
         return nil
+    }
+
+    /// A successful terminal invocation can author a durable file without using
+    /// ACP's dedicated write tool. Admit only an explicit shell redirection target;
+    /// prose, command arguments, and terminal capture logs are not artifacts.
+    var writtenFilePath: String? {
+        if isEdit { return filePath }
+        guard let command else { return nil }
+        return ShellRedirectionReceipt.outputPath(in: command)
     }
 
     var proposedContent: String? {
@@ -239,6 +283,32 @@ struct ToolCall: @unchecked Sendable, Identifiable, Hashable {
     }
 }
 
+enum ShellRedirectionReceipt {
+    private static let outputPattern = try! NSRegularExpression(
+        pattern: #"(?:^|[\s;&|])>{1,2}\s*(?:'([^']+)'|\"([^\"]+)\"|([^\s;&|]+))"#
+    )
+
+    static func outputPath(in command: String) -> String? {
+        let range = NSRange(command.startIndex..<command.endIndex, in: command)
+        let matches = outputPattern.matches(in: command, range: range)
+        for match in matches.reversed() {
+            for group in 1...3 where match.range(at: group).location != NSNotFound {
+                guard let groupRange = Range(match.range(at: group), in: command) else { continue }
+                let value = String(command[groupRange])
+                    .trimmingCharacters(in: .whitespacesAndNewlines)
+                guard !value.isEmpty,
+                      value != "/dev/null",
+                      !value.hasPrefix("&"),
+                      !value.hasPrefix("~"),
+                      !value.contains("$"),
+                      !value.contains("`") else { continue }
+                return value
+            }
+        }
+        return nil
+    }
+}
+
 struct PermissionOption: Sendable, Identifiable, Hashable {
     let id: String          // optionId
     let kind: String        // "allow_always", "allow_once", "reject_once", etc.
@@ -256,6 +326,55 @@ struct PermissionRequest: @unchecked Sendable, Identifiable, Hashable {
     var identifier: AnyHashable { id }
 }
 
+struct ACPEventIdentity: Sendable, Hashable {
+    let localTabID: UUID?
+    let backendSessionID: String
+    let processGeneration: UInt64
+    let backendEventID: String?
+}
+
+struct SubagentSpawnedEvent: Sendable, Hashable {
+    let identity: ACPEventIdentity
+    let childID: String
+    let parentPromptID: String?
+    let subagentType: String?
+    let modelID: String?
+    let description: String?
+
+    var deduplicationKey: String {
+        "spawn|\(identity.backendSessionID)|\(identity.processGeneration)|\(childID)"
+    }
+}
+
+struct SubagentFinishedEvent: Sendable, Hashable {
+    let identity: ACPEventIdentity
+    let childID: String
+    let status: String
+    let durationMilliseconds: Int?
+    let turns: Int?
+    let toolCallCount: Int?
+    let tokenCount: Int?
+    let redactedError: String?
+
+    var deduplicationKey: String {
+        "finish|\(identity.backendSessionID)|\(identity.processGeneration)|\(childID)"
+    }
+}
+
+enum SubagentLifecycleEventPolicy {
+    static func ownsActiveSession(
+        _ identity: ACPEventIdentity,
+        localTabID: UUID?,
+        backendSessionID: String?,
+        processGeneration: UInt64?
+    ) -> Bool {
+        guard let localTabID, let backendSessionID, let processGeneration else { return false }
+        return identity.localTabID == localTabID
+            && identity.backendSessionID == backendSessionID
+            && identity.processGeneration == processGeneration
+    }
+}
+
 // MARK: - Structured ACP Events
 
 enum AcpEvent: @unchecked Sendable {
@@ -263,6 +382,8 @@ enum AcpEvent: @unchecked Sendable {
     case thoughtChunk(text: String)
     case toolCall(ToolCall)
     case toolCallUpdate(ToolCall)   // simplified
+    case subagentSpawned(SubagentSpawnedEvent)
+    case subagentFinished(SubagentFinishedEvent)
     case plan(payload: [String: Any])
     case planFileContent(String)
     case exitPlanRequest(ExitPlanRequest)
@@ -279,9 +400,33 @@ enum AcpEvent: @unchecked Sendable {
     case backgroundActivity(payload: [String: Any])
     /// Explicit queue barrier for one prompt turn. ChatStore acknowledges this only
     /// after every earlier streamed event has been consumed and persisted/reconciled.
-    case turnCompleted
+    case turnCompleted(TurnCompletionReceipt)
+    /// The prompt RPC returned, but the current CLI never supplied its typed ACP
+    /// completion receipt. This crosses the same ordered event queue so the UI can
+    /// preserve partial evidence and fail closed; it is never treated as success.
+    case turnCompletionReceiptMissing(TurnCompletionBridgeFailure)
+    /// Non-ACP stdout. This is retained as a diagnostic event, but is not
+    /// transcript content: child-process chatter and provider logs can arrive
+    /// here interleaved with structured parent-session updates.
     case rawLine(String)
     case error(String)
+}
+
+/// The terminal parent-turn receipt emitted by ACP. This is deliberately small
+/// and credential-free: only final outcome metadata needed by the run-evidence
+/// projection crosses the process boundary.
+struct TurnCompletionReceipt: Sendable, Equatable {
+    let identity: ACPEventIdentity
+    let promptID: String?
+    let stopReason: String?
+    let totalTokens: Int?
+    let modelCalls: Int?
+    let turnCount: Int?
+}
+
+struct TurnCompletionBridgeFailure: Sendable, Equatable {
+    let identity: ACPEventIdentity
+    let reason: String
 }
 
 /// Newline-delimited framing over raw pipe bytes. Buffering as `Data` (not
@@ -313,6 +458,11 @@ enum AcpLineBuffer {
 /// Replaces the old TUI scraping approach with proper JSON-RPC.
 @Observable
 final class GrokProcess: @unchecked Sendable {
+    /// A transport watchdog for a contract-breaking CLI which returns from
+    /// `session/prompt` without ever emitting the ACP completion receipt. It never
+    /// manufactures completion: expiry emits a typed bridge failure and the run
+    /// remains visibly incomplete.
+    private static let turnCompletionReceiptWatchdog: Duration = .seconds(180)
     private let ioLock = NSLock()
     private let writeLock = NSLock()
     private let turnCompletionLock = NSLock()
@@ -356,11 +506,15 @@ final class GrokProcess: @unchecked Sendable {
         let timeoutTask: Task<Void, Never>?
     }
     private var pendingRequests: [Int: PendingRequest] = [:]
-    private var turnCompletionContinuation: CheckedContinuation<Void, Never>?
+    private var turnCompletionContinuation: CheckedContinuation<Bool, Never>?
     private var turnCompletionTimeoutTask: Task<Void, Never>?
-    private var didReceiveTurnCompletion = false
+    private var turnCompletionResult: Bool?
+    private var turnCompletionObservedAtProcessBoundary = false
+    private var turnCompletionFailureReason: String?
     private(set) var sessionId: String?
     private(set) var launchReceipt: GrokLaunchReceipt?
+    private(set) var mcpServerStatuses: [MCPServerStatus] = []
+    private var configuredMCPServerNames: [String] = []
     /// Monotonic launch identity. `activeProcessGeneration == nil` means the most
     /// recent receipt is historical rather than a live-process claim.
     private(set) var processGeneration: UInt64 = 0
@@ -415,6 +569,12 @@ final class GrokProcess: @unchecked Sendable {
         if let serverName = tool["serverName"] as? String ?? tool["server_name"] as? String {
             raw["serverName"] = serverName
         }
+        if raw["toolName"] == nil,
+           let metadata = tool["_meta"] as? [String: Any],
+           let toolMetadata = metadata["x.ai/tool"] as? [String: Any],
+           let metadataName = toolMetadata["name"] as? String {
+            raw["toolName"] = metadataName
+        }
 
         let rawToolName = raw["toolName"] as? String
             ?? raw["tool_name"] as? String
@@ -437,9 +597,14 @@ final class GrokProcess: @unchecked Sendable {
         if let cmd = tool["command"] as? String { raw["command"] = cmd }
         if let newText = tool["newText"] as? String { raw["newText"] = newText }
 
-        let status = tool["status"] as? String
+        let rawOutput = tool["rawOutput"] ?? tool["raw_output"]
+        let status = Self.authoritativeToolStatus(
+            backendStatus: tool["status"] as? String,
+            rawOutput: rawOutput
+        )
         let contentDetail = Self.toolContentText(tool["content"])
-        let rawOutputDetail = Self.toolRawOutputText(tool["rawOutput"] ?? tool["raw_output"])
+        let rawOutputDetail = Self.toolRawOutputText(rawOutput)
+        let terminalFailure = Self.terminalFailureDetail(rawOutput)
 
         return ToolCall(
             id: tcid,
@@ -447,8 +612,41 @@ final class GrokProcess: @unchecked Sendable {
             title: title,
             rawInput: raw.isEmpty ? nil : raw,
             status: status,
-            detail: rawOutputDetail ?? contentDetail
+            detail: Self.redactedToolText(terminalFailure ?? rawOutputDetail ?? contentDetail, limit: 280),
+            diagnosticDetail: Self.toolDiagnosticText(rawOutput),
+            target: Self.toolTarget(from: raw),
+            retryOfToolCallID: Self.retryOfToolCallID(from: tool, rawInput: raw)
         )
+    }
+
+    private static func authoritativeToolStatus(
+        backendStatus: String?,
+        rawOutput: Any?
+    ) -> String? {
+        guard let output = rawOutput as? [String: Any] else { return backendStatus }
+        if integer(output["exit_code"]) != nil,
+           integer(output["exit_code"]) != 0 {
+            return "failed"
+        }
+        if output["timed_out"] as? Bool == true { return "failed" }
+        if let signal = output["signal"] as? String,
+           !signal.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            return "failed"
+        }
+        return backendStatus
+    }
+
+    private static func terminalFailureDetail(_ rawOutput: Any?) -> String? {
+        guard let output = rawOutput as? [String: Any] else { return nil }
+        if let exitCode = integer(output["exit_code"]), exitCode != 0 {
+            return "Command exited with status \(exitCode)."
+        }
+        if output["timed_out"] as? Bool == true { return "Command timed out." }
+        if let signal = output["signal"] as? String,
+           !signal.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            return "Command ended from signal \(signal)."
+        }
+        return nil
     }
 
     private static func toolContentText(_ value: Any?) -> String? {
@@ -485,6 +683,55 @@ final class GrokProcess: @unchecked Sendable {
             return text
         }
         return nil
+    }
+
+    private static func toolDiagnosticText(_ value: Any?) -> String? {
+        guard let value else { return nil }
+        let text: String?
+        if let string = value as? String {
+            text = string
+        } else if JSONSerialization.isValidJSONObject(value),
+                  let data = try? JSONSerialization.data(withJSONObject: value, options: [.sortedKeys]),
+                  let json = String(data: data, encoding: .utf8) {
+            text = json
+        } else {
+            text = nil
+        }
+        return redactedToolText(text, limit: 2_000)
+    }
+
+    private static func toolTarget(from rawInput: [String: Any]) -> String? {
+        let target = (rawInput["url"] as? String)
+            ?? (rawInput["file_path"] as? String)
+            ?? (rawInput["path"] as? String)
+            ?? (rawInput["command"] as? String)
+            ?? (rawInput["cmd"] as? String)
+        return redactedToolText(target, limit: 280)
+    }
+
+    private static func retryOfToolCallID(
+        from tool: [String: Any],
+        rawInput: [String: Any]
+    ) -> String? {
+        let keys = [
+            "retryOfToolCallId", "retry_of_tool_call_id", "retryOf", "retry_of",
+            "parentToolCallId", "parent_tool_call_id", "parentId", "parent_id",
+        ]
+        for key in keys {
+            if let id = tool[key] as? String ?? rawInput[key] as? String {
+                let trimmed = id.trimmingCharacters(in: .whitespacesAndNewlines)
+                if !trimmed.isEmpty { return trimmed }
+            }
+        }
+        return nil
+    }
+
+    private static func redactedToolText(_ text: String?, limit: Int) -> String? {
+        guard let text else { return nil }
+        let redacted = GrokMCPRedactor.redact(text)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !redacted.isEmpty else { return nil }
+        return String(redacted.prefix(limit))
     }
 
     private func toolKind(for toolName: String) -> String {
@@ -538,6 +785,8 @@ final class GrokProcess: @unchecked Sendable {
         processGeneration &+= 1
         let launchGeneration = processGeneration
         activeProcessGeneration = launchGeneration
+        configuredMCPServerNames = options.mcpServers.map(\.name)
+        mcpServerStatuses = MCPReadinessPolicy.connectingStatuses(for: options.mcpServers)
         let launchIdentity = ModelRequestIdentity(
             localTabID: options.localTabID,
             backendSessionID: options.resumeSessionID,
@@ -568,6 +817,7 @@ final class GrokProcess: @unchecked Sendable {
             launchReceipt = receipt
             rejectLaunchModelReceipt(identity: launchIdentity)
             activeProcessGeneration = nil
+            mcpServerStatuses = MCPReadinessPolicy.failedStatuses(for: options.mcpServers)
             state = .failed("Could not locate the `grok` CLI. Run `grok login` or set GROK_CLI_PATH.")
             return
         }
@@ -632,6 +882,7 @@ final class GrokProcess: @unchecked Sendable {
             launchReceipt = receipt
             rejectLaunchModelReceipt(identity: launchIdentity)
             activeProcessGeneration = nil
+            mcpServerStatuses = MCPReadinessPolicy.failedStatuses(for: options.mcpServers)
             state = .failed("Failed to launch: \(error.localizedDescription)")
             return
         }
@@ -650,7 +901,7 @@ final class GrokProcess: @unchecked Sendable {
         self.stdoutBuffer = Data()
         self.startupStderr = ""
 
-        setupReaders(stdout: o, stderr: e)
+        setupReaders(stdout: o, stderr: e, processGeneration: launchGeneration)
 
         do {
             try await initializeACP()
@@ -682,6 +933,13 @@ final class GrokProcess: @unchecked Sendable {
                 processGeneration: launchGeneration
             )
             guard activeProcessGeneration == launchGeneration else { return }
+            // `session/new` can resolve before Grok's stdio MCP children finish
+            // their initialize/tools-list handshake. Keep the process non-ready
+            // until the bounded barrier has elapsed so the first billable turn
+            // cannot race tool discovery.
+            try await MCPReadinessPolicy.waitForInitialMCPSet(options.mcpServers)
+            guard activeProcessGeneration == launchGeneration else { return }
+            mcpServerStatuses = MCPReadinessPolicy.readyStatuses(for: options.mcpServers)
             settleLaunchModelReceipt(identity: launchIdentity)
             updateLaunchReceipt(outcome: launchOutcome, backendSessionID: sessionId)
             state = .ready
@@ -691,6 +949,7 @@ final class GrokProcess: @unchecked Sendable {
             let suffix = stderrDetails.isEmpty ? "" : "\n\(stderrDetails)"
             state = .failed("ACP startup failed: \(error.localizedDescription)\(suffix)")
             await cleanupProcess(setIdle: false)
+            mcpServerStatuses = MCPReadinessPolicy.failedStatuses(for: options.mcpServers)
             rejectLaunchModelReceipt(identity: launchIdentity)
             updateLaunchReceipt(outcome: .failed, backendSessionID: nil)
         }
@@ -746,6 +1005,9 @@ final class GrokProcess: @unchecked Sendable {
         sessionId = nil
         if launchReceipt?.outcome != .failed {
             updateLaunchReceipt(outcome: .stopped, backendSessionID: launchReceipt?.backendSessionID)
+        }
+        if setIdle {
+            mcpServerStatuses = MCPReadinessPolicy.stoppedStatuses(for: configuredMCPServerNames)
         }
         drainPendingRequests(with: NSError(
             domain: "ACP",
@@ -854,7 +1116,9 @@ final class GrokProcess: @unchecked Sendable {
 
     @discardableResult
     func send(_ text: String) async -> Bool {
-        guard let sid = sessionId, state == .ready || state == .busy else { return false }
+        guard let sid = sessionId,
+              let generation = activeProcessGeneration,
+              state == .ready || state == .busy else { return false }
         state = .busy
         beginTurnCompletionWait()
 
@@ -863,10 +1127,29 @@ final class GrokProcess: @unchecked Sendable {
                 "sessionId": sid,
                 "prompt": [["type": "text", "text": text]]
             ])
-            // Some grok CLI builds resolve `session/prompt` just before their final text
-            // notification. Honor the explicit completion event (with a short fallback)
-            // so ChatStore does not clear its streaming message mid-word.
-            await awaitTurnCompletion()
+            // `session/prompt` may resolve before the final text/lifecycle updates.
+            // Only the typed ACP completion receipt may produce a successful turn;
+            // the watchdog reports a broken bridge without impersonating completion.
+            let completionWasAuthoritative = await awaitTurnCompletion(
+                identity: ACPEventIdentity(
+                    localTabID: launchReceipt?.localTabID,
+                    backendSessionID: sid,
+                    processGeneration: generation,
+                    backendEventID: nil
+                )
+            )
+            guard completionWasAuthoritative else {
+                let reason = completionWatchdogFailureReason()
+                state = .failed(reason)
+                updateLaunchReceipt(outcome: .failed, backendSessionID: sid)
+                mcpServerStatuses = MCPReadinessPolicy.failedStatuses(
+                    for: configuredMCPServerNames,
+                    reason: "The ACP completion bridge failed."
+                )
+                await cleanupProcess(setIdle: false)
+                state = .failed(reason)
+                return false
+            }
             state = .ready
             return true
         } catch {
@@ -1134,28 +1417,35 @@ final class GrokProcess: @unchecked Sendable {
         let staleTimeout = turnCompletionTimeoutTask
         turnCompletionContinuation = nil
         turnCompletionTimeoutTask = nil
-        didReceiveTurnCompletion = false
+        turnCompletionResult = nil
+        turnCompletionObservedAtProcessBoundary = false
+        turnCompletionFailureReason = nil
         turnCompletionLock.unlock()
         staleTimeout?.cancel()
-        staleContinuation?.resume()
+        staleContinuation?.resume(returning: false)
     }
 
-    private func awaitTurnCompletion() async {
+    private func awaitTurnCompletion(identity: ACPEventIdentity) async -> Bool {
         await withCheckedContinuation { continuation in
             turnCompletionLock.lock()
-            if didReceiveTurnCompletion {
-                didReceiveTurnCompletion = false
+            if let result = turnCompletionResult {
+                turnCompletionResult = nil
                 turnCompletionLock.unlock()
-                continuation.resume()
+                continuation.resume(returning: result)
                 return
             }
             turnCompletionContinuation = continuation
             turnCompletionTimeoutTask = Task { [weak self] in
-                try? await Task.sleep(for: .seconds(2))
-                // Compatibility fallback for older CLIs that resolve session/prompt
-                // without emitting turn_completed. Still cross the same ChatStore event
-                // queue barrier; never resume `send` directly from this timer.
-                self?.acpEventContinuation?.yield(.turnCompleted)
+                try? await Task.sleep(for: Self.turnCompletionReceiptWatchdog)
+                guard !Task.isCancelled else { return }
+                let reason = self?.completionWatchdogFailureReason()
+                    ?? "The prompt RPC returned without an authoritative ACP completion receipt."
+                self?.acpEventContinuation?.yield(.turnCompletionReceiptMissing(
+                    TurnCompletionBridgeFailure(
+                        identity: identity,
+                        reason: reason
+                    )
+                ))
             }
             turnCompletionLock.unlock()
         }
@@ -1163,16 +1453,44 @@ final class GrokProcess: @unchecked Sendable {
 
     /// Called by ChatStore after it consumes the `.turnCompleted` event. This keeps
     /// prompt completion serialized behind all earlier text/tool events.
-    func acknowledgeTurnCompleted() {
+    func acknowledgeTurnCompletionBridge(authoritative: Bool) {
         turnCompletionLock.lock()
-        didReceiveTurnCompletion = true
+        turnCompletionResult = authoritative
         let continuation = turnCompletionContinuation
         let timeout = turnCompletionTimeoutTask
         turnCompletionContinuation = nil
         turnCompletionTimeoutTask = nil
         turnCompletionLock.unlock()
         timeout?.cancel()
-        continuation?.resume()
+        continuation?.resume(returning: authoritative)
+    }
+
+    /// Records an exact ownership rejection instead of silently waiting for the
+    /// transport watchdog. This remains a failed bridge receipt; it cannot settle
+    /// usage, continuity, workers, or the visible turn as successful.
+    func rejectTurnCompletionBridge(reason: String) {
+        turnCompletionLock.lock()
+        turnCompletionFailureReason = reason
+        turnCompletionLock.unlock()
+        acknowledgeTurnCompletionBridge(authoritative: false)
+    }
+
+    private func recordTurnCompletionObservedAtProcessBoundary() {
+        turnCompletionLock.lock()
+        turnCompletionObservedAtProcessBoundary = true
+        turnCompletionLock.unlock()
+    }
+
+    private func completionWatchdogFailureReason() -> String {
+        turnCompletionLock.lock()
+        let observed = turnCompletionObservedAtProcessBoundary
+        let explicitReason = turnCompletionFailureReason
+        turnCompletionLock.unlock()
+        if let explicitReason { return explicitReason }
+        if observed {
+            return "ACP turn_completed passed transport and process identity validation, but the active ChatStore turn did not acknowledge it."
+        }
+        return "The prompt RPC returned, but the ACP transport did not report an authoritative turn_completed receipt."
     }
 
     private func finishTurnCompletionWait() {
@@ -1181,10 +1499,10 @@ final class GrokProcess: @unchecked Sendable {
         let timeout = turnCompletionTimeoutTask
         turnCompletionContinuation = nil
         turnCompletionTimeoutTask = nil
-        didReceiveTurnCompletion = false
+        turnCompletionResult = nil
         turnCompletionLock.unlock()
         timeout?.cancel()
-        continuation?.resume()
+        continuation?.resume(returning: false)
     }
 
     private func drainPendingRequests(with error: Error) {
@@ -1269,7 +1587,7 @@ final class GrokProcess: @unchecked Sendable {
         }
     }
 
-    private func setupReaders(stdout: Pipe, stderr: Pipe) {
+    private func setupReaders(stdout: Pipe, stderr: Pipe, processGeneration: UInt64) {
         // Process pipe I/O synchronously on the reader thread. Dispatching to
         // MainActor here deadlocks because start() awaits ACP responses on MainActor.
         stdout.fileHandleForReading.readabilityHandler = { [weak self] handle in
@@ -1278,7 +1596,7 @@ final class GrokProcess: @unchecked Sendable {
                 handle.readabilityHandler = nil
                 return
             }
-            self?.handleStdoutData(data)
+            self?.handleStdoutData(data, processGeneration: processGeneration)
         }
 
         stderr.fileHandleForReading.readabilityHandler = { [weak self] handle in
@@ -1291,13 +1609,14 @@ final class GrokProcess: @unchecked Sendable {
         }
     }
 
-    private func handleStdoutData(_ data: Data) {
+    private func handleStdoutData(_ data: Data, processGeneration: UInt64) {
+        guard activeProcessGeneration == processGeneration else { return }
         ioLock.lock()
         let lines = AcpLineBuffer.drainLines(buffer: &stdoutBuffer, appending: data)
         ioLock.unlock()
 
         for rawLine in lines {
-            handleAcpRawLine(rawLine)
+            handleAcpRawLine(rawLine, processGeneration: processGeneration)
         }
     }
 
@@ -1313,13 +1632,14 @@ final class GrokProcess: @unchecked Sendable {
         ioLock.unlock()
     }
 
-    private func handleAcpRawLine(_ rawLine: String) {
+    private func handleAcpRawLine(_ rawLine: String, processGeneration: UInt64) {
         let line = rawLine.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !line.isEmpty else { return }
-        handleJsonLine(line)
+        handleJsonLine(line, processGeneration: processGeneration)
     }
 
-    private func handleJsonLine(_ line: String) {
+    private func handleJsonLine(_ line: String, processGeneration: UInt64) {
+        guard activeProcessGeneration == processGeneration else { return }
         guard let data = line.data(using: .utf8),
               let j = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
             acpEventContinuation?.yield(.rawLine(line))
@@ -1330,29 +1650,53 @@ final class GrokProcess: @unchecked Sendable {
             let params = j["params"] as? [String: Any] ?? [:]
             let rid = j["id"]
 
-            if method == "session/update" || method == "_x.ai/session/update" {
+            if method == "session/update"
+                || method == "_x.ai/session/update"
+                || method == "_x.ai/session_notification" {
                 let update = params["update"] as? [String: Any]
-                if let total = totalTokens(from: params) {
+                let updateSessionID = Self.eventSessionID(from: params, update: update)
+                let belongsToCurrentSession = Self.eventBelongsToSession(
+                    updateSessionID,
+                    currentSessionID: sessionId
+                )
+                if belongsToCurrentSession, let total = totalTokens(from: params) {
                     acpEventContinuation?.yield(.contextUsage(totalTokens: total))
                 }
                 if update?["sessionUpdate"] as? String == "turn_completed" {
+                    guard belongsToCurrentSession,
+                          let receipt = turnCompletionReceipt(
+                              from: update ?? [:],
+                              sessionID: updateSessionID,
+                              backendEventID: Self.backendEventID(from: params),
+                              processGeneration: processGeneration
+                          ) else { return }
                     // Replay completion belongs to the historical load stream, not the
                     // live turn currently owned by ChatStore.
                     guard !GrokSessionReplay.isReplaySessionUpdate(params: params, update: update) else {
                         return
                     }
-                    acpEventContinuation?.yield(.turnCompleted)
+                    recordTurnCompletionObservedAtProcessBoundary()
+                    acpEventContinuation?.yield(.turnCompleted(receipt))
                     return
                 }
                 if !GrokSessionReplay.isReplaySessionUpdate(params: params, update: update),
                    let u = update {
-                    routeUpdate(u)
+                    routeUpdate(
+                        u,
+                        sessionID: updateSessionID,
+                        backendEventID: Self.backendEventID(from: params),
+                        processGeneration: processGeneration
+                    )
                 }
                 return
             }
 
             if method == "session/request_permission" {
                 if let req = parsePermissionRequest(id: rid, params: params) {
+                    guard Self.eventBelongsToSession(req.sessionId, currentSessionID: sessionId) else {
+                        rejectMismatchedInteractionRequest(rid: rid, sessionID: req.sessionId)
+                        return
+                    }
                     acpEventContinuation?.yield(.permissionRequest(req))
                 }
                 // UI will respond via respondToPermission
@@ -1362,9 +1706,14 @@ final class GrokProcess: @unchecked Sendable {
             if method == "x.ai/exit_plan_mode" || method == "session/exit_plan_mode"
                 || method == "_x.ai/exit_plan_mode" {
                 let planText = exitPlanText(from: params)
+                let requestSessionID = params["sessionId"] as? String ?? sessionId ?? ""
+                guard Self.eventBelongsToSession(requestSessionID, currentSessionID: sessionId) else {
+                    rejectMismatchedInteractionRequest(rid: rid, sessionID: requestSessionID)
+                    return
+                }
                 let req = ExitPlanRequest(
                     id: requestIdHash(rid),
-                    sessionId: params["sessionId"] as? String ?? sessionId ?? "",
+                    sessionId: requestSessionID,
                     planText: planText.isEmpty ? latestPlanFileContent : planText,
                     isResolved: false,
                     verdict: nil
@@ -1374,11 +1723,16 @@ final class GrokProcess: @unchecked Sendable {
             }
 
             if method == "x.ai/ask_user_question" || method == "_x.ai/ask_user_question" {
+                let requestSessionID = params["sessionId"] as? String ?? sessionId ?? ""
+                guard Self.eventBelongsToSession(requestSessionID, currentSessionID: sessionId) else {
+                    rejectMismatchedInteractionRequest(rid: rid, sessionID: requestSessionID)
+                    return
+                }
                 let questions = (params["questions"] as? [[String: Any]] ?? [])
                     .compactMap { QuestionItem.parse(from: $0) }
                 let req = QuestionRequest(
                     id: requestIdHash(rid),
-                    sessionId: params["sessionId"] as? String ?? sessionId ?? "",
+                    sessionId: requestSessionID,
                     questions: questions,
                     isResolved: false,
                     answerSummary: nil
@@ -1457,20 +1811,76 @@ final class GrokProcess: @unchecked Sendable {
         return nil
     }
 
-    private func routeUpdate(_ u: [String: Any]) {
+    private func turnCompletionReceipt(
+        from update: [String: Any],
+        sessionID: String?,
+        backendEventID: String?,
+        processGeneration: UInt64
+    ) -> TurnCompletionReceipt? {
+        // Completion is stronger than ordinary best-effort session updates: an
+        // absent or mismatched backend ID cannot settle the visible active turn.
+        guard let sessionID,
+              sessionID == self.sessionId,
+              activeProcessGeneration == processGeneration else { return nil }
+        let usage = update["usage"] as? [String: Any] ?? [:]
+        return TurnCompletionReceipt(
+            identity: ACPEventIdentity(
+                localTabID: launchReceipt?.localTabID,
+                backendSessionID: sessionID,
+                processGeneration: processGeneration,
+                backendEventID: backendEventID
+            ),
+            promptID: update["prompt_id"] as? String ?? update["promptId"] as? String,
+            stopReason: update["stop_reason"] as? String ?? update["stopReason"] as? String,
+            totalTokens: Self.integer(usage["totalTokens"]),
+            modelCalls: Self.integer(usage["modelCalls"]),
+            turnCount: Self.integer(usage["numTurns"])
+        )
+    }
+
+    static func eventSessionID(from params: [String: Any], update: [String: Any]?) -> String? {
+        params["sessionId"] as? String
+            ?? params["session_id"] as? String
+            ?? update?["sessionId"] as? String
+            ?? update?["session_id"] as? String
+    }
+
+    static func eventBelongsToSession(
+        _ eventSessionID: String?,
+        currentSessionID: String?
+    ) -> Bool {
+        guard let eventSessionID, let currentSessionID else { return true }
+        return eventSessionID == currentSessionID
+    }
+
+    private func routeUpdate(
+        _ u: [String: Any],
+        sessionID: String?,
+        backendEventID: String?,
+        processGeneration: UInt64
+    ) {
+        guard activeProcessGeneration == processGeneration else { return }
         guard let k = u["sessionUpdate"] as? String else { return }
+        let belongsToCurrentSession = Self.eventBelongsToSession(
+            sessionID,
+            currentSessionID: self.sessionId
+        )
         switch k {
         case "agent_message_chunk":
+            guard belongsToCurrentSession else { return }
             let t = (u["content"] as? [String: Any])?["text"] as? String ?? ""
             acpEventContinuation?.yield(.messageChunk(text: t))
         case "agent_thought_chunk":
+            guard belongsToCurrentSession else { return }
             let t = (u["content"] as? [String: Any])?["text"] as? String ?? ""
             acpEventContinuation?.yield(.thoughtChunk(text: t))
         case "tool_call":
-            if let tc = parseToolCall(from: u) {
-                acpEventContinuation?.yield(.toolCall(tc))
-            } else {
-                acpEventContinuation?.yield(.toolCall(ToolCall(id: UUID().uuidString, kind: "unknown", title: "Tool call", rawInput: nil)))
+            if belongsToCurrentSession {
+                if let tc = parseToolCall(from: u) {
+                    acpEventContinuation?.yield(.toolCall(tc))
+                } else {
+                    acpEventContinuation?.yield(.toolCall(ToolCall(id: UUID().uuidString, kind: "unknown", title: "Tool call", rawInput: nil)))
+                }
             }
             if SchedulerToolParsing.schedulerName(inUpdate: u) != nil {
                 acpEventContinuation?.yield(.schedulerActivity(payload: u))
@@ -1482,7 +1892,7 @@ final class GrokProcess: @unchecked Sendable {
                 acpEventContinuation?.yield(.backgroundActivity(payload: u))
             }
         case "tool_call_update":
-            if let tc = parseToolCall(from: u) {
+            if belongsToCurrentSession, let tc = parseToolCall(from: u) {
                 acpEventContinuation?.yield(.toolCallUpdate(tc))
             }
             if SchedulerToolParsing.schedulerName(inUpdate: u) != nil {
@@ -1494,23 +1904,183 @@ final class GrokProcess: @unchecked Sendable {
             if BackgroundToolParsing.backgroundToolName(inUpdate: u) != nil {
                 acpEventContinuation?.yield(.backgroundActivity(payload: u))
             }
+        case "subagent_spawned":
+            guard belongsToCurrentSession,
+                  let event = parseSubagentSpawned(
+                      from: u,
+                      sessionID: sessionID,
+                      backendEventID: backendEventID,
+                      processGeneration: processGeneration
+                  ) else { return }
+            acpEventContinuation?.yield(.subagentSpawned(event))
+        case "subagent_finished":
+            guard belongsToCurrentSession,
+                  let event = parseSubagentFinished(
+                      from: u,
+                      sessionID: sessionID,
+                      backendEventID: backendEventID,
+                      processGeneration: processGeneration
+                  ) else { return }
+            acpEventContinuation?.yield(.subagentFinished(event))
         case "plan":
+            guard belongsToCurrentSession else { return }
             acpEventContinuation?.yield(.plan(payload: u))
         case "available_commands_update":
+            guard belongsToCurrentSession else { return }
             let commands = (u["availableCommands"] as? [[String: Any]] ?? [])
                 .compactMap { SlashCommand.parse(from: $0) }
             availableSlashCommands = commands
             acpEventContinuation?.yield(.availableCommands(commands))
         case "current_mode_update":
+            guard belongsToCurrentSession else { return }
             if let m = u["currentModeId"] as? String {
                 currentMode = AgentMode(rawValue: m)
                 acpEventContinuation?.yield(.modeChanged(mode: currentMode))
             }
         default:
-            if WorkflowToolParsing.isWorkflowSessionUpdate(k) {
+            if belongsToCurrentSession, WorkflowToolParsing.isWorkflowSessionUpdate(k) {
                 acpEventContinuation?.yield(.workflowActivity(payload: u))
             }
         }
+    }
+
+    private static func backendEventID(from params: [String: Any]) -> String? {
+        (params["_meta"] as? [String: Any])?["eventId"] as? String
+    }
+
+    private func lifecycleIdentity(
+        update: [String: Any],
+        sessionID: String?,
+        backendEventID: String?,
+        processGeneration: UInt64
+    ) -> ACPEventIdentity? {
+        let parentBackendID = update["parent_session_id"] as? String ?? sessionID
+        guard let parentBackendID,
+              parentBackendID == self.sessionId,
+              activeProcessGeneration == processGeneration else { return nil }
+        return ACPEventIdentity(
+            localTabID: launchReceipt?.localTabID,
+            backendSessionID: parentBackendID,
+            processGeneration: processGeneration,
+            backendEventID: backendEventID
+        )
+    }
+
+    private func parseSubagentSpawned(
+        from update: [String: Any],
+        sessionID: String?,
+        backendEventID: String?,
+        processGeneration: UInt64
+    ) -> SubagentSpawnedEvent? {
+        guard let identity = lifecycleIdentity(
+            update: update,
+            sessionID: sessionID,
+            backendEventID: backendEventID,
+            processGeneration: processGeneration
+        ), let childID = Self.childID(from: update) else { return nil }
+        return SubagentSpawnedEvent(
+            identity: identity,
+            childID: childID,
+            parentPromptID: update["parent_prompt_id"] as? String,
+            subagentType: update["subagent_type"] as? String,
+            modelID: update["model"] as? String,
+            description: Self.redactedLifecycleText(update["description"] as? String)
+        )
+    }
+
+    private func parseSubagentFinished(
+        from update: [String: Any],
+        sessionID: String?,
+        backendEventID: String?,
+        processGeneration: UInt64
+    ) -> SubagentFinishedEvent? {
+        guard let identity = lifecycleIdentity(
+            update: update,
+            sessionID: sessionID,
+            backendEventID: backendEventID,
+            processGeneration: processGeneration
+        ), let childID = Self.childID(from: update),
+           let status = update["status"] as? String else { return nil }
+        return SubagentFinishedEvent(
+            identity: identity,
+            childID: childID,
+            status: status,
+            durationMilliseconds: Self.integer(update["duration_ms"]),
+            turns: Self.integer(update["turns"]),
+            toolCallCount: Self.integer(update["tool_calls"]),
+            tokenCount: Self.integer(update["tokens_used"]),
+            redactedError: Self.lifecycleError(from: update)
+        )
+    }
+
+    private static func childID(from update: [String: Any]) -> String? {
+        update["child_session_id"] as? String ?? update["subagent_id"] as? String
+    }
+
+    private static func integer(_ value: Any?) -> Int? {
+        if let value = value as? Int { return value }
+        return (value as? NSNumber)?.intValue
+    }
+
+    private static func lifecycleError(from update: [String: Any]) -> String? {
+        if let error = update["error"] as? String { return redactedLifecycleText(error) }
+        if let error = update["error"] as? [String: Any] {
+            return redactedLifecycleText(error["message"] as? String ?? error["code"] as? String)
+        }
+        return redactedLifecycleText(update["message"] as? String)
+    }
+
+    static func redactedLifecycleText(_ text: String?) -> String? {
+        guard let text else { return nil }
+        let redacted = GrokMCPRedactor.redact(text)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !redacted.isEmpty else { return nil }
+        return String(redacted.prefix(280))
+    }
+
+    /// Test seam for deterministic fixture routing. Production pipe readers supply
+    /// the generation captured when their process launched through the same path.
+    func routeSessionUpdateForTests(
+        _ update: [String: Any],
+        sessionID: String,
+        backendEventID: String?,
+        processGeneration: UInt64
+    ) {
+        if update["sessionUpdate"] as? String == "turn_completed" {
+            guard let receipt = turnCompletionReceipt(
+                from: update,
+                sessionID: sessionID,
+                backendEventID: backendEventID,
+                processGeneration: processGeneration
+            ) else { return }
+            acpEventContinuation?.yield(.turnCompleted(receipt))
+            return
+        }
+        routeUpdate(
+            update,
+            sessionID: sessionID,
+            backendEventID: backendEventID,
+            processGeneration: processGeneration
+        )
+    }
+
+    func routeTurnCompletionReceiptMissingForTests(
+        sessionID: String,
+        processGeneration: UInt64
+    ) {
+        guard sessionID == self.sessionId,
+              activeProcessGeneration == processGeneration else { return }
+        acpEventContinuation?.yield(.turnCompletionReceiptMissing(
+            TurnCompletionBridgeFailure(
+                identity: ACPEventIdentity(
+                    localTabID: launchReceipt?.localTabID,
+                    backendSessionID: sessionID,
+                    processGeneration: processGeneration,
+                    backendEventID: nil
+                ),
+                reason: "Synthetic missing completion receipt."
+            )
+        ))
     }
 
     private func requestIdHash(_ id: Any?) -> AnyHashable {
@@ -1531,6 +2101,21 @@ final class GrokProcess: @unchecked Sendable {
             "id": id,
             "error": ["code": code, "message": error.localizedDescription]
         ])
+    }
+
+    private func rejectMismatchedInteractionRequest(rid: Any?, sessionID: String) {
+        respond(
+            rid: rid,
+            error: NSError(
+                domain: "GrokBuild.ACPInteraction",
+                code: -32002,
+                userInfo: [
+                    NSLocalizedDescriptionKey:
+                        "Interaction request for backend session \(sessionID) does not belong to this live process."
+                ]
+            ),
+            code: -32002
+        )
     }
 
     private func handleFsRead(rid: Any?, path: String) {

@@ -132,6 +132,20 @@ final class SettingsExtensionContractTests: XCTestCase {
         XCTAssertTrue(output.contains("<redacted>"))
     }
 
+    func testMCPDiagnosticRedactionMasksQuotedCredentialPrefixes() {
+        let keyPrefix = "synthetic-key-prefix-should-not-escape"
+        let accessToken = "synthetic-access-token-should-not-escape"
+        let refreshToken = "synthetic-refresh-token-should-not-escape"
+        let output = GrokMCPRedactor.redact(
+            "{\"key_prefix\":\"\(keyPrefix)\",\"access_token\":\"\(accessToken)\",\"refresh_token\":\"\(refreshToken)\"}"
+        )
+
+        XCTAssertFalse(output.contains(keyPrefix))
+        XCTAssertFalse(output.contains(accessToken))
+        XCTAssertFalse(output.contains(refreshToken))
+        XCTAssertEqual(output.components(separatedBy: "<redacted>").count - 1, 3)
+    }
+
     func testInventoryStatePreservesLastSuccessAsStaleOnFailure() {
         var state = SettingsInventoryState<[String]>(empty: [])
         state.beginRefresh(staleMessage: "Refreshing")

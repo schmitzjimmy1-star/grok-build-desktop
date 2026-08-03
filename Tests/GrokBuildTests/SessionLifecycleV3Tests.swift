@@ -207,7 +207,10 @@ final class SessionLifecycleV3Tests: XCTestCase {
             matchingPrefixCount: 0,
             localTranscriptTag: "opaque-local-tag",
             backendTranscriptTag: nil,
-            verifiedAt: Date(timeIntervalSince1970: 123)
+            verifiedAt: Date(timeIntervalSince1970: 123),
+            localTabID: sessionID,
+            backendID: "backend-after",
+            processGeneration: 7
         )
         let binding = SessionBackendBinding(
             backendID: "backend-after",
@@ -275,6 +278,28 @@ final class SessionLifecycleV3Tests: XCTestCase {
             successor,
             "a fresh-start tab must verify its whole new transcript, not drop the old boundary count"
         )
+    }
+
+    func testLegacyContinuityReceiptDecodesWithoutRuntimeBindingIdentity() throws {
+        let json = """
+        {
+          "status":"verified",
+          "reason":"exactMatch",
+          "normalizationVersion":1,
+          "authenticationSchemaVersion":1,
+          "localMessageCount":2,
+          "backendMessageCount":2,
+          "matchingPrefixCount":2,
+          "verifiedAt":0
+        }
+        """
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .secondsSince1970
+        let receipt = try decoder.decode(SessionContinuityReceipt.self, from: Data(json.utf8))
+        XCTAssertEqual(receipt.status, .verified)
+        XCTAssertNil(receipt.localTabID)
+        XCTAssertNil(receipt.backendID)
+        XCTAssertNil(receipt.processGeneration)
     }
 
     func testAuthenticatedV3RoundTripsPendingContinueAsNewIntent() throws {
