@@ -121,9 +121,17 @@ final class MarkdownBlockParserTests: XCTestCase {
                         ["Safari", "Off"],
                     ]
                 ),
-                .unorderedList([
-                    "Keep the toolbar quiet",
-                    "Show errors when actionable",
+                .list([
+                    MarkdownListItem(
+                        depth: 0,
+                        marker: .unordered,
+                        text: "Keep the toolbar quiet"
+                    ),
+                    MarkdownListItem(
+                        depth: 0,
+                        marker: .unordered,
+                        text: "Show errors when actionable"
+                    ),
                 ]),
                 .code(language: "swift", text: "let glass = true"),
             ]
@@ -165,9 +173,65 @@ final class MarkdownBlockParserTests: XCTestCase {
             MarkdownTextBlockParser.parse(markdown).map(\.content),
             [
                 .quote("Calm interfaces are allowed.\nEven in developer tools."),
-                .orderedList(["Read", "Build", "Verify"]),
+                .list([
+                    MarkdownListItem(depth: 0, marker: .ordered(1), text: "Read"),
+                    MarkdownListItem(depth: 0, marker: .ordered(2), text: "Build"),
+                    MarkdownListItem(depth: 0, marker: .ordered(3), text: "Verify"),
+                ]),
                 .divider,
             ]
+        )
+    }
+
+    func testNestedChecklistPreservesHierarchyStateAndLocalLinks() {
+        let markdown = """
+        ## Local references (README + ARCHITECTURE)
+
+        - [ ] **[README.md](README.md)** — product / install entry
+          - [x] Native SwiftUI macOS workbench
+        - [x] **[ARCHITECTURE.md](ARCHITECTURE.md)** — canonical app map
+          - [ ] Runtime map and persistence contracts
+
+        Links:
+
+        - [README.md](README.md)
+        - [ARCHITECTURE.md](ARCHITECTURE.md)
+        """
+
+        let blocks = MarkdownTextBlockParser.parse(markdown).map(\.content)
+        XCTAssertEqual(blocks.count, 4)
+        XCTAssertEqual(blocks[0], .heading(level: 2, text: "Local references (README + ARCHITECTURE)"))
+
+        guard case .list(let checklist) = blocks[1] else {
+            return XCTFail("Expected the nested checklist to remain one semantic list")
+        }
+        XCTAssertEqual(checklist.map(\.depth), [0, 1, 0, 1])
+        XCTAssertEqual(
+            checklist.map(\.marker),
+            [.task(completed: false), .task(completed: true), .task(completed: true), .task(completed: false)]
+        )
+        XCTAssertEqual(MarkdownListAccessibility.summary(checklist), "Checklist, 4 items")
+        XCTAssertEqual(
+            MarkdownListAccessibility.itemLabel(checklist[1]),
+            "Level 2, checked task: Native SwiftUI macOS workbench"
+        )
+
+        XCTAssertEqual(blocks[2], .paragraph("Links:"))
+        guard case .list(let sources) = blocks[3] else {
+            return XCTFail("Expected the local links to remain one semantic source list")
+        }
+        XCTAssertEqual(MarkdownListAccessibility.summary(sources), "Source list, 2 items")
+        XCTAssertEqual(sources.flatMap { InlineMarkdownPresentation.links(in: $0.text) }.count, 2)
+    }
+
+    func testHeadingLevelsOneThroughSixRemainSemantic() {
+        let markdown = (1...6).map { level in
+            "\(String(repeating: "#", count: level)) Heading \(level)"
+        }.joined(separator: "\n\n")
+
+        XCTAssertEqual(
+            MarkdownTextBlockParser.parse(markdown).map(\.content),
+            (1...6).map { .heading(level: $0, text: "Heading \($0)") }
         )
     }
 

@@ -25,7 +25,7 @@ enum MarkdownBlock: Identifiable, Hashable, Sendable {
 /// Bounded, process-local rich content cache. Transcript bodies remain the source of truth;
 /// this cache is disposable render work only and never crosses launches or gets persisted.
 enum RichContentCache {
-    static let renderVersion = 2
+    static let renderVersion = 3
     static let maximumEntries = 64
 
     struct Key: Hashable, Sendable {
@@ -622,12 +622,56 @@ private extension View {
     }
 }
 
+struct MarkdownListItem: Hashable, Sendable {
+    enum Marker: Hashable, Sendable {
+        case unordered
+        case ordered(Int)
+        case task(completed: Bool)
+    }
+
+    let depth: Int
+    let marker: Marker
+    let text: String
+}
+
+enum MarkdownListAccessibility {
+    static func summary(_ items: [MarkdownListItem]) -> String {
+        let sourceList = !items.isEmpty && items.allSatisfy {
+            !InlineMarkdownPresentation.links(in: $0.text).isEmpty
+        }
+        let checklist = items.contains {
+            if case .task = $0.marker { return true }
+            return false
+        }
+        let kind: String
+        switch (sourceList, checklist) {
+        case (true, true): kind = "Source checklist"
+        case (true, false): kind = "Source list"
+        case (false, true): kind = "Checklist"
+        case (false, false): kind = "List"
+        }
+        return "\(kind), \(items.count) item\(items.count == 1 ? "" : "s")"
+    }
+
+    static func itemLabel(_ item: MarkdownListItem) -> String {
+        let prefix: String
+        switch item.marker {
+        case .unordered:
+            prefix = "bullet"
+        case .ordered(let number):
+            prefix = "item \(number)"
+        case .task(let completed):
+            prefix = completed ? "checked task" : "unchecked task"
+        }
+        return "Level \(item.depth + 1), \(prefix): \(InlineMarkdownPresentation.spokenText(item.text))"
+    }
+}
+
 struct MarkdownTextBlock: Identifiable, Hashable, Sendable {
     enum Content: Hashable, Sendable {
         case paragraph(String)
         case heading(level: Int, text: String)
-        case unorderedList([String])
-        case orderedList([String])
+        case list([MarkdownListItem])
         case quote(String)
         case code(language: String?, text: String)
         case table(headers: [String], rows: [[String]])
@@ -716,29 +760,21 @@ enum MarkdownTextBlockParser {
                 continue
             }
 
-            if unorderedListItem(in: trimmed) != nil {
-                var items: [String] = []
-                while index < lines.count,
-                      let item = unorderedListItem(
-                        in: lines[index].trimmingCharacters(in: .whitespaces)
-                      ) {
-                    items.append(item)
+            if listItem(in: line) != nil {
+                var rawItems: [RawListItem] = []
+                while index < lines.count, let item = listItem(in: lines[index]) {
+                    rawItems.append(item)
                     index += 1
                 }
-                append(.unorderedList(items))
-                continue
-            }
-
-            if orderedListItem(in: trimmed) != nil {
-                var items: [String] = []
-                while index < lines.count,
-                      let item = orderedListItem(
-                        in: lines[index].trimmingCharacters(in: .whitespaces)
-                      ) {
-                    items.append(item)
-                    index += 1
+                let indentationLevels = Array(Set(rawItems.map(\.indentation))).sorted()
+                let items = rawItems.map { item in
+                    MarkdownListItem(
+                        depth: indentationLevels.firstIndex(of: item.indentation) ?? 0,
+                        marker: item.marker,
+                        text: item.text
+                    )
                 }
-                append(.orderedList(items))
+                append(.list(items))
                 continue
             }
 
@@ -772,8 +808,7 @@ enum MarkdownTextBlockParser {
             || trimmed.hasPrefix("```")
             || trimmed.hasPrefix(">")
             || heading(in: trimmed) != nil
-            || unorderedListItem(in: trimmed) != nil
-            || orderedListItem(in: trimmed) != nil
+            || listItem(in: lines[index]) != nil
             || isDivider(trimmed) {
             return true
         }
@@ -784,7 +819,7 @@ enum MarkdownTextBlockParser {
 
     private static func heading(in line: String) -> (level: Int, text: String)? {
         let hashes = line.prefix { $0 == "#" }
-        guard (1...3).contains(hashes.count) else { return nil }
+        guard (1...6).contains(hashes.count) else { return nil }
         let remainder = line.dropFirst(hashes.count)
         guard remainder.first == " " else { return nil }
         return (
@@ -793,21 +828,67 @@ enum MarkdownTextBlockParser {
         )
     }
 
-    private static func unorderedListItem(in line: String) -> String? {
-        for prefix in ["- ", "* ", "+ "] where line.hasPrefix(prefix) {
-            return String(line.dropFirst(prefix.count))
-        }
-        return nil
+    private struct RawListItem {
+        let indentation: Int
+        let marker: MarkdownListItem.Marker
+        let text: String
     }
 
-    private static func orderedListItem(in line: String) -> String? {
-        guard let dot = line.firstIndex(of: ".") else { return nil }
-        let number = line[..<dot]
-        guard !number.isEmpty,
-              number.allSatisfy(\.isNumber) else { return nil }
-        let afterDot = line.index(after: dot)
-        guard afterDot < line.endIndex, line[afterDot] == " " else { return nil }
-        return String(line[line.index(after: afterDot)...])
+    private static func listItem(in line: String) -> RawListItem? {
+        var indentation = 0
+        var contentStart = line.startIndex
+        while contentStart < line.endIndex {
+            switch line[contentStart] {
+            case " ": indentation += 1
+            case "\t": indentation += 4
+            default: break
+            }
+            guard line[contentStart] == " " || line[contentStart] == "\t" else { break }
+            contentStart = line.index(after: contentStart)
+        }
+        let content = String(line[contentStart...])
+
+        for prefix in ["- ", "* ", "+ "] where content.hasPrefix(prefix) {
+            let rawText = String(content.dropFirst(prefix.count))
+            if let task = taskItem(in: rawText) {
+                return RawListItem(
+                    indentation: indentation,
+                    marker: .task(completed: task.completed),
+                    text: task.text
+                )
+            }
+            return RawListItem(
+                indentation: indentation,
+                marker: .unordered,
+                text: rawText
+            )
+        }
+
+        guard let dot = content.firstIndex(of: ".") else { return nil }
+        let numberText = content[..<dot]
+        guard !numberText.isEmpty,
+              numberText.allSatisfy(\.isNumber),
+              let number = Int(numberText) else { return nil }
+        let afterDot = content.index(after: dot)
+        guard afterDot < content.endIndex, content[afterDot] == " " else { return nil }
+        return RawListItem(
+            indentation: indentation,
+            marker: .ordered(number),
+            text: String(content[content.index(after: afterDot)...])
+        )
+    }
+
+    private static func taskItem(in text: String) -> (completed: Bool, text: String)? {
+        guard text.count >= 3,
+              text.first == "[",
+              let closing = text.firstIndex(of: "]"),
+              text.distance(from: text.startIndex, to: closing) == 2 else { return nil }
+        let state = text[text.index(after: text.startIndex)]
+        guard state == " " || state == "x" || state == "X" else { return nil }
+        let remainder = text.index(after: closing)
+        guard remainder == text.endIndex || text[remainder] == " " else { return nil }
+        let bodyStart = remainder == text.endIndex ? remainder : text.index(after: remainder)
+        return (state == "x" || state == "X", String(text[bodyStart...]))
     }
 
     private static func looksLikeTableRow(_ line: String) -> Bool {
@@ -997,19 +1078,15 @@ private struct MarkdownTextView: View {
                 .accessibilityAddTraits(.isHeader)
                 .accessibilityLabel("Heading level \(level): \(InlineMarkdownPresentation.spokenText(text))")
 
-        case .unorderedList(let items):
-            VStack(alignment: .leading, spacing: 7) {
-                ForEach(Array(items.enumerated()), id: \.offset) { _, item in
-                    listRow(marker: "•", text: item)
-                }
-            }
-
-        case .orderedList(let items):
+        case .list(let items):
             VStack(alignment: .leading, spacing: 7) {
                 ForEach(Array(items.enumerated()), id: \.offset) { index, item in
-                    listRow(marker: "\(index + 1).", text: item)
+                    listRow(item, index: index)
                 }
             }
+            .accessibilityElement(children: .contain)
+            .accessibilityLabel(MarkdownListAccessibility.summary(items))
+            .accessibilityIdentifier("grok-markdown-list")
 
         case .quote(let text):
             HStack(alignment: .top, spacing: 12) {
@@ -1039,18 +1116,39 @@ private struct MarkdownTextView: View {
         }
     }
 
-    private func listRow(marker: String, text: String) -> some View {
+    private func listRow(_ item: MarkdownListItem, index: Int) -> some View {
         HStack(alignment: .firstTextBaseline, spacing: 10) {
-            Text(marker)
-                .font(.system(size: 13, weight: .semibold, design: .rounded))
-                .foregroundStyle(AppTheme.Palette.accent)
+            listMarker(item)
+                .accessibilityHidden(true)
                 .frame(width: 22, alignment: .trailing)
-            Text(renderedInlineMarkdown(text))
+            Text(renderedInlineMarkdown(item.text))
                 .font(AppTheme.Typography.body)
                 .lineSpacing(3)
                 .textSelection(.enabled)
                 .frame(maxWidth: .infinity, alignment: .leading)
-                .accessibleInlineMarkdown(text)
+                .accessibleInlineMarkdown(item.text)
+        }
+        .padding(.leading, CGFloat(min(item.depth, 5)) * 18)
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel(MarkdownListAccessibility.itemLabel(item))
+        .accessibilityIdentifier("grok-markdown-list-item-\(index)")
+    }
+
+    @ViewBuilder
+    private func listMarker(_ item: MarkdownListItem) -> some View {
+        switch item.marker {
+        case .unordered:
+            Text(["•", "◦", "▪"][min(item.depth, 2)])
+                .font(.system(size: 13, weight: .semibold, design: .rounded))
+                .foregroundStyle(AppTheme.Palette.accent)
+        case .ordered(let number):
+            Text("\(number).")
+                .font(.system(size: 13, weight: .semibold, design: .rounded))
+                .foregroundStyle(AppTheme.Palette.accent)
+        case .task(let completed):
+            Image(systemName: completed ? "checkmark.square.fill" : "square")
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundStyle(completed ? AppTheme.Palette.accent : AppTheme.Palette.textMuted)
         }
     }
 

@@ -103,6 +103,87 @@ After Stop, present a settled local outcome that distinguishes `user stopped` fr
 
 **Acceptance (2026-08-02):** Stop now records the local terminal outcome as **Stopped by you**, rather than a backend failure, with an explicit next action: reverify an exact tab/backend/process-generation continuity receipt before reconnecting, or start a fresh, ledgered run when that receipt is absent or mismatched. The restart boundary independently consumes the fresh-start guard, so workspace selection or another restart path cannot bypass it. Focused coverage passed for the settled stop outcome and exact receipt matching, and `ActivitySidebarTests` passed **9/9**; complete `make test` passed **552 tests, 0 failures**. The exact signed package and `/Applications/GrokBuild.app` executable match at SHA-256 `baf8263c0beb7c68d6e743de59a4b00f1c7da031151f8b9a09dda69b4b7743fa`; the installed receipt names `https://github.com/schmitzjimmy1-star/grok-build-desktop`, `codex/activity-parity-slice-0`, `13fb5fad9ad4f604e183cb5f69132d7ea829033f`, dirty `true`, and Team `DD2GCQJVB4`; deep/strict code-sign verification passed. Native Computer Use quit and relaunched the installed bundle, restored the existing workbench transcript, and exposed the native composer as **Send blocked by conversation continuity**, with the active workspace and Details control visible. No provider prompt was submitted and no actual Stop was invoked because that would add or alter a Grok durable log; the exact Stop-state projection is covered by the deterministic lifecycle tests instead.
 
+## Slice 7 — semantic reading hierarchy
+
+**Status:** implemented; final automated and installed-app acceptance is recorded below.
+
+Settled Markdown now preserves H1–H6 heading levels, nested list indentation, authored ordered-list numbers, and checked/unchecked task state in a native `MarkdownListItem` presentation model. Nested rows receive bounded visual indentation and exact level/state accessibility labels, while link-only list groups identify themselves as source lists and keep their native link children. The parser strips only Markdown marker syntax for presentation; the exact `Message` body, file-backed transcript, and Grok backend logs remain unchanged.
+
+**Acceptance (2026-08-02):** `swift test --filter MarkdownBlockParserTests` passed 15/15 and `make test` passed 554/554 in 22.326 seconds; `git diff --check` was clean. `make signed` and `make install` used `Apple Development: jhschmitz1993@gmail.com (LS4SUB57QL)` (team `DD2GCQJVB4`). The installed personal-channel app is stamped branch `codex/activity-parity-slice-0`, commit `352080f72b35d832cbc7ece669baafcd1f9c1a0e`, `dirty=true`, and repo `https://github.com/schmitzjimmy1-star/grok-build-desktop`; both dist and installed executables hash to `5dc4d12750519fac1133eea4923e1228bb3c23faa2a10a67897e87677b72af99`, and both bundles pass `codesign --verify --deep --strict`.
+
+Native Computer Use against `/Applications/GrokBuild.app` showed the installed renderer exposing a settled response as `List, 3 items` (`grok-markdown-list`) with three child rows labeled `Level 1, bullet: …` (`grok-markdown-list-item-0` through `-2`), matching visible native bullet indentation. A clean quit/relaunch restored another saved response through the same installed binary and again exposed the native list container. The exact nested README/ARCHITECTURE checklist fixture is covered by the focused tests with depths `[0, 1, 0, 1]`, checked/unchecked state, H1–H6 semantics, and source-list labeling. The dashboard's older-session rows remained inert during acceptance, so the older Pass 15 transcript was not claimed as reopened visual proof.
+
+No provider prompt was sent. Before/after SHA-256 remained `57c6c2ff2acbae9b34b38fe3877608cc3768294403e20c8550dc16af23c29e27` for the local saved transcript and `1ad069c99e21281bffa7281f0c73cc1dc32dc57786a36f627054de8887157f18` for Grok's durable `chat_history.jsonl`; neither was rewritten. After startup settled, the installed app was at 0.0% CPU with zero child processes. The recoverable pre-install bundle is `/Users/jimmyschmitz/.Trash/GrokBuild-pre-visual-slice-7-20260802-2040.app`.
+
+## Ten-prompt consumer/developer study — 2026-08-02
+
+Ten fresh installed-app sessions exercised casual guidance, current sourced research, local-project explanation, one authoritative question, structured comparison, architecture orientation, a focused test loop, parallel subagents, native plan review, and external-artifact/Git truth. Conservative tracked usage was **1,752,616 / 2,000,000 tokens**, leaving **247,384** unused; no further provider call is authorized by this study.
+
+| Prompt | Tracked tokens | What worked | Finding that earns a slice |
+|---:|---:|---|---|
+| 1 | 15,763 | Calm answer, headings, numbered variations, next action | A simple answer still lives inside project-first starter copy, session clutter, Git counts, and developer terminology. |
+| 2 | 55,451 | Current web result settled with official links, uncertainty, and honest tool receipts | Useful progress is hidden behind Details/Activity; streaming still briefly presents a dense tool-and-raw-text story. |
+| 3 | 36,686 | README read, native local link, plain-language explanation | Intent such as “checklist” is not always reflected by model-authored Markdown, so user actions need stronger native affordances than prose alone. |
+| 4 | 31,402 | Exactly one authoritative three-choice question resumed the same turn | Guided choices work beautifully and should become a reusable consumer pattern rather than a special-case tool surface. |
+| 5 | 15,795 | New hierarchy renderer exposed a four-item checklist at depths `[0, 1, 1, 0]` | The five-column table clipped its useful final column without an obvious overflow or alternate reading mode. |
+| 6 | 84,615 | Six read-only tools produced an accurate architecture map and exact diagnostic command | Developer orientation is strong, but tool progress and the final answer are visually disconnected; prose also joined directly to a heading. |
+| 7 | 32,307 | One visible command receipt, 15 focused tests, clear regression risk | Results need native actions such as rerun, copy command, open test source, and keep-as-receipt without turning the transcript into toolbar soup. |
+| 8 | 1,107,977 | Activity correctly showed two named parallel workers and their terminal receipts | One worker ran 2.3 minutes / 51 tools and the other 3.9 minutes / 60 tools; the parent waited silently and live usage was unavailable. Stop protected the budget but the stopped receipt withheld tokens. |
+| 9 | 340,874 | Native plan review exposed four detailed steps, acceptance, risks, and Approve/Reject/Cancel | The card sprawled across hundreds of accessibility rows; Cancel removed the plan and surfaced one failed tool instead of preserving a cancelled decision record. |
+| 10 | 31,746 | External `/tmp` artifact remained separate from the five-file Git projection | Artifact and Git truth are correct but deserve direct reveal/copy/reuse actions after settlement. |
+
+## Slice 8 — deterministic session navigation
+
+**Status:** implemented; final automated and installed-app acceptance is recorded below.
+
+Make every dashboard row a full-width, keyboard- and VoiceOver-activatable control with a stable identifier and explicit selected state. Selection must dismiss once, target one existing local tab, hydrate its transcript exactly once, and never silently no-op, bounce the scroll position, create a duplicate tab, or start a backend merely because the user looked at saved work. Browse Sessions remains historical-backend discovery; the dashboard remains the live local-tab switcher.
+
+**Gate:** with at least twelve live tabs, activate the oldest idle tab by accessibility identifier and by keyboard. The sheet dismisses once, the correct transcript/title appears, the sidebar selection moves, the scroll position does not bounce, no duplicate local tab or Grok child appears, and transcript/backend-log hashes are unchanged by selection.
+
+**Acceptance (2026-08-02):** The dashboard now uses one lazy native scroll stack rather than `List` row-selection machinery. All 95 installed local-tab buttons exposed exact `grok-session-dashboard-row-{local UUID}` identifiers, status/model/workspace labels, a selected trait, full-width hit regions, and native Tab/Space activation. The presenting `ContentView` owns the single dismissal; a generation token rejects stale A → B → A hydration; selection performs no process start, while `ChatStore.deliverPrompt` retains the existing continuity-gated lazy resume on a real submission. The four-process LRU cap is re-enforced when an active store receives an authoritative backend ID.
+
+Native Computer Use clicked the bottom-most stable row `grok-session-dashboard-row-ff8ba9fa-470c-42bc-836b-138bcfdce661` after `AXScrollToBottom`, dismissed the sheet once, moved the sidebar selection, and restored the exact `grokbuild-installed-terminal-pass` transcript without a visible bounce. A separate keyboard pass tabbed from selected row `5dc250e4-dfce-4f9e-8f0e-99b72cbffe57` to `0050b36f-53bf-4bd7-97a7-9afb6a30d921` and activated it with Space, restoring the exact `FINAL GB_MAIN_ACP_ACCEPTANCE_0802` transcript. Across click, keyboard, quit, and relaunch, SHA-256 manifests for **205 local transcript files** and **256 Grok `chat_history.jsonl` files** stayed byte-identical. The three focused dashboard tests passed 3/3; the complete suite passed **557/557** in 21.868 seconds; `git diff --check` was clean.
+
+`make install` rebuilt and signed with `Apple Development: jhschmitz1993@gmail.com (LS4SUB57QL)` (Team `DD2GCQJVB4`). The final dist and `/Applications/GrokBuild.app` executables both hash to `10c0903893126f3456332cfae5f1d0ee81c93532b1d666598402f997807c5006`; both bundles pass deep/strict verification and carry personal channel, `schmitzjimmy1-star/grok-build-desktop`, branch `codex/activity-parity-slice-0`, commit `352080f72b35d832cbc7ece669baafcd1f9c1a0e`, dirty `true`. A final launch of that exact hash independently exposed the identified native buttons and reopened `0050b36f-53bf-4bd7-97a7-9afb6a30d921` into the matching transcript/sidebar state. Settled installed state was 0.0% CPU with zero child processes and no provider submission. The recoverable pre-install bundle is `/Users/jimmyschmitz/.Trash/GrokBuild-pre-session-slice-8-20260802-2132.app`.
+
+## Slice 9 — quiet workbench focus
+
+Start new work with three plain-language intents—**Ask**, **Build**, and **Review**—rather than assuming every person understands architecture/test vocabulary. After Send, place the answer and its next action first; keep project navigation, model, Git, MCP, and receipt power one click away in the unchanged developer Details surface. This is progressive disclosure, not a generic-chatbot pivot or feature removal.
+
+**Gate:** a first-time keyboard/VoiceOver user can start a useful project-grounded request without decoding CLI/Git language, while an expert reaches model, branch/worktree, changed files, MCP readiness, Activity, and raw receipts in one deliberate expansion.
+
+## Slice 10 — glanceable live progress
+
+Project one compact, answer-adjacent live status line for meaningful work: current phase, active workers, active tool, elapsed time, and budget status. Expanding it opens the existing generation-bound Activity truth; collapsing it never hides a question, plan decision, failure, or budget warning. Settled evidence still replaces live projection atomically.
+
+**Gate:** the parallel fixture is understandable without opening Details, then expands to the exact same workers/tools/receipts already owned by Activity; no outcome or usage is fabricated before settlement.
+
+## Slice 11 — adaptive result surfaces
+
+Give wide tables an obvious horizontal affordance plus an alternate stacked-card reading mode, retain full exact table text for copy/accessibility, and prevent preamble text from welding itself to the next heading. Preserve native nested lists, source links, code, Mermaid fallback, and developer-grade exactness.
+
+**Gate:** the five-column rainy-day comparison is fully readable at the minimum window width by sight, keyboard, and VoiceOver without losing a cell; the same fixture still copies as an exact Markdown table.
+
+## Slice 12 — concise, durable plan decisions
+
+Render plan review summary-first: objective, affected areas, risk, tests, and estimated scope before collapsed step detail. Approve, Reject, and Cancel remain one authoritative ACP response each; rejected/cancelled plans stay in the transcript as durable decision records and are not mislabeled as failed tools. Raw plan text remains available for developers.
+
+**Gate:** the four-step session-navigation plan opens to a bounded summary, exposes full detail on demand, and remains visibly labelled **Cancelled** after Cancel with zero edits and no unresolved-tool fiction.
+
+## Slice 13 — run budgets and worker control
+
+Add per-run token, time, model-call, tool-call, and worker ceilings with a conservative preflight estimate, live consumption when the backend reports it, and explicit **Stop worker** / **Stop all** controls. When live usage is unavailable, show that fact and enforce local elapsed/tool ceilings instead of presenting limitless animation. Multi-agent power stays intact; runaway work becomes bounded and inspectable.
+
+Also single-flight model-catalog discovery across restored tab shells. Final Slice 8 acceptance observed 95 transient `grok models` child probes at launch; they settled to zero without provider calls, but one shared catalog lookup should serve every prepared tab instead of multiplying startup work by session count.
+
+**Gate:** the two-worker diagnosis cannot exceed its configured ceiling unnoticed; the UI warns before the boundary, can stop one worker without killing the other, and settles with known usage or an explicit unavailable/upper-bound receipt.
+
+## Slice 14 — actionable results and artifacts
+
+Attach restrained native actions to settled developer results: rerun/copy a command, open the named test/source, reveal or copy an artifact path, and promote a successful result into a follow-up draft. Actions must derive from successful receipts and keep external artifacts, repository changes, hypothetical code, and assistant prose in separate authorities.
+
+**Gate:** the focused-test and `/tmp` artifact fixtures expose the correct actions; no action mutates Git without a separate user decision, and an external artifact never enters Files in review.
+
 ## Release gates
 
 - All request/response cards are one-to-one with authoritative ACP request identity.

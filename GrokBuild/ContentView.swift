@@ -13,7 +13,7 @@ struct ContentView: View {
         var workspace: Workspace
         var title: String
         /// The grok session id to resume, known even before the process is started (lazy
-        /// restore). Stays valid across LRU teardown so the session can be re-resumed on reopen.
+        /// restore). Stays valid across LRU teardown so the session can be re-resumed on send.
         var grokSessionID: String?
     }
 
@@ -21,7 +21,7 @@ struct ContentView: View {
     /// `grok agent stdio` processes so steady-state memory doesn't scale with session count.
     @State private var recentSessionOrder: [UUID] = []
     /// Maximum number of sessions kept connected (with a live grok process) at once. Others
-    /// are torn down and re-resumed on demand when reopened.
+    /// are torn down and re-resumed on demand when their next prompt is submitted.
     private let maxConnectedSessions = 4
 
     @State private var workspaceStore = WorkspaceStore()
@@ -46,6 +46,8 @@ struct ContentView: View {
     @State private var totalSessionsToRestore = 0
     @State private var restoreStatusText = "Restoring sessions..."
     @State private var sessionListRevision = 0
+    /// Rejects stale asynchronous transcript hydration after rapid A → B → A switching.
+    @State private var sessionSelectionGeneration: UInt64 = 0
     @State private var cachedSessionTitles: [UUID: String] = [:]
     /// Metadata is loaded in one background snapshot during restore. Keeping it in memory lets
     /// layout persistence answer counts/generations without touching transcript files on the
@@ -266,7 +268,11 @@ struct ContentView: View {
             )
         }
         .sheet(isPresented: $showSessionDashboard) {
-            SessionDashboardPanel(entries: dashboardEntries) { sessionID in
+            SessionDashboardPanel(
+                entries: dashboardEntries,
+                selectedSessionID: selectedSessionID
+            ) { sessionID in
+                showSessionDashboard = false
                 selectSession(sessionID)
             }
         }
@@ -307,6 +313,7 @@ struct ContentView: View {
             onNewSession: startNewSessionForCurrentProject,
             onPersistSessionLayout: { persistSessionLayout(saveMessages: $0) },
             onTranscriptBoundary: markTranscriptDirtyAndPersist,
+            onSessionStarted: { Task { await enforceConnectionCap() } },
             openSettings: { tab in openSettings(tab: tab ?? selectedSettingsTab) }
         ))
     }
@@ -458,7 +465,9 @@ struct ContentView: View {
                 workspaceName: session.workspace.displayName,
                 group: .needsInput,
                 modelName: store.modelDisplayName(store.currentModel),
-                pendingCount: pending
+                pendingCount: pending,
+                lastActivationOrdinal: sessionLayout.records.first(where: { $0.id == session.id })?
+                    .lastActivationOrdinal ?? 0
             ) }
             return SessionDashboardEntry(
                 id: session.id,
@@ -466,7 +475,9 @@ struct ContentView: View {
                 workspaceName: session.workspace.displayName,
                 group: group,
                 modelName: store.modelDisplayName(store.currentModel),
-                pendingCount: pending
+                pendingCount: pending,
+                lastActivationOrdinal: sessionLayout.records.first(where: { $0.id == session.id })?
+                    .lastActivationOrdinal ?? 0
             )
         }
     }
@@ -1045,7 +1056,6 @@ struct ContentView: View {
             selectSession(
                 selected,
                 recordsActivation: false,
-                deferBackendStart: decision.deferBackendStart,
                 reconcilePersistedTranscript: false
             )
         } else if decision.createdNewTab {
@@ -1214,7 +1224,6 @@ struct ContentView: View {
     private func selectSession(
         _ id: UUID,
         recordsActivation: Bool = true,
-        deferBackendStart: Bool = false,
         reconcilePersistedTranscript: Bool = true
     ) {
         let switchInterval = GrokBuildPerformance.begin(.tabSwitchToInteractive)
@@ -1226,6 +1235,8 @@ struct ContentView: View {
         let needsReconciliation = !needsHydration
             && reconcilePersistedTranscript
             && session.store.continuityPermitsAuthoritativeReconciliation
+        sessionSelectionGeneration &+= 1
+        let selectionGeneration = sessionSelectionGeneration
         purgeEmptySessions(in: session.workspace.id, keeping: id)
         let savedRecord = sessionLayout.records.first(where: { $0.id == id })
         // Selection can happen while the restored tab's lazy process is still starting.
@@ -1255,7 +1266,9 @@ struct ContentView: View {
                 let localMessages = await GrokBuildBackgroundWork.run({
                     SessionMessageStore.messages(for: id)
                 }, priority: .utility)
-                guard !Task.isCancelled, selectedSessionID == id else {
+                guard !Task.isCancelled,
+                      selectedSessionID == id,
+                      sessionSelectionGeneration == selectionGeneration else {
                     switchInterval.end()
                     return
                 }
@@ -1279,7 +1292,9 @@ struct ContentView: View {
                             currentMessages: reconciliationMessages
                         )
                     }, priority: .utility)
-                    guard !Task.isCancelled, selectedSessionID == id else {
+                    guard !Task.isCancelled,
+                          selectedSessionID == id,
+                          sessionSelectionGeneration == selectionGeneration else {
                         switchInterval.end()
                         return
                     }
@@ -1289,12 +1304,14 @@ struct ContentView: View {
                 }
                 refreshGitReviewFromTranscriptBoundary()
             }
-            // Slice 3 verifies the exact bound history before any resume. The old
-            // defer flag now means "verify before start", not "wait until Send and
-            // blindly resume"; a failed check leaves the process stopped.
-            _ = deferBackendStart
-            await ensureSessionStarted(id)
-            await enforceConnectionCap()
+            guard !Task.isCancelled,
+                  selectedSessionID == id,
+                  sessionSelectionGeneration == selectionGeneration else {
+                switchInterval.end()
+                return
+            }
+            // Selection is presentation only. `ChatStore.deliverPrompt` owns the lazy,
+            // continuity-gated resume when the user actually submits new work.
             await refreshProjectChangedFiles()
             await Task.yield()
             await Task.yield()
@@ -1316,69 +1333,6 @@ struct ContentView: View {
         }
         recentSessionOrder.removeAll { $0 == id }
         recentSessionOrder.insert(id, at: 0)
-    }
-
-    /// Lazily start (resume) a session's grok process the first time it's opened. Sessions
-    /// restored at launch are only `prepare`d; this brings one online on demand.
-    private func ensureSessionStarted(_ id: UUID) async {
-        guard let idx = liveSessions.firstIndex(where: { $0.id == id }) else { return }
-        let session = liveSessions[idx]
-        // Already connected (starting/ready/busy) — nothing to do.
-        guard session.store.connectionState == .idle else { return }
-        // No saved grok session → leave prepared; sending the first message starts a fresh one.
-        guard let grokID = session.grokSessionID else { return }
-        let info = GrokSessionInfo(
-            id: grokID,
-            created: "",
-            updated: "",
-            status: "",
-            summary: session.title == SessionTitle.defaultTitle ? "" : session.title
-        )
-        await session.store.start(
-            workspace: session.workspace,
-            resumeSession: info,
-            preserveMessages: true
-        )
-        if let idx = liveSessions.firstIndex(where: { $0.id == id }) {
-            liveSessions[idx].grokSessionID = session.store.grokSessionId ?? liveSessions[idx].grokSessionID
-            // Some provider session-load paths settle after the prepared transcript was
-            // shown and can leave the in-memory store empty. The persisted tab transcript
-            // remains authoritative for this bounded recovery; never overwrite a non-empty
-            // store after the live process starts.
-            if selectedSessionID == id, liveSessions[idx].store.messages.isEmpty {
-                let hasRestorableTranscript: Bool
-                if let metadata = transcriptMetadataByID[id] {
-                    hasRestorableTranscript = metadata.restorableMessageCount > 0
-                } else {
-                    hasRestorableTranscript = await GrokBuildBackgroundWork.run({
-                        SessionMessageStore.hasRestorableTranscript(for: id)
-                    }, priority: .utility)
-                }
-                if hasRestorableTranscript,
-                   let currentIndex = liveSessions.firstIndex(where: { $0.id == id }) {
-                    let recoveryGrokSessionID = liveSessions[currentIndex].grokSessionID
-                    let recoveryWorkspacePath = liveSessions[currentIndex].workspace.path
-                    let saved = await GrokBuildBackgroundWork.run({
-                        SessionMessageStore.messages(for: id)
-                    }, priority: .utility)
-                    let recovered = await GrokBuildBackgroundWork.run({
-                        SessionTranscriptRecovery.recoverIfNeeded(
-                            sessionID: id,
-                            grokSessionID: recoveryGrokSessionID,
-                            workspacePath: recoveryWorkspacePath,
-                            currentMessages: saved
-                        )
-                    }, priority: .utility)
-                    if selectedSessionID == id,
-                       let currentIndex = liveSessions.firstIndex(where: { $0.id == id }),
-                       liveSessions[currentIndex].store.messages.isEmpty {
-                        liveSessions[currentIndex].store.restorePersistedMessages(recovered ?? saved)
-                        refreshGitReviewFromTranscriptBoundary()
-                    }
-                }
-            }
-        }
-        persistSessionLayout()
     }
 
     /// Tear down grok processes for sessions beyond the MRU cap so the resident footprint
@@ -1613,6 +1567,7 @@ private struct ContentViewNotificationHandlers: ViewModifier {
     let onNewSession: () -> Void
     let onPersistSessionLayout: (Bool) -> Void
     let onTranscriptBoundary: (UUID) -> Void
+    let onSessionStarted: () -> Void
     /// nil = keep the remembered tab; a value forces that tab.
     let openSettings: (SettingsTab?) -> Void
 
@@ -1648,6 +1603,7 @@ private struct ContentViewNotificationHandlers: ViewModifier {
                     return
                 }
                 onPersistSessionLayout(true)
+                onSessionStarted()
             }
             .onReceive(NotificationCenter.default.publisher(for: .liveSessionMessagesChanged)) { note in
                 handleLiveSessionMessagesChanged(note)
