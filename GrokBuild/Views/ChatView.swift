@@ -922,34 +922,40 @@ struct ChatView: View {
     }
 
     private var welcomeState: some View {
-        VStack(spacing: 28) {
-            VStack(spacing: 16) {
+        VStack(spacing: 24) {
+            VStack(spacing: 12) {
                 brandMark
-                Text("\(store.currentWorkspace?.displayName ?? "Project") Build Workspace")
+                Text(store.currentWorkspace?.displayName ?? "Your project")
+                    .font(.callout.weight(.medium))
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                Text("What would you like to do?")
                     .font(.system(size: 30, weight: .regular))
                     .multilineTextAlignment(.center)
-                Text("Inspect code, plan changes, run tools, and review the working tree.")
+                Text("Choose a starting point, then make the request your own.")
                     .font(.callout)
                     .foregroundStyle(.secondary)
                     .multilineTextAlignment(.center)
             }
 
+            starterModelSelector
+
             LazyVGrid(
                 columns: Array(
                     repeating: GridItem(.flexible(), spacing: 12),
-                    count: 4
+                    count: 3
                 ),
                 spacing: 12
             ) {
-                ForEach(QuickStartPrompt.defaults) { item in
-                    QuickStartChip(item: item) {
+                ForEach(WorkbenchIntent.defaults) { item in
+                    WorkbenchIntentCard(item: item) {
                         input = item.prompt
                         inputFocused = true
                     }
                 }
             }
 
-            Text("⏎ send · ⇧⏎ new line · / for skills")
+            Text("Pick an intent or type below · ⏎ send · ⇧⏎ new line")
                 .font(.caption2)
                 .foregroundStyle(.tertiary)
         }
@@ -1139,7 +1145,7 @@ struct ChatView: View {
                         )
                     }
 
-                    TextField("Plan or build…  / for skills", text: $input, axis: .vertical)
+                    TextField("Ask, build, or review…  / for skills", text: $input, axis: .vertical)
                     .textFieldStyle(.plain)
                     .font(AppTheme.Typography.composer)
                     .lineSpacing(4)
@@ -1151,7 +1157,7 @@ struct ChatView: View {
                     .submitLabel(.send)
                     .accessibilityLabel("Message composer")
                     .accessibilityValue(input.isEmpty ? "Empty" : "\(input.count) characters")
-                    .accessibilityHint("Enter a plan or build request. Return sends; Shift-Return adds a line.")
+                    .accessibilityHint("Enter a question, build request, or review request. Return sends; Shift-Return adds a line.")
                     .accessibilityIdentifier("grok-message-composer")
                     .onSubmit {
                         if showSlashPopover {
@@ -1245,7 +1251,6 @@ struct ChatView: View {
 
     private var composerPrimaryControls: some View {
         HStack(spacing: 9) {
-            modeSelector
             composerCommandMenu
             composerDetailsToggle
         }
@@ -1342,6 +1347,7 @@ struct ChatView: View {
 
     private var composerDetailLeadingControls: some View {
         HStack(spacing: 9) {
+            modeSelector
             modelSelector
             ContextUsageIndicator(
                 label: store.currentModelContextLabel,
@@ -2256,22 +2262,7 @@ struct ChatView: View {
 
     private var modelSelector: some View {
         Menu {
-            Section("Model") {
-                ForEach(store.availableModels, id: \.self) { modelId in
-                    Button {
-                        store.setModel(modelId)
-                    } label: {
-                        HStack {
-                            Text(store.modelDisplayName(modelId))
-                            if store.currentModel == modelId {
-                                Image(systemName: "checkmark")
-                            }
-                        }
-                    }
-                    .accessibilityIdentifier("grok-model-option-\(modelId)")
-                    .disabled(store.isModelRequestPending)
-                }
-            }
+            modelChoiceItems
 
             if store.currentModelSupportsReasoningEffort {
                 Divider()
@@ -2320,6 +2311,57 @@ struct ChatView: View {
         .accessibilityIdentifier("grok-model-effort-selector")
         .accessibilityHint("Choose the model and, when supported, reasoning effort.")
         .help(modelSelectorHelp)
+    }
+
+    private var starterModelSelector: some View {
+        Menu {
+            modelChoiceItems
+        } label: {
+            HStack(spacing: 7) {
+                Image(systemName: "sparkles")
+                    .font(.caption.weight(.semibold))
+                Text("Model")
+                    .font(.caption.weight(.medium))
+                    .foregroundStyle(.secondary)
+                Text(store.modelDisplayName(store.currentModel))
+                    .font(.caption.weight(.semibold))
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+                Image(systemName: "chevron.down")
+                    .font(.system(size: 8, weight: .semibold))
+                    .foregroundStyle(.tertiary)
+            }
+            .padding(.horizontal, 10)
+            .frame(minHeight: ComposerControlMetrics.minimumHitTarget)
+            .contentShape(Rectangle())
+        }
+        .menuStyle(.button)
+        .buttonStyle(.bordered)
+        .accessibilityLabel("Model for this session")
+        .accessibilityValue(store.modelAccessibilityValue)
+        .accessibilityHint("Choose the model before sending. Model status and reasoning effort remain available in Details.")
+        .accessibilityIdentifier("grok-starter-model-selector")
+        .help("Choose the model for this session")
+    }
+
+    @ViewBuilder
+    private var modelChoiceItems: some View {
+        Section("Choose a model") {
+            ForEach(store.availableModels, id: \.self) { modelId in
+                Button {
+                    store.setModel(modelId)
+                } label: {
+                    HStack {
+                        Text(store.modelDisplayName(modelId))
+                        if store.currentModel == modelId {
+                            Image(systemName: "checkmark")
+                        }
+                    }
+                }
+                .accessibilityIdentifier("grok-model-option-\(modelId)")
+                .disabled(store.isModelRequestPending)
+            }
+        }
     }
 
     private var modelSelectorLabel: String {
@@ -2462,10 +2504,10 @@ struct ChatView: View {
 
 }
 
-// MARK: - Quick Start
+// MARK: - Workbench Intents
 
-private struct QuickStartChip: View {
-    let item: QuickStartPrompt
+private struct WorkbenchIntentCard: View {
+    let item: WorkbenchIntent
     var onSelect: () -> Void
 
     @State private var isHovered = false
@@ -2473,19 +2515,22 @@ private struct QuickStartChip: View {
 
     var body: some View {
         Button(action: onSelect) {
-            VStack(alignment: .leading, spacing: 14) {
+            VStack(alignment: .leading, spacing: 10) {
                 Image(systemName: item.icon)
                     .font(.system(size: 15, weight: .semibold))
                     .foregroundStyle(.secondary)
                     .frame(width: 22, height: 22)
                 Text(item.title)
-                    .font(.system(size: 14, weight: .medium))
+                    .font(.system(size: 16, weight: .semibold))
                     .foregroundStyle(.primary)
-                    .lineLimit(2)
+                Text(item.detail)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(3)
                     .multilineTextAlignment(.leading)
             }
             .padding(14)
-            .frame(maxWidth: .infinity, minHeight: 104, alignment: .topLeading)
+            .frame(maxWidth: .infinity, minHeight: 118, alignment: .topLeading)
             .background(
                 isHovered ? AppTheme.Palette.surfaceHover : AppTheme.Palette.canvas,
                 in: RoundedRectangle(cornerRadius: AppTheme.Radius.medium)
@@ -2500,8 +2545,8 @@ private struct QuickStartChip: View {
         .onHover { isHovered = $0 }
         .help(item.prompt)
         .animation(reduceMotion ? nil : .easeOut(duration: 0.12), value: isHovered)
-        .accessibilityLabel(item.title)
-        .accessibilityHint("Adds this starter request to the message composer.")
+        .accessibilityLabel("\(item.title). \(item.detail)")
+        .accessibilityHint("Adds an editable \(item.title.lowercased()) request to the message composer.")
     }
 
 }

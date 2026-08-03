@@ -263,34 +263,33 @@ enum SlashAutocompleteGroups {
     }
 }
 
-/// A one-tap starter shown in the empty chat state. Selecting one seeds the composer with
-/// `prompt` (it does not send) so a new session has an obvious, editable first step.
-struct QuickStartPrompt: Identifiable, Hashable, Sendable {
+/// A plain-language starting point shown before a session's first request. Selecting one
+/// seeds an editable draft; it never sends or starts a backend by itself.
+struct WorkbenchIntent: Identifiable, Hashable, Sendable {
     var id: String { title }
     let icon: String
     let title: String
+    let detail: String
     let prompt: String
 
-    static let defaults: [QuickStartPrompt] = [
-        QuickStartPrompt(
-            icon: "magnifyingglass",
-            title: "Map project architecture",
-            prompt: "Inspect this project and map its purpose, structure, entry points, data flow, build system, tests, and current working-tree state."
+    static let defaults: [WorkbenchIntent] = [
+        WorkbenchIntent(
+            icon: "questionmark.bubble",
+            title: "Ask",
+            detail: "Understand the project or get clear guidance.",
+            prompt: "Help me understand this project. Start with what it does, how it is organized, and the best place to begin."
         ),
-        QuickStartPrompt(
+        WorkbenchIntent(
             icon: "hammer",
-            title: "Implement a scoped change",
-            prompt: "Plan and implement a scoped change in this project, verify it with the relevant build and tests, and summarize the exact files changed."
+            title: "Build",
+            detail: "Create, change, or fix something with a safe plan.",
+            prompt: "Help me make a change in this project. Ask what outcome I want, then propose a safe plan before editing anything."
         ),
-        QuickStartPrompt(
-            icon: "arrow.triangle.2.circlepath",
-            title: "Review the working tree",
-            prompt: "Review the uncommitted working tree for correctness, regressions, test gaps, accidental files, and release risk without changing anything."
-        ),
-        QuickStartPrompt(
-            icon: "ladybug",
-            title: "Diagnose build or test failures",
-            prompt: "Reproduce the current build or test failure, trace the root cause, implement the smallest safe repair, and rerun the affected verification."
+        WorkbenchIntent(
+            icon: "checkmark.magnifyingglass",
+            title: "Review",
+            detail: "Check existing work and explain the best next step.",
+            prompt: "Review the current project work without changing anything. Explain what looks good, what needs attention, and the best next step."
         ),
     ]
 }
