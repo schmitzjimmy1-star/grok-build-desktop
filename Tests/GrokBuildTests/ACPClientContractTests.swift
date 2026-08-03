@@ -983,8 +983,10 @@ final class ACPClientContractTests: XCTestCase {
             .appendingPathComponent("GrokBuild/Services/ChatStore.swift")
         let source = try String(contentsOf: sourceURL, encoding: .utf8)
 
-        XCTAssertTrue(source.contains("starting without its id"))
-        XCTAssertTrue(source.contains("await restartProcess(resumeSessionID: savedGrokSessionID)"))
+        XCTAssertTrue(source.contains("silently resuming a mismatched backend"))
+        XCTAssertTrue(source.contains("let forceFreshStart = forcedFreshStartAfterUserStop"))
+        XCTAssertTrue(source.contains("resumeSessionID: savedGrokSessionID"))
+        XCTAssertTrue(source.contains("forceFreshStart: forceFreshStart"))
     }
 
     func testSavedBackendCannotStartOrSendBeforeContinuityGateAllowsIt() throws {

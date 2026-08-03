@@ -42,6 +42,8 @@ The running process exposes a credential-free `GrokLaunchReceipt`. Cards and ACP
 
 Configuration reloads resume `ChatStore.durableGrokSessionID`; do not derive continuity from transient `process.sessionId` alone. A legitimate stale-load fallback reconciles the prior exact backend file and persists an explicit old-ID → new-ID recovery fork before another prompt.
 
+**Stop boundary:** User Stop tears down the current process but first captures its local tab/backend/process-generation identity. `ChatStore` publishes a local `userStopped` Activity receipt with the next action; it is not a backend completion and not a generic failure. Only an exact continuity receipt may re-verify and resume that backend. A stale, missing, or mismatched receipt forces the next launch into a fresh, ledgered run with explicit copy.
+
 ## Native interaction ownership
 
 Question, permission, and plan controls are thin views over direct ACP requests. Identity is the exact backend session plus JSON-RPC request id; a tool-call row may explain the request but must never supply an id to `respondToQuestion`, `respondToPermission`, or `respondToExitPlan`. Replays of one identity update one card, while distinct authoritative ids remain distinct. A decision writes one ACP response and resumes the blocked turn—never send a second marker prompt such as `[Plan approved]`, and never rewrite Grok's durable logs to make the UI appear settled.

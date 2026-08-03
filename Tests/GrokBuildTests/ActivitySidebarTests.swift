@@ -139,6 +139,8 @@ final class ActivitySidebarTests: XCTestCase {
         XCTAssertFalse(sidebar.contains(".regularMaterial"))
         XCTAssertTrue(chat.contains("Text(\"Activity\")"))
         XCTAssertTrue(chat.contains("outcome == .completionReceiptMissing"))
+        XCTAssertTrue(chat.contains(".userStopped"))
+        XCTAssertTrue(chat.contains("local stop outcome and next action"))
         XCTAssertTrue(chat.contains("Activity opened with the preserved run evidence"))
         XCTAssertTrue(chat.contains("Build agent finished. \\(outcome)."))
         XCTAssertEqual(chat.components(separatedBy: "Build agent finished").count - 1, 1)

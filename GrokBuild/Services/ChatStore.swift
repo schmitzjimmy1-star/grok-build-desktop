@@ -54,6 +54,39 @@ struct TurnSettlementCoordinator {
     }
 }
 
+enum StoppedTurnContinuationDecision: Equatable, Sendable {
+    case reverifySameBackend
+    case startFresh
+
+    static func decision(
+        receipt: SessionContinuityReceipt,
+        localTabID: UUID?,
+        backendID: String?,
+        processGeneration: UInt64?
+    ) -> Self {
+        guard let localTabID,
+              let backendID, !backendID.isEmpty,
+              let processGeneration,
+              receipt.localTabID == localTabID,
+              receipt.backendID == backendID,
+              receipt.processGeneration == processGeneration,
+              [.backendBound, .backendOnly, .verified, .recoveryForked].contains(receipt.status)
+        else {
+            return .startFresh
+        }
+        return .reverifySameBackend
+    }
+
+    var nextAction: String {
+        switch self {
+        case .reverifySameBackend:
+            return "Reconnect to the verified backend before sending another turn. GrokBuild will re-check continuity for this stopped session."
+        case .startFresh:
+            return "Start a fresh run. The prior continuity receipt did not match this stopped session."
+        }
+    }
+}
+
 enum PermissionRequestDisposition: Equatable {
     case allow(optionID: String)
     case deny(optionID: String?)
@@ -177,6 +210,11 @@ final class ChatStore {
     /// mutated to make a run look complete.
     private(set) var runEvidenceSnapshot: RunEvidenceSnapshot?
     private var currentRunPlan: [RunEvidenceSnapshot.PlanStep] = []
+    /// A stop is not a backend completion. If its captured receipt cannot prove
+    /// ownership of the stopped process, the next launch must not quietly resume
+    /// that backend and instead creates a fresh, ledgered run.
+    private var forcedFreshStartAfterUserStop = false
+    private var stoppedBackendIDNeedingFreshStart: String?
 
     /// Current receipts projected only while this exact tab/backend/process
     /// generation owns an active turn. This computed value is presentation-only:
@@ -271,11 +309,13 @@ final class ChatStore {
     enum TurnOutcome: String, Hashable {
         case completed
         case completionReceiptMissing
+        case userStopped
 
         var displayName: String {
             switch self {
             case .completed: "Turn completed"
             case .completionReceiptMissing: "Completion receipt missing"
+            case .userStopped: "Stopped by you"
             }
         }
     }
@@ -1581,17 +1621,32 @@ final class ChatStore {
         seenSubagentLifecycleKeys = []
     }
 
-    private func restartProcess(resumeSessionID: String? = nil) async {
+    private func restartProcess(
+        resumeSessionID: String? = nil,
+        forceFreshStart: Bool = false,
+        freshStartPredecessorBackendID: String? = nil
+    ) async {
         guard let ws = currentWorkspace else { return }
         // A populated restored tab always belongs to its saved backend session. Several
         // asynchronous launch paths can request a restart without carrying that id; resolving
         // it centrally prevents any of them from silently replacing the visible conversation
         // with a fresh default-model session.
-        let effectiveResumeSessionID = Self.resolvedResumeSessionID(
-            requested: resumeSessionID,
-            saved: savedGrokSessionID,
-            hasUserMessages: hasUserMessages
-        )
+        // The stop guard is kept here as well as at the send boundary: workspace
+        // selection and other restart paths must not bypass a required fresh start.
+        let shouldForceFreshStart = forceFreshStart || forcedFreshStartAfterUserStop
+        let forcedPredecessorBackendID = freshStartPredecessorBackendID
+            ?? stoppedBackendIDNeedingFreshStart
+        if shouldForceFreshStart {
+            forcedFreshStartAfterUserStop = false
+            stoppedBackendIDNeedingFreshStart = nil
+        }
+        let effectiveResumeSessionID = shouldForceFreshStart
+            ? nil
+            : Self.resolvedResumeSessionID(
+                requested: resumeSessionID,
+                saved: savedGrokSessionID,
+                hasUserMessages: hasUserMessages
+            )
         if let effectiveResumeSessionID {
             let status = await verifyContinuityBeforeResume(backendID: effectiveResumeSessionID)
             guard SessionSendGate.decision(for: status) != .block else {
@@ -1710,6 +1765,7 @@ final class ChatStore {
         let forkReason: SessionForkLedgerReason? = {
             if process.sessionLoadStartedFreshFallback { return .resumeFallback }
             if launchForkSession { return .explicitBackendFork }
+            if shouldForceFreshStart { return .explicitFreshStart }
             if effectiveResumeSessionID == nil, hadLocalConversationBeforeStart {
                 return pendingRecoveryIntent?.action == .continueAsNew
                     ? .explicitContinueAsNew
@@ -1719,7 +1775,8 @@ final class ChatStore {
         }()
         if let forkReason {
             await recordRecoveryFork(
-                predecessorBackendID: pendingRecoveryIntent?.predecessorBackendID
+                predecessorBackendID: forcedPredecessorBackendID
+                    ?? pendingRecoveryIntent?.predecessorBackendID
                     ?? effectiveResumeSessionID,
                 successorBackendID: successorBackendID,
                 reason: forkReason
@@ -2146,10 +2203,19 @@ final class ChatStore {
         if connectionState != .ready {
             if process.sessionId == nil && connectionState != .starting {
                 // Restored tabs render their local transcript before the live Grok
-                // session finishes its lazy resume. If the user sends during that
-                // window, resume the saved session here too; starting without its id
-                // silently forks the visible conversation onto the default model.
-                await restartProcess(resumeSessionID: savedGrokSessionID)
+                // session finishes its lazy resume. A stopped turn may override that
+                // default only when its continuity receipt did not own the stopped
+                // tab/backend/generation; in that case a fresh ledgered run is safer
+                // than silently resuming a mismatched backend.
+                let forceFreshStart = forcedFreshStartAfterUserStop
+                let predecessorBackendID = stoppedBackendIDNeedingFreshStart
+                forcedFreshStartAfterUserStop = false
+                stoppedBackendIDNeedingFreshStart = nil
+                await restartProcess(
+                    resumeSessionID: savedGrokSessionID,
+                    forceFreshStart: forceFreshStart,
+                    freshStartPredecessorBackendID: predecessorBackendID
+                )
             }
             guard connectionState == .ready else {
                 if lastError == nil {
@@ -2349,6 +2415,23 @@ final class ChatStore {
     }
 
     func stop() async {
+        let wasActiveTurn = isStreaming || isGrokking
+        let stoppedBackendID = process.sessionId ?? savedGrokSessionID
+        let stoppedGeneration = process.activeProcessGeneration
+        let stoppedBinding = RunEvidenceSnapshot.Binding(
+            localTabID: tabSessionID,
+            workspaceID: currentWorkspace?.id,
+            backendSessionID: stoppedBackendID,
+            processGeneration: stoppedGeneration,
+            requestID: nil,
+            isSettled: true
+        )
+        let continuationDecision = StoppedTurnContinuationDecision.decision(
+            receipt: continuityReceipt,
+            localTabID: tabSessionID,
+            backendID: stoppedBackendID,
+            processGeneration: stoppedGeneration
+        )
         firstChunkInterval?.end()
         firstChunkInterval = nil
         cancelStreamingTextFlush()
@@ -2370,6 +2453,19 @@ final class ChatStore {
         backgroundActivities = backgroundTaskTracker.activities
         mcpServerStatuses = MCPReadinessPolicy.stoppedStatuses(for: mcpServerStatuses.map(\.name))
         connectionState = .idle
+        guard wasActiveTurn else { return }
+        latestTurnOutcome = .userStopped
+        forcedFreshStartAfterUserStop = continuationDecision == .startFresh
+        stoppedBackendIDNeedingFreshStart = continuationDecision == .startFresh
+            ? stoppedBackendID
+            : nil
+        runEvidenceSnapshot = makeRunEvidenceSnapshot(
+            completion: nil,
+            bindingOverride: stoppedBinding,
+            processStateOverride: "Stopped by you",
+            nextActionOverride: continuationDecision.nextAction
+        )
+        notifyMessagesChanged()
     }
 
     /// Synchronous UI/notification entry point for the serialized async stop.
@@ -3271,7 +3367,12 @@ final class ChatStore {
         }
     }
 
-    private func makeRunEvidenceSnapshot(completion: TurnCompletionReceipt) -> RunEvidenceSnapshot {
+    private func makeRunEvidenceSnapshot(
+        completion: TurnCompletionReceipt?,
+        bindingOverride: RunEvidenceSnapshot.Binding? = nil,
+        processStateOverride: String? = nil,
+        nextActionOverride: String? = nil
+    ) -> RunEvidenceSnapshot {
         let workers = backgroundActivities.filter {
             $0.kind == .subagent && currentTurnWorkerActivityIDs.contains($0.id)
         }.map {
@@ -3307,12 +3408,18 @@ final class ChatStore {
         let outcome = latestTurnOutcome ?? .completionReceiptMissing
         // Only `turn_completed` is the parent lifecycle authority. A bridge
         // watchdog can preserve evidence, but it cannot paint the process settled.
-        let processState = outcome == .completed
+        let processState = processStateOverride ?? (outcome == .completed
             ? "Settled"
-            : "Incomplete — completion receipt missing"
+            : outcome == .userStopped
+                ? "Stopped by you"
+                : "Incomplete — completion receipt missing")
         let nextAction: String
-        if outcome == .completionReceiptMissing {
+        if let nextActionOverride {
+            nextAction = nextActionOverride
+        } else if outcome == .completionReceiptMissing {
             nextAction = "Reconnect before sending another turn; the backend completion receipt was not reported."
+        } else if outcome == .userStopped {
+            nextAction = "Reconnect before sending another turn."
         } else if workers.contains(where: \.isActive) {
             nextAction = "Waiting for worker receipts."
         } else if !unresolvedErrors.isEmpty {
@@ -3322,12 +3429,12 @@ final class ChatStore {
         }
         let latestUserMessage = messages.last(where: { $0.role == .user })?.content
         return RunEvidenceSnapshot(
-            binding: .init(
+            binding: bindingOverride ?? .init(
                 localTabID: tabSessionID,
                 workspaceID: currentWorkspace?.id,
                 backendSessionID: process.sessionId,
                 processGeneration: process.activeProcessGeneration,
-                requestID: completion.promptID,
+                requestID: completion?.promptID,
                 isSettled: outcome == .completed
             ),
             goalSummary: goalState?.objective ?? latestUserMessage.map {
@@ -3351,9 +3458,9 @@ final class ChatStore {
                     && continuityBlocksSend
             ),
             usage: .init(
-                totalTokens: completion.totalTokens,
-                modelCalls: completion.modelCalls,
-                turnCount: completion.turnCount
+                totalTokens: completion?.totalTokens,
+                modelCalls: completion?.modelCalls,
+                turnCount: completion?.turnCount
             ),
             outcome: outcome,
             unresolvedErrors: unresolvedErrors,

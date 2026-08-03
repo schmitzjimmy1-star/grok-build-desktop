@@ -549,6 +549,9 @@ struct ActivitySidebar: View {
         if snapshot.outcome == .completionReceiptMissing {
             return "The prompt returned, but ACP did not report the terminal lifecycle receipt."
         }
+        if snapshot.outcome == .userStopped {
+            return "The active local process was stopped before a backend completion receipt."
+        }
         if snapshot.activeWorkerCount > 0 {
             return "\(snapshot.activeWorkerCount) workers still active."
         }
@@ -560,6 +563,7 @@ struct ActivitySidebar: View {
 
     private func summarySymbol(_ snapshot: RunEvidenceSnapshot) -> String {
         if snapshot.outcome == .completionReceiptMissing { return "exclamationmark.triangle" }
+        if snapshot.outcome == .userStopped { return "stop.circle" }
         if snapshot.activeWorkerCount > 0 { return "bolt.circle" }
         if !snapshot.unresolvedErrors.isEmpty { return "checkmark.circle.badge.exclamationmark" }
         return "checkmark.circle"
@@ -569,6 +573,7 @@ struct ActivitySidebar: View {
         if snapshot.outcome == .completionReceiptMissing || !snapshot.unresolvedErrors.isEmpty {
             return .orange
         }
+        if snapshot.outcome == .userStopped { return .secondary }
         return snapshot.activeWorkerCount > 0 ? .accentColor : .secondary
     }
 

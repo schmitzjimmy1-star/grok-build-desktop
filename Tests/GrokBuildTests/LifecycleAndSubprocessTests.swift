@@ -110,6 +110,58 @@ final class SessionLifecycleTests: XCTestCase {
         XCTAssertNil(store.turnStalledSince, "a finished turn can never be stalled")
         await store.shutdownPermanently()
     }
+
+    func testStopCreatesASettledLocalOutcomeWithFreshStartNextActionWhenUnbound() async throws {
+        let store = ChatStore()
+        let workspace = Workspace(name: "demo", path: URL(fileURLWithPath: "/tmp/demo"))
+        store.prepare(workspace: workspace)
+        store.bindTabSession(UUID(), savedModel: nil)
+        store.setStreamingForTests(true)
+
+        await store.stop()
+
+        let snapshot = try XCTUnwrap(store.runEvidenceSnapshot)
+        XCTAssertEqual(snapshot.outcome, .userStopped)
+        XCTAssertEqual(snapshot.process.state, "Stopped by you")
+        XCTAssertEqual(
+            snapshot.nextAction,
+            "Start a fresh run. The prior continuity receipt did not match this stopped session."
+        )
+        XCTAssertTrue(snapshot.binding.isSettled)
+        await store.shutdownPermanently()
+    }
+
+    func testStoppedTurnContinuationRequiresExactTabBackendAndGenerationReceipt() {
+        let tabID = UUID()
+        let receipt = SessionContinuityReceipt(
+            status: .verified,
+            reason: .exactMatch,
+            normalizationVersion: VersionedOpaqueTag.transcriptNormalizationVersion,
+            authenticationSchemaVersion: VersionedOpaqueTag.transcriptAuthenticationSchemaVersion,
+            localMessageCount: 2,
+            backendMessageCount: 2,
+            matchingPrefixCount: 2,
+            localTranscriptTag: "local",
+            backendTranscriptTag: "backend",
+            verifiedAt: Date(),
+            localTabID: tabID,
+            backendID: "backend-a",
+            processGeneration: 7
+        )
+
+        XCTAssertEqual(
+            StoppedTurnContinuationDecision.decision(
+                receipt: receipt, localTabID: tabID, backendID: "backend-a", processGeneration: 7
+            ),
+            .reverifySameBackend
+        )
+        XCTAssertEqual(
+            StoppedTurnContinuationDecision.decision(
+                receipt: receipt, localTabID: tabID, backendID: "backend-a", processGeneration: 8
+            ),
+            .startFresh
+        )
+    }
 }
 
 final class SettingsRuntimeContractTests: XCTestCase {

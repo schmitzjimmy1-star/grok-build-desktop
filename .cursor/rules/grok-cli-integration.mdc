@@ -20,6 +20,7 @@ Run `make test` and update `ARCHITECTURE.md`, `README.md` (if user-visible), and
 ## Turn, permission, and reload boundaries
 
 - `turn_completed` must cross `AcpEvent.turnCompleted`; `ChatStore` flushes/reconciles, then acknowledges it. Never resume prompt completion from the parser side channel.
+- User Stop is a distinct local terminal outcome, never a fabricated backend completion or generic failure. Capture the stopped tab/backend/process-generation identity before teardown; resume only after an exact continuity receipt re-verifies that identity, otherwise create a fresh ledgered run and state that next action.
 - Permission UI and automatic responses use `GrokProcess.launchReceipt`, not mutable `@AppStorage`. GrokBuild answers ACP only; it never executes an approved edit/tool client-side.
 - Question, permission, and plan cards are authoritative ACP requests keyed by backend session plus JSON-RPC request id. Tool-call ids never become reply ids. Answer the pending request once and continue the same turn; never create `[Plan approved]` or other chat-shaped response prompts.
 - Runtime reloads resume `ChatStore.durableGrokSessionID`. A stale load reconciles the old exact history file before persisting an explicit recovery fork.

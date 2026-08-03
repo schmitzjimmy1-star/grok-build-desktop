@@ -679,7 +679,9 @@ struct ChatView: View {
             }
         }
         .onChange(of: store.runEvidenceSnapshot?.outcome) { _, outcome in
-            guard outcome == .completionReceiptMissing, !showActivitySidebar else { return }
+            guard let outcome,
+                  [.completionReceiptMissing, .userStopped].contains(outcome),
+                  !showActivitySidebar else { return }
             if reduceMotion {
                 showActivitySidebar = true
             } else {
@@ -687,9 +689,9 @@ struct ChatView: View {
                     showActivitySidebar = true
                 }
             }
-            VoiceOverAnnouncer.announce(
-                "Completion receipt missing. Activity opened with the preserved run evidence."
-            )
+            VoiceOverAnnouncer.announce(outcome == .userStopped
+                ? "Stopped by you. Activity opened with the local stop outcome and next action."
+                : "Completion receipt missing. Activity opened with the preserved run evidence.")
         }
         .confirmationDialog(
             "Change reasoning effort?",
