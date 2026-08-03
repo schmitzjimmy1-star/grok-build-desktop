@@ -455,6 +455,26 @@ final class ChatStore {
         SessionSendGate.decision(for: continuityStatus) == .block
     }
 
+    /// Continuity states that genuinely block Send until the user chooses recovery.
+    /// `.verifying` is deliberately excluded: submitting is what triggers the lazy
+    /// resume + bounded verification (`deliverPrompt` passes `.verifying` through and
+    /// re-checks the send gate after the backend loads), so disabling Send there would
+    /// remove the only control that can resolve the state. The Return key path already
+    /// allows it; this keeps the Send button consistent.
+    var continuityRequiresRecovery: Bool {
+        switch continuityStatus {
+        case .diverged, .compositeSuspected, .backendMissing, .verificationIncomplete:
+            return true
+        case .localOnly, .backendBound, .verified, .backendOnly, .recoveryForked, .verifying:
+            return false
+        }
+    }
+
+    /// True while a restored tab is resuming/verifying its saved backend. Send stays
+    /// enabled — submitting completes the resume — so the composer can surface a hopeful
+    /// "resuming" affordance instead of an error.
+    var continuityIsResuming: Bool { continuityStatus == .verifying }
+
     var continuityPermitsAuthoritativeReconciliation: Bool {
         switch continuityStatus {
         case .backendBound, .verified, .backendOnly, .recoveryForked:
@@ -608,6 +628,26 @@ final class ChatStore {
     func setStreamingForTests(_ value: Bool) {
         isStreaming = value
         activeTurnBackendSessionID = value ? process.sessionId : nil
+    }
+
+    /// Test-only: force a continuity status so the Send-gate predicates can be exercised
+    /// without staging a full backend verification round trip.
+    func setContinuityStatusForTests(_ status: SessionContinuityStatus) {
+        continuityReceipt = SessionContinuityReceipt(
+            status: status,
+            reason: continuityReceipt.reason,
+            normalizationVersion: continuityReceipt.normalizationVersion,
+            authenticationSchemaVersion: continuityReceipt.authenticationSchemaVersion,
+            localMessageCount: continuityReceipt.localMessageCount,
+            backendMessageCount: continuityReceipt.backendMessageCount,
+            matchingPrefixCount: continuityReceipt.matchingPrefixCount,
+            localTranscriptTag: continuityReceipt.localTranscriptTag,
+            backendTranscriptTag: continuityReceipt.backendTranscriptTag,
+            verifiedAt: continuityReceipt.verifiedAt,
+            localTabID: continuityReceipt.localTabID,
+            backendID: continuityReceipt.backendID,
+            processGeneration: continuityReceipt.processGeneration
+        )
     }
 
     var pendingRuntimeReloadForTests: Bool { runtimeReloadQueue.hasPending }
@@ -2226,7 +2266,7 @@ final class ChatStore {
             lastError = "Select a project first."
             return false
         }
-        if continuityBlocksSend, continuityStatus != .verifying {
+        if continuityRequiresRecovery {
             return false
         }
         if isStreaming {
@@ -3577,8 +3617,7 @@ final class ChatStore {
                 status: continuityStatus.rawValue,
                 reason: continuityReceipt.reason.rawValue,
                 provenance: provenance,
-                requiresRecoveryAction: shouldShowContinuityBanner
-                    && continuityBlocksSend
+                requiresRecoveryAction: continuityRequiresRecovery
             ),
             usage: .init(
                 totalTokens: completion?.totalTokens,

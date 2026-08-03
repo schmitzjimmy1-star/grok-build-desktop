@@ -836,6 +836,26 @@ struct ChatView: View {
                 .padding(.horizontal, 12)
             }
 
+            if store.continuityRequiresRecovery {
+                ContinuityStatusBanner(
+                    kind: .needsRecovery,
+                    headline: store.continuityHeadline,
+                    message: store.continuityMessage,
+                    onReview: {
+                        showRecoveryReview = true
+                        Task { await store.reviewRecoveryCandidates() }
+                    }
+                )
+                .padding(.horizontal, 12)
+            } else if store.continuityIsResuming {
+                ContinuityStatusBanner(
+                    kind: .resuming,
+                    headline: "Resuming saved session",
+                    message: "Send to continue this conversation."
+                )
+                .padding(.horizontal, 12)
+            }
+
             composer
                 .accessibilitySortPriority(1)
                 .focusSection()
@@ -882,9 +902,9 @@ struct ChatView: View {
                 VoiceOverAnnouncer.announce("Build agent connection failed. Review the connection error.")
             }
         }
-        .onChange(of: store.continuityBlocksSend) { _, blocked in
-            if blocked {
-                VoiceOverAnnouncer.announce("Conversation continuity needs attention. Send is blocked.")
+        .onChange(of: store.continuityRequiresRecovery) { _, needsRecovery in
+            if needsRecovery {
+                VoiceOverAnnouncer.announce("Conversation continuity needs attention. Send is blocked until recovery.")
             }
         }
         .onChange(of: store.modelSwitchError) { _, error in
@@ -2410,6 +2430,39 @@ struct ChatView: View {
             : "Enable Computer Use MCP tools if Accessibility permission is ready."
     }
 
+    // Send-button copy has three states: a genuine continuity block that needs
+    // recovery, a transient resume (Send stays enabled and completes the resume),
+    // and the ordinary send.
+    private var sendButtonHelp: String {
+        if store.continuityRequiresRecovery {
+            return "Resume needed — review conversation continuity to continue."
+        }
+        if store.continuityIsResuming {
+            return "Send to resume this saved session."
+        }
+        return "Send message"
+    }
+
+    private var sendButtonAccessibilityLabel: String {
+        if store.continuityRequiresRecovery {
+            return "Send unavailable — conversation continuity needs review"
+        }
+        if store.continuityIsResuming {
+            return "Send and resume session"
+        }
+        return "Send message"
+    }
+
+    private var sendButtonAccessibilityHint: String {
+        if store.continuityRequiresRecovery {
+            return "Open the session’s continuity review to relink or continue as a new conversation."
+        }
+        if store.continuityIsResuming {
+            return "Sends your message and resumes the saved backend session."
+        }
+        return "Sends the current composer draft to the active session."
+    }
+
     @ViewBuilder
     private var sessionActionButton: some View {
         if store.isStreaming {
@@ -2440,19 +2493,13 @@ struct ChatView: View {
                     .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
-            .help(store.continuityBlocksSend
-                ? "Send is blocked until conversation continuity is resolved."
-                : "Send message")
-            .accessibilityLabel(store.continuityBlocksSend
-                ? "Send blocked by conversation continuity"
-                : "Send message")
-            .accessibilityHint(store.continuityBlocksSend
-                ? "Resolve the continuity warning before sending."
-                : "Sends the current composer draft to the active session.")
+            .help(sendButtonHelp)
+            .accessibilityLabel(sendButtonAccessibilityLabel)
+            .accessibilityHint(sendButtonAccessibilityHint)
             .disabled(input.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && !store.hasVisibleFileAttachments ||
                       store.currentWorkspace == nil ||
                       store.authRequiredMessage != nil ||
-                      store.continuityBlocksSend ||
+                      store.continuityRequiresRecovery ||
                       store.connectionState == .starting)
             .keyboardShortcut(.return, modifiers: .command)
         }

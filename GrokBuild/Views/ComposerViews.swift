@@ -305,6 +305,73 @@ struct BtwAsideBanner: View {
     }
 }
 
+// MARK: - Continuity status banner
+
+/// Inline, composer-adjacent continuity status. `.resuming` is a calm one-line hint
+/// that a restored tab will resume on Send (the transient `.verifying` state); `.needsRecovery`
+/// surfaces the genuine block with a one-click Review action instead of burying recovery
+/// in the Activity drawer.
+enum ContinuityBannerKind: Equatable {
+    case resuming
+    case needsRecovery
+}
+
+struct ContinuityStatusBanner: View {
+    let kind: ContinuityBannerKind
+    let headline: String
+    let message: String
+    var onReview: (() -> Void)? = nil
+
+    var body: some View {
+        switch kind {
+        case .resuming:
+            HStack(spacing: 8) {
+                Image(systemName: "arrow.triangle.2.circlepath")
+                    .foregroundStyle(.secondary)
+                Text("\(headline). \(message)")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 8)
+            .background(Color.secondary.opacity(0.08), in: RoundedRectangle(cornerRadius: AppTheme.Radius.large))
+            .accessibilityElement(children: .combine)
+            .accessibilityLabel("Resuming saved session. Send to continue.")
+            .accessibilityIdentifier("grok-continuity-resuming")
+        case .needsRecovery:
+            VStack(alignment: .leading, spacing: 8) {
+                HStack(spacing: 8) {
+                    Image(systemName: "exclamationmark.triangle.fill")
+                        .foregroundStyle(.orange)
+                    Text(headline)
+                        .font(.caption.weight(.semibold))
+                    Spacer()
+                    if let onReview {
+                        Button("Review", action: onReview)
+                            .buttonStyle(.borderedProminent)
+                            .controlSize(.small)
+                            .accessibilityIdentifier("grok-continuity-review")
+                    }
+                }
+                Text(message)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 8)
+            .background(Color.orange.opacity(0.08), in: RoundedRectangle(cornerRadius: AppTheme.Radius.large))
+            .overlay(
+                RoundedRectangle(cornerRadius: AppTheme.Radius.large)
+                    .stroke(Color.orange.opacity(0.2), lineWidth: 1)
+            )
+            .accessibilityElement(children: .contain)
+            .accessibilityIdentifier("grok-continuity-recovery")
+        }
+    }
+}
+
 // MARK: - Plan card
 
 struct PlanReviewCard: View {

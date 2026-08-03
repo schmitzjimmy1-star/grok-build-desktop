@@ -587,4 +587,80 @@ final class SubprocessHygieneTests: XCTestCase {
         XCTAssertTrue(result.timedOut)
         XCTAssertLessThan(ContinuousClock.now - started, .seconds(8))
     }
+
+    /// A restored tab that is still verifying its saved backend must keep Send usable —
+    /// submitting is what triggers the lazy resume — while only the genuine recovery
+    /// states disable Send. This pins the Send-gate carve-out for `.verifying`.
+    @MainActor
+    func testVerifyingKeepsSendUsableWhileRecoveryStatesBlockIt() {
+        let store = ChatStore()
+
+        // Transient resume: enabled, not a recovery action, flagged as resuming.
+        store.setContinuityStatusForTests(.verifying)
+        XCTAssertFalse(store.continuityRequiresRecovery, "verifying must not disable Send")
+        XCTAssertTrue(store.continuityIsResuming)
+
+        // Genuinely blocking states require explicit recovery before Send.
+        for blocking in [SessionContinuityStatus.diverged, .compositeSuspected, .backendMissing, .verificationIncomplete] {
+            store.setContinuityStatusForTests(blocking)
+            XCTAssertTrue(store.continuityRequiresRecovery, "\(blocking) must block Send until recovery")
+            XCTAssertFalse(store.continuityIsResuming)
+        }
+
+        // Healthy states never block and never read as resuming.
+        for healthy in [SessionContinuityStatus.localOnly, .backendBound, .verified, .backendOnly, .recoveryForked] {
+            store.setContinuityStatusForTests(healthy)
+            XCTAssertFalse(store.continuityRequiresRecovery, "\(healthy) must allow Send")
+            XCTAssertFalse(store.continuityIsResuming)
+        }
+    }
+
+    /// The Send button disables and describes itself from the hard-block predicate, not the
+    /// raw send gate, so the transient `.verifying` state is not painted as an error.
+    func testSendButtonBindsToRecoveryPredicateNotRawGate() throws {
+        let repositoryRoot = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        let chatViewSource = try String(
+            contentsOf: repositoryRoot.appendingPathComponent("GrokBuild/Views/ChatView.swift"),
+            encoding: .utf8
+        )
+        let buttonStart = try XCTUnwrap(chatViewSource.range(of: "private var sessionActionButton"))
+        let button = String(chatViewSource[buttonStart.lowerBound...])
+        XCTAssertTrue(button.contains("store.continuityRequiresRecovery ||"),
+                      "Send disable must use the recovery predicate")
+        XCTAssertFalse(button.contains("store.continuityBlocksSend"),
+                       "Send button must no longer hard-block on the transient verifying state")
+        XCTAssertFalse(chatViewSource.contains("Send blocked by conversation continuity"),
+                       "the error-toned label is replaced by state-aware copy")
+    }
+
+    /// The composer surfaces continuity state inline: a calm resume hint while verifying and
+    /// a one-click Review action for the genuine recovery states, rather than leaving the
+    /// state invisible or buried in the Activity drawer.
+    func testComposerSurfacesContinuityStatusBannerInline() throws {
+        let repositoryRoot = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        let chatViewSource = try String(
+            contentsOf: repositoryRoot.appendingPathComponent("GrokBuild/Views/ChatView.swift"),
+            encoding: .utf8
+        )
+        XCTAssertTrue(chatViewSource.contains("if store.continuityRequiresRecovery {"),
+                      "recovery banner must be gated on the hard-block predicate")
+        XCTAssertTrue(chatViewSource.contains("} else if store.continuityIsResuming {"),
+                      "resume hint must be gated on the transient verifying predicate")
+        XCTAssertTrue(chatViewSource.contains("ContinuityStatusBanner("),
+                      "the inline continuity banner must be composed above the composer")
+        // The inline recovery action reuses the existing explicit recovery flow.
+        let recoveryStart = try XCTUnwrap(chatViewSource.range(of: "kind: .needsRecovery"))
+        let recoveryEnd = try XCTUnwrap(
+            chatViewSource.range(of: "kind: .resuming", range: recoveryStart.upperBound..<chatViewSource.endIndex)
+        )
+        let recoveryBlock = String(chatViewSource[recoveryStart.lowerBound..<recoveryEnd.lowerBound])
+        XCTAssertTrue(recoveryBlock.contains("store.reviewRecoveryCandidates()"),
+                      "the inline Review action must drive the explicit recovery review")
+    }
 }
