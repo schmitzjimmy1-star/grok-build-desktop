@@ -59,10 +59,13 @@ final class WorkbenchIntentTests: XCTestCase {
         XCTAssertTrue(primarySource.contains("composerDetailsToggle"))
         XCTAssertTrue(primarySource.contains("modelSelector"))
 
+        // Details row: leading edge is pure telemetry (context + usage); agent mode
+        // lives with the trailing action cluster beside review/Activity.
         let detailsStart = try XCTUnwrap(source.range(of: "private var composerDetailLeadingControls"))
         let detailsEnd = try XCTUnwrap(source.range(of: "private var composerDetailActionControls", range: detailsStart.upperBound..<source.endIndex))
         let detailsSource = String(source[detailsStart.lowerBound..<detailsEnd.lowerBound])
-        XCTAssertTrue(detailsSource.contains("modeSelector"))
+        XCTAssertFalse(detailsSource.contains("modeSelector"))
         XCTAssertFalse(detailsSource.contains("modelSelector"))
+        XCTAssertTrue(detailsSource.contains("ContextUsageIndicator"))
     }
 }

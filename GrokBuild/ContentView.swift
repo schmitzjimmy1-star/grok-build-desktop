@@ -1524,6 +1524,15 @@ struct ContentView: View {
         // blanked the Agents hub and Connections lane until the next workspace switch.
         // Both loads are guarded and read-only.
         Task {
+            if resumeSession == nil {
+                // Warm start: creating a session is an explicit intent to work, so the
+                // grok process (session/new, MCP wiring, model readback) launches now in
+                // the background instead of stalling the first send by several seconds.
+                // No prompt is sent and no provider call is made; a brand-new tab is
+                // localOnly so the continuity gate cannot be bypassed. LRU still caps
+                // live processes via enforceConnectionCap.
+                await store.startNewSession()
+            }
             await store.loadDiscoveredAgentsIfNeeded()
             await store.refreshPromptMCPOptions()
         }

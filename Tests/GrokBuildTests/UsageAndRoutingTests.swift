@@ -144,6 +144,73 @@ final class UsageAndRoutingTests: XCTestCase {
         XCTAssertEqual(SessionUsageLedger.dollars(0.00042), "$0.00042")
     }
 
+    // MARK: - LLM diversity + workbench polish
+
+    func testGroupedModelsSplitNativeFromCustomAndDropEmptyGroups() {
+        let grouped = ChatStore.groupedModels(
+            available: ["grok-4.5", "deepseek-deepseek-v4-flash-0731", "gpt-5.6-terra"],
+            customIDs: ["deepseek-deepseek-v4-flash-0731", "gpt-5.6-terra"]
+        )
+        XCTAssertEqual(grouped.map(\.label), ["Grok", "Your models"])
+        XCTAssertEqual(grouped[0].ids, ["grok-4.5"])
+        XCTAssertEqual(grouped[1].ids, ["deepseek-deepseek-v4-flash-0731", "gpt-5.6-terra"])
+
+        let customOnly = ChatStore.groupedModels(
+            available: ["deepseek-deepseek-v4-flash-0731"],
+            customIDs: ["deepseek-deepseek-v4-flash-0731"]
+        )
+        XCTAssertEqual(customOnly.map(\.label), ["Your models"],
+                       "empty groups render nothing — no dead Grok header for custom-only setups")
+    }
+
+    func testWorkbenchPolishWiring() throws {
+        let repositoryRoot = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+
+        let chatViewSource = try String(
+            contentsOf: repositoryRoot.appendingPathComponent("GrokBuild/Views/ChatView.swift"),
+            encoding: .utf8
+        )
+        XCTAssertTrue(chatViewSource.contains("store.groupedAvailableModels"),
+                      "model menus must present provider-grouped choices")
+        XCTAssertTrue(chatViewSource.contains("store.setCurrentModelAsProjectDefault()"),
+                      "the menu offers making the current model the project default for new sessions")
+        // Agent mode belongs with the trailing action cluster, not leading telemetry.
+        let leadingStart = try XCTUnwrap(chatViewSource.range(of: "private var composerDetailLeadingControls"))
+        let actionStart = try XCTUnwrap(
+            chatViewSource.range(of: "private var composerDetailActionControls", range: leadingStart.upperBound..<chatViewSource.endIndex)
+        )
+        let leading = String(chatViewSource[leadingStart.lowerBound..<actionStart.lowerBound])
+        XCTAssertFalse(leading.contains("modeSelector"), "leading edge stays pure telemetry")
+        let actionEnd = chatViewSource.range(of: "private var composerDetailsAccessibilityValue", range: actionStart.upperBound..<chatViewSource.endIndex) ?? actionStart
+        let action = String(chatViewSource[actionStart.lowerBound..<actionEnd.lowerBound])
+        XCTAssertTrue(action.contains("modeSelector"), "agent mode moved to the trailing action cluster")
+
+        let activitySource = try String(
+            contentsOf: repositoryRoot.appendingPathComponent("GrokBuild/Views/ActivitySidebar.swift"),
+            encoding: .utf8
+        )
+        XCTAssertTrue(activitySource.contains("if !snapshot.workers.isEmpty { workers(snapshot) }"),
+                      "empty settled sections must not repeat the summary grid's zeros")
+        XCTAssertTrue(activitySource.contains("if !liveProjection.tools.isEmpty { liveTools(liveProjection) }"))
+
+        let contentSource = try String(
+            contentsOf: repositoryRoot.appendingPathComponent("GrokBuild/ContentView.swift"),
+            encoding: .utf8
+        )
+        let createStart = try XCTUnwrap(contentSource.range(of: "private func createLiveSession"))
+        let createEnd = try XCTUnwrap(
+            contentSource.range(of: "private func switchBranch", range: createStart.upperBound..<contentSource.endIndex)
+        )
+        let create = String(contentSource[createStart.lowerBound..<createEnd.lowerBound])
+        XCTAssertTrue(create.contains("await store.startNewSession()"),
+                      "fresh sessions warm-start the process so the first send does not pay the launch stall")
+        XCTAssertTrue(create.contains("if resumeSession == nil"),
+                      "warm start must never race a resume path's continuity-gated start")
+    }
+
     // MARK: - Source contracts
 
     func testRoutingAndUsageWiring() throws {

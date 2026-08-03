@@ -706,6 +706,42 @@ final class ChatStore {
         sessionUsage.summaryText(pricing: ModelPricingStore.all())
     }
 
+    /// Provider-grouped model choices so custom/OpenRouter routes read as first-class
+    /// main-agent options rather than a flat ID soup (LLM diversity).
+    var groupedAvailableModels: [(label: String, ids: [String])] {
+        Self.groupedModels(available: availableModels, customIDs: Set(customModelsByID.keys))
+    }
+
+    nonisolated static func groupedModels(
+        available: [String],
+        customIDs: Set<String>
+    ) -> [(label: String, ids: [String])] {
+        let custom = available.filter { customIDs.contains($0) }
+        let native = available.filter { !customIDs.contains($0) }
+        var groups: [(String, [String])] = []
+        if !native.isEmpty { groups.append(("Grok", native)) }
+        if !custom.isEmpty { groups.append(("Your models", custom)) }
+        return groups
+    }
+
+    /// Makes this tab's current model the project default that *new* sessions inherit
+    /// (`TabModelIntent.inheritProjectDefault` resolves through the per-workspace agent
+    /// settings). Existing tabs keep their own intent; nothing restarts.
+    func setCurrentModelAsProjectDefault() {
+        guard let workspace = currentWorkspace else { return }
+        let model = currentModel.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !model.isEmpty else { return }
+        var settings = SessionLayoutStore.agentSettings(for: workspace.id)
+        settings.model = model
+        SessionLayoutStore.saveAgentSettings(settings, for: workspace.id)
+        NotificationCenter.default.post(
+            name: .workspaceAgentSettingsChanged,
+            object: nil,
+            userInfo: ["workspaceID": workspace.id]
+        )
+        appendSystemNote("New sessions in \(workspace.displayName) will start on \(modelDisplayName(model)).")
+    }
+
     private func refreshSubagentRoleModels() {
         Task { [weak self] in
             let map = await Task.detached(priority: .utility) {

@@ -1655,7 +1655,6 @@ struct ChatView: View {
 
     private var composerDetailLeadingControls: some View {
         HStack(spacing: 9) {
-            modeSelector
             ContextUsageIndicator(
                 label: store.currentModelContextLabel,
                 fraction: store.contextUsageFraction
@@ -1680,6 +1679,9 @@ struct ChatView: View {
 
     private var composerDetailActionControls: some View {
         HStack(spacing: 9) {
+            // Agent mode lives with the other agent-facing actions on the trailing
+            // edge; the leading edge stays pure telemetry (context + usage).
+            modeSelector
             reviewControls
             activitySidebarToggle
         }
@@ -2691,21 +2693,32 @@ struct ChatView: View {
 
     @ViewBuilder
     private var modelChoiceItems: some View {
-        Section("Choose a model") {
-            ForEach(store.availableModels, id: \.self) { modelId in
-                Button {
-                    store.setModel(modelId)
-                } label: {
-                    HStack {
-                        Text(store.modelDisplayName(modelId))
-                        if store.currentModel == modelId {
-                            Image(systemName: "checkmark")
+        // Provider-grouped so custom/OpenRouter routes read as first-class main-agent
+        // choices, not an afterthought under the Grok natives.
+        ForEach(store.groupedAvailableModels, id: \.label) { group in
+            Section(group.label) {
+                ForEach(group.ids, id: \.self) { modelId in
+                    Button {
+                        store.setModel(modelId)
+                    } label: {
+                        HStack {
+                            Text(store.modelDisplayName(modelId))
+                            if store.currentModel == modelId {
+                                Image(systemName: "checkmark")
+                            }
                         }
                     }
+                    .accessibilityIdentifier("grok-model-option-\(modelId)")
+                    .disabled(store.isModelRequestPending)
                 }
-                .accessibilityIdentifier("grok-model-option-\(modelId)")
-                .disabled(store.isModelRequestPending)
             }
+        }
+        Section {
+            Button("Use Current Model for New Sessions in This Project") {
+                store.setCurrentModelAsProjectDefault()
+            }
+            .accessibilityIdentifier("grok-model-set-project-default")
+            .disabled(store.currentWorkspace == nil)
         }
     }
 

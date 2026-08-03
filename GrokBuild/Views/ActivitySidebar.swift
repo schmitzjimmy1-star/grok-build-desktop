@@ -158,9 +158,11 @@ struct ActivitySidebar: View {
                     LazyVStack(alignment: .leading, spacing: 14) {
                         summaryCard(snapshot)
                         if snapshot.continuity.requiresRecoveryAction { continuityCard(snapshot) }
-                        artifacts(snapshot)
-                        reviewFiles(snapshot)
-                        workers(snapshot)
+                        // The summary grid already reports zeros; an empty section
+                        // repeating "none observed" below it is pure redundancy.
+                        if !snapshot.artifacts.isEmpty { artifacts(snapshot) }
+                        if !snapshot.gitReviewFiles.isEmpty { reviewFiles(snapshot) }
+                        if !snapshot.workers.isEmpty { workers(snapshot) }
                         DisclosureGroup(isExpanded: $showsExecutionReceipts) {
                             VStack(alignment: .leading, spacing: 14) {
                                 runDetails(snapshot)
@@ -179,10 +181,10 @@ struct ActivitySidebar: View {
                 ScrollView {
                     LazyVStack(alignment: .leading, spacing: 14) {
                         liveSummaryCard(liveProjection)
-                        livePlan(liveProjection)
-                        liveArtifacts(liveProjection)
-                        liveWorkers(liveProjection)
-                        liveTools(liveProjection)
+                        if !liveProjection.plan.isEmpty { livePlan(liveProjection) }
+                        if !liveProjection.artifacts.isEmpty { liveArtifacts(liveProjection) }
+                        if !liveProjection.workers.isEmpty { liveWorkers(liveProjection) }
+                        if !liveProjection.tools.isEmpty { liveTools(liveProjection) }
                         liveRunDetails(liveProjection)
                     }
                     .padding(14)
