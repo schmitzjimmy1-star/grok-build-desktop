@@ -615,9 +615,9 @@ final class SubprocessHygieneTests: XCTestCase {
         }
     }
 
-    /// The Send button disables and describes itself from the hard-block predicate, not the
-    /// raw send gate, so the transient `.verifying` state is not painted as an error.
-    func testSendButtonBindsToRecoveryPredicateNotRawGate() throws {
+    /// Continuity never disables Send: the transient verifying state resumes on send, and the
+    /// hard-block states auto-fork to a fresh thread. The error-toned label is gone.
+    func testSendIsNeverDisabledByContinuity() throws {
         let repositoryRoot = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent()
             .deletingLastPathComponent()
@@ -628,17 +628,17 @@ final class SubprocessHygieneTests: XCTestCase {
         )
         let buttonStart = try XCTUnwrap(chatViewSource.range(of: "private var sessionActionButton"))
         let button = String(chatViewSource[buttonStart.lowerBound...])
-        XCTAssertTrue(button.contains("store.continuityRequiresRecovery ||"),
-                      "Send disable must use the recovery predicate")
+        XCTAssertFalse(button.contains("store.continuityRequiresRecovery ||"),
+                       "continuity must not disable Send; hard blocks auto-fork on send")
         XCTAssertFalse(button.contains("store.continuityBlocksSend"),
-                       "Send button must no longer hard-block on the transient verifying state")
+                       "Send must not bind to the raw continuity gate")
         XCTAssertFalse(chatViewSource.contains("Send blocked by conversation continuity"),
                        "the error-toned label is replaced by state-aware copy")
     }
 
-    /// The composer surfaces continuity state inline: a calm resume hint while verifying and
-    /// a one-click Review action for the genuine recovery states, rather than leaving the
-    /// state invisible or buried in the Activity drawer.
+    /// The composer surfaces continuity state inline as calm, non-blocking notes: a resume
+    /// hint while verifying and a fresh-thread heads-up (with a Review link) for the recovery
+    /// states. Send auto-forks — the block lives in `deliverPrompt`, not the banner.
     func testComposerSurfacesContinuityStatusBannerInline() throws {
         let repositoryRoot = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent()
@@ -649,18 +649,57 @@ final class SubprocessHygieneTests: XCTestCase {
             encoding: .utf8
         )
         XCTAssertTrue(chatViewSource.contains("if store.continuityRequiresRecovery {"),
-                      "recovery banner must be gated on the hard-block predicate")
+                      "recovery note must be gated on the hard-block predicate")
         XCTAssertTrue(chatViewSource.contains("} else if store.continuityIsResuming {"),
                       "resume hint must be gated on the transient verifying predicate")
         XCTAssertTrue(chatViewSource.contains("ContinuityStatusBanner("),
-                      "the inline continuity banner must be composed above the composer")
-        // The inline recovery action reuses the existing explicit recovery flow.
+                      "the inline continuity note must be composed above the composer")
         let recoveryStart = try XCTUnwrap(chatViewSource.range(of: "kind: .needsRecovery"))
         let recoveryEnd = try XCTUnwrap(
             chatViewSource.range(of: "kind: .resuming", range: recoveryStart.upperBound..<chatViewSource.endIndex)
         )
         let recoveryBlock = String(chatViewSource[recoveryStart.lowerBound..<recoveryEnd.lowerBound])
         XCTAssertTrue(recoveryBlock.contains("store.reviewRecoveryCandidates()"),
-                      "the inline Review action must drive the explicit recovery review")
+                      "the inline Review link must drive the explicit recovery review")
+
+        // Send auto-forks on a hard block instead of dead-ending: deliverPrompt calls continueAsNew.
+        let chatStoreSource = try String(
+            contentsOf: repositoryRoot.appendingPathComponent("GrokBuild/Services/ChatStore.swift"),
+            encoding: .utf8
+        )
+        let deliveryStart = try XCTUnwrap(chatStoreSource.range(of: "private func deliverPrompt"))
+        let deliveryEnd = try XCTUnwrap(
+            chatStoreSource.range(of: "// MARK:", range: deliveryStart.upperBound..<chatStoreSource.endIndex)
+        )
+        let delivery = String(chatStoreSource[deliveryStart.lowerBound..<deliveryEnd.lowerBound])
+        XCTAssertTrue(delivery.contains("if continuityRequiresRecovery {"),
+                      "deliverPrompt must still branch on the hard-block predicate")
+        XCTAssertTrue(delivery.contains("await continueAsNew()"),
+                      "a hard-blocked send must auto-fork via continueAsNew, not dead-end")
+    }
+
+    /// Continue as new (used automatically on a hard-blocked send) flips the tab to
+    /// `.recoveryForked`, which the send gate allows — so the user is never stuck, while the
+    /// suspicious backend is never resumed (a fresh backend is created on the next send).
+    @MainActor
+    func testContinueAsNewClearsTheHardBlockWithoutResuming() async {
+        let store = ChatStore()
+        let workspace = Workspace(name: "demo", path: URL(fileURLWithPath: "/tmp/demo-continue-new"))
+        store.prepare(workspace: workspace, savedGrokSessionID: "backend-diverged")
+        store.restorePersistedMessages([
+            Message(role: .user, content: "local prompt"),
+            Message(role: .assistant, content: "local reply"),
+        ])
+        store.setContinuityStatusForTests(.diverged)
+        XCTAssertTrue(store.continuityRequiresRecovery, "precondition: a diverged tab is hard-blocked")
+
+        let didFork = await store.continueAsNew()
+        XCTAssertTrue(didFork)
+        XCTAssertEqual(store.continuityStatus, .recoveryForked)
+        XCTAssertFalse(store.continuityRequiresRecovery, "Continue as new must clear the block")
+        XCTAssertFalse(store.continuityIsResuming)
+        // Local transcript is preserved; the fork happens without starting a process.
+        XCTAssertEqual(store.messages.filter { $0.role == .user }.first?.content, "local prompt")
+        await store.shutdownPermanently()
     }
 }

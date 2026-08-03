@@ -307,10 +307,11 @@ struct BtwAsideBanner: View {
 
 // MARK: - Continuity status banner
 
-/// Inline, composer-adjacent continuity status. `.resuming` is a calm one-line hint
-/// that a restored tab will resume on Send (the transient `.verifying` state); `.needsRecovery`
-/// surfaces the genuine block with a one-click Review action instead of burying recovery
-/// in the Activity drawer.
+/// Inline, composer-adjacent continuity status. Both kinds are calm, non-blocking one-line
+/// notes — Send always works. `.resuming` says a restored tab will resume on Send (the
+/// transient `.verifying` state); `.needsRecovery` says the saved backend can't be resumed,
+/// so Send will fork to a fresh thread (keeping local messages), with a small Review link
+/// for anyone who wants to relink to the exact backend instead.
 enum ContinuityBannerKind: Equatable {
     case resuming
     case needsRecovery
@@ -318,7 +319,6 @@ enum ContinuityBannerKind: Equatable {
 
 struct ContinuityStatusBanner: View {
     let kind: ContinuityBannerKind
-    let headline: String
     let message: String
     var onReview: (() -> Void)? = nil
 
@@ -328,7 +328,7 @@ struct ContinuityStatusBanner: View {
             HStack(spacing: 8) {
                 Image(systemName: "arrow.triangle.2.circlepath")
                     .foregroundStyle(.secondary)
-                Text("\(headline). \(message)")
+                Text(message)
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .frame(maxWidth: .infinity, alignment: .leading)
@@ -340,32 +340,24 @@ struct ContinuityStatusBanner: View {
             .accessibilityLabel("Resuming saved session. Send to continue.")
             .accessibilityIdentifier("grok-continuity-resuming")
         case .needsRecovery:
-            VStack(alignment: .leading, spacing: 8) {
-                HStack(spacing: 8) {
-                    Image(systemName: "exclamationmark.triangle.fill")
-                        .foregroundStyle(.orange)
-                    Text(headline)
-                        .font(.caption.weight(.semibold))
-                    Spacer()
-                    if let onReview {
-                        Button("Review", action: onReview)
-                            .buttonStyle(.borderedProminent)
-                            .controlSize(.small)
-                            .accessibilityIdentifier("grok-continuity-review")
-                    }
-                }
+            HStack(spacing: 8) {
+                Image(systemName: "arrow.triangle.branch")
+                    .foregroundStyle(.secondary)
                 Text(message)
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .frame(maxWidth: .infinity, alignment: .leading)
+                if let onReview {
+                    Button("Review", action: onReview)
+                        .buttonStyle(.plain)
+                        .font(.caption.weight(.medium))
+                        .foregroundStyle(.tint)
+                        .accessibilityIdentifier("grok-continuity-review")
+                }
             }
             .padding(.horizontal, 12)
             .padding(.vertical, 8)
-            .background(Color.orange.opacity(0.08), in: RoundedRectangle(cornerRadius: AppTheme.Radius.large))
-            .overlay(
-                RoundedRectangle(cornerRadius: AppTheme.Radius.large)
-                    .stroke(Color.orange.opacity(0.2), lineWidth: 1)
-            )
+            .background(Color.secondary.opacity(0.08), in: RoundedRectangle(cornerRadius: AppTheme.Radius.large))
             .accessibilityElement(children: .contain)
             .accessibilityIdentifier("grok-continuity-recovery")
         }

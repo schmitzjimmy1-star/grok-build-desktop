@@ -53,3 +53,14 @@ Every code change must ship with **updated documentation**, **tests**, and **Com
 7. **Bundled skills** — update `GrokBuild/Resources/Skills/*/SKILL.md` when agent-facing skill behavior changes.
 
 See `.cursor/rules/docs-and-tests.mdc` for the full checklist.
+
+## Verification: use `make ship`, and tier it to the change
+
+Do not hand-track or memorize build hashes. `make ship` runs `make test` + `make install`, then verifies the installed app in one shot: commit stamp == `HEAD`, `dirty=false`, `dist` == installed binary SHA, signing team == `EXPECTED_TEAM` (`DD2GCQJVB4`), `codesign --verify --deep --strict`, and no quarantine — printing PASS/FAIL and exiting non-zero on any real failure. The commit is auto-stamped into `Info.plist` (`AppBuildIdentity`) and re-derivable with `git rev-parse HEAD`, so there is never a number to remember.
+
+Match the ceremony to the blast radius:
+
+- **Money / auth / provider routing / signing** (billable calls, OAuth, model selection, entitlements): full acceptance — `make ship` **plus** a recorded receipt in `CANONICAL_WORKTREE.md` and any explicitly authorized live probe. This is where the repo got burned before; keep it strict.
+- **UX / rendering / docs / local-only tweaks**: `make test` + `make ship` (which auto-verifies signature and identity) + a focused Computer Use check of the affected state. No manual hash ledger, no full acceptance write-up.
+
+Always build/install through `make` so `SIGN_IDENTITY` from `.env` re-signs with Jimmy's Apple Development cert; an ad-hoc signature rotates identity and drops the app's Accessibility/Screen-Recording grants.

@@ -39,9 +39,13 @@ BUILD_DIR      ?= .build
 # Colors for output
 GREEN  := \033[0;32m
 YELLOW := \033[0;33m
+RED    := \033[0;31m
 NC     := \033[0m
 
-.PHONY: help build build-debug test run run-debug run-app app install dmg dmg-package signed clean open notarize release
+# Expected code-signing team for `make ship` receipt verification (Jimmy's Apple Development team).
+EXPECTED_TEAM ?= DD2GCQJVB4
+
+.PHONY: help build build-debug test run run-debug run-app app install ship dmg dmg-package signed clean open notarize release
 
 help: ## Show this help
 	@echo "GrokBuild macOS Build Commands"
@@ -172,6 +176,32 @@ install: signed ## Copy .app to /Applications/ (codesigns when SIGN_IDENTITY is 
 		exit 1; \
 	fi
 	@echo "$(GREEN)==> Installed to /Applications/$(APP_NAME).app$(NC)"
+
+ship: ## Test + install + auto-verify the installed receipt & signature (no hashes to remember)
+	@$(MAKE) test
+	@$(MAKE) install
+	@echo "$(GREEN)==> Verifying installed app…$(NC)"
+	@APP=/Applications/$(APP_NAME).app; \
+	DIST=dist/$(APP_NAME).app; \
+	HEAD=$$(git rev-parse HEAD 2>/dev/null); \
+	STAMP=$$(plutil -extract GrokBuildSourceCommit raw "$$APP/Contents/Info.plist" 2>/dev/null); \
+	DIRTY=$$(plutil -extract GrokBuildSourceDirty raw "$$APP/Contents/Info.plist" 2>/dev/null); \
+	DIST_SHA=$$(shasum -a 256 "$$DIST/Contents/MacOS/$(APP_NAME)" 2>/dev/null | cut -d' ' -f1); \
+	INST_SHA=$$(shasum -a 256 "$$APP/Contents/MacOS/$(APP_NAME)" 2>/dev/null | cut -d' ' -f1); \
+	TEAM=$$(codesign -dvvv "$$APP" 2>&1 | awk -F= '/TeamIdentifier/{print $$2}'); \
+	AUTH=$$(codesign -dvvv "$$APP" 2>&1 | awk -F'=' '/Authority=Apple Development/{print substr($$0, index($$0,"=")+1); exit}'); \
+	FAIL=0; \
+	printf "  commit stamp : %s\n" "$$STAMP"; \
+	printf "  HEAD         : %s\n" "$$HEAD"; \
+	printf "  signed by    : %s (team %s)\n" "$$AUTH" "$$TEAM"; \
+	if [ "$$STAMP" = "$$HEAD" ]; then echo "  $(GREEN)PASS$(NC) stamp == HEAD"; else echo "  $(RED)FAIL$(NC) stamp != HEAD"; FAIL=1; fi; \
+	if [ "$$DIRTY" = "false" ]; then echo "  $(GREEN)PASS$(NC) clean build (dirty=false)"; else echo "  $(YELLOW)WARN$(NC) dirty=$$DIRTY (uncommitted changes in the build)"; fi; \
+	if [ -n "$$DIST_SHA" ] && [ "$$DIST_SHA" = "$$INST_SHA" ]; then echo "  $(GREEN)PASS$(NC) dist == installed binary"; else echo "  $(RED)FAIL$(NC) dist/installed SHA mismatch"; FAIL=1; fi; \
+	if [ "$$TEAM" = "$(EXPECTED_TEAM)" ]; then echo "  $(GREEN)PASS$(NC) team == $(EXPECTED_TEAM)"; else echo "  $(RED)FAIL$(NC) team $$TEAM != $(EXPECTED_TEAM) (signature identity changed!)"; FAIL=1; fi; \
+	if codesign --verify --deep --strict "$$APP" >/dev/null 2>&1; then echo "  $(GREEN)PASS$(NC) codesign --verify --deep --strict"; else echo "  $(RED)FAIL$(NC) codesign verify"; FAIL=1; fi; \
+	if xattr "$$APP" 2>/dev/null | grep -qi quarantine; then echo "  $(RED)FAIL$(NC) quarantined"; FAIL=1; else echo "  $(GREEN)PASS$(NC) no quarantine"; fi; \
+	if [ "$$FAIL" -ne 0 ]; then echo "$(RED)==> ship verification FAILED$(NC)"; exit 1; fi; \
+	echo "$(GREEN)==> ship OK — installed app matches HEAD and keeps its signature$(NC)"
 
 # Packaging (SPM-based)
 # The script handles creating the .app bundle + DMG and supports signing.

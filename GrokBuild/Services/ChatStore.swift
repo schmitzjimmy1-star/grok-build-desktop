@@ -2267,7 +2267,11 @@ final class ChatStore {
             return false
         }
         if continuityRequiresRecovery {
-            return false
+            // Never a dead end: the saved backend can't be safely resumed, so fork to a
+            // clean backend (preserving the local transcript) and continue. continueAsNew
+            // sets .recoveryForked, which the send gate below allows. This never appends to
+            // the diverged/missing/composite backend, so continuity safety is intact.
+            guard await continueAsNew() else { return false }
         }
         if isStreaming {
             if waitForCompletion {

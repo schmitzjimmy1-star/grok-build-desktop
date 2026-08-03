@@ -839,8 +839,7 @@ struct ChatView: View {
             if store.continuityRequiresRecovery {
                 ContinuityStatusBanner(
                     kind: .needsRecovery,
-                    headline: store.continuityHeadline,
-                    message: store.continuityMessage,
+                    message: "This saved conversation can’t be resumed — Send starts a fresh thread.",
                     onReview: {
                         showRecoveryReview = true
                         Task { await store.reviewRecoveryCandidates() }
@@ -850,8 +849,7 @@ struct ChatView: View {
             } else if store.continuityIsResuming {
                 ContinuityStatusBanner(
                     kind: .resuming,
-                    headline: "Resuming saved session",
-                    message: "Send to continue this conversation."
+                    message: "Resuming saved session. Send to continue."
                 )
                 .padding(.horizontal, 12)
             }
@@ -2435,7 +2433,7 @@ struct ChatView: View {
     // and the ordinary send.
     private var sendButtonHelp: String {
         if store.continuityRequiresRecovery {
-            return "Resume needed — review conversation continuity to continue."
+            return "Send — the saved conversation can’t be resumed, so this starts a fresh thread."
         }
         if store.continuityIsResuming {
             return "Send to resume this saved session."
@@ -2445,7 +2443,7 @@ struct ChatView: View {
 
     private var sendButtonAccessibilityLabel: String {
         if store.continuityRequiresRecovery {
-            return "Send unavailable — conversation continuity needs review"
+            return "Send, starting a fresh thread"
         }
         if store.continuityIsResuming {
             return "Send and resume session"
@@ -2455,7 +2453,7 @@ struct ChatView: View {
 
     private var sendButtonAccessibilityHint: String {
         if store.continuityRequiresRecovery {
-            return "Open the session’s continuity review to relink or continue as a new conversation."
+            return "The saved conversation could not be matched; sending keeps your local messages and starts a fresh thread."
         }
         if store.continuityIsResuming {
             return "Sends your message and resumes the saved backend session."
@@ -2499,7 +2497,6 @@ struct ChatView: View {
             .disabled(input.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && !store.hasVisibleFileAttachments ||
                       store.currentWorkspace == nil ||
                       store.authRequiredMessage != nil ||
-                      store.continuityRequiresRecovery ||
                       store.connectionState == .starting)
             .keyboardShortcut(.return, modifiers: .command)
         }
