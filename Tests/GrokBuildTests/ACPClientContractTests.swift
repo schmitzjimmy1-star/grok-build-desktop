@@ -1261,7 +1261,7 @@ final class ACPClientContractTests: XCTestCase {
             contentsOf: repositoryRoot.appendingPathComponent("GrokBuild/Views/ActivitySidebar.swift"),
             encoding: .utf8
         )
-        let artifactSection = try XCTUnwrap(sidebarSource.range(of: "section(\"Run artifacts\""))
+        let artifactSection = try XCTUnwrap(sidebarSource.range(of: "section(\"Artifacts\""))
         let reviewSection = try XCTUnwrap(sidebarSource.range(of: "section(\"Files in review\""))
         XCTAssertLessThan(artifactSection.lowerBound, reviewSection.lowerBound)
         XCTAssertTrue(sidebarSource.contains("External artifact"))

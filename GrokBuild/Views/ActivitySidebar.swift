@@ -90,9 +90,9 @@ enum ActivitySidebarPresentation {
         if let toolCallCount { parts.append("\(toolCallCount) tools") }
         let normalized = status.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
         if normalized == "unknown" {
-            parts.append("Terminal status not reported")
+            parts.append("No final report")
         } else if normalized == "orphaned" {
-            parts.append("Terminal receipt not reported")
+            parts.append("No final report (orphaned)")
         }
         if let redactedError {
             parts.append("Error: \(TranscriptTextPresentation.singleLine(redactedError, maxLength: 120))")
@@ -121,9 +121,9 @@ enum ActivitySidebarPresentation {
         let clean = TranscriptTextPresentation.singleLine(status, maxLength: 48)
         guard !clean.isEmpty else { return "Running" }
         switch clean.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() {
-        case "unknown": return "Unknown — status not reported"
-        case "orphaned": return "Orphaned — terminal status not reported"
-        case "not_settled", "status_not_settled": return "Status not settled"
+        case "unknown": return "No final report"
+        case "orphaned": return "No final report (orphaned)"
+        case "not_settled", "status_not_settled": return "Not finished yet"
         default: break
         }
         return clean.replacingOccurrences(of: "_", with: " ")
@@ -145,6 +145,11 @@ struct ActivitySidebar: View {
     let onContinueAsNew: () -> Void
     let onReviewRecovery: () -> Void
     let onRevealArtifact: (ChatStore.RunArtifact) -> Void
+    /// Idle-panel context: current changed files plus actions, so the drawer is useful
+    /// before any run instead of a dead "no evidence" placard.
+    var idleChangedFiles: [String] = []
+    var onOpenReview: () -> Void = {}
+    var onRevealFile: (String) -> Void = { _ in }
 
     @State private var confirmsContinueAsNew = false
     @State private var showsExecutionReceipts = false
@@ -170,10 +175,10 @@ struct ActivitySidebar: View {
                             }
                             .padding(.top, 10)
                         } label: {
-                            Label("Execution receipts", systemImage: "list.bullet.rectangle")
+                            Label("Technical details", systemImage: "list.bullet.rectangle")
                                 .font(AppTheme.Typography.captionStrong)
                         }
-                        .accessibilityHint("Shows model, process, continuity, usage, and MCP receipts.")
+                        .accessibilityHint("Shows model, process, continuity, usage, and MCP details.")
                     }
                     .padding(14)
                 }
@@ -190,12 +195,7 @@ struct ActivitySidebar: View {
                     .padding(14)
                 }
             } else {
-                ContentUnavailableView(
-                    "No settled run evidence",
-                    systemImage: "checkmark.seal",
-                    description: Text("Run details appear here after the parent turn settles.")
-                )
-                .padding()
+                idleWorkspacePanel
             }
         }
         .frame(minWidth: 300, idealWidth: 330, maxWidth: 400, maxHeight: .infinity)
@@ -212,20 +212,79 @@ struct ActivitySidebar: View {
         }
     }
 
+    /// What the drawer shows before any run: the working state of the project, not a
+    /// dead placard. Changed files open the diff review or reveal in Finder; run
+    /// receipts take this space over as soon as a turn starts.
+    private var idleWorkspacePanel: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 14) {
+                if idleChangedFiles.isEmpty {
+                    VStack(alignment: .leading, spacing: 6) {
+                        Label("Ready to work", systemImage: "checkmark.seal")
+                            .font(AppTheme.Typography.captionStrong)
+                        Text("Send a request and this panel fills with live workers, tools, artifacts, and usage. Changed files in the project will also appear here for review.")
+                            .font(AppTheme.Typography.caption)
+                            .foregroundStyle(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                } else {
+                    VStack(alignment: .leading, spacing: 8) {
+                        Label("Changed files (\(idleChangedFiles.count))", systemImage: "doc.on.doc")
+                            .font(AppTheme.Typography.captionStrong)
+                        ForEach(idleChangedFiles, id: \.self) { file in
+                            HStack(spacing: 6) {
+                                Button {
+                                    onOpenReview()
+                                } label: {
+                                    Label(file, systemImage: "doc.text")
+                                        .font(AppTheme.Typography.caption)
+                                        .lineLimit(2)
+                                        .multilineTextAlignment(.leading)
+                                        .contentShape(Rectangle())
+                                }
+                                .buttonStyle(.plain)
+                                .help("Open the diff review for this project")
+                                Spacer(minLength: 0)
+                                Button {
+                                    onRevealFile(file)
+                                } label: {
+                                    Image(systemName: "magnifyingglass.circle")
+                                        .foregroundStyle(.secondary)
+                                }
+                                .buttonStyle(.plain)
+                                .help("Reveal \(file) in Finder")
+                                .accessibilityLabel("Reveal \(file) in Finder")
+                            }
+                        }
+                        Button("Open Review", action: onOpenReview)
+                            .controlSize(.small)
+                            .accessibilityIdentifier("grok-activity-open-review")
+                    }
+                    Text("Run receipts take over this panel as soon as a turn starts.")
+                        .font(AppTheme.Typography.section)
+                        .foregroundStyle(.secondary)
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(14)
+        }
+        .accessibilityIdentifier("grok-activity-idle-workspace")
+    }
+
     private var header: some View {
         HStack(spacing: 8) {
             VStack(alignment: .leading, spacing: 2) {
                 HStack(spacing: 7) {
                     Text("Activity").font(AppTheme.Typography.heading)
                     if snapshot != nil {
-                        evidencePhaseBadge("Settled", color: .secondary)
+                        evidencePhaseBadge("Finished", color: .secondary)
                     } else if liveProjection != nil {
                         evidencePhaseBadge("Live", color: .accentColor)
                     }
                 }
-                Text(snapshot != nil ? "Authoritative run evidence" : liveProjection != nil
-                    ? "Current receipts — not settled"
-                    : "Run evidence")
+                Text(snapshot != nil ? "What the agent did" : liveProjection != nil
+                    ? "Happening now — not final"
+                    : "Workspace")
                 .font(AppTheme.Typography.caption)
                 .foregroundStyle(.secondary)
             }
@@ -314,7 +373,7 @@ struct ActivitySidebar: View {
     }
 
     @ViewBuilder private func liveArtifacts(_ live: RunEvidenceLiveProjection) -> some View {
-        section("Observed artifacts", systemImage: "doc.badge.plus") {
+        section("Files created so far", systemImage: "doc.badge.plus") {
             if live.artifacts.isEmpty {
                 emptyState("No successful write receipts observed yet.")
             } else {
@@ -327,7 +386,7 @@ struct ActivitySidebar: View {
     }
 
     @ViewBuilder private func liveWorkers(_ live: RunEvidenceLiveProjection) -> some View {
-        section("Live workers", systemImage: "person.2") {
+        section("Workers running", systemImage: "person.2") {
             if live.workers.isEmpty {
                 emptyState("No authoritative worker lifecycle receipts observed yet.")
             } else {
@@ -364,7 +423,7 @@ struct ActivitySidebar: View {
     }
 
     @ViewBuilder private func liveTools(_ live: RunEvidenceLiveProjection) -> some View {
-        section("Live tools", systemImage: "wrench.and.screwdriver") {
+        section("Tools running", systemImage: "wrench.and.screwdriver") {
             if live.tools.isEmpty {
                 emptyState("No tool receipts observed yet.")
             } else {
@@ -422,7 +481,7 @@ struct ActivitySidebar: View {
     }
 
     @ViewBuilder private func liveRunDetails(_ live: RunEvidenceLiveProjection) -> some View {
-        section("Live binding", systemImage: "link") {
+        section("Session details", systemImage: "link") {
             if let goal = live.goalSummary { detailRow("Request", value: goal) }
             if let step = live.currentPlanStep { detailRow("Current plan", value: step.title) }
             detailRow("Process", value: live.process.state)
@@ -504,7 +563,7 @@ struct ActivitySidebar: View {
     }
 
     @ViewBuilder private func artifacts(_ snapshot: RunEvidenceSnapshot) -> some View {
-        section("Run artifacts", systemImage: "doc.badge.plus") {
+        section("Artifacts", systemImage: "doc.badge.plus") {
             if snapshot.artifacts.isEmpty { emptyState("No successful writes reported for this run.") }
             else { ForEach(snapshot.artifacts) { artifact in artifactRow(artifact) } }
         }
@@ -584,7 +643,7 @@ struct ActivitySidebar: View {
     }
 
     @ViewBuilder private func toolStatus(_ snapshot: RunEvidenceSnapshot) -> some View {
-        section("Tool and MCP status", systemImage: "wrench.and.screwdriver") {
+        section("Tools and connections", systemImage: "wrench.and.screwdriver") {
             detailRow("Tools", value: "\(snapshot.tools.succeeded) succeeded • \(snapshot.tools.failed) failed")
             ForEach(snapshot.process.mcps) { mcp in detailRow(mcp.name, value: mcp.state) }
         }
@@ -609,18 +668,18 @@ struct ActivitySidebar: View {
 
     private func summaryDetail(_ snapshot: RunEvidenceSnapshot) -> String {
         if snapshot.outcome == .completionReceiptMissing {
-            return "The prompt returned, but ACP did not report the terminal lifecycle receipt."
+            return "The reply arrived, but the backend never confirmed the turn finished."
         }
         if snapshot.outcome == .userStopped {
-            return "The active local process was stopped before a backend completion receipt."
+            return "You stopped this run before it finished."
         }
         if snapshot.activeWorkerCount > 0 {
-            return "\(snapshot.activeWorkerCount) workers still active."
+            return "\(snapshot.activeWorkerCount) \(snapshot.activeWorkerCount == 1 ? "worker" : "workers") still running."
         }
         if !snapshot.unresolvedErrors.isEmpty {
-            return "Settled with \(snapshot.unresolvedErrors.count) unresolved errors."
+            return "Finished with \(snapshot.unresolvedErrors.count) unresolved \(snapshot.unresolvedErrors.count == 1 ? "error" : "errors")."
         }
-        return "All reported lifecycle receipts have settled."
+        return "Everything finished and checked out."
     }
 
     private func summarySymbol(_ snapshot: RunEvidenceSnapshot) -> String {

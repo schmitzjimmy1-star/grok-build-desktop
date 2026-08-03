@@ -167,6 +167,14 @@ final class ChatStore {
         grokSessionId != nil || savedGrokSessionID != nil
     }
 
+    /// An empty transcript shows the welcome/intent cards unless the tab is hard-blocked
+    /// on continuity recovery. A warm-started fresh session has a live backend but zero
+    /// messages — that is still a blank canvas, not a "resumed" conversation (the old
+    /// `isResumedSessionTab` gate left warm sessions staring at a void).
+    var showsEmptyTranscriptWelcome: Bool {
+        messages.isEmpty && !continuityRequiresRecovery
+    }
+
     func clearMessages() {
         messages.removeAll()
     }

@@ -579,12 +579,10 @@ struct ChatView: View {
             ScrollViewReader { proxy in
                 ScrollView {
                     LazyVStack(alignment: .leading, spacing: 22) {
-                        if store.messages.isEmpty {
+                        if store.showsEmptyTranscriptWelcome {
                             if store.currentWorkspace == nil {
                                 noProjectState
                             } else if case .failed = store.connectionState {
-                                EmptyView()
-                            } else if store.isResumedSessionTab {
                                 EmptyView()
                             } else {
                                 welcomeState
@@ -883,7 +881,14 @@ struct ChatView: View {
                         showRecoveryReview = true
                         Task { await store.reviewRecoveryCandidates() }
                     },
-                    onRevealArtifact: onRevealArtifact
+                    onRevealArtifact: onRevealArtifact,
+                    idleChangedFiles: reviewFileNames,
+                    onOpenReview: onToggleReview,
+                    onRevealFile: { file in
+                        guard let root = store.currentWorkspace?.path else { return }
+                        let url = root.appendingPathComponent(file)
+                        NSWorkspace.shared.activateFileViewerSelecting([url])
+                    }
                 )
                 .transition(.move(edge: .trailing).combined(with: .opacity))
             }
@@ -1473,7 +1478,9 @@ struct ChatView: View {
                 ViewThatFits(in: .horizontal) {
                     HStack(spacing: 9) {
                         composerPrimaryControls
-                        Spacer(minLength: 4)
+                        Spacer(minLength: 12)
+                        composerCenterHint
+                        Spacer(minLength: 12)
                         composerActionControls
                     }
                     VStack(alignment: .leading, spacing: 5) {
@@ -1499,6 +1506,27 @@ struct ChatView: View {
         }
         .padding(.horizontal, 20)
         .padding(.vertical, 8)
+    }
+
+    /// Fills the wide row's dead middle with quiet utility: the session usage meter once
+    /// turns have settled, otherwise the keyboard affordances. Disappears at narrow widths
+    /// via the existing ViewThatFits fallback.
+    private var composerCenterHint: some View {
+        Group {
+            if let usage = store.sessionUsageSummary {
+                Label(usage, systemImage: "gauge.with.needle")
+                    .help("Session usage across settled turns. Dollar figures are estimates from provider catalog pricing.")
+                    .accessibilityLabel("Session usage")
+                    .accessibilityValue(usage)
+                    .accessibilityIdentifier("grok-session-usage")
+            } else {
+                Text("⏎ send · ⇧⏎ new line · / skills")
+                    .accessibilityHidden(true)
+            }
+        }
+        .font(AppTheme.Typography.caption)
+        .foregroundStyle(.tertiary)
+        .lineLimit(1)
     }
 
     private var composerPrimaryControls: some View {
@@ -1662,18 +1690,6 @@ struct ChatView: View {
             .help("Context usage")
             .accessibilityLabel("Context usage")
             .accessibilityValue(store.currentModelContextLabel)
-            // Slice 6 usage HUD: cumulative settled-turn usage; $ bounds only for
-            // models with catalog-known pricing, and always labeled an estimate.
-            if let usage = store.sessionUsageSummary {
-                Label(usage, systemImage: "gauge.with.needle")
-                    .font(AppTheme.Typography.caption)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
-                    .help("Session usage across settled turns. Dollar figures are estimates from provider catalog pricing.")
-                    .accessibilityLabel("Session usage")
-                    .accessibilityValue(usage)
-                    .accessibilityIdentifier("grok-session-usage")
-            }
         }
     }
 

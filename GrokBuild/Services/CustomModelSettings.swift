@@ -7,8 +7,8 @@ enum ModelAPIBackend: String, CaseIterable, Codable, Sendable {
 
     var displayName: String {
         switch self {
-        case .chatCompletions: return "Chat Completions"
-        case .responses: return "Responses"
+        case .chatCompletions: return "Standard chat (OpenAI-compatible)"
+        case .responses: return "OpenAI Responses"
         case .messages: return "Anthropic Messages"
         }
     }

@@ -255,11 +255,11 @@ final class ActivitySidebarTests: XCTestCase {
         )
         XCTAssertEqual(
             ActivitySidebarPresentation.activityStatus("unknown"),
-            "Unknown — status not reported"
+            "No final report"
         )
         XCTAssertEqual(
             ActivitySidebarPresentation.activityStatus("orphaned"),
-            "Orphaned — terminal status not reported"
+            "No final report (orphaned)"
         )
     }
 
@@ -277,17 +277,17 @@ final class ActivitySidebarTests: XCTestCase {
             encoding: .utf8
         )
 
-        XCTAssertTrue(sidebar.contains("Authoritative run evidence"))
-        XCTAssertTrue(sidebar.contains("Current receipts — not settled"))
+        XCTAssertTrue(sidebar.contains("What the agent did"))
+        XCTAssertTrue(sidebar.contains("Happening now — not final"))
         XCTAssertTrue(sidebar.contains("evidencePhaseBadge(\"Live\""))
-        XCTAssertTrue(sidebar.contains("evidencePhaseBadge(\"Settled\""))
+        XCTAssertTrue(sidebar.contains("evidencePhaseBadge(\"Finished\""))
         XCTAssertTrue(sidebar.contains("Outcomes and usage are not settled"))
         XCTAssertLessThan(
             try XCTUnwrap(sidebar.range(of: "if let snapshot")).lowerBound,
             try XCTUnwrap(sidebar.range(of: "else if let liveProjection")).lowerBound
         )
         XCTAssertTrue(sidebar.contains("snapshot.outcome.displayName"))
-        XCTAssertTrue(sidebar.contains("Execution receipts"))
+        XCTAssertTrue(sidebar.contains("Technical details"))
         XCTAssertTrue(sidebar.contains("workerAccessibilityLabel"))
         XCTAssertTrue(sidebar.contains(".accessibilityElement(children: .ignore)"))
         XCTAssertFalse(sidebar.contains(".regularMaterial"))

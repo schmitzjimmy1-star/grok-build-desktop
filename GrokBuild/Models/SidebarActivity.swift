@@ -198,7 +198,7 @@ enum SidebarActivityProjection {
         case "completed": return "Done"
         case "failed": return "Failed"
         case "cancelled": return "Stopped"
-        default: return "No final status"
+        default: return "No final report"
         }
     }
 }

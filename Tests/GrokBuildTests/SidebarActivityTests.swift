@@ -66,7 +66,7 @@ final class SidebarActivityTests: XCTestCase {
         XCTAssertEqual(byID["\(sessionA.uuidString)/background/a"], "Done")
         XCTAssertEqual(byID["\(sessionA.uuidString)/background/b"], "Failed")
         XCTAssertEqual(byID["\(sessionA.uuidString)/background/c"], "Stopped")
-        XCTAssertEqual(byID["\(sessionA.uuidString)/background/d"], "No final status")
+        XCTAssertEqual(byID["\(sessionA.uuidString)/background/d"], "No final report")
         XCTAssertEqual(byID["\(sessionA.uuidString)/background/e"], "Running")
     }
 

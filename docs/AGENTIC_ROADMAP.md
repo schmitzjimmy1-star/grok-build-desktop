@@ -61,14 +61,14 @@ Only raw token counts exist anywhere (`GrokProcess.swift:1663`, `ChatStore.swift
 - **Safe because:** display-only over existing usage receipts; no send path change.
 
 ## Slice 7 — BYOK onboarding + consumer model labels 🎨⚡
-**Effort S/M**
+**Effort S/M · ✅ shipped 2026-08-03 (lite)** — consumer backend labels ("Standard chat (OpenAI-compatible)"/"OpenAI Responses"), provider-grouped model pickers everywhere, one-click project default, hub/welcome surfaces. A full multi-step BYOK wizard was skipped: the Models pane already guides connect → Test → add, and the empty-providers state explains the path.
 
 Provider setup is buried in Settings → Models, exposes raw `api_backend` protocol names (`chat_completions`/`responses`/`messages`), and has no first-run moment. Add a guided **connect → validate → set-default wizard**, relabel backends in plain language, and seed the empty state with **one-click agent templates** (extend `WorkbenchIntent.defaults`) instead of only Ask/Build/Review.
 - **Files:** Models pane `SettingsView.swift:3753+`, backend labels `CustomModelSettings.swift:8`, `ComposerModels.swift:275`, welcome state `ChatView.swift:1160`.
 - **Safe because:** wraps existing `OpenRouterOAuth` + `ProviderModelFetcher` flows; no new auth surface.
 
 ## Slice 8 — De-jargon the agentic surfaces 🎨🧹
-**Effort S**
+**Effort S · ✅ shipped 2026-08-03** — Activity drawer plain-language pass (What the agent did / Happening now / Finished / Technical details / No final report), human summary lines, idle Workspace panel replacing the dead empty state, welcome restored for empty tabs, composer center hint. Truth boundaries unchanged.
 
 The Activity/receipts read like a debugger: "Execution receipts," "Settled/Live," "generation-bound," "Orphaned — terminal status not reported" (`ActivitySidebar.swift:98–204`). Rename to plain language ("Finished/Running/Didn't report back"), make Activity **discoverable** (a badge on the top bar instead of hidden under Details), and promote the modal **Session Dashboard into a persistent board** (`SessionDashboardPanel.swift`).
 - **Files:** `ActivitySidebar.swift`, `SessionDashboardPanel.swift`, `ContentView.swift:271`.
