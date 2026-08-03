@@ -83,7 +83,7 @@ The streaming pipeline is mostly well-mitigated (paced reveal, bounded 6-pass sc
 - **Safe because:** both are behavior-preserving; covered by existing streaming + persistence tests.
 
 ## Slice 10 — Decompose the god-objects 🧹
-**Effort L · do incrementally, one extraction per PR**
+**Effort L · ✅ shipped 2026-08-03 (scoped)** — `SettingsView.swift` 7,464 → 746 lines: all 14 panes extracted verbatim to `Views/Settings/` (source-contract tests repointed to per-pane files, a stricter scope). TOML helper quintuplication collapsed into `Services/TOMLLineParsing.swift` (LegacyMigration's escape-preserving `unquote` kept as deliberate divergence). `ChatStore`/`ChatView` method-level splits were deliberately deferred: eleven source-contract test files pin their internals by design (the repo's truth-verification style), and this session already extracted their pure logic into models (`SidebarActivity`, `AgentHub`, `SessionUsage`, `StreamingMarkdownAccumulator`, scroll/submission policies). Remaining candidates if ever needed: ChatView `TopBar`/`ComposerBar` component split; Live-vs-Settled row unification in the drawer.
 
 Four files hold most of the bloat. Pure moves, no behavior change, each independently shippable:
 - **`SettingsView.swift` (7,446)** → per-pane files; extract `CustomModelsSettingsPane` (~1,980 lines, `:3753–5734`) first.

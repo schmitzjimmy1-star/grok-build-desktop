@@ -1160,55 +1160,15 @@ enum CustomModelStore {
     // MARK: - TOML helpers
 
     private static func stripComment(_ line: String) -> String {
-        var quote: Character? = nil
-        var escaped = false
-        var result = ""
-
-        for char in line {
-            if let q = quote {
-                if q == "\"" {
-                    if escaped {
-                        escaped = false
-                    } else if char == "\\" {
-                        escaped = true
-                    } else if char == "\"" {
-                        quote = nil
-                    }
-                } else if char == q {
-                    quote = nil
-                }
-                result.append(char)
-                continue
-            }
-
-            if char == "\"" || char == "'" {
-                quote = char
-                result.append(char)
-                continue
-            }
-
-            if char == "#" { break }
-            result.append(char)
-        }
-
-        return result
+        TOMLLineParsing.stripComment(line)
     }
 
     private static func unquote(_ value: String) -> String {
-        var v = value.trimmingCharacters(in: .whitespaces)
-        if v.count >= 2, (v.hasPrefix("\"") && v.hasSuffix("\"")) || (v.hasPrefix("'") && v.hasSuffix("'")) {
-            v = String(v.dropFirst().dropLast())
-        }
-        return v
-            .replacingOccurrences(of: "\\\"", with: "\"")
-            .replacingOccurrences(of: "\\\\", with: "\\")
+        TOMLLineParsing.unquote(value)
     }
 
     private static func quote(_ value: String) -> String {
-        let escaped = value
-            .replacingOccurrences(of: "\\", with: "\\\\")
-            .replacingOccurrences(of: "\"", with: "\\\"")
-        return "\"\(escaped)\""
+        TOMLLineParsing.quote(value)
     }
 
     private static func parseBool(_ value: String?) -> Bool? {
@@ -1527,42 +1487,14 @@ enum SubagentRoleStore {
     }
 
     private static func stripComment(_ line: String) -> String {
-        var quote: Character?
-        var escaped = false
-        var result = ""
-        for char in line {
-            if let q = quote {
-                if q == "\"" {
-                    if escaped { escaped = false }
-                    else if char == "\\" { escaped = true }
-                    else if char == "\"" { quote = nil }
-                } else if char == q {
-                    quote = nil
-                }
-                result.append(char)
-                continue
-            }
-            if char == "\"" || char == "'" { quote = char; result.append(char); continue }
-            if char == "#" { break }
-            result.append(char)
-        }
-        return result
+        TOMLLineParsing.stripComment(line)
     }
 
     private static func unquote(_ value: String) -> String {
-        var v = value.trimmingCharacters(in: .whitespaces)
-        if v.count >= 2, (v.hasPrefix("\"") && v.hasSuffix("\"")) || (v.hasPrefix("'") && v.hasSuffix("'")) {
-            v = String(v.dropFirst().dropLast())
-        }
-        return v
-            .replacingOccurrences(of: "\\\"", with: "\"")
-            .replacingOccurrences(of: "\\\\", with: "\\")
+        TOMLLineParsing.unquote(value)
     }
 
     private static func quote(_ value: String) -> String {
-        let escaped = value
-            .replacingOccurrences(of: "\\", with: "\\\\")
-            .replacingOccurrences(of: "\"", with: "\\\"")
-        return "\"\(escaped)\""
+        TOMLLineParsing.quote(value)
     }
 }

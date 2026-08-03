@@ -181,26 +181,7 @@ enum CompatConfigStore {
     }
 
     private static func stripComment(_ line: String) -> String {
-        var quote: Character?
-        var escaped = false
-        var result = ""
-        for char in line {
-            if let q = quote {
-                if q == "\"" {
-                    if escaped { escaped = false }
-                    else if char == "\\" { escaped = true }
-                    else if char == "\"" { quote = nil }
-                } else if char == q {
-                    quote = nil
-                }
-                result.append(char)
-                continue
-            }
-            if char == "#" { break }
-            if char == "\"" || char == "'" { quote = char }
-            result.append(char)
-        }
-        return result
+        TOMLLineParsing.stripComment(line)
     }
 }
 

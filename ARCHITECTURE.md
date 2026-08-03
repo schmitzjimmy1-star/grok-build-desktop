@@ -83,7 +83,8 @@ grok-build-desktop/
 │   ├── MainWindowLayout.swift    # Main window min/default size + composer max width
 │   ├── AppTheme.swift            # Neutral graphite palette, typography, radii, shared surface modifier
 │   ├── ContentView.swift         # Root view: multi-session orchestration
-│   ├── Views/                    # SwiftUI screens (SettingsView is large)
+│   ├── Views/                    # SwiftUI screens
+│   │   ├── Settings/             # One file per Settings pane (Slice 10 split)
 │   │   └── ActivitySidebar.swift # Optional right-side run-evidence drawer
 │   ├── Services/                 # Business logic, CLI integration
 │   ├── Models/                   # Workspace, Message, Composer, RunEvidenceSnapshot types
@@ -719,7 +720,7 @@ Settings-side CLI management is deliberately separate from ACP injection. `GrokM
 
 ## Settings system
 
-**File:** `Views/SettingsView.swift` (large — search `SettingsTab`, pane struct names).
+**Files:** `Views/SettingsView.swift` (746-line shell: `SettingsTab`/`SettingsSection`, navigation, shared components) plus one file per pane under `Views/Settings/` (Slice 10 split; largest is `CustomModelsSettingsPane.swift`). Panes and shared components are internal — the shell instantiates them across files; behavior is unchanged. Shared line-level TOML helpers live once in `Services/TOMLLineParsing.swift` (`stripComment`/`unquote`/`quote`), with one-line shims in the config stores; `GrokConfigLegacyMigration` keeps its deliberately divergent escape-preserving `unquote`.
 
 ### Navigation (`SettingsTab` + `SettingsSection`)
 
@@ -1075,7 +1076,7 @@ make test    # Tests/GrokBuildTests/
 | `WorkbenchIntentTests.swift` | Ask/Build/Review intent catalog, editable drafts, pre-send model selection, and progressive developer Details source contract |
 | `UpdateCheckerTests.swift` | Version compare, GitHub asset selection, CLI JSON parse, notarized filter |
 | `GrokCLIUpdaterTests.swift` | Updater helpers / phase reset |
-| `SettingsExtensionContractTests.swift` | Current/legacy/malformed compatibility schema, exact MCP argument/env/header/scope serialization, secret redaction, and stale inventory retention |
+| `SettingsExtensionContractTests.swift` | Current/legacy/malformed compatibility schema, exact MCP argument/env/header/scope serialization, secret redaction, stale inventory retention, and the canonical `TOMLLineParsing` behavior |
 | `AppMenuTests.swift` | Standard application-menu update title helpers |
 | `MarkdownBlockParserTests.swift` | Inline-math normalization/table preservation; Markdown blocks; H1–H6 headings; nested list/checklist depth, state, source grouping, and accessibility; display-LaTeX delimiters; native link parsing/styling; spoken equation and table accessibility labels |
 | `ChatTranscriptLayoutTests.swift` | Thinking placement, post-layout auto-scroll, assistant diff-example labels, model-menu effort names, starting/resuming copy, and draft-retention policy |

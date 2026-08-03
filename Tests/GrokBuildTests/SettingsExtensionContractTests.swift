@@ -168,3 +168,21 @@ final class SettingsExtensionContractTests: XCTestCase {
         return try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
     }
 }
+
+/// Slice 10 dedup: the canonical TOML line helpers behave exactly like the five
+/// formerly duplicated copies, including quote-aware comment stripping.
+extension SettingsExtensionContractTests {
+    func testTOMLLineParsingCanonicalBehavior() {
+        XCTAssertEqual(TOMLLineParsing.stripComment(#"key = "a # not comment" # real"#),
+                       #"key = "a # not comment" "#)
+        XCTAssertEqual(TOMLLineParsing.stripComment(#"key = 'x # y' # z"#), #"key = 'x # y' "#)
+        XCTAssertEqual(TOMLLineParsing.stripComment(#"key = "esc \" # inside" # out"#),
+                       #"key = "esc \" # inside" "#)
+        XCTAssertEqual(TOMLLineParsing.stripComment("plain # comment"), "plain ")
+        XCTAssertEqual(TOMLLineParsing.unquote(#"  "a \"b\" \\ c"  "#), #"a "b" \ c"#)
+        XCTAssertEqual(TOMLLineParsing.unquote("'single'"), "single")
+        XCTAssertEqual(TOMLLineParsing.quote(#"a "b" \ c"#), #""a \"b\" \\ c""#)
+        // Round trip.
+        XCTAssertEqual(TOMLLineParsing.unquote(TOMLLineParsing.quote(#"x\y"z"#)), #"x\y"z"#)
+    }
+}
