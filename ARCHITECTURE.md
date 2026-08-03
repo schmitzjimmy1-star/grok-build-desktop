@@ -573,6 +573,8 @@ grok owns scheduling (`scheduler_create` / `scheduler_list` / `scheduler_delete`
 
 Extends the Tasks pill beyond scheduled `/loop` tasks to mirror background shells, monitors, and subagents observed via ACP.
 
+**Sidebar Activity lane (agentic roadmap Slice 1).** The observed mirrors are no longer drawer-only: `SidebarActivityProjection.lane` (`Models/SidebarActivity.swift`) projects every live session's `backgroundActivities`, `scheduledTasks`, and `workflowRuns` into a bounded, always-visible sidebar section above Projects. It is a pure read-model — no lifecycle, no backend calls, titles already redacted upstream. Rows sort running → scheduled → finished before an 8-row cap (running work never drops; an overflow line counts the rest), statuses use plain language via `plainTerminalLabel` ("Done"/"Failed"/"Stopped"/"No final status"), scheduler-mirror tasks are deduplicated against `.scheduled` background rows by task id, and entry ids are namespaced per session so identical backend ids in two tabs cannot collide. `ContentView.sidebarActivityLane` builds the inputs from the `@Observable` stores (observation registers in `body`, so the lane updates live), and activating a row selects the owning session. The section is hidden entirely when the lane is empty. Covered by `SidebarActivityTests`.
+
 | Piece | Location |
 |-------|----------|
 | Model + parsing | `BackgroundTaskStore.swift` — `BackgroundActivity`, `BackgroundToolParsing`, `BackgroundTaskTracker` |
@@ -873,7 +875,7 @@ Minimum size **1100×720** and default logical canvas **1440×900** (`MainWindow
 | File | Role |
 |------|------|
 | `AppTheme.swift` | Neutral graphite palette, typography, layout widths, radii, and reusable matte surface |
-| `SidebarView.swift` | Collapsible project/session navigation, pins, on-demand filter, model/running/last-used metadata, hover/context rename and close actions, settings entry |
+| `SidebarView.swift` | Collapsible project/session navigation, pins, on-demand filter, model/running/last-used metadata, hover/context rename and close actions, settings entry, and the persistent **Activity lane** (`SidebarActivityRow`) — live subagents, background commands, monitors, scheduled tasks, and workflow runs across all live sessions; rows navigate to the owning session |
 | `ChatView.swift` | Centered work transcript, one-to-eight-line matte composer, visible command/submission controls, Ask/Build/Review welcome plus pre-send model choice, progressive mode/model/context/Git/project/tool/Activity details, goal banner |
 | `ActivitySidebar.swift` | Pure native renderer for separate generation-bound `Live` and authoritative `Settled` read models; no lifecycle or worker state lives in SwiftUI |
 | `ComposerViews.swift` | File chips, workflow chips, goal banner, plan/question cards |
@@ -1001,6 +1003,7 @@ See `BUILDING.md` for signing, notarization, CI workflow.
 | **Custom subagents (roles)** | `SubagentRole` / `SubagentRoleStore` (`CustomModelSettings.swift`), `SubagentRoleEditor` in `SettingsView`, `~/.grok/config.toml` `[subagents.roles.*]` + `~/.grok/prompts/` |
 | **Scheduled tasks** | `ScheduledTaskStore.swift`, `ChatStore.scheduledTasks` + refresh/create/cancel, `AcpEvent.schedulerActivity` |
 | **Background tasks** | `BackgroundTaskStore.swift`, `ChatStore.backgroundActivities`, `ActivitySidebar`, `AcpEvent.backgroundActivity` |
+| **Sidebar Activity lane** | `Models/SidebarActivity.swift` (`SidebarActivityProjection.lane`), `SidebarView` (`SidebarActivityRow`), `ContentView.sidebarActivityLane` |
 | **Run evidence projection and snapshot** | `RunEvidenceLiveProjection.swift`, `RunEvidenceSnapshot.swift`, `ChatStore.liveRunEvidenceProjection`, `ChatStore.runEvidenceSnapshot`, ordered `AcpEvent.turnCompleted`, `ContentView.recordGitReviewFiles` |
 | **Rhai workflows** | `WorkflowsConfigStore`, `WorkflowRunStore`, `SavedWorkflowStore`, composer command menu, `.workflowsConfigChanged` |
 | **Fork / share / queue** | `GrokLaunchOptions.forkSession`, `ChatStore.startForked`, `shareSession`, `promptQueue`, `btwAsideText` |
@@ -1044,6 +1047,7 @@ make test    # Tests/GrokBuildTests/
 | `BrowserIntegrationTests.swift` | Browser MCP config, skill install, settings round-trip, external browser launch args, presets |
 | `AgentsAndCapabilitiesTests.swift` | Agent-profile mapping/discovery, permission-mode labels and exact launch arguments, and custom subagent role validation/TOML rewrite |
 | `ScheduledTaskTests.swift` | Scheduler tool detection + `ScheduledTaskTracker` (list authoritative, create prompt-correlation, delete, casing tolerance) |
+| `SidebarActivityTests.swift` | Sidebar Activity lane projection: running-first ordering under the cap, plain-language statuses, paused-workflow handling, scheduler dedup, per-session id namespacing, empty-lane hiding, and sidebar/ContentView wiring |
 | `MemoryStoreTests.swift` | `MemoryStore` enumeration/grouping (global/workspace/session, newest-first), session-only delete guard, note appending; `GrokMemoryFlag` mapping + memory-enabled default in `AgentsAndCapabilitiesTests` |
 | `ComputerUseIntegrationTests.swift` | Settings round-trips, MCP config shape, permission resolution truthfulness, process runner (pipe drain + timeout), helper RPC plumbing, Cursor installer refresh |
 | `ComputerUseCoreTests.swift` | Helper contract: 10-tool table, argv mapping, policy enforcement, error mapping, SKILL.md/tool parity, app↔helper env parity |

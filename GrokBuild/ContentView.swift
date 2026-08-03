@@ -126,6 +126,7 @@ struct ContentView: View {
                 sessions: sidebarSessions,
                 hiddenSessionCounts: hiddenSessionCounts,
                 selectedSessionID: selectedSessionID,
+                activityLane: sidebarActivityLane,
                 expandedSessionWorkspaceIDs: $sessionLayout.expandedSessionWorkspaceIDs,
                 hiddenSessionWorkspaceIDs: $sessionLayout.hiddenSessionWorkspaceIDs,
                 onAddWorkspace: { showPicker = true },
@@ -134,6 +135,10 @@ struct ContentView: View {
                     selectProject(ws)
                 },
                 onSelectSession: { selectSession($0) },
+                onSelectActivity: { entry in
+                    route = .session
+                    selectSession(entry.sessionID)
+                },
                 onNewSessionForWorkspace: { workspace in
                     Task { await createLiveSession(for: workspace) }
                 },
@@ -437,6 +442,22 @@ struct ContentView: View {
                 })?.effectiveSession
             )
         }
+    }
+
+    /// Sidebar Activity lane: a pure projection over every live session's already-observed
+    /// agentic mirrors. Reading the `@Observable` store fields here registers observation,
+    /// so the lane updates live without any polling or notification plumbing.
+    private var sidebarActivityLane: SidebarActivityLane {
+        _ = sessionListRevision
+        return SidebarActivityProjection.lane(from: liveSessions.map { session in
+            SidebarActivityProjection.SessionInput(
+                sessionID: session.id,
+                sessionTitle: sessionTitle(for: session),
+                backgroundActivities: session.store.backgroundActivities,
+                scheduledTasks: session.store.scheduledTasks,
+                workflowRuns: session.store.workflowRuns
+            )
+        })
     }
 
     private var dashboardEntries: [SessionDashboardEntry] {

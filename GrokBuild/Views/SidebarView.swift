@@ -35,12 +35,17 @@ struct SidebarView: View {
     var sessions: [SidebarSession] = []
     var hiddenSessionCounts: [Workspace.ID: Int] = [:]
     var selectedSessionID: UUID?
+    /// Persistent agentic-work lane: live subagents, background commands, monitors,
+    /// scheduled tasks, and workflow runs across every live session. Pure read-model;
+    /// rows navigate to the owning session.
+    var activityLane: SidebarActivityLane = SidebarActivityLane()
     @Binding var expandedSessionWorkspaceIDs: Set<Workspace.ID>
     @Binding var hiddenSessionWorkspaceIDs: Set<Workspace.ID>
 
     var onAddWorkspace: () -> Void
     var onSelectWorkspace: (Workspace) -> Void
     var onSelectSession: (UUID) -> Void = { _ in }
+    var onSelectActivity: (SidebarActivityEntry) -> Void = { _ in }
     var onNewSessionForWorkspace: (Workspace) -> Void = { _ in }
     var onRenameSession: (UUID, String) -> Void = { _, _ in }
     var onCloseSession: (UUID) -> Void = { _ in }
@@ -138,6 +143,27 @@ struct SidebarView: View {
             }
 
             List {
+                if !activityLane.isEmpty {
+                    Section {
+                        ForEach(activityLane.entries) { entry in
+                            SidebarActivityRow(entry: entry) {
+                                onSelectActivity(entry)
+                            }
+                            .listRowInsets(EdgeInsets(top: 2, leading: 8, bottom: 2, trailing: 8))
+                            .listRowBackground(Color.clear)
+                        }
+                        if activityLane.overflowCount > 0 {
+                            Text("\(activityLane.overflowCount) more in Activity")
+                                .font(.caption2)
+                                .foregroundStyle(.tertiary)
+                                .listRowInsets(EdgeInsets(top: 0, leading: 18, bottom: 4, trailing: 10))
+                                .listRowBackground(Color.clear)
+                        }
+                    } header: {
+                        Label("Activity", systemImage: "waveform")
+                    }
+                }
+
                 Section {
                     ForEach(filtered) { ws in
                         Button {
@@ -332,6 +358,53 @@ struct SidebarView: View {
         Button("Remove Project", role: .destructive) {
             onRemoveWorkspace(ws)
         }
+    }
+}
+
+private struct SidebarActivityRow: View {
+    let entry: SidebarActivityEntry
+    var onSelect: () -> Void
+
+    var body: some View {
+        Button(action: onSelect) {
+            HStack(spacing: 8) {
+                Image(systemName: entry.systemImageName)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .frame(width: 14)
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(entry.title)
+                        .font(.callout)
+                        .lineLimit(1)
+                        .foregroundStyle(.primary)
+                    HStack(spacing: 4) {
+                        if entry.isRunning {
+                            Circle()
+                                .fill(Color.green)
+                                .frame(width: 5, height: 5)
+                        }
+                        Text(entry.statusLabel)
+                            .font(.caption2)
+                            .foregroundStyle(entry.isRunning ? .secondary : .tertiary)
+                        Text("·")
+                            .font(.caption2)
+                            .foregroundStyle(.tertiary)
+                        Text(entry.sessionTitle)
+                            .font(.caption2)
+                            .foregroundStyle(.tertiary)
+                            .lineLimit(1)
+                    }
+                }
+                Spacer(minLength: 0)
+            }
+            .padding(.horizontal, 8)
+            .padding(.vertical, 4)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .help("\(entry.title) — \(entry.statusLabel)\nOpens \(entry.sessionTitle)")
+        .accessibilityLabel(entry.accessibilityLabel)
+        .accessibilityIdentifier("grok-sidebar-activity-row")
     }
 }
 

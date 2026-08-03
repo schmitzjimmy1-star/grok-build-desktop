@@ -17,7 +17,7 @@ So the strategy is: **light up plumbing that already exists** (cheap, thin, high
 ---
 
 ## Slice 1 — Persistent "Activity & Tasks" sidebar lane ⚡🎨
-**Effort M · thin over existing state**
+**Effort M · thin over existing state · ✅ shipped 2026-08-03** (`Models/SidebarActivity.swift`, sidebar Activity section, `SidebarActivityTests`)
 
 Today all agentic work (background shells, scheduled `/loop` tasks, workflow runs, live subagents) is *evidence-only* and cleared at every turn boundary, visible only in the right-hand `ActivitySidebar` which is itself gated behind the collapsed Details disclosure (`ChatView.swift:289,1629`). A user sees a chatbot with a folder picker.
 
