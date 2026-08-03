@@ -26,7 +26,7 @@ Add a **second, always-visible sidebar section** that projects the state GrokBui
 - **Safe because:** pure read model; no new CLI behavior, no backend calls.
 
 ## Slice 2 — Agents & Roles hub in the sidebar ⚡🎨
-**Effort M · thin**
+**Effort M · thin · ✅ shipped 2026-08-03** (`Models/AgentHub.swift`, sidebar Agents section, `testAgentHub*`)
 
 Per-session agent is buried in a menu inside the closed-by-default Details disclosure (`ChatView.swift:1816`); custom subagent roles exist only as Settings CRUD. Promote them: a sidebar section listing **built-in agents, discovered agents, and custom roles**, each with its assigned model, and a one-click **"Start session as…"**.
 - **Files:** `SidebarView.swift`, `ContentView.swift`, reuse `GrokAgentProfiles` + `SubagentRoleStore` + `SubagentRole.model` (`CustomModelSettings.swift:1227`).

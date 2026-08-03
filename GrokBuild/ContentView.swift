@@ -127,6 +127,7 @@ struct ContentView: View {
                 hiddenSessionCounts: hiddenSessionCounts,
                 selectedSessionID: selectedSessionID,
                 activityLane: sidebarActivityLane,
+                agentEntries: agentHubEntries,
                 expandedSessionWorkspaceIDs: $sessionLayout.expandedSessionWorkspaceIDs,
                 hiddenSessionWorkspaceIDs: $sessionLayout.hiddenSessionWorkspaceIDs,
                 onAddWorkspace: { showPicker = true },
@@ -139,6 +140,18 @@ struct ContentView: View {
                     route = .session
                     selectSession(entry.sessionID)
                 },
+                onStartSessionAsAgent: { entry in
+                    route = .session
+                    let workspace = workspaceStore.workspaces.first(where: { $0.id == selectedWorkspaceID })
+                        ?? workspaceStore.orderedWorkspaces.first
+                    guard let workspace else {
+                        showPicker = true
+                        return
+                    }
+                    let agent = entry.agentSelection.isEmpty ? nil : entry.agentSelection
+                    Task { await createLiveSession(for: workspace, agent: agent) }
+                },
+                onOpenAgentSettings: { openSettings(tab: .agents) },
                 onNewSessionForWorkspace: { workspace in
                     Task { await createLiveSession(for: workspace) }
                 },
@@ -253,6 +266,13 @@ struct ContentView: View {
         }
         .onReceive(NotificationCenter.default.publisher(for: .toggleSidebarRequested)) { _ in
             isSidebarVisible.toggle()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .subagentRolesChanged)) { _ in
+            refreshAgentHubRoles()
+        }
+        .onChange(of: selectedWorkspaceID) { _, _ in
+            // Discovered agents are per-workspace; the store guard makes repeats cheap.
+            Task { await activeStore.loadDiscoveredAgentsIfNeeded() }
         }
         .sheet(isPresented: $showPicker) {
             WorkspacePicker(initialDirectory: currentWorkspace?.path) { url in
@@ -441,6 +461,29 @@ struct ContentView: View {
                     $0.effectiveSession?.localTabID == selectedSessionID
                 })?.effectiveSession
             )
+        }
+    }
+
+    /// Agents hub roles snapshot, loaded off the main actor at bootstrap and whenever
+    /// Settings saves roles (`.subagentRolesChanged`).
+    @State private var agentHubRoles: [SubagentRole] = []
+
+    /// Agents hub entries: grok's default + custom roles + the active store's discovered
+    /// agents. Reading `discoveredAgents` here registers observation, so late discovery
+    /// updates the hub without extra plumbing.
+    private var agentHubEntries: [AgentHubEntry] {
+        AgentHubProjection.entries(
+            discovered: activeStore.discoveredAgents,
+            roles: agentHubRoles,
+            defaultSelection: UserDefaults.standard.string(forKey: GrokSettingsKeys.selectedAgent) ?? ""
+        )
+    }
+
+    private func refreshAgentHubRoles() {
+        Task {
+            let roles = await GrokBuildBackgroundWork.run({ SubagentRoleStore.load() }, priority: .utility)
+            agentHubRoles = roles
+            await activeStore.loadDiscoveredAgentsIfNeeded()
         }
     }
 
@@ -955,6 +998,7 @@ struct ContentView: View {
             sessionLayoutFailure = loaded.failure
             await restorePersistedSessions()
             isRestoringSessions = false
+            refreshAgentHubRoles()
         }
     }
 
@@ -1386,7 +1430,11 @@ struct ContentView: View {
     }
 
     @discardableResult
-    private func createLiveSession(for workspace: Workspace, resumeSession: GrokSessionInfo? = nil) async -> UUID {
+    private func createLiveSession(
+        for workspace: Workspace,
+        resumeSession: GrokSessionInfo? = nil,
+        agent: String? = nil
+    ) async -> UUID {
         purgeEmptySessions(in: workspace.id)
         let id = UUID()
         let store = ChatStore()
@@ -1410,7 +1458,13 @@ struct ContentView: View {
             await store.start(workspace: workspace, resumeSession: resumeSession)
         } else {
             store.prepare(workspace: workspace)
-            store.bindTabSession(id, modelIntent: .inheritProjectDefault)
+            // An Agents-hub launch binds the explicit agent intent before any process
+            // exists; the lazy first-send launch then carries `--agent` naturally.
+            store.bindTabSession(
+                id,
+                modelIntent: .inheritProjectDefault,
+                agentIntent: agent.map { .explicit($0) } ?? .inheritGlobalDefault
+            )
         }
         await enforceConnectionCap()
         return id

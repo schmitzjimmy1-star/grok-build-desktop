@@ -39,6 +39,9 @@ struct SidebarView: View {
     /// scheduled tasks, and workflow runs across every live session. Pure read-model;
     /// rows navigate to the owning session.
     var activityLane: SidebarActivityLane = SidebarActivityLane()
+    /// Agents hub: grok's default, custom subagent roles, and discovered agents.
+    /// Selecting a row starts a new session as that agent in the selected project.
+    var agentEntries: [AgentHubEntry] = []
     @Binding var expandedSessionWorkspaceIDs: Set<Workspace.ID>
     @Binding var hiddenSessionWorkspaceIDs: Set<Workspace.ID>
 
@@ -46,6 +49,8 @@ struct SidebarView: View {
     var onSelectWorkspace: (Workspace) -> Void
     var onSelectSession: (UUID) -> Void = { _ in }
     var onSelectActivity: (SidebarActivityEntry) -> Void = { _ in }
+    var onStartSessionAsAgent: (AgentHubEntry) -> Void = { _ in }
+    var onOpenAgentSettings: () -> Void = {}
     var onNewSessionForWorkspace: (Workspace) -> Void = { _ in }
     var onRenameSession: (UUID, String) -> Void = { _, _ in }
     var onCloseSession: (UUID) -> Void = { _ in }
@@ -249,6 +254,28 @@ struct SidebarView: View {
                 } header: {
                     Label("Projects", systemImage: "folder")
                 }
+
+                if !agentEntries.isEmpty {
+                    Section {
+                        ForEach(agentEntries) { entry in
+                            AgentHubRow(entry: entry) {
+                                onStartSessionAsAgent(entry)
+                            }
+                            .listRowInsets(EdgeInsets(top: 2, leading: 8, bottom: 2, trailing: 8))
+                            .listRowBackground(Color.clear)
+                            .contextMenu {
+                                Button("New Session as \(entry.displayName)") {
+                                    onStartSessionAsAgent(entry)
+                                }
+                                Button("Manage Agents…") {
+                                    onOpenAgentSettings()
+                                }
+                            }
+                        }
+                    } header: {
+                        Label("Agents", systemImage: "person.2")
+                    }
+                }
             }
             .listStyle(.sidebar)
             .scrollContentBackground(.hidden)
@@ -358,6 +385,52 @@ struct SidebarView: View {
         Button("Remove Project", role: .destructive) {
             onRemoveWorkspace(ws)
         }
+    }
+}
+
+private struct AgentHubRow: View {
+    let entry: AgentHubEntry
+    var onStart: () -> Void
+
+    var body: some View {
+        Button(action: onStart) {
+            HStack(spacing: 8) {
+                Image(systemName: entry.systemImageName)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .frame(width: 14)
+                VStack(alignment: .leading, spacing: 1) {
+                    HStack(spacing: 5) {
+                        Text(entry.displayName)
+                            .font(.callout)
+                            .lineLimit(1)
+                            .foregroundStyle(.primary)
+                        if entry.isSessionDefault {
+                            Image(systemName: "checkmark.circle")
+                                .font(.caption2)
+                                .foregroundStyle(.secondary)
+                                .help("Default for new sessions")
+                                .accessibilityHidden(true)
+                        }
+                    }
+                    if !entry.subtitle.isEmpty {
+                        Text(entry.subtitle)
+                            .font(.caption2)
+                            .foregroundStyle(.tertiary)
+                            .lineLimit(1)
+                    }
+                }
+                Spacer(minLength: 0)
+            }
+            .padding(.horizontal, 8)
+            .padding(.vertical, 4)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .help("Start a new session as \(entry.displayName)")
+        .accessibilityLabel(entry.accessibilityLabel)
+        .accessibilityHint("Starts a new session with this agent in the selected project.")
+        .accessibilityIdentifier("grok-sidebar-agent-row")
     }
 }
 
