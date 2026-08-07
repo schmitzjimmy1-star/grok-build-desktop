@@ -44,12 +44,13 @@ final class WorkbenchIntentTests: XCTestCase {
             encoding: .utf8
         )
 
-        XCTAssertTrue(source.contains("Text(\"What would you like to do?\")"))
+        XCTAssertTrue(source.contains("Text(\"What do you want to work on?\")"))
+        XCTAssertTrue(source.contains("private struct CodexPromptPill"))
         XCTAssertTrue(source.contains("ForEach(WorkbenchIntent.defaults)"))
         // The welcome model pill was removed 2026-08-03 (redundant with the composer's
         // always-visible model menu); model choice must not reappear mid-canvas.
         XCTAssertFalse(source.contains("grok-starter-model-selector"))
-        XCTAssertTrue(source.contains("TextField(\"Ask, build, or review…  / for skills\""))
+        XCTAssertTrue(source.contains("TextField(\"Do anything\""))
         XCTAssertTrue(source.contains("@State private var showComposerDetails = false"))
 
         let primaryStart = try XCTUnwrap(source.range(of: "private var composerPrimaryControls"))
@@ -69,5 +70,10 @@ final class WorkbenchIntentTests: XCTestCase {
         XCTAssertFalse(detailsSource.contains("modeSelector"))
         XCTAssertFalse(detailsSource.contains("modelSelector"))
         XCTAssertTrue(detailsSource.contains("ContextUsageIndicator"))
+        XCTAssertTrue(detailsSource.contains("sessionReceiptMenu"),
+                      "the visible route badge must open the process/model receipt")
+        XCTAssertTrue(source.contains("grok-model-route-contract"))
+        XCTAssertTrue(source.contains("Route, process, and model receipt"))
+        XCTAssertTrue(source.contains("Open the configured route and generation-bound process/model receipt"))
     }
 }

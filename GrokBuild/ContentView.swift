@@ -182,6 +182,12 @@ struct ContentView: View {
                 onSwitchBranch: { gitCheckoutRequest = GitCheckoutRequest(project: $0) },
                 onCreateWorktree: { gitCheckoutRequest = GitCheckoutRequest(project: $0, focusCreateWorktree: true) },
                 onSessionDisclosureChanged: { persistSessionLayout() },
+                onNewChat: { startNewSessionForCurrentProject() },
+                onBrowseSessions: { showSessions = true },
+                onOpenActivity: { showSessionDashboard = true },
+                onOpenWorkflows: { openSettings(tab: .workflows) },
+                onOpenPlugins: { openSettings(tab: .plugins) },
+                onOpenSecurity: { openSettings(tab: .permissions) },
                 onOpenSettings: { openSettings(tab: selectedSettingsTab) }
             )
             .frame(minWidth: 220, idealWidth: 244, maxWidth: 280)
@@ -200,6 +206,7 @@ struct ContentView: View {
                 HSplitView {
                     ChatView(
                         store: activeStore,
+                        sessionTitle: activeSession?.title ?? currentWorkspace?.displayName ?? "New chat",
                         isSidebarVisible: isSidebarVisible,
                         onToggleSidebar: { isSidebarVisible.toggle() },
                         onOpenSettings: { openSettings(tab: selectedSettingsTab) },
@@ -222,6 +229,8 @@ struct ContentView: View {
                         onOpenBrowserSettings: { openSettings(tab: .browser) },
                         onOpenComputerUseSettings: { openSettings(tab: .computerUse) },
                         onOpenAgentSettings: { openSettings(tab: .agents) },
+                        onOpenModelSettings: { openSettings(tab: .models) },
+                        onOpenConnectionSettings: { openSettings(tab: .mcpServers) },
                         onOpenMemorySettings: { openSettings(tab: .memory) },
                         onOpenWorkflowSettings: { openSettings(tab: .workflows) },
                         onForkSession: { Task { await forkCurrentSession() } },

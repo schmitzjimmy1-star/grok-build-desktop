@@ -9,21 +9,21 @@ import AppKit
 enum AppTheme {
     enum Palette {
         static let canvas = adaptive(
-            dark: NSColor(red: 0.086, green: 0.086, blue: 0.086, alpha: 1),
-            light: NSColor(red: 0.955, green: 0.955, blue: 0.965, alpha: 1)
+            dark: NSColor(red: 0.129, green: 0.129, blue: 0.129, alpha: 1),
+            light: NSColor(red: 0.985, green: 0.985, blue: 0.98, alpha: 1)
         )
         static let sidebar = adaptive(
-            dark: NSColor(red: 0.078, green: 0.078, blue: 0.078, alpha: 1),
-            light: NSColor(red: 0.915, green: 0.915, blue: 0.93, alpha: 1)
+            dark: NSColor(red: 0.105, green: 0.105, blue: 0.105, alpha: 1),
+            light: NSColor(red: 0.95, green: 0.95, blue: 0.945, alpha: 1)
         )
         static let chrome = canvas
         static let surface = adaptive(
-            dark: NSColor(red: 0.125, green: 0.125, blue: 0.125, alpha: 1),
+            dark: NSColor(red: 0.165, green: 0.165, blue: 0.165, alpha: 1),
             light: NSColor.white
         )
         static let surfaceHover = adaptive(
-            dark: NSColor(red: 0.15, green: 0.15, blue: 0.15, alpha: 1),
-            light: NSColor(red: 0.89, green: 0.89, blue: 0.91, alpha: 1)
+            dark: NSColor(red: 0.205, green: 0.205, blue: 0.205, alpha: 1),
+            light: NSColor(red: 0.92, green: 0.92, blue: 0.91, alpha: 1)
         )
         static let glassTint = adaptive(
             dark: NSColor.white.withAlphaComponent(0.035),
@@ -83,6 +83,8 @@ enum AppTheme {
         static let large: CGFloat = 8
         /// Floating modal cards that sit above the canvas.
         static let overlay: CGFloat = 18
+        /// Codex-style bottom composer and floating inspector cards.
+        static let composer: CGFloat = 14
     }
 
     enum Layout {
