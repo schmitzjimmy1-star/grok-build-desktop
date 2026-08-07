@@ -561,6 +561,9 @@ final class ChatStore {
     private var modelContextTokens: [String: Int] = ["grok-4.5": 500_000]
     private var builtInModelIDs = Set<String>()
     private var customModelsByID: [String: CustomModel] = [:]
+    /// Credential-free route configuration captured at process launch. Keeping this keyed to
+    /// the process generation prevents a later Settings edit from rewriting an older receipt.
+    private var routeContractsByProcessGeneration: [UInt64: ModelRouteContract] = [:]
     private var runtimeReloadQueue = RuntimeConfigurationReloadQueue()
     private var settingsApplyContinuations: [
         UUID: CheckedContinuation<SettingsApplyReceipt, Never>
@@ -1840,6 +1843,10 @@ final class ChatStore {
         let settings = loadPermissionSettings()
         let savedSelection = effectiveResumeSessionID.flatMap { sessionSelections[$0] }
         let modelForLaunch = modelForProcessLaunch(fallbackSelection: savedSelection)
+        let routeContractForLaunch = ModelRouteContract.resolve(
+            selectedModelID: modelForLaunch,
+            customModel: customModelsByID[modelForLaunch]
+        )
         let expectedEffectiveModelForLaunch = customModelsByID[modelForLaunch]?.model
             .trimmingCharacters(in: .whitespacesAndNewlines)
         let reasoningEffortForLaunch = modelSupportsReasoningEffort(modelForLaunch) ? workspaceReasoningEffort : ""
@@ -1894,6 +1901,13 @@ final class ChatStore {
         let spawnInterval = GrokBuildPerformance.begin(.processSpawnToACPReady)
         await process.start(workspace: ws, options: opts)
         spawnInterval.end()
+        if let generation = process.launchReceipt?.processGeneration {
+            routeContractsByProcessGeneration[generation] = routeContractForLaunch
+            if routeContractsByProcessGeneration.count > 8,
+               let oldest = routeContractsByProcessGeneration.keys.min() {
+                routeContractsByProcessGeneration.removeValue(forKey: oldest)
+            }
+        }
         mcpServerStatuses = process.mcpServerStatuses
         connectionWatchdogTask?.cancel()
         connectionState = process.state
@@ -3100,12 +3114,24 @@ final class ChatStore {
         }
     }
 
+    var currentRouteContract: ModelRouteContract {
+        ModelRouteContract.resolve(
+            selectedModelID: currentModel,
+            customModel: customModelsByID[currentModel]
+        )
+    }
+
+    var currentRouteCompactLabel: String { currentRouteContract.compactLabel }
+    var currentRouteSystemImage: String { currentRouteContract.systemImage }
+    var currentRouteAccessibilityValue: String { currentRouteContract.accessibilityValue }
+
     var sessionReceiptDetailLines: [String] {
         var lines = [
             modelAccessibilityValue,
             "Continuity: \(continuityHeadline). \(continuityDetails)",
         ]
         guard let receipt = process.launchReceipt else {
+            lines.append(contentsOf: currentRouteContract.detailLines)
             lines.append("No process launch receipt for this tab.")
             return lines
         }
@@ -3113,6 +3139,13 @@ final class ChatStore {
         lines.append("Process generation \(receipt.processGeneration), PID \(pid), \(receipt.outcome.rawValue).")
         lines.append("Tab \(Self.shortReceiptID(receipt.localTabID?.uuidString)); backend \(Self.shortReceiptID(receipt.backendSessionID)).")
         lines.append("Requested model: \(receipt.requestedModelID.map(modelDisplayName) ?? "CLI default").")
+        let routeModelID = receipt.requestedModelID ?? currentModel
+        let routeContract = routeContractsByProcessGeneration[receipt.processGeneration]
+            ?? ModelRouteContract.resolve(
+                selectedModelID: routeModelID,
+                customModel: customModelsByID[routeModelID]
+            )
+        lines.append(contentsOf: routeContract.detailLines)
         lines.append("Agent: \(GrokAgentProfiles.displayName(for: receipt.requestedAgentID ?? "")); effort: \(receipt.requestedReasoningEffort?.isEmpty == false ? receipt.requestedReasoningEffort! : "default").")
         lines.append("Permissions: \(receipt.permissionMode.displayName); sandbox: \(receipt.sandboxProfile).")
         let capabilities = [

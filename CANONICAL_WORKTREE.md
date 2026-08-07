@@ -61,6 +61,22 @@ git diff --quiet <stamped-commit>..HEAD -- \
 A model provider selected *inside* GrokBuild (Grok, GPT, OpenRouter, Kimi) never
 changes which application repository owns the workbench.
 
+## Codex desktop frontend facelift acceptance — 2026-08-07
+
+- Jimmy's supplied Codex desktop photographs are the authoritative visual target. The OpenCodex dashboard detour was removed instead of restyled: GrokBuild remains a native SwiftUI application and the canonical Grok CLI workbench.
+- The complete shell now follows Codex's conversation-first hierarchy: a compact command rail, mapped New chat / Sessions / Activity / Workflows / Plugins / Security actions, nested projects and sessions, a quiet task header, the transcript canvas, an optional floating upper-right Activity inspector, and a wide bottom composer labeled **Do anything**. A fresh chat presents only the restrained Ask / Build / Review starters rather than a management dashboard.
+- Existing project/session state, ACP chat, generation-bound receipts, credentials, model routing, Git review, Grok CLI architecture, and full Settings workspace remain wired to their native implementations; the facelift does not promote configured provider state into runtime proof.
+- Final `make ship` acceptance passed **611 tests, 0 failures**. After the last inspector sizing correction, the focused Activity suite passed **12 tests, 0 failures**. The packaged and installed executable SHA-256 is `351e375132517fbe5a1eadd3ad0673225a01ed6c56009964ec1f7693a3f2e6ce` at stamped HEAD `8b8801689f540f1715615d51cbccb1494cd736b3` with the scoped worktree correctly marked dirty. Deep/strict signing passes under Team `DD2GCQJVB4`; dist and installed bytes match.
+- Installed Computer Use acceptance killed the stale process, relaunched `/Applications/GrokBuild.app`, verified the task/transcript shell and compact floating Activity inspector, then opened New chat and visibly verified the empty-state starters plus **Do anything** composer. No prompt or provider request was sent.
+
+## Model route-contract acceptance — 2026-08-07
+
+- Implemented a credential-free `ModelRouteContract` that distinguishes native xAI, direct providers, local endpoints, pinned OpenRouter models, and `openrouter/auto`. OpenRouter's downstream serving provider remains explicitly unproven because ACP exposes the effective model, not the broker's internal provider choice; GrokBuild adds no fallback chain or second proxy.
+- `ChatStore` snapshots each configured route against the exact process generation (bounded to eight receipts), so later Settings edits cannot rewrite older launch evidence. The clickable Details badge opens the route, process, and model receipt; a tab without a live process still shows configured route truth and separately states that runtime launch proof is absent.
+- Automated acceptance: focused route/workbench contracts **10 tests, 0 failures**; final `make ship` suite **611 tests, 0 failures**. The final installed executable and `dist` SHA-256 both equal `e5e4a7a62c7702d6d086c38bff17c7de1cf6f0c886cfa52e28e7a7e2c683062d` at source HEAD `8b8801689f540f1715615d51cbccb1494cd736b3` with `GrokBuildSourceDirty = true` (the scoped uncommitted implementation).
+- Signing acceptance: deep/strict verification passes under `Apple Development: jhschmitz1993@gmail.com (LS4SUB57QL)`, Team `DD2GCQJVB4`; quarantine is absent and packaged/installed bytes match exactly.
+- Installed Computer Use acceptance quit/relaunched `/Applications/GrokBuild.app`, expanded Details, found `grok-model-route-contract`, and clicked it. The settled menu visibly reported `Route: native xAI through the Grok CLI`, `Fallback: GrokBuild adds no alternate provider route`, and `No process launch receipt for this tab` as separate claims. No prompt, provider inference, catalog request, credential read/write, config mutation, MCP call, commit, push, PR, or publication occurred.
+
 ## Slice 5/6 routing + usage-HUD acceptance — 2026-08-03
 
 - Installed build `b4c1d377d0cf53af112050373163b3e52d826c19` (clean stamp == HEAD, `make ship` all-PASS, Team `DD2GCQJVB4`). Suite 601 tests, 0 failures.

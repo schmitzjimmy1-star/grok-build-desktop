@@ -69,6 +69,12 @@ struct SidebarView: View {
     var onSwitchBranch: (Workspace) -> Void = { _ in }
     var onCreateWorktree: (Workspace) -> Void = { _ in }
     var onSessionDisclosureChanged: () -> Void = {}
+    var onNewChat: () -> Void = {}
+    var onBrowseSessions: () -> Void = {}
+    var onOpenActivity: () -> Void = {}
+    var onOpenWorkflows: () -> Void = {}
+    var onOpenPlugins: () -> Void = {}
+    var onOpenSecurity: () -> Void = {}
     var onOpenSettings: () -> Void
 
     @State private var filter = ""
@@ -107,34 +113,42 @@ struct SidebarView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            HStack(spacing: 8) {
-                Button(action: onAddWorkspace) {
-                    Label("New Project", systemImage: "plus")
-                        .labelStyle(.titleAndIcon)
-                        .font(.callout.weight(.medium))
-                }
-                .buttonStyle(.plain)
-                .controlSize(.small)
-                .foregroundStyle(.primary)
+            HStack(spacing: 6) {
+                Text("GrokBuild")
+                    .font(.system(size: 15, weight: .semibold))
+                Image(systemName: "chevron.down")
+                    .font(.system(size: 9, weight: .semibold))
+                    .foregroundStyle(.secondary)
                 Spacer()
                 Button {
-                    withAnimation(.easeInOut(duration: 0.16)) {
-                        isFilterVisible.toggle()
-                        if !isFilterVisible {
-                            filter = ""
-                        }
-                    }
+                    withAnimation(.easeInOut(duration: 0.16)) { isFilterVisible.toggle() }
                 } label: {
-                    Image(systemName: isFilterVisible ? "xmark" : "magnifyingglass")
-                        .frame(width: 20, height: 20)
+                    Image(systemName: "magnifyingglass")
+                        .frame(width: 24, height: 24)
                 }
                 .buttonStyle(.plain)
-                .foregroundStyle(isFilterVisible ? Color.primary : Color.secondary)
-                .help(isFilterVisible ? "Hide project filter" : "Filter projects")
+                .foregroundStyle(.secondary)
+                Button(action: onOpenActivity) {
+                    Image(systemName: "bell")
+                        .frame(width: 24, height: 24)
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(.secondary)
             }
-            .padding(.horizontal, 10)
-            .padding(.top, 8)
-            .padding(.bottom, 6)
+            .padding(.horizontal, 14)
+            .padding(.top, 12)
+            .padding(.bottom, 8)
+
+            VStack(spacing: 2) {
+                CodexRailButton(title: "New chat", systemImage: "square.and.pencil", action: onNewChat)
+                CodexRailButton(title: "Sessions", systemImage: "clock.arrow.circlepath", action: onBrowseSessions)
+                CodexRailButton(title: "Activity", systemImage: "waveform", action: onOpenActivity)
+                CodexRailButton(title: "Workflows", systemImage: "calendar", action: onOpenWorkflows)
+                CodexRailButton(title: "Plugins", systemImage: "shippingbox", action: onOpenPlugins)
+                CodexRailButton(title: "Security", systemImage: "checkmark.shield", action: onOpenSecurity)
+            }
+            .padding(.horizontal, 8)
+            .padding(.bottom, 8)
 
             if isFilterVisible {
                 TextField("Filter projects", text: $filter)
@@ -259,7 +273,15 @@ struct SidebarView: View {
                     }
 
                 } header: {
-                    Label("Projects", systemImage: "folder")
+                    HStack {
+                        Text("Projects")
+                        Spacer()
+                        Button(action: onAddWorkspace) {
+                            Image(systemName: "plus")
+                        }
+                        .buttonStyle(.plain)
+                        .help("New project")
+                    }
                 }
 
                 if !agentEntries.isEmpty {
@@ -317,21 +339,30 @@ struct SidebarView: View {
 
             Divider()
 
-            Button(action: onOpenSettings) {
-                Label("Settings", systemImage: "gearshape")
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(.horizontal, 14)
-                    .padding(.vertical, 10)
-                    .contentShape(Rectangle())
-                    .background(
-                        Color.clear,
-                        in: RoundedRectangle(cornerRadius: AppTheme.Radius.small)
-                    )
+            HStack(spacing: 9) {
+                Circle()
+                    .fill(Color.blue.opacity(0.9))
+                    .frame(width: 22, height: 22)
+                    .overlay {
+                        Text(String(NSFullUserName().prefix(1)).uppercased())
+                            .font(.system(size: 9, weight: .bold))
+                            .foregroundStyle(.white)
+                    }
+                Text(NSFullUserName().isEmpty ? NSUserName() : NSFullUserName())
+                    .font(AppTheme.Typography.captionStrong)
+                    .lineLimit(1)
+                Spacer()
+                Button(action: onOpenSettings) {
+                    Image(systemName: "questionmark.circle")
+                        .frame(width: 24, height: 24)
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(.secondary)
             }
-            .buttonStyle(.plain)
-            .foregroundStyle(Color.secondary)
-            .padding(.horizontal, 8)
-            .padding(.vertical, 8)
+            .padding(.horizontal, 12)
+            .frame(height: 44)
+            .contentShape(Rectangle())
+            .onTapGesture(perform: onOpenSettings)
         }
         .background(AppTheme.Palette.sidebar)
         .navigationTitle("GrokBuild")
@@ -419,6 +450,32 @@ struct SidebarView: View {
         Button("Remove Project", role: .destructive) {
             onRemoveWorkspace(ws)
         }
+    }
+}
+
+private struct CodexRailButton: View {
+    let title: String
+    let systemImage: String
+    let action: () -> Void
+    @State private var isHovered = false
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 10) {
+                Image(systemName: systemImage)
+                    .frame(width: 16)
+                Text(title)
+                    .font(AppTheme.Typography.captionStrong)
+                Spacer()
+            }
+            .padding(.horizontal, 8)
+            .frame(height: 32)
+            .background(isHovered ? AppTheme.Palette.surfaceHover : Color.clear,
+                        in: RoundedRectangle(cornerRadius: AppTheme.Radius.medium))
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .onHover { isHovered = $0 }
     }
 }
 

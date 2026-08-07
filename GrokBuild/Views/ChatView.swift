@@ -239,6 +239,7 @@ enum ConnectionStatusPresentation {
 
 struct ChatView: View {
     @Bindable var store: ChatStore
+    var sessionTitle: String = "New chat"
     var isSidebarVisible: Bool = true
     var onToggleSidebar: () -> Void = {}
     var onOpenSettings: () -> Void = {}
@@ -257,6 +258,8 @@ struct ChatView: View {
     var onOpenBrowserSettings: () -> Void = {}
     var onOpenComputerUseSettings: () -> Void = {}
     var onOpenAgentSettings: () -> Void = {}
+    var onOpenModelSettings: () -> Void = {}
+    var onOpenConnectionSettings: () -> Void = {}
     var onOpenMemorySettings: () -> Void = {}
     var onOpenWorkflowSettings: () -> Void = {}
     var onForkSession: () -> Void = {}
@@ -890,6 +893,10 @@ struct ChatView: View {
                         NSWorkspace.shared.activateFileViewerSelecting([url])
                     }
                 )
+                .padding(.top, 12)
+                .padding(.trailing, 12)
+                .padding(.bottom, 12)
+                .frame(maxHeight: .infinity, alignment: .top)
                 .transition(.move(edge: .trailing).combined(with: .opacity))
             }
         }
@@ -1037,16 +1044,12 @@ struct ChatView: View {
             .help(isSidebarVisible ? "Hide sidebar" : "Show sidebar")
             .accessibilityLabel(isSidebarVisible ? "Hide sidebar" : "Show sidebar")
 
-            Button(action: onNewSession) {
-                Image(systemName: "square.and.pencil")
-            }
-            .buttonStyle(GrokChromeButtonStyle())
-            .disabled(store.currentWorkspace == nil)
-            .help("New session")
-            .accessibilityLabel("New session")
-            .accessibilityHint("Starts a new session in the selected project.")
-
-            Spacer()
+            Image(systemName: "folder")
+                .font(.system(size: 12, weight: .medium))
+                .foregroundStyle(.secondary)
+            Text(sessionTitle)
+                .font(AppTheme.Typography.captionStrong)
+                .lineLimit(1)
 
             Menu {
                 Button("Browse sessions", systemImage: "clock") {
@@ -1115,6 +1118,10 @@ struct ChatView: View {
             .help("More actions")
             .accessibilityLabel("More actions")
 
+            Spacer()
+
+            activitySidebarToggle
+
             Button(action: onOpenSettings) {
                 Image(systemName: "gearshape")
             }
@@ -1123,8 +1130,9 @@ struct ChatView: View {
             .accessibilityLabel("Open Settings")
         }
         .padding(.horizontal, 12)
-        .padding(.vertical, 7)
+        .frame(height: 44)
         .background(AppTheme.Palette.canvas)
+        .overlay(alignment: .bottom) { Divider() }
         .focusSection()
         .accessibilityElement(children: .contain)
         .accessibilityLabel("Workbench controls")
@@ -1166,45 +1174,27 @@ struct ChatView: View {
     }
 
     private var welcomeState: some View {
-        VStack(spacing: 24) {
-            VStack(spacing: 12) {
-                brandMark
-                Text(store.currentWorkspace?.displayName ?? "Your project")
-                    .font(.callout.weight(.medium))
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
-                Text("What would you like to do?")
-                    .font(.system(size: 30, weight: .regular))
-                    .multilineTextAlignment(.center)
-                Text("Choose a starting point, then make the request your own.")
-                    .font(.callout)
-                    .foregroundStyle(.secondary)
-                    .multilineTextAlignment(.center)
-            }
+        VStack(spacing: 18) {
+            brandMark
+                .frame(width: 34, height: 34)
+            Text("What do you want to work on?")
+                .font(.system(size: 24, weight: .semibold))
+            Text(store.currentWorkspace?.displayName ?? "Choose a project to begin")
+                .font(AppTheme.Typography.caption)
+                .foregroundStyle(.secondary)
 
-
-            LazyVGrid(
-                columns: Array(
-                    repeating: GridItem(.flexible(), spacing: 12),
-                    count: 3
-                ),
-                spacing: 12
-            ) {
+            HStack(spacing: 8) {
                 ForEach(WorkbenchIntent.defaults) { item in
-                    WorkbenchIntentCard(item: item) {
+                    CodexPromptPill(item: item) {
                         input = item.prompt
                         inputFocused = true
                     }
                 }
             }
-
-            Text("Pick an intent or type below · ⏎ send · ⇧⏎ new line")
-                .font(.caption2)
-                .foregroundStyle(.tertiary)
         }
-        .frame(maxWidth: 960)
+        .frame(maxWidth: 720)
         .frame(maxWidth: .infinity)
-        .padding(.vertical, 64)
+        .padding(.vertical, 96)
         .padding(.horizontal, 32)
     }
 
@@ -1401,7 +1391,7 @@ struct ChatView: View {
                         )
                     }
 
-                    TextField("Ask, build, or review…  / for skills", text: $input, axis: .vertical)
+                    TextField("Do anything", text: $input, axis: .vertical)
                     .textFieldStyle(.plain)
                     .font(AppTheme.Typography.composer)
                     .lineSpacing(4)
@@ -1492,9 +1482,9 @@ struct ChatView: View {
             .padding(.vertical, 10)
             .frame(maxWidth: AppTheme.Layout.composerMaxWidth, alignment: .leading)
             .grokGlassSurface(
-                cornerRadius: AppTheme.Radius.medium,
+                cornerRadius: AppTheme.Radius.composer,
                 emphasized: isFileDropTargeted,
-                shadowed: false
+                shadowed: true
             )
             .onDrop(of: [UTType.fileURL.identifier], isTargeted: $isFileDropTargeted) { providers in
                 handleFileDrop(providers)
@@ -1689,6 +1679,8 @@ struct ChatView: View {
             .help("Context usage")
             .accessibilityLabel("Context usage")
             .accessibilityValue(store.currentModelContextLabel)
+
+            sessionReceiptMenu
         }
     }
 
@@ -1825,24 +1817,25 @@ struct ChatView: View {
 
     private var sessionReceiptMenu: some View {
         Menu {
-            Section("Process and model receipt") {
+            Section("Route, process, and model receipt") {
                 ForEach(store.sessionReceiptDetailLines.indices, id: \.self) { index in
                     Text(store.sessionReceiptDetailLines[index])
                 }
             }
         } label: {
-            Label(store.sessionReceiptCompactLabel, systemImage: "checkmark.seal")
+            Label(store.currentRouteCompactLabel, systemImage: store.currentRouteSystemImage)
                 .font(.caption2.weight(.semibold))
                 .padding(.horizontal, 2)
                 .padding(.vertical, 2)
                 .foregroundStyle(.secondary)
+                .lineLimit(1)
         }
         .menuStyle(.borderlessButton)
         .fixedSize()
-        .help("Open generation-bound process and model details")
-        .accessibilityLabel("Open session process and model details")
-        .accessibilityValue(store.modelAccessibilityValue)
-        .accessibilityIdentifier("grok-session-receipt")
+        .help("Open the configured route and generation-bound process/model receipt")
+        .accessibilityLabel("Open model route and process receipt")
+        .accessibilityValue("\(store.currentRouteAccessibilityValue) \(store.modelAccessibilityValue)")
+        .accessibilityIdentifier("grok-model-route-contract")
     }
 
     private var agentStatusPill: some View {
@@ -2848,49 +2841,36 @@ struct ChatView: View {
 
 // MARK: - Workbench Intents
 
-private struct WorkbenchIntentCard: View {
+private struct CodexPromptPill: View {
     let item: WorkbenchIntent
     var onSelect: () -> Void
 
     @State private var isHovered = false
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         Button(action: onSelect) {
-            VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 7) {
                 Image(systemName: item.icon)
-                    .font(.system(size: 15, weight: .semibold))
-                    .foregroundStyle(.secondary)
-                    .frame(width: 22, height: 22)
+                    .font(.system(size: 11, weight: .semibold))
                 Text(item.title)
-                    .font(.system(size: 16, weight: .semibold))
-                    .foregroundStyle(.primary)
-                Text(item.detail)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(3)
-                    .multilineTextAlignment(.leading)
+                    .font(AppTheme.Typography.label)
             }
-            .padding(14)
-            .frame(maxWidth: .infinity, minHeight: 118, alignment: .topLeading)
+            .foregroundStyle(isHovered ? Color.primary : Color.secondary)
+            .padding(.horizontal, 11)
+            .frame(height: 30)
             .background(
-                isHovered ? AppTheme.Palette.surfaceHover : AppTheme.Palette.canvas,
-                in: RoundedRectangle(cornerRadius: AppTheme.Radius.medium)
+                isHovered ? AppTheme.Palette.surfaceHover : AppTheme.Palette.surface,
+                in: Capsule()
             )
-            .overlay(
-                RoundedRectangle(cornerRadius: AppTheme.Radius.medium)
-                    .stroke(isHovered ? AppTheme.Palette.glassBorderStrong : AppTheme.Palette.glassBorder)
-            )
+            .overlay(Capsule().stroke(AppTheme.Palette.glassBorder))
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         .onHover { isHovered = $0 }
         .help(item.prompt)
-        .animation(reduceMotion ? nil : .easeOut(duration: 0.12), value: isHovered)
         .accessibilityLabel("\(item.title). \(item.detail)")
         .accessibilityHint("Adds an editable \(item.title.lowercased()) request to the message composer.")
     }
-
 }
 
 // MARK: - Context Usage

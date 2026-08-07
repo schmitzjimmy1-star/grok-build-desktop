@@ -198,9 +198,14 @@ struct ActivitySidebar: View {
                 idleWorkspacePanel
             }
         }
-        .frame(minWidth: 300, idealWidth: 330, maxWidth: 400, maxHeight: .infinity)
+        .frame(minWidth: 260, idealWidth: 290, maxWidth: 320, maxHeight: 620)
         .background(AppTheme.Palette.sidebar)
-        .overlay(alignment: .leading) { Rectangle().fill(Color.primary.opacity(0.10)).frame(width: 1) }
+        .clipShape(RoundedRectangle(cornerRadius: AppTheme.Radius.composer, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: AppTheme.Radius.composer, style: .continuous)
+                .stroke(AppTheme.Palette.glassBorder)
+        }
+        .shadow(color: AppTheme.Palette.shadow, radius: 12, y: 4)
         .accessibilityElement(children: .contain)
         .accessibilityLabel("Activity sidebar")
         .accessibilityIdentifier("grok-activity-sidebar")
@@ -290,12 +295,12 @@ struct ActivitySidebar: View {
             }
             Spacer()
             Button(action: onClose) {
-                Image(systemName: "chevron.right")
+                Image(systemName: "xmark")
                     .frame(width: ComposerControlMetrics.minimumHitTarget, height: ComposerControlMetrics.minimumHitTarget)
                     .contentShape(Rectangle())
             }
             .buttonStyle(.plain).foregroundStyle(.secondary)
-            .help("Hide activity sidebar").accessibilityLabel("Hide activity sidebar")
+            .help("Hide activity inspector").accessibilityLabel("Hide activity inspector")
         }
         .padding(.horizontal, 14).padding(.vertical, 11)
     }
