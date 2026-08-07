@@ -221,6 +221,8 @@ Every slice must:
 9. Do not commit, push, open a PR, merge, or publish without separate authorization.
 10. Stop after the slice, leave the exact next-slice handoff, and wait for authorization.
 
+When publication is separately authorized, read `.cursor/skills/grokbuild-release/SKILL.md` and run its GitHub preflight before branching or committing. Publish only through `personal` (`schmitzjimmy1-star/grok-build-desktop`), never the preserved `origin`; if the GitHub connector returns HTTP 422 or "must be a collaborator" after authenticated `gh` proves write access and the push succeeds, fall back immediately to `gh pr create` instead of treating the repository as blocked.
+
 ## Slice 0 — freeze the visual and source baseline
 
 ### Objective

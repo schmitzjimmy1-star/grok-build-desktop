@@ -21,14 +21,19 @@ GitHub repositories:
 Current baseline at handoff:
 
 - branch: `main`
-- HEAD: `8b8801689f540f1715615d51cbccb1494cd736b3`
+- HEAD: `815cf4477b5d42263bc0632a3473a981422184a9`
+- publication remote parity: local `main` = `personal/main`
+- merged redesign baseline: `https://github.com/schmitzjimmy1-star/grok-build-desktop/pull/5`
+- GitHub archive state: active (`isArchived: false`)
 - installed app: `/Applications/GrokBuild.app`
 - bundle identifier: `com.grokbuild.app`
 - installed source repository stamp:
   `https://github.com/schmitzjimmy1-star/grok-build-desktop`
 - installed source commit stamp:
-  `8b8801689f540f1715615d51cbccb1494cd736b3`
-- installed source dirty stamp: `true`
+  `815cf4477b5d42263bc0632a3473a981422184a9`
+- installed source dirty stamp: `false`
+- installed/dist executable parity: verified by `make ship`
+- validation: 611 tests, 0 failures; deep/strict signing passed under TeamID `DD2GCQJVB4`; quarantine absent
 
 The similarly named historical line below is retired evidence and is not an implementation source:
 
@@ -50,31 +55,27 @@ Read these files in order:
 
 The slice plan is authoritative for scope, placement rules, backend preservation, testing, installed-app acceptance, and stop conditions.
 
-## Existing dirty work — preserve it
+## Clean merged baseline — preserve it
 
-At handoff, these paths are modified or untracked:
+At handoff, `git status -sb` is:
 
 ```text
- M ARCHITECTURE.md
- M CANONICAL_WORKTREE.md
- M GrokBuild/AppTheme.swift
- M GrokBuild/ContentView.swift
- M GrokBuild/Services/ChatStore.swift
- M GrokBuild/Views/ActivitySidebar.swift
- M GrokBuild/Views/ChatView.swift
- M GrokBuild/Views/SidebarView.swift
- M README.md
- M Tests/GrokBuildTests/ACPClientContractTests.swift
- M Tests/GrokBuildTests/WorkbenchIntentTests.swift
-?? GrokBuild/Models/ModelRouteContract.swift
-?? Tests/GrokBuildTests/ModelRouteContractTests.swift
-?? docs/CLAUDE_FABLE_CODEX_PARITY_SLICES_2026-08-07.md
-?? docs/CLAUDE_FABLE_CODEX_PARITY_HANDOFF_PROMPT_2026-08-07.md
+## main...personal/main
 ```
 
-Treat all of it as intentional user work. Before editing, regenerate `git status --short`, record hashes for the dirty paths, and preserve them. Do not checkout, reset, clean, stash, overwrite, or reconstruct any dirty file from GitHub.
+Before editing, regenerate `git status --short` and preserve any new user work that appeared after this handoff. Do not checkout, reset, clean, stash, overwrite, or reconstruct dirty files from GitHub.
 
 If current branch, HEAD, remotes, installed identity, or dirty inventory differs from this prompt, stop and reconcile the difference before mutation. Current local truth wins over this handoff only after you show the evidence.
+
+## Publication preflight — do not hit the archived-repository wall again
+
+Publication is not authorized by this handoff, but any later task that explicitly authorizes commit, push, PR, or merge must use `.cursor/skills/grokbuild-release/SKILL.md` and preflight GitHub before creating publication artifacts:
+
+1. Confirm `personal` resolves to `schmitzjimmy1-star/grok-build-desktop`; never publish to the preserved `origin` upstream.
+2. Run `gh auth status` and `gh repo view schmitzjimmy1-star/grok-build-desktop --json isArchived,viewerPermission,defaultBranchRef` before branching or committing.
+3. If an explicitly authorized publication finds the repository archived and `viewerPermission` is `ADMIN`, run `gh repo unarchive schmitzjimmy1-star/grok-build-desktop --yes` and verify `isArchived:false` before pushing. Otherwise stop before creating local publication artifacts.
+4. Prefer the GitHub connector for PR creation, but if it returns HTTP 422 or "must be a collaborator" after authenticated `gh` proves write access and the branch push succeeds, fall back immediately to `gh pr create`; that connector error is not a repository blocker.
+5. If merge is explicitly authorized, match the exact head SHA, merge, fetch `personal`, fast-forward local `main`, run `make ship`, and verify the installed app's source stamp equals merged `HEAD`.
 
 ## Design authority
 
