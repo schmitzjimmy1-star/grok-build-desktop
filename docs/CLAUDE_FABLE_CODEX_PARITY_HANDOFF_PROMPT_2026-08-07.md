@@ -21,16 +21,16 @@ GitHub repositories:
 Current baseline at handoff:
 
 - branch: `main`
-- HEAD: `815cf4477b5d42263bc0632a3473a981422184a9`
-- publication remote parity: local `main` = `personal/main`
+- HEAD: resolve live with `git rev-parse HEAD`; do not trust a copied SHA in a rolling handoff
+- publication remote parity contract: local `main` must equal `personal/main`
 - merged redesign baseline: `https://github.com/schmitzjimmy1-star/grok-build-desktop/pull/5`
+- publication-preflight hardening receipt: `https://github.com/schmitzjimmy1-star/grok-build-desktop/pull/6`
 - GitHub archive state: active (`isArchived: false`)
 - installed app: `/Applications/GrokBuild.app`
 - bundle identifier: `com.grokbuild.app`
 - installed source repository stamp:
   `https://github.com/schmitzjimmy1-star/grok-build-desktop`
-- installed source commit stamp:
-  `815cf4477b5d42263bc0632a3473a981422184a9`
+- installed source commit contract: read `GrokBuildSourceCommit` live from the installed `Info.plist`; it must equal `git rev-parse HEAD`
 - installed source dirty stamp: `false`
 - installed/dist executable parity: verified by `make ship`
 - validation: 611 tests, 0 failures; deep/strict signing passed under TeamID `DD2GCQJVB4`; quarantine absent
