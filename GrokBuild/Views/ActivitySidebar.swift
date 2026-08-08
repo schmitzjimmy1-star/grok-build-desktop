@@ -148,7 +148,6 @@ struct ActivitySidebar: View {
     /// Codex parity Slice 5: the compact grouped presentation (Subagents,
     /// Computer Use, Sources, Run details) built by `ContextInspectorProjection`.
     var inspector: ContextInspectorProjection.Model = .empty
-    var onOpenComputerUseSettings: () -> Void = {}
 
     @State private var confirmsContinueAsNew = false
     /// The run-evidence ledger opens in view by default (owner decision,
@@ -602,7 +601,11 @@ struct ActivitySidebar: View {
             // one quiet line carries the same truth. Any nonzero fact restores
             // the full grid.
             if snapshot.workers.isEmpty, snapshot.tools.failed == 0, snapshot.artifacts.isEmpty {
-                Text("\(compactUsage(snapshot.usage)) tokens · no workers, failed tools, or artifacts")
+                // Successful tool runs are a receipt too — a 20-tool turn must
+                // never read as "nothing happened".
+                Text(snapshot.tools.total > 0
+                    ? "\(compactUsage(snapshot.usage)) tokens · \(snapshot.tools.total) \(snapshot.tools.total == 1 ? "tool" : "tools") succeeded"
+                    : "\(compactUsage(snapshot.usage)) tokens · no workers, tools, or artifacts")
                     .font(AppTheme.Typography.caption)
                     .foregroundStyle(.secondary)
             } else {

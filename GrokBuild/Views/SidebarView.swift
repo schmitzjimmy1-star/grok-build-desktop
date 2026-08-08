@@ -99,9 +99,6 @@ struct SidebarView: View {
             HStack(spacing: 6) {
                 Text("GrokBuild")
                     .font(.system(size: 15, weight: .semibold))
-                Image(systemName: "chevron.down")
-                    .font(.system(size: 9, weight: .semibold))
-                    .foregroundStyle(.secondary)
                 Spacer()
                 Button {
                     withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.16)) { isFilterVisible.toggle() }
@@ -112,8 +109,8 @@ struct SidebarView: View {
                 }
                 .buttonStyle(.plain)
                 .foregroundStyle(.secondary)
-                .accessibilityLabel("Filter sessions")
-                .accessibilityHint(isFilterVisible ? "Hides the session filter field." : "Shows a field that filters sessions by title.")
+                .accessibilityLabel("Filter projects")
+                .accessibilityHint(isFilterVisible ? "Hides the project filter field." : "Shows a field that filters projects by name.")
                 .accessibilityValue(isFilterVisible ? "Visible" : "Hidden")
                 Button(action: onOpenActivity) {
                     Image(systemName: "bell")
@@ -398,6 +395,7 @@ private struct CodexRailButton: View {
             // Workbench W-1 (2026-08-08): denser rail, matching the target
             // photographs' compact navigation rows.
             .frame(height: 28)
+            .accessibilityIdentifier("grok-rail-\(title.lowercased().replacingOccurrences(of: " ", with: "-"))")
             .background(isHovered ? AppTheme.Palette.surfaceHover : Color.clear,
                         in: RoundedRectangle(cornerRadius: AppTheme.Radius.medium))
             .contentShape(Rectangle())

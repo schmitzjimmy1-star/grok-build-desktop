@@ -11,7 +11,7 @@ struct GrokkingIndicator: View {
         Text("Agent working…")
             .font(.subheadline)
             .foregroundStyle(.secondary)
-            .accessibilityLabel("Build agent is working")
+            .accessibilityLabel("Agent working")
             .accessibilityValue("Waiting for the next result")
     }
 }

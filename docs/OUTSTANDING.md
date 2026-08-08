@@ -9,10 +9,15 @@
 
 Owner directive: the app must read as an agentic platform (Codex-like),
 not a chatbot. Findings F-1..F-5 and slices W-1..W-6 live in
-`docs/AGENTIC_WORKBENCH_REVIEW_2026-08-08.md`. **W-1 (chrome trim) and W-2
-(de-bubbled task statements) shipped 2026-08-08 by owner instruction**;
-W-3 (workspace landing), W-4 (context strip), W-5 (plan as spine), and
-W-6 (docked inspector) remain available for the owner to pick.
+`docs/AGENTIC_WORKBENCH_REVIEW_2026-08-08.md`. **W-1, W-2, W-3 (workspace
+landing), and W-4 (task context strip) shipped 2026-08-08**, along with the
+owner-requested live tool visibility (auto-expanded live trace; worker
+counts only when nonzero) and a twelve-item straggler sweep (Preview→Review
+naming, task-framed composer, dynamic a11y announcements, dead-code
+removal, tools-count receipt, scope-aware empty states, Stop-turn naming,
+send/stop/rail identifiers, card→Last-turn scope). Remaining: W-5 (plan as
+spine) and W-6 (docked inspector), plus the deferred instrumentation items
+below.
 
 ## Open defects
 
@@ -22,6 +27,9 @@ W-6 (docked inspector) remain available for the owner to pick.
 | O-2 | **Second-launch activation is unconditional.** The single-instance flock dance posts `showMainWindow` and the live instance activates with `ignoringOtherApps: true` — intended for real double-clicks, but it means any stray re-launch (updater race, `make run`) yanks focus. Acceptable by design; recorded so nobody re-diagnoses it. | By design | Documented |
 | O-3 | **"Jump to latest" pill — CLOSED 2026-08-08, already instrumented.** The pill carries `grok-jump-to-latest`, a label, value, and hint; the acceptance script had matched titles instead of identifiers (the O-4 quirk). Scripts must match the identifier. | Closed | No change needed |
 | O-4 | **System Events cannot read AXDescription on SwiftUI elements** (identifier matching works; description matching does not). Affects scripted automation only; raw AX API surfaces names correctly. Known macOS/SwiftUI quirk, kept for awareness. | Environment quirk | Documented |
+| O-5 | **Commit/PR popovers under-instrumented** (no focus on the title field, no identifiers/help on the six action rows, both primaries claim ⌘↩). From the 2026-08-08 straggler sweep. | P3 | Open |
+| O-6 | **Session-migration banner is permanent** — no dismiss, no action, no receipt naming which sessions went read-only. From the straggler sweep. | P3 | Open |
+| O-7 | **SessionsBrowserPanel and GitCheckoutSheet carry zero accessibility identifiers.** From the straggler sweep. | P3 | Open |
 
 ## Manual passes owed
 

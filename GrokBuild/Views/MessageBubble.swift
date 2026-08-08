@@ -8,7 +8,6 @@ struct MessageBubble: View {
     /// Incrementally maintained by `ChatStore` per display flush. Passing it in keeps
     /// per-render work O(1); the batch `make` fallback covers a missing value only.
     var streamingPresentation: StreamingMarkdownPresentation? = nil
-    var showsAssistantHeader: Bool = true
 
     var body: some View {
         switch message.role {
@@ -38,12 +37,6 @@ struct MessageBubble: View {
         case .assistant:
             if !message.content.isEmpty {
                 VStack(alignment: .leading, spacing: 7) {
-                    if showsAssistantHeader {
-                        Text("Build agent")
-                            .font(AppTheme.Typography.section)
-                            .foregroundStyle(AppTheme.Palette.textMuted)
-                    }
-
                     if isStreaming {
                         // Settled bubbles must never pay for a streaming scan: the
                         // presentation is computed only on this branch, preferring the

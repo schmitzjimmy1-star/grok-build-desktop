@@ -92,7 +92,7 @@ final class ActivitySidebarTests: XCTestCase {
         XCTAssertEqual(presentation.phase, "Using chrome-devtools")
         XCTAssertEqual(presentation.activeMCP, "chrome-devtools")
         XCTAssertEqual(presentation.activeTool, "List pages")
-        XCTAssertEqual(presentation.compactText, "Using chrome-devtools · 0 active workers · List pages")
+        XCTAssertEqual(presentation.compactText, "Using chrome-devtools · List pages")
     }
 
     func testLiveProgressPhaseTracksWritingAndWorkerCoordination() {
@@ -300,8 +300,8 @@ final class ActivitySidebarTests: XCTestCase {
         XCTAssertTrue(chat.contains(".userStopped"))
         XCTAssertTrue(chat.contains("local stop outcome and next action"))
         XCTAssertTrue(chat.contains("Activity opened with the preserved run evidence"))
-        XCTAssertTrue(chat.contains("Build agent finished. \\(outcome)."))
-        XCTAssertEqual(chat.components(separatedBy: "Build agent finished").count - 1, 1)
+        XCTAssertTrue(chat.contains("Turn finished. \\(outcome)."))
+        XCTAssertEqual(chat.components(separatedBy: "Turn finished").count - 1, 1)
     }
 
     @MainActor

@@ -42,7 +42,7 @@ enum SidebarVisibility {
     /// the sidebar auto-collapses when even its minimum width would compress the
     /// conversation below `ResponsiveLayoutPolicy.conversationReadableMinimum`.
     /// At the current 1100-pt window minimum this is unreachable by construction
-    /// (1100 − 220 ≥ 812), so today the sidebar stays user-controlled; the wiring
+    /// (1100 − 200 ≥ 812), so today the sidebar stays user-controlled; the wiring
     /// exists so any future smaller minimum collapses the sidebar before the
     /// transcript ever compresses.
     static func shouldShow(

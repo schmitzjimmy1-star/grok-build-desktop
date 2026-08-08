@@ -265,6 +265,15 @@ enum SlashAutocompleteGroups {
 
 /// A plain-language starting point shown before a session's first request. Selecting one
 /// seeds an editable draft; it never sends or starts a backend by itself.
+/// Workbench W-3 (2026-08-08): a compact recent-task row for the landing.
+/// Value type only — ContentView projects it from cached titles so the landing
+/// never subscribes to live message streams.
+struct RecentSessionEntry: Identifiable, Hashable, Sendable {
+    let id: UUID
+    let title: String
+    let subtitle: String?
+}
+
 struct WorkbenchIntent: Identifiable, Hashable, Sendable {
     var id: String { title }
     let icon: String

@@ -50,7 +50,7 @@ final class WorkbenchIntentTests: XCTestCase {
         // The welcome model pill was removed 2026-08-03 (redundant with the composer's
         // always-visible model menu); model choice must not reappear mid-canvas.
         XCTAssertFalse(source.contains("grok-starter-model-selector"))
-        XCTAssertTrue(source.contains("TextField(\"Do anything\""))
+        XCTAssertTrue(source.contains("TextField(\"Describe a task\""))
         // Codex parity Slice 4: no Details shelf state survives.
         XCTAssertFalse(source.contains("showComposerDetails"))
 
