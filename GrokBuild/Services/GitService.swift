@@ -292,6 +292,137 @@ enum GitService {
         return "Changed file: \(file.path)"
     }
 
+    // MARK: Review scopes (OUTSTANDING D-1, 2026-08-08)
+
+    /// The Review pane's scope model. `workingTree` is the pre-existing behavior
+    /// (everything vs HEAD, staged and unstaged together — Codex's "Unstaged"
+    /// bucket in practice); the other scopes narrow honestly. `lastTurn` reuses
+    /// the working-tree commands and is filtered to the turn's attributed paths
+    /// by the caller, which owns the run-evidence snapshot.
+    enum ReviewScope: String, CaseIterable, Identifiable, Sendable {
+        case workingTree
+        case staged
+        case lastCommit
+        case branch
+        case lastTurn
+
+        var id: String { rawValue }
+
+        var displayName: String {
+            switch self {
+            case .workingTree: return "Working tree"
+            case .staged: return "Staged"
+            case .lastCommit: return "Last commit"
+            case .branch: return "Branch"
+            case .lastTurn: return "Last turn"
+            }
+        }
+    }
+
+    static func changedFiles(scope: ReviewScope, in directory: URL) async throws -> [GitChangedFile] {
+        guard isRepository(directory) else { throw GitError.notARepository }
+        switch scope {
+        case .workingTree, .lastTurn:
+            return try await changedFiles(in: directory)
+        case .staged:
+            let output = try await run(
+                ["diff", "--cached", "--name-status", "-z"], in: directory)
+            return parseNameStatus(output)
+        case .lastCommit:
+            // A repository with no commits has no HEAD; that is an empty scope,
+            // not an error.
+            // --root makes the initial commit list its files instead of nothing.
+            guard let output = try? await run(
+                ["diff-tree", "--root", "--no-commit-id", "--name-status", "-r", "-z", "HEAD"],
+                in: directory) else { return [] }
+            return parseNameStatus(output)
+        case .branch:
+            let base = await defaultBaseBranch(in: directory)
+            // No verifiable base (fresh repo, no remote): an empty scope, not an error.
+            guard (try? await run(["rev-parse", "--verify", "--quiet", base], in: directory)) != nil else {
+                return []
+            }
+            let output = try await run(
+                ["diff", "--name-status", "-z", "\(base)...HEAD"], in: directory)
+            return parseNameStatus(output)
+        }
+    }
+
+    static func diffForChangedFile(
+        _ file: GitChangedFile, scope: ReviewScope, in directory: URL
+    ) async throws -> String {
+        switch scope {
+        case .workingTree, .lastTurn:
+            return try await diffForChangedFile(file, in: directory)
+        case .staged:
+            let output = try await run(
+                ["diff", "--cached", "--no-ext-diff", "--no-color", "--", file.path],
+                in: directory)
+            return output.isEmpty ? "Changed file: \(file.path)" : output
+        case .lastCommit:
+            let output = try await run(
+                ["show", "--format=", "--no-ext-diff", "--no-color", "HEAD", "--", file.path],
+                in: directory)
+            return output.isEmpty ? "Changed file: \(file.path)" : output
+        case .branch:
+            let base = await defaultBaseBranch(in: directory)
+            guard (try? await run(["rev-parse", "--verify", "--quiet", base], in: directory)) != nil else {
+                return "Changed file: \(file.path)"
+            }
+            let output = try await run(
+                ["diff", "--no-ext-diff", "--no-color", "\(base)...HEAD", "--", file.path],
+                in: directory)
+            return output.isEmpty ? "Changed file: \(file.path)" : output
+        }
+    }
+
+    /// Parse `--name-status -z` output: NUL-separated status, path,
+    /// and a second path for renames/copies (the new name wins).
+    static func parseNameStatus(_ output: String) -> [GitChangedFile] {
+        let fields = output.split(separator: "\0", omittingEmptySubsequences: true)
+        var result: [GitChangedFile] = []
+        var index = 0
+        while index < fields.count {
+            let status = String(fields[index])
+            index += 1
+            guard index < fields.count else { break }
+            var path = String(fields[index])
+            index += 1
+            if status.hasPrefix("R") || status.hasPrefix("C"), index < fields.count {
+                path = String(fields[index])
+                index += 1
+            }
+            if !path.isEmpty {
+                result.append(GitChangedFile(path: path, status: status))
+            }
+        }
+        return result
+    }
+
+    // MARK: Gated per-file revert (OUTSTANDING D-2, 2026-08-08)
+
+    /// Discard working-tree changes for exactly one path. Tracked files are
+    /// restored from HEAD across both index and worktree; untracked files are
+    /// removed with `clean -f -- <path>`. The status check runs against the
+    /// live repository at call time, never a cached row, so a file that was
+    /// committed or deleted since the pane rendered is handled truthfully.
+    /// Destructive by design — callers must present an explicit confirmation
+    /// before invoking this.
+    static func revertPath(_ path: String, in directory: URL) async throws {
+        guard isRepository(directory) else { throw GitError.notARepository }
+        let status = try await run(
+            ["status", "--porcelain=v1", "-z", "--", path], in: directory)
+        let trimmed = status.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+        if trimmed.hasPrefix("??") {
+            _ = try await run(["clean", "-f", "--", path], in: directory)
+        } else {
+            _ = try await run(
+                ["restore", "--source=HEAD", "--staged", "--worktree", "--", path],
+                in: directory)
+        }
+    }
+
     static func gitDirectory(for projectURL: URL) -> URL? {
         let dotGit = projectURL.appendingPathComponent(".git")
         var isDirectory: ObjCBool = false

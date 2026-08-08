@@ -38,6 +38,7 @@ struct CustomModelsSettingsPane: View {
     }
     // Drives programmatic scrolling to an editor when a card opens it.
     @State private var scrollTarget: String?
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     // True while the provider editor holds a not-yet-saved template (so we lock the id and
     // prompt for the key). Cleared once the provider is saved or the draft is reset.
     @State private var providerDraftFromPreset = false
@@ -226,7 +227,7 @@ struct CustomModelsSettingsPane: View {
                 // its layout and silently no-op. Defer one runloop turn so the card
                 // exists before `scrollTo` looks it up.
                 DispatchQueue.main.async {
-                    withAnimation(.easeInOut(duration: 0.25)) {
+                    withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.25)) {
                         proxy.scrollTo(target, anchor: .top)
                     }
                 }
@@ -412,7 +413,7 @@ struct CustomModelsSettingsPane: View {
         settingsCard(title: "Add Provider", systemImage: "plus") {
             VStack(alignment: .leading, spacing: 12) {
                 Button {
-                    withAnimation(.easeInOut(duration: 0.2)) {
+                    withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.2)) {
                         showingProviderTemplates.toggle()
                     }
                 } label: {

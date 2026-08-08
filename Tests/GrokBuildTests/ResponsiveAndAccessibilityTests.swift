@@ -85,6 +85,29 @@ final class ResponsiveAndAccessibilityTests: XCTestCase {
                        "Workbench W-1: the rail is navigation, not a pane")
     }
 
+    /// M-1 closure (2026-08-08): reduce motion is code-enforced, not a manual
+    /// sweep. Every view file that animates must consult the system setting —
+    /// a file-level tripwire so a new `withAnimation` cannot ship ungated.
+    func testEveryAnimatingViewConsultsReduceMotion() throws {
+        let root = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+            .appendingPathComponent("GrokBuild")
+        let enumerator = try XCTUnwrap(FileManager.default.enumerator(
+            at: root, includingPropertiesForKeys: nil
+        ))
+        var animatingFiles = 0
+        for case let url as URL in enumerator where url.pathExtension == "swift" {
+            let source = try String(contentsOf: url, encoding: .utf8)
+            guard source.contains("withAnimation(") else { continue }
+            animatingFiles += 1
+            XCTAssertTrue(
+                source.contains("accessibilityReduceMotion"),
+                "\(url.lastPathComponent) animates without consulting Reduce Motion"
+            )
+        }
+        XCTAssertGreaterThan(animatingFiles, 0, "the tripwire must actually scan animating files")
+    }
+
     /// Slice 7 icon-only audit: every audited icon-only control carries an explicit
     /// accessibility label (SF Symbol fallback names are not the contract).
     func testAuditedIconOnlyControlsCarryExplicitLabels() throws {

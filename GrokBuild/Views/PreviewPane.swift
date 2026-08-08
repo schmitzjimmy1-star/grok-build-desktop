@@ -3,7 +3,15 @@ import SwiftUI
 struct PreviewPane: View {
     let diffs: [ChatStore.DetectedDiff]
     let workspace: Workspace?
+    /// Review scope (OUTSTANDING D-1). Owned by ContentView so switching scopes
+    /// re-runs the fetch; the pane only presents it.
+    @Binding var scope: GitService.ReviewScope
     var onClose: () -> Void = {}
+    /// Gated per-file revert (OUTSTANDING D-2). The pane confirms; the parent
+    /// executes and refreshes — `diffs` is a `let`, the pane cannot self-invalidate.
+    var onRevertFile: (String) async -> Void = { _ in }
+
+    @State private var pendingRevertPath: String?
 
     @State private var selectedID: UUID?
     @State private var branchName = "No branch"
@@ -54,6 +62,23 @@ struct PreviewPane: View {
         .onChange(of: changedFilesListHeight) { _, _ in
             saveChangedFilesState()
         }
+        .confirmationDialog(
+            "Revert \(pendingRevertPath.map { ($0 as NSString).lastPathComponent } ?? "file")?",
+            isPresented: Binding(
+                get: { pendingRevertPath != nil },
+                set: { if !$0 { pendingRevertPath = nil } }
+            ),
+            titleVisibility: .visible
+        ) {
+            Button("Discard changes to this file", role: .destructive) {
+                guard let path = pendingRevertPath else { return }
+                pendingRevertPath = nil
+                Task { await onRevertFile(path) }
+            }
+            Button("Cancel", role: .cancel) { pendingRevertPath = nil }
+        } message: {
+            Text("Tracked changes are restored from HEAD; an untracked file is deleted. This cannot be undone.")
+        }
     }
 
     private var header: some View {
@@ -71,6 +96,19 @@ struct PreviewPane: View {
 
             Text("Preview")
                 .font(.headline)
+
+            Picker("Scope", selection: $scope) {
+                ForEach(GitService.ReviewScope.allCases) { scope in
+                    Text(scope.displayName).tag(scope)
+                }
+            }
+            .pickerStyle(.menu)
+            .labelsHidden()
+            .fixedSize()
+            .help("Choose which changes this pane shows")
+            .accessibilityLabel("Review scope")
+            .accessibilityValue(scope.displayName)
+            .accessibilityIdentifier("grok-review-scope")
 
             Spacer()
             if let ws = workspace {
@@ -455,6 +493,25 @@ struct PreviewPane: View {
                     Image(systemName: "checkmark")
                         .font(.caption2.weight(.bold))
                         .foregroundStyle(.secondary)
+                }
+                // OUTSTANDING D-2: the gated revert — visible only on the
+                // working-tree scope (history scopes have nothing to discard),
+                // always behind the confirmation dialog, disabled while any
+                // git operation runs.
+                if scope == .workingTree, let path = diff.filePath {
+                    Button {
+                        pendingRevertPath = path
+                    } label: {
+                        Image(systemName: "arrow.uturn.backward")
+                            .font(.caption2)
+                            .contentShape(Rectangle().inset(by: -6))
+                    }
+                    .buttonStyle(.plain)
+                    .foregroundStyle(.secondary)
+                    .disabled(isRunningGitOperation)
+                    .help("Discard changes to this file…")
+                    .accessibilityLabel("Revert \((path as NSString).lastPathComponent)")
+                    .accessibilityHint("Asks for confirmation, then discards this file's working-tree changes.")
                 }
             }
             .padding(.horizontal, 8)
