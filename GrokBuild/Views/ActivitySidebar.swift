@@ -218,7 +218,9 @@ struct ActivitySidebar: View {
                 .frame(width: 0, height: 0)
                 .accessibilityHidden(true)
         }
-        .frame(minWidth: 260, idealWidth: 290, maxWidth: 320)
+        // Workbench W-1 (2026-08-08): a leaner overlay budget — the inspector is
+        // a receipt surface, not a second canvas.
+        .frame(minWidth: 240, idealWidth: 260, maxWidth: 300)
         .fixedSize(horizontal: false, vertical: true)
         .background(AppTheme.Palette.sidebar)
         .clipShape(RoundedRectangle(cornerRadius: AppTheme.Radius.composer, style: .continuous))
@@ -596,14 +598,23 @@ struct ActivitySidebar: View {
                 Spacer(minLength: 0)
             }
 
-            Grid(horizontalSpacing: 8, verticalSpacing: 8) {
-                GridRow {
-                    metric("Workers", value: "\(snapshot.completedWorkerCount)/\(snapshot.workers.count)")
-                    metric("Failed tools", value: snapshot.tools.failed.formatted())
-                }
-                GridRow {
-                    metric("Artifacts", value: snapshot.artifacts.count.formatted())
-                    metric("Usage", value: compactUsage(snapshot.usage))
+            // Workbench W-1: a trivial turn does not earn a 2×2 grid of zeros —
+            // one quiet line carries the same truth. Any nonzero fact restores
+            // the full grid.
+            if snapshot.workers.isEmpty, snapshot.tools.failed == 0, snapshot.artifacts.isEmpty {
+                Text("\(compactUsage(snapshot.usage)) tokens · no workers, failed tools, or artifacts")
+                    .font(AppTheme.Typography.caption)
+                    .foregroundStyle(.secondary)
+            } else {
+                Grid(horizontalSpacing: 8, verticalSpacing: 8) {
+                    GridRow {
+                        metric("Workers", value: "\(snapshot.completedWorkerCount)/\(snapshot.workers.count)")
+                        metric("Failed tools", value: snapshot.tools.failed.formatted())
+                    }
+                    GridRow {
+                        metric("Artifacts", value: snapshot.artifacts.count.formatted())
+                        metric("Usage", value: compactUsage(snapshot.usage))
+                    }
                 }
             }
         }
@@ -658,9 +669,16 @@ struct ActivitySidebar: View {
         section("Files in review", systemImage: "doc.on.doc") {
             if snapshot.gitReviewFiles.isEmpty { emptyState("No changed files observed yet.") }
             else {
-                ForEach(snapshot.gitReviewFiles, id: \.self) { path in
+                // Workbench W-1: cap the list — the full set lives one click away
+                // behind the header Review chip; the inspector shows the shape.
+                ForEach(snapshot.gitReviewFiles.prefix(5), id: \.self) { path in
                     Label(ActivitySidebarPresentation.displayPath(path, relativeTo: workspace), systemImage: "doc.text")
                         .font(AppTheme.Typography.caption).lineLimit(2).textSelection(.enabled)
+                }
+                if snapshot.gitReviewFiles.count > 5 {
+                    Text("\(snapshot.gitReviewFiles.count - 5) more — open Review in the header for the full list.")
+                        .font(AppTheme.Typography.caption)
+                        .foregroundStyle(.tertiary)
                 }
             }
         }

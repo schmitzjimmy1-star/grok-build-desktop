@@ -394,7 +394,9 @@ private struct CodexRailButton: View {
                 Spacer()
             }
             .padding(.horizontal, 8)
-            .frame(height: 32)
+            // Workbench W-1 (2026-08-08): denser rail, matching the target
+            // photographs' compact navigation rows.
+            .frame(height: 28)
             .background(isHovered ? AppTheme.Palette.surfaceHover : Color.clear,
                         in: RoundedRectangle(cornerRadius: AppTheme.Radius.medium))
             .contentShape(Rectangle())

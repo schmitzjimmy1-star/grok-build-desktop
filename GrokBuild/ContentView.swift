@@ -187,8 +187,8 @@ struct ContentView: View {
             )
             .frame(
                 minWidth: ResponsiveLayoutPolicy.sidebarMinimumWidth,
-                idealWidth: 244,
-                maxWidth: 280
+                idealWidth: 216,
+                maxWidth: 240
             )
             .disabled(isRestoringSessions)
             }

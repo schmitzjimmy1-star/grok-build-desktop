@@ -13,24 +13,26 @@ struct MessageBubble: View {
     var body: some View {
         switch message.role {
         case .user:
-            HStack {
-                Spacer(minLength: 96)
-                Text(message.content)
-                    .textSelection(.enabled)
-                    .font(AppTheme.Typography.body)
-                    .lineSpacing(2)
-                    .padding(.horizontal, 13)
-                    .padding(.vertical, 9)
-                    .background(
-                        AppTheme.Palette.surface,
-                        in: RoundedRectangle(cornerRadius: AppTheme.Radius.medium, style: .continuous)
-                    )
-                    .overlay {
-                        RoundedRectangle(cornerRadius: AppTheme.Radius.medium, style: .continuous)
-                            .stroke(AppTheme.Palette.glassBorder, lineWidth: 1)
-                    }
-                    .frame(maxWidth: 500, alignment: .trailing)
+            // Workbench W-2 (2026-08-08): the user's prompt is the task statement —
+            // a full-width work record with a quiet leading rule, not a right-aligned
+            // chat bubble. The photographs treat the ask as part of the task, not a
+            // message someone sent.
+            HStack(alignment: .top, spacing: 10) {
+                RoundedRectangle(cornerRadius: 1)
+                    .fill(AppTheme.Palette.glassBorderStrong)
+                    .frame(width: 3)
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("You")
+                        .font(AppTheme.Typography.section)
+                        .foregroundStyle(AppTheme.Palette.textMuted)
+                    Text(message.content)
+                        .textSelection(.enabled)
+                        .font(AppTheme.Typography.body)
+                        .lineSpacing(2)
+                }
+                Spacer(minLength: 0)
             }
+            .padding(.vertical, 6)
             .accessibilityElement(children: .combine)
             .accessibilityLabel("You: \(message.content)")
         case .assistant:

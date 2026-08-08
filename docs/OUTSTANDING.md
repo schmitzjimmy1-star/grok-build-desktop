@@ -7,19 +7,20 @@
 
 ## Active direction — agentic workbench, not chatbot (2026-08-08)
 
-Owner directive under review: the app must read as an agentic platform
-(Codex-like), not a chatbot. Findings F-1..F-5 and proposed slices W-1..W-6
-live in `docs/AGENTIC_WORKBENCH_REVIEW_2026-08-08.md`; W-1 (chrome budget
-trim, incl. sidebar size) is the owner's tentative first pick pending
-confirmation. No slice is implemented until the owner chooses.
+Owner directive: the app must read as an agentic platform (Codex-like),
+not a chatbot. Findings F-1..F-5 and slices W-1..W-6 live in
+`docs/AGENTIC_WORKBENCH_REVIEW_2026-08-08.md`. **W-1 (chrome trim) and W-2
+(de-bubbled task statements) shipped 2026-08-08 by owner instruction**;
+W-3 (workspace landing), W-4 (context strip), W-5 (plan as spine), and
+W-6 (docked inspector) remain available for the owner to pick.
 
 ## Open defects
 
 | # | Item | Severity | State |
 |---|---|---|---|
-| O-1 | **External Chromium auto-start can still take frontmost at first-intent warm start.** The 2026-08-08 warm-start move eliminated launch-time and New-chat-time browser spawns (the original frontmost thief), but when browser tools are enabled with auto-start, the first keystroke in a fresh tab can still launch Chromium, which takes focus while the user is typing. Candidate fix: launch args that suppress the startup window, or defer browser start to first browser-tool use. | P3 (was P2, largely mitigated) | Open |
+| O-1 | **External Chromium auto-start frontmost steal — FIXED 2026-08-08.** `--no-startup-window` added to the CDP launch arguments: the auto-started browser opens no window (and steals no focus) until a page is actually driven. | Closed | Fixed |
 | O-2 | **Second-launch activation is unconditional.** The single-instance flock dance posts `showMainWindow` and the live instance activates with `ignoringOtherApps: true` — intended for real double-clicks, but it means any stray re-launch (updater race, `make run`) yanks focus. Acceptable by design; recorded so nobody re-diagnoses it. | By design | Documented |
-| O-3 | **"Jump to latest" pill is not addressable by title through System Events** (pressed only by coordinates during acceptance). Raw AX may expose it; spot-check and, if truly unlabeled, give it an identifier + label like the other transcript controls. | P3, AX polish | Open |
+| O-3 | **"Jump to latest" pill — CLOSED 2026-08-08, already instrumented.** The pill carries `grok-jump-to-latest`, a label, value, and hint; the acceptance script had matched titles instead of identifiers (the O-4 quirk). Scripts must match the identifier. | Closed | No change needed |
 | O-4 | **System Events cannot read AXDescription on SwiftUI elements** (identifier matching works; description matching does not). Affects scripted automation only; raw AX API surfaces names correctly. Known macOS/SwiftUI quirk, kept for awareness. | Environment quirk | Documented |
 
 ## Manual passes owed (need a human or a system-settings change)

@@ -82,7 +82,10 @@ Suggested order: W-1 now (answers "reduce the sidebar"), then W-3 + W-4
 
 ## Status
 
-- Recorded in `docs/OUTSTANDING.md` as the active direction; no slice
-  implemented until the owner picks.
-- PR #16 (first-intent warm start, dynamic labels, ledger in view, quieter
-  thread, OUTSTANDING list) remains open awaiting owner review.
+- **W-1 and W-2 shipped 2026-08-08** by owner instruction: sidebar
+  200–240 pt with 28-pt rail rows, inspector 240–300 pt (ideal 260), the
+  all-zero stat grid collapsed to one line, Files in review capped at 5,
+  and user prompts rendered as full-width task statements with a leading
+  rule and "You" caption.
+- W-3..W-6 remain available for the owner to pick.
+- PR #16 merged 2026-08-08.
