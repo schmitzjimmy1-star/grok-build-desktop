@@ -38,6 +38,15 @@ struct AssistantTurnTrace: Codable, Sendable, Hashable {
     let reasoningSummaryChunks: [String]
     let thinkingDuration: TimeInterval?
     let tools: [Tool]
+    /// The confirmed effective model that produced this turn, as a display name.
+    /// Stamped at turn settlement from the generation-bound execution receipt;
+    /// `nil` on transcripts recorded before the field existed and on turns whose
+    /// model was never exactly confirmed — the header then falls back to the
+    /// neutral "Build agent" label rather than guessing.
+    var modelDisplayName: String? = nil
+    /// The custom subagent role that ran the whole session's turn, when one was
+    /// explicitly selected. Empty/default agent stays `nil`.
+    var agentName: String? = nil
 
     var hasContent: Bool {
         !reasoningSummaryChunks.isEmpty || thinkingDuration != nil || !tools.isEmpty

@@ -205,10 +205,29 @@ final class UsageAndRoutingTests: XCTestCase {
             contentSource.range(of: "private func switchBranch", range: createStart.upperBound..<contentSource.endIndex)
         )
         let create = String(contentSource[createStart.lowerBound..<createEnd.lowerBound])
-        XCTAssertTrue(create.contains("await store.startNewSession()"),
-                      "fresh sessions warm-start the process so the first send does not pay the launch stall")
-        XCTAssertTrue(create.contains("if resumeSession == nil"),
-                      "warm start must never race a resume path's continuity-gated start")
+        // The warm start moved to first user intent: creating a tab must spawn
+        // nothing (one full helper set per untouched New chat was the P2), and
+        // the first keystroke into the composer launches the process instead.
+        XCTAssertFalse(create.contains("await store.startNewSession()"),
+                       "tab creation must not spawn a grok process; first intent owns the warm start")
+        let storeSource = try String(
+            contentsOf: repositoryRoot.appendingPathComponent("GrokBuild/Services/ChatStore.swift"),
+            encoding: .utf8
+        )
+        XCTAssertTrue(storeSource.contains("didSet { warmStartOnFirstIntentIfNeeded(previousDraft: oldValue) }"),
+                      "the composer draft's empty-to-nonempty transition triggers the warm start")
+        for guardClause in [
+            "connectionState == .idle",
+            "messages.isEmpty",
+            "savedGrokSessionID == nil",
+            "continuityBackendID == nil",
+            "persistedPendingRecoveryIntent == nil"
+        ] {
+            XCTAssertTrue(
+                storeSource.contains(guardClause),
+                "first-intent warm start must stay narrow: missing guard \(guardClause)"
+            )
+        }
     }
 
     // MARK: - Source contracts

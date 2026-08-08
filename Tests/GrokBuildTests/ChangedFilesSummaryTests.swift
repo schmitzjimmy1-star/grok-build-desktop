@@ -172,6 +172,8 @@ final class ChangedFilesSummaryTests: XCTestCase {
                       "the card gates on the projection, not on raw view state")
         XCTAssertTrue(chatSource.contains("snapshot: store.runEvidenceSnapshot"),
                       "the settled snapshot is the gate — no card without a settled turn")
+        XCTAssertTrue(chatSource.contains("changedFilesSummary.turnAttributedCount > 0"),
+                      "only turn-attributed changes render inline; repository-wide changes stay on the header Review chip (owner decision 2026-08-08)")
         let cardSource = try String(
             contentsOf: repositoryRoot.appendingPathComponent("GrokBuild/Views/ChangedFilesSummaryCard.swift"),
             encoding: .utf8

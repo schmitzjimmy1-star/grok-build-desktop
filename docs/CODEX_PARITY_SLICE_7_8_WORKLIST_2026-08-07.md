@@ -1,5 +1,9 @@
 # Codex parity — Slice 7/8 worklist (2026-08-07)
 
+> **The live open-items list moved to `docs/OUTSTANDING.md` (2026-08-08).**
+> This file remains the historical ledger of receipts; do not add new open
+> items here.
+
 Baseline: clean merged `main` at `ef7570c0` (PR #8), installed and ship-verified.
 Every item below is evidence-backed from the Slice 0–6 acceptance passes; nothing
 here is speculative. Slice 7 owns visual metrics, responsive behavior, and

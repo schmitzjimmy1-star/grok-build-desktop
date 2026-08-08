@@ -149,10 +149,12 @@ final class CodexShellParityTests: XCTestCase {
                            "Slice 5 contract: dashboard residue `\(removed)` must not return")
         }
 
+        // "grok-inspector-computer-use" left this list 2026-08-08: the owner
+        // removed the Computer Use readiness note from the inspector. The
+        // projection keeps the receipt; Settings owns the control surface.
         for retained in [
             "ContextInspectorProjection",
             "grok-inspector-subagents",
-            "grok-inspector-computer-use",
             "grok-inspector-sources",
             "grok-inspector-run-details",
             "grok-inspector-unresolved",

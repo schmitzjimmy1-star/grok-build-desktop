@@ -407,7 +407,7 @@ struct ChatView: View {
             }
         } label: {
             HStack(spacing: 7) {
-                Text("Build agent")
+                Text(assistantTurnTitle(trace: trace))
                     .font(.system(size: 13, weight: .semibold))
                 Image(systemName: isExpanded ? "chevron.down" : "chevron.right")
                     .font(.system(size: 10, weight: .semibold))
@@ -425,10 +425,25 @@ struct ChatView: View {
         .buttonStyle(.plain)
         .foregroundStyle(AppTheme.Palette.textMuted)
         .help(isExpanded ? "Hide thinking and tool use" : "Show thinking and tool use")
-        .accessibilityLabel("Build agent")
+        .accessibilityLabel(assistantTurnTitle(trace: trace))
         .accessibilityValue(isExpanded ? "Thinking and tool use expanded" : "Thinking and tool use collapsed")
         .accessibilityHint(isExpanded ? "Hides this turn's thinking and tool receipts." : "Shows this turn's thinking and tool receipts.")
         .accessibilityIdentifier("grok-assistant-trace-\(message.id.uuidString)")
+    }
+
+    /// The turn header names the model that actually produced the turn (from the
+    /// confirmed execution receipt stamped into the trace), plus the subagent role
+    /// when one ran it. Turns without a stamped receipt — old transcripts, or a
+    /// model that was never exactly confirmed — keep the neutral "Build agent"
+    /// label instead of a guessed name.
+    private func assistantTurnTitle(trace: AssistantTurnTrace?) -> String {
+        guard let modelName = trace?.modelDisplayName, !modelName.isEmpty else {
+            return "Build agent"
+        }
+        if let agent = trace?.agentName, !agent.isEmpty {
+            return "\(modelName) · \(agent)"
+        }
+        return modelName
     }
 
     private func assistantTraceSummary(trace: AssistantTurnTrace?, hasLiveTrace: Bool) -> String? {
@@ -692,11 +707,15 @@ struct ChatView: View {
                         // settled turn whose generation-bound Git recording reports
                         // changes. The projection separates turn-attributed edits from
                         // repository-wide dirt; Review opens the real Git pane.
+                        // The inline card renders only for changes attributed to
+                        // this turn (owner decision, 2026-08-08): repository-wide
+                        // unattributed changes cluttered every thread and already
+                        // have the header Review chip as their entry point.
                         if let changedFilesSummary = ChangedFilesSummaryProjection.summary(
                             snapshot: store.runEvidenceSnapshot,
                             diffs: reviewDiffs,
                             workspace: store.currentWorkspace?.path
-                        ) {
+                        ), changedFilesSummary.turnAttributedCount > 0 {
                             ChangedFilesSummaryCard(
                                 summary: changedFilesSummary,
                                 onOpenReview: {
