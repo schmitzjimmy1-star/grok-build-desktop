@@ -13,6 +13,28 @@ final class GrokConfigRepository: @unchecked Sendable {
     private let lock = NSLock()
     private let fileManager: FileManager
 
+    /// Cached file contents keyed by the on-disk identity that produced them. Launch
+    /// restore calls `read()` several times per restored tab (model merge, subagent
+    /// roles); without this cache a 130-tab restore re-reads and re-parses the same
+    /// unchanged file hundreds of times. External writers (the grok TUI/CLI) are still
+    /// honored: every `read()` stats the file first and any mtime/size change drops
+    /// the cache.
+    private struct CacheStamp: Equatable {
+        var modificationDate: Date
+        var size: Int
+    }
+    private var cachedContents: String?
+    private var cachedStamp: CacheStamp?
+
+    private func currentStamp() -> CacheStamp? {
+        guard let attributes = try? fileManager.attributesOfItem(atPath: configURL.path),
+              let modified = attributes[.modificationDate] as? Date,
+              let size = (attributes[.size] as? NSNumber)?.intValue else {
+            return nil
+        }
+        return CacheStamp(modificationDate: modified, size: size)
+    }
+
     init(
         configURL: URL = URL(fileURLWithPath: NSHomeDirectory())
             .appendingPathComponent(".grok/config.toml"),
@@ -25,7 +47,14 @@ final class GrokConfigRepository: @unchecked Sendable {
     func read() -> String {
         lock.lock()
         defer { lock.unlock() }
-        return (try? String(contentsOf: configURL, encoding: .utf8)) ?? ""
+        let stamp = currentStamp()
+        if let cachedContents, let cachedStamp, let stamp, cachedStamp == stamp {
+            return cachedContents
+        }
+        let contents = (try? String(contentsOf: configURL, encoding: .utf8)) ?? ""
+        cachedContents = contents
+        cachedStamp = stamp
+        return contents
     }
 
     func update(_ transform: (String) throws -> String) throws {
@@ -90,5 +119,8 @@ final class GrokConfigRepository: @unchecked Sendable {
             [.posixPermissions: Self.securePermissions],
             ofItemAtPath: configURL.path
         )
+
+        cachedContents = contents
+        cachedStamp = currentStamp()
     }
 }

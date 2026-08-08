@@ -180,6 +180,7 @@ struct ContentView: View {
                 onOpenSettings: { openSettings(tab: selectedSettingsTab) }
             )
             .frame(minWidth: 220, idealWidth: 244, maxWidth: 280)
+            .disabled(isRestoringSessions)
             }
 
             if route == .settings {
@@ -191,6 +192,7 @@ struct ContentView: View {
                     onSettingsApplyRequest: handleConfigurationChange
                 )
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .disabled(isRestoringSessions)
             } else {
                 HSplitView {
                     ChatView(
@@ -229,7 +231,8 @@ struct ContentView: View {
                                 gitCheckoutRequest = GitCheckoutRequest(project: workspace)
                             }
                         },
-                        onRevealArtifact: revealArtifact
+                        onRevealArtifact: revealArtifact,
+                        isSessionRestoreInProgress: isRestoringSessions
                     )
                     .id(activeStore.tabSessionID)
                     .frame(minWidth: 360, maxWidth: .infinity, maxHeight: .infinity)
@@ -241,12 +244,12 @@ struct ContentView: View {
                             onClose: { showPreview = false }
                         )
                         .frame(minWidth: 360, idealWidth: 460, maxWidth: 620, maxHeight: .infinity)
+                        .disabled(isRestoringSessions)
                     }
                 }
                 .frame(minWidth: 360, maxWidth: .infinity, maxHeight: .infinity)
             }
             }
-            .disabled(isRestoringSessions)
             }
 
             if isRestoringSessions {
@@ -666,7 +669,7 @@ struct ContentView: View {
         persistSessionLayout()
     }
 
-    private func closeSession(id: UUID) {
+    private func closeSession(id: UUID, persist: Bool = true) {
         guard let index = liveSessions.firstIndex(where: { $0.id == id }) else { return }
         let closing = liveSessions[index]
         let store = closing.store
@@ -682,7 +685,9 @@ struct ContentView: View {
             }
         }
         sessionListRevision &+= 1
-        persistSessionLayout()
+        if persist {
+            persistSessionLayout()
+        }
         SessionMessageStore.remove(for: id)
         Task {
             await store.shutdownPermanently()
@@ -739,9 +744,13 @@ struct ContentView: View {
                     && (workspaceID == nil || session.workspace.id == workspaceID)
             }
             .map(\.id)
+        guard !staleIDs.isEmpty else { return }
+        // One layout save for the whole purge; per-close saves made a multi-session
+        // purge do O(n) full encode/verify cycles.
         for staleID in staleIDs {
-            closeSession(id: staleID)
+            closeSession(id: staleID, persist: false)
         }
+        persistSessionLayout()
     }
 
     private func liveSessions(for workspaceID: Workspace.ID) -> [LiveSession] {
@@ -1070,11 +1079,40 @@ struct ContentView: View {
             })
         }, priority: .utility)
         transcriptMetadataByID.merge(restoreMetadata) { _, new in new }
+
+        // Prune stale empty sessions instead of rebuilding them: warm-started New chats
+        // that never held a message accumulate one record per launch and were the bulk
+        // of the 130-tab restore. Pruned records are simply not restored; the next
+        // committed layout save persists the smaller set, and any transcript remnants
+        // are removed off the main actor.
+        var selectedIDs = Set(saved.selectedSessionIDByWorkspace.values)
+        if let globalSelection = saved.selectedSessionID {
+            selectedIDs.insert(globalSelection)
+        }
+        let prune = SessionRestorePolicy.pruneDecision(
+            records: restorableRecords,
+            restorableMessageCounts: restoreMetadata.mapValues(\.restorableMessageCount),
+            selectedSessionIDs: selectedIDs
+        )
+        if !prune.prunedRecordIDs.isEmpty {
+            let prunedIDs = prune.prunedRecordIDs
+            Task.detached(priority: .utility) {
+                for id in prunedIDs {
+                    SessionMessageStore.remove(for: id)
+                }
+            }
+            totalSessionsToRestore = prune.keptRecords.count
+            restoreStatusText = "Cleaned up \(prunedIDs.count) empty sessions"
+        }
         var restoreCandidates: [SessionRestoreCandidate] = []
 
         // Lazy restore: only rebuild lightweight session state here (no grok process spawn).
         // The selected session is started below; the rest resume on demand when first opened.
-        for record in restorableRecords {
+        for record in prune.keptRecords {
+            // One suspension per tab lets SwiftUI actually paint the counter and status
+            // text; without it every increment coalesced into the overlay's dismissal
+            // frame and the counter read "0 of N" for the whole restore.
+            await Task.yield()
             guard let workspace = workspaceStore.workspaces.first(where: { $0.id == record.workspaceID }) else { continue }
             guard liveSessions.first(where: { $0.id == record.id }) == nil else { continue }
             restoreStatusText = "Restoring \(workspace.displayName)"
@@ -1124,10 +1162,12 @@ struct ContentView: View {
         }
 
         sessionListRevision &+= 1
-        recentSessionOrder = SessionRestorePolicy.recentSessionOrder(from: restorableRecords)
+        recentSessionOrder = SessionRestorePolicy.recentSessionOrder(from: prune.keptRecords)
 
+        // Fall back to the full record set so pruning every record still lands the
+        // user in their most recent workspace with a fresh tab.
         let workspaceID = saved.selectedWorkspaceID
-            ?? restorableRecords.max(by: {
+            ?? (prune.keptRecords.isEmpty ? restorableRecords : prune.keptRecords).max(by: {
                 if $0.lastActivationOrdinal != $1.lastActivationOrdinal {
                     return $0.lastActivationOrdinal < $1.lastActivationOrdinal
                 }
@@ -1354,6 +1394,13 @@ struct ContentView: View {
         )
         session.store.syncWorkspaceReasoningEffortFromStorage()
         session.store.syncTabModelToLiveProcessIfNeeded()
+        // Carry over a draft typed while no real session was selected (the launch-restore
+        // window types into the placeholder store); the ChatView `.id` remount would
+        // otherwise discard it silently.
+        if session.store.composerDraft.isEmpty, !placeholderStore.composerDraft.isEmpty {
+            session.store.composerDraft = placeholderStore.composerDraft
+            placeholderStore.composerDraft = ""
+        }
         selectedSessionID = id
         selectedWorkspaceID = session.workspace.id
         refreshGitReviewFromTranscriptBoundary()
@@ -1774,11 +1821,23 @@ private struct ContentViewNotificationHandlers: ViewModifier {
 
     private func handlePrepareForShutdown() {
         onPersistSessionLayout(true)
-        Task {
-            for session in liveSessions {
-                await session.store.shutdownPermanently()
+        let sessions = liveSessions
+        Task { @MainActor in
+            // Concurrent teardown: the per-process grace sleeps interleave instead of
+            // summing, so several live grok processes cost roughly one grace window.
+            // The old serial loop walked every tab and could still be mid-walk when
+            // AppDelegate's deadline fired, exiting with children unsignaled.
+            await withTaskGroup(of: Void.self) { group in
+                for session in sessions {
+                    group.addTask { @MainActor in
+                        await session.store.shutdownPermanently()
+                    }
+                }
             }
-            // AppDelegate holds termination open (bounded) until this arrives.
+            // AppDelegate holds termination open (bounded) until this arrives. Posting
+            // from the main actor keeps its completion flag main-thread confined; the
+            // previous background-thread post raced the poll loop and could burn the
+            // full deadline even after a clean teardown.
             NotificationCenter.default.post(name: .grokBuildShutdownComplete, object: nil)
         }
     }

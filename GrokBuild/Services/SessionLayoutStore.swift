@@ -773,18 +773,39 @@ enum SessionLayoutStore {
         )
     }
 
+    /// Decoded workspace-layout cache. This key is written only by this process (through
+    /// `saveWorkspaceLayout`), so the cache is invalidated exactly there. Launch restore
+    /// resolves per-workspace agent settings several times per restored tab; without this
+    /// cache a 130-tab restore decodes the same unchanged blob hundreds of times.
+    private static let workspaceLayoutCacheLock = NSLock()
+    nonisolated(unsafe) private static var workspaceLayoutCache: WorkspaceLayoutSnapshot?
+
     static func loadWorkspaceLayout() -> WorkspaceLayoutSnapshot {
+        workspaceLayoutCacheLock.lock()
+        defer { workspaceLayoutCacheLock.unlock() }
+        if let workspaceLayoutCache { return workspaceLayoutCache }
         guard let data = UserDefaults.standard.data(forKey: workspaceLayoutKey),
               let decoded = try? JSONDecoder().decode(WorkspaceLayoutSnapshot.self, from: data) else {
             return WorkspaceLayoutSnapshot(pinnedWorkspaceIDs: [], workspaceOrder: [])
         }
+        workspaceLayoutCache = decoded
         return decoded
     }
 
     static func saveWorkspaceLayout(_ snapshot: WorkspaceLayoutSnapshot) {
+        workspaceLayoutCacheLock.lock()
+        defer { workspaceLayoutCacheLock.unlock() }
         if let data = try? JSONEncoder().encode(snapshot) {
             UserDefaults.standard.set(data, forKey: workspaceLayoutKey)
+            workspaceLayoutCache = snapshot
         }
+    }
+
+    /// Tests write the workspace-layout key directly; give them an explicit reset.
+    static func invalidateWorkspaceLayoutCacheForTesting() {
+        workspaceLayoutCacheLock.lock()
+        defer { workspaceLayoutCacheLock.unlock() }
+        workspaceLayoutCache = nil
     }
 
     static func agentSettings(for workspaceID: UUID) -> WorkspaceAgentSettings {

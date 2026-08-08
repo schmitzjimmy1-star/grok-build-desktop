@@ -109,7 +109,10 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMenuDele
         // Give live grok sessions a bounded window to close cleanly. The previous
         // fire-and-forget shutdown raced process exit, so SIGTERM frequently lost and
         // children were left to die on stdin EOF instead.
-        guard !terminationReplyPending else { return .terminateNow }
+        // A quit that arrives while one is already in flight must keep waiting on the
+        // same reply — the old `.terminateNow` here silently skipped the teardown gate
+        // for every quit after the first.
+        guard !terminationReplyPending else { return .terminateLater }
         terminationReplyPending = true
         sessionTeardownComplete = false
         NotificationCenter.default.post(name: .grokBuildPrepareForShutdown, object: nil)
@@ -118,6 +121,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMenuDele
             while !sessionTeardownComplete, ContinuousClock.now < deadline {
                 try? await Task.sleep(for: .milliseconds(50))
             }
+            terminationReplyPending = false
             sender.reply(toApplicationShouldTerminate: true)
         }
         return .terminateLater

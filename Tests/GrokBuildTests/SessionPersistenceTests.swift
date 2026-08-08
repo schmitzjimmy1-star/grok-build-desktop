@@ -22,6 +22,8 @@ final class SessionPersistenceTests: XCTestCase {
         savedSessionLayoutData = defaults.data(forKey: sessionLayoutKey)
         savedWorkspaceLayoutData = defaults.data(forKey: workspaceLayoutKey)
         savedSessionNames = defaults.object(forKey: sessionNameKey)
+        SessionLayoutStore.invalidateWorkspaceLayoutCacheForTesting()
+        SessionNameStore.invalidateCacheForTesting()
     }
 
     override func tearDown() {
@@ -33,6 +35,8 @@ final class SessionPersistenceTests: XCTestCase {
         } else {
             defaults.removeObject(forKey: sessionNameKey)
         }
+        SessionLayoutStore.invalidateWorkspaceLayoutCacheForTesting()
+        SessionNameStore.invalidateCacheForTesting()
         super.tearDown()
     }
 
