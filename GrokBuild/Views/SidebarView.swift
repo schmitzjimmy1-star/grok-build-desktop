@@ -427,6 +427,7 @@ private struct SessionSidebarRow: View {
             }
             .buttonStyle(.plain)
             .accessibilityLabel(SessionSidebarMetadata.accessibilityLabel(for: session))
+            .accessibilityIdentifier("grok-sidebar-session-row")
 
             Menu {
                 Button("Rename…", action: onRename)

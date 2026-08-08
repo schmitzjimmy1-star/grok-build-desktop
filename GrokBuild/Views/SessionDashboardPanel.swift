@@ -104,7 +104,7 @@ struct SessionDashboardPanel: View {
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
                 ScrollView {
-                    LazyVStack(alignment: .leading, spacing: 16) {
+                    VStack(alignment: .leading, spacing: 16) {
                         ForEach(SessionDashboardEntry.Group.allCases, id: \.self) { group in
                             let groupEntries = orderedEntries.filter { $0.group == group }
                             if !groupEntries.isEmpty {
