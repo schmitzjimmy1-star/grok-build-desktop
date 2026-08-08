@@ -5,83 +5,75 @@ Every item below is evidence-backed from the Slice 0–6 acceptance passes; noth
 here is speculative. Slice 7 owns visual metrics, responsive behavior, and
 accessibility; Slice 8 owns the full installed acceptance matrix and decision.
 
-## Accessibility defects observed during acceptance (Slice 7)
+## Slice 7 items 1–9 — ALL CLOSED (2026-08-07/08)
 
-1. **Session Dashboard sheet is opaque to assistive tech.** Its rows never
-   appeared in the AX walker, `entire contents` enumeration found no buttons,
-   and synthesized clicks/keyboard Tab focus could not select a row (Slice 2
-   acceptance note). Real pointer clicks work. The sheet needs real AX exposure
-   (row buttons with identifiers/labels) and keyboard operability.
-2. **`.menuStyle(.button)` menus don't open from AXPress or synthesized
-   clicks.** The model and mode menus required the `AXShowMenu` action; the
-   `.borderlessButton` add menu opened normally (Slice 4 note). Verify both
-   AXPress and AXShowMenu work on all composer menubuttons.
-3. **Sidebar session rows were absent from the captured AX tree** in every
-   Slice 0–2 snapshot (projects, agents, connections rows appeared; nested
-   session rows did not). The nested project→chat hierarchy must be first-class
-   for VoiceOver and the keyboard.
-4. **Focus order** (sidebar → header → transcript actions → composer →
-   inspector/review) has never been verified end-to-end; the plan's Slice 7
-   keyboard pass is still owed, including Escape closing only the topmost
-   transient surface and ⌘, preserving the task.
+The original accessibility, responsive, and visual-metrics sections (items
+1–9) are retired from this list: every item is closed with receipts in the
+progress logs and close-out sections below. Summary: dashboard AX exposure
+(1), menubutton AXPress (2), and sidebar session-row identifiers (3) were
+repaired in the first Slice 7 pass; the keyboard/Escape/⌘, pass (4), the
+wired sidebar responsive threshold (5), the inspector-overlay decision (6),
+light mode (7), the quiet-row/pills judgment (8, below), and the icon-only
+audit (9) closed in the Slice 7 close-out passes.
 
-## Responsive gaps (Slice 7)
+**Item 8 closure — quiet-row metrics and pills judgment (2026-08-07 night).**
+The two supplied target photographs are now preserved in the baseline
+directory (`00a-supplied-target-photo-1.jpg`, `00b-supplied-target-photo-2.jpg`
+— Slice 0's copy step had silently never happened; /tmp still held them).
+Measured against them (installed AX bounds):
+- Rail rows (New chat/Sessions/Plugins/Security): single-line, 32-pt height /
+  34-pt pitch — matches the photographs' compact rail. ✓
+- Section label ("Projects"): 19-pt caption-weight muted header — matches. ✓
+- Selected fill: subtle lighter rounded rectangle on both project and nested
+  session rows — matches. ✓
+- Nested session rows: indented single-line under their project — matches. ✓
+- **Accepted deviation:** GrokBuild project rows are two-line (name + path
+  subtitle, 46 pt) where the photographs show single-line (~30 pt) project
+  rows. The path subtitle is deliberate disambiguation for same-named folders
+  and does not disturb the hierarchy; recorded as kept.
+- **Pills judgment: KEEP.** The photographs' own target bullet list names
+  "Ask, Build, and Review launch cards" as part of the target design; the
+  intent cards live only in the empty transcript canvas (fixture 24) and
+  never in the sidebar, so the hierarchy is undisturbed.
 
-5. **No responsive thresholds exist.** At the 1100×720 minimum the sidebar
-   stays fixed-width and nothing collapses (fixture
-   `06-narrow-window-1100x720.png`, `17-slice4-composer-narrow.png`). Required
-   order: hide inspector first, collapse sidebar next, never compress the
-   transcript below its readable minimum.
-6. **Inspector overlap.** As a top-trailing overlay the inspector covers wide
-   transcript content (fixture `10-slice2-inspector-overlay.png`). Acceptable
-   per the overlay contract, but Slice 7 should confirm the compact width and
-   consider a reading-column-aware offset at wide sizes.
+## Product gaps 10–15 — final dispositions (2026-08-07/08)
 
-## Visual metrics vs. photographs (Slice 7)
+10. **Review pane scope model — DEFERRED by decision.** The single implicit
+    unstaged-project scope is the accepted contract for this parity effort;
+    Unstaged/Staged/Commit/Branch/Last-turn scopes remain a separately
+    authorized future feature (pane work plus turn attribution).
+11. **Safe Undo — DEFERRED by decision.** The changed-files card stays
+    Undo-free deliberately until a gated per-file revert operation is built
+    through `GitService`. No Undo control may appear before that exists.
+12. **Bell destination — CLOSED by decision.** The Session activity dashboard
+    IS the bell's activity surface (consistent with the Slice 1 contract:
+    "Activity is not a rail row; the bell owns it"). No dedicated view owed.
+13. **Live-worker photograph — CARRIED (bounded).** Workers settle too fast in
+    bounded fixture turns to photograph reliably; the recovery-required
+    inspector state HAS now been exercised live (the stopped session's
+    refused send + "can't be resumed — Send starts a fresh thread" banner +
+    Continue-as-New ledger, fixture 34 flow). Only the running-subagent-row
+    photograph itself remains, to be grabbed opportunistically during any
+    future long worker turn.
+14. **Count freshness — CLOSED.** The header review toggle now discloses the
+    refresh boundary (tooltip + accessibility hint: counts refresh at
+    selection and turn boundaries, not on external edits), alongside the
+    card's existing "Repository-wide changes" footer.
+15. **Cross-provider history replay — CLOSED as documented limitation.** The
+    backend cannot replay provider-specific tool history across providers;
+    the continuity system already refuses dishonest resumes and the contract
+    doc + matrix carry the new-session-per-provider rule. Re-confirmed by the
+    Slice 8 matrix running each OpenRouter route in a fresh session.
 
-7. **Light mode is unproven.** `AppDelegate` forces dark appearance at launch
-   and every fixture is dark; the Settings appearance controls exist but the
-   parity ladder (surfaces, borders, selected fills) has not been tuned or
-   captured in light mode.
-8. **Quiet-row metrics.** Sidebar row height/indent/selected fill and section
-   label weight have not been measured against the photographs; the empty-state
-   Ask/Build/Review pills still await their side-by-side judgment (keep only if
-   they don't disturb the hierarchy).
-9. **Icon-only controls audit** — every icon-only control needs label, hint,
-   value, and 36-pt hit target verification (most have them; the audit hasn't
-   been run as a sweep).
+## Slice 8 acceptance flows — ALL COMPLETE
 
-## Product gaps recorded during Slices 0–6 (Slice 8 or later authorization)
-
-10. **Review pane scope model.** Codex has Unstaged/Staged/Commit/Branch/Last
-    turn scopes; `PreviewPane` has one implicit unstaged-project scope. The
-    inline card's Review defaults to it; a proven last-turn scope needs pane
-    work plus turn attribution.
-11. **No safe Undo.** The changed-files card omits Undo deliberately; a real
-    revert operation (per-file checkout via `GitService`) would have to be
-    built and gated before any Undo control may appear.
-12. **Bell routes to the Session Dashboard**, not a dedicated activity view
-    (Slice 2 note). Codex's bell opens Activity; decide whether the dashboard
-    is that surface or a dedicated view is owed.
-13. **Live running-subagent row** was never photographed installed (worker
-    settled too fast in the Slice 5 probe); Slice 8's bounded fixture turn
-    should capture it, plus the recovery-required inspector state live.
-14. **Changed-files count freshness.** The count refreshes only at
-    select/turn boundaries (observed live in Slice 2/3); fine per contract,
-    but the card/header could disclose staleness after external edits.
-15. **Cross-provider web/tool history replay** remains a known backend
-    limitation (documented 2026-08-02): start a new session before switching
-    provider/model after a web or tool turn.
-
-## Slice 8 acceptance flows still owed
-
-The eleven flows in the plan's Slice 8 section, unchanged — notably: exact
-transcript identity across project/task switching, one bounded local fixture
-turn with streaming/thinking/tools/subagents/failure observation, attach file +
-MCP with requested-vs-used distinction, Stop with local stopped outcome,
-quit/relaunch restore, and light/dark + narrow/wide + reduced-motion +
-keyboard-only sweeps — ending in an ACCEPT / ACCEPT WITH FOLLOW-UP / REJECT
-decision.
+All eleven flows in the plan's Slice 8 section are verified with receipts in
+the progress logs and the "Slice 8 close-out and decision" section below.
+The decision is **ACCEPT WITH FOLLOW-UP (final)**; the only open work is the
+bounded follow-up list recorded there plus the defect backlog below (Add
+Model filter-leak P2, "system" display-name P3, per-New-chat helper weight
+P2, frontmost-loss P2, VoiceOver spot-check, manual reduced-motion sweep,
+and the opportunistic live-worker photograph from item 13).
 
 ## Slice 7 progress log (updated 2026-08-07 evening)
 
@@ -311,7 +303,10 @@ catalog picks), never by hand-editing config.toml:
 - **Kimi K3 was intentionally skipped** (owner said move on): blocked by the
   new editor defect below. Moonshot provider itself is Connected, so the
   re-add is a one-minute job once the defect is fixed or a fresh editor
-  cooperates.
+  cooperates. **Update 2026-08-07 night: Jimmy re-added kimi-k3 himself**
+  (`[model.kimi-k3]` verified in config.toml — chat_completions, 128K,
+  display name "moonshot"). All six models are restored; only the underlying
+  filter-leak P2 remains open as a defect.
 
 **New defects found during restoration:**
 
