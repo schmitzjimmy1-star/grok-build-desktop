@@ -287,7 +287,9 @@ final class ActivitySidebarTests: XCTestCase {
             try XCTUnwrap(sidebar.range(of: "else if let liveProjection")).lowerBound
         )
         XCTAssertTrue(sidebar.contains("snapshot.outcome.displayName"))
-        XCTAssertTrue(sidebar.contains("Technical details"))
+        // Codex parity Slice 5: the deep receipts live behind one Run details
+        // disclosure in the compact inspector.
+        XCTAssertTrue(sidebar.contains("Label(\"Run details\", systemImage: \"list.bullet.rectangle\")"))
         XCTAssertTrue(sidebar.contains("workerAccessibilityLabel"))
         XCTAssertTrue(sidebar.contains(".accessibilityElement(children: .ignore)"))
         XCTAssertFalse(sidebar.contains(".regularMaterial"))

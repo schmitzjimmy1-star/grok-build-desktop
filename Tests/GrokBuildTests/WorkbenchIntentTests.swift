@@ -51,29 +51,22 @@ final class WorkbenchIntentTests: XCTestCase {
         // always-visible model menu); model choice must not reappear mid-canvas.
         XCTAssertFalse(source.contains("grok-starter-model-selector"))
         XCTAssertTrue(source.contains("TextField(\"Do anything\""))
-        XCTAssertTrue(source.contains("@State private var showComposerDetails = false"))
+        // Codex parity Slice 4: no Details shelf state survives.
+        XCTAssertFalse(source.contains("showComposerDetails"))
 
+        // The leading cluster is add/context then run mode; the trailing cluster
+        // is model, voice, send. No Details toggle anywhere.
         let primaryStart = try XCTUnwrap(source.range(of: "private var composerPrimaryControls"))
-        let primaryEnd = try XCTUnwrap(source.range(of: "private var composerActionControls", range: primaryStart.upperBound..<source.endIndex))
+        let primaryEnd = try XCTUnwrap(source.range(of: "private var composerAddMenu", range: primaryStart.upperBound..<source.endIndex))
         let primarySource = String(source[primaryStart.lowerBound..<primaryEnd.lowerBound])
-        XCTAssertFalse(primarySource.contains("modeSelector"))
-        XCTAssertTrue(primarySource.contains("composerMCPMenu"))
-        XCTAssertTrue(primarySource.contains("composerCommandMenu"))
-        XCTAssertTrue(primarySource.contains("composerDetailsToggle"))
-        XCTAssertTrue(primarySource.contains("modelSelector"))
+        XCTAssertTrue(primarySource.contains("composerAddMenu"))
+        XCTAssertTrue(primarySource.contains("modeSelector"))
+        XCTAssertFalse(primarySource.contains("composerDetailsToggle"))
 
-        // Details row: leading edge is pure telemetry (context + usage); agent mode
-        // lives with the trailing action cluster beside review/Activity.
-        let detailsStart = try XCTUnwrap(source.range(of: "private var composerDetailLeadingControls"))
-        let detailsEnd = try XCTUnwrap(source.range(of: "private var composerDetailActionControls", range: detailsStart.upperBound..<source.endIndex))
-        let detailsSource = String(source[detailsStart.lowerBound..<detailsEnd.lowerBound])
-        XCTAssertFalse(detailsSource.contains("modeSelector"))
-        XCTAssertFalse(detailsSource.contains("modelSelector"))
-        XCTAssertTrue(detailsSource.contains("ContextUsageIndicator"))
-        XCTAssertTrue(detailsSource.contains("sessionReceiptMenu"),
-                      "the visible route badge must open the process/model receipt")
+        // Telemetry relocated to the model popover: context, usage, and the
+        // generation-bound route/process/model receipt remain reachable.
+        XCTAssertTrue(source.contains("Section(\"Session telemetry\")"))
         XCTAssertTrue(source.contains("grok-model-route-contract"))
         XCTAssertTrue(source.contains("Route, process, and model receipt"))
-        XCTAssertTrue(source.contains("Open the configured route and generation-bound process/model receipt"))
     }
 }

@@ -2,126 +2,12 @@ import Foundation
 import XCTest
 @testable import GrokBuild
 
-/// Slice 1 (agentic roadmap): the sidebar Activity lane is a pure, bounded projection over
-/// per-session mirrors — running work first, plain-language statuses, stable per-session ids.
+/// Activity presentation helpers plus the sidebar/inspector source contracts.
+/// (The former sidebar Activity lane projection was deleted in Codex parity Slice 6.)
 final class SidebarActivityTests: XCTestCase {
-    private let sessionA = UUID()
-    private let sessionB = UUID()
+    // The pure SidebarActivityProjection lane cases were removed with the
+    // projection itself in Codex parity Slice 6 (zero remaining consumers).
 
-    private func input(
-        _ id: UUID,
-        title: String,
-        background: [BackgroundActivity] = [],
-        scheduled: [ScheduledTask] = [],
-        workflows: [WorkflowRun] = []
-    ) -> SidebarActivityProjection.SessionInput {
-        SidebarActivityProjection.SessionInput(
-            sessionID: id,
-            sessionTitle: title,
-            backgroundActivities: background,
-            scheduledTasks: scheduled,
-            workflowRuns: workflows
-        )
-    }
-
-    func testRunningSortsBeforeScheduledBeforeFinishedAndCapsWithOverflow() {
-        let background: [BackgroundActivity] = [
-            BackgroundActivity(id: "done-1", kind: .backgroundCommand, title: "old build", status: "done"),
-            BackgroundActivity(id: "live-1", kind: .subagent, title: "researcher", status: "running"),
-            BackgroundActivity(id: "fail-1", kind: .monitor, title: "watcher", status: "failed: boom"),
-        ]
-        let scheduled = [
-            ScheduledTask(id: "s1", prompt: "check CI", intervalHuman: "5m", nextFireAt: nil, recurring: true)
-        ]
-        let workflows = [
-            WorkflowRun(id: "w1", name: "audit", phase: "Verify", status: "running", progress: "3/5"),
-        ]
-        let lane = SidebarActivityProjection.lane(
-            from: [input(sessionA, title: "Alpha", background: background, scheduled: scheduled, workflows: workflows)],
-            limit: 3
-        )
-
-        XCTAssertEqual(lane.entries.count, 3)
-        XCTAssertEqual(lane.overflowCount, 2)
-        // Running rows survive the cap; finished rows are what overflow drops.
-        XCTAssertTrue(lane.entries[0].isRunning)
-        XCTAssertTrue(lane.entries[1].isRunning)
-        XCTAssertEqual(lane.entries[2].kind, .scheduled)
-        XCTAssertFalse(lane.entries.contains { $0.id.contains("done-1") || $0.id.contains("fail-1") })
-    }
-
-    func testPlainLanguageStatusLabels() {
-        let background: [BackgroundActivity] = [
-            BackgroundActivity(id: "a", kind: .subagent, title: "worker", status: "completed"),
-            BackgroundActivity(id: "b", kind: .subagent, title: "worker", status: "failed: exit 1"),
-            BackgroundActivity(id: "c", kind: .subagent, title: "worker", status: "cancelled"),
-            BackgroundActivity(id: "d", kind: .subagent, title: "worker", status: "orphaned"),
-            BackgroundActivity(id: "e", kind: .backgroundCommand, title: "npm test", status: "running"),
-        ]
-        let lane = SidebarActivityProjection.lane(
-            from: [input(sessionA, title: "Alpha", background: background)],
-            limit: 10
-        )
-        let byID = Dictionary(uniqueKeysWithValues: lane.entries.map { ($0.id, $0.statusLabel) })
-        XCTAssertEqual(byID["\(sessionA.uuidString)/background/a"], "Done")
-        XCTAssertEqual(byID["\(sessionA.uuidString)/background/b"], "Failed")
-        XCTAssertEqual(byID["\(sessionA.uuidString)/background/c"], "Stopped")
-        XCTAssertEqual(byID["\(sessionA.uuidString)/background/d"], "No final report")
-        XCTAssertEqual(byID["\(sessionA.uuidString)/background/e"], "Running")
-    }
-
-    func testWorkflowPausedIsNotRunningAndPhaseNamesRunningStatus() {
-        let workflows = [
-            WorkflowRun(id: "p", name: "sweep", phase: "Find", status: "paused", progress: ""),
-            WorkflowRun(id: "r", name: "sweep2", phase: "Verify", status: "running", progress: ""),
-        ]
-        let lane = SidebarActivityProjection.lane(
-            from: [input(sessionA, title: "Alpha", workflows: workflows)],
-            limit: 10
-        )
-        let paused = lane.entries.first { $0.id.hasSuffix("/workflow/p") }
-        let running = lane.entries.first { $0.id.hasSuffix("/workflow/r") }
-        XCTAssertEqual(paused?.statusLabel, "Paused")
-        XCTAssertEqual(paused?.isRunning, false)
-        XCTAssertEqual(running?.statusLabel, "Verify")
-        XCTAssertEqual(running?.isRunning, true)
-    }
-
-    func testScheduledTaskDedupAcrossSchedulerMirrorAndBackgroundRow() {
-        let task = ScheduledTask(id: "t1", prompt: "loop", intervalHuman: "10m", nextFireAt: nil, recurring: true)
-        let background = [
-            BackgroundActivity(id: "bg-t1", kind: .scheduled, title: "loop", scheduledTask: task)
-        ]
-        let lane = SidebarActivityProjection.lane(
-            from: [input(sessionA, title: "Alpha", background: background, scheduled: [task])],
-            limit: 10
-        )
-        XCTAssertEqual(lane.entries.filter { $0.kind == .scheduled }.count, 1)
-        XCTAssertEqual(lane.entries.first?.statusLabel, "Every 10m")
-    }
-
-    func testSameActivityIDInTwoSessionsCannotCollide() {
-        let activity = BackgroundActivity(id: "shared", kind: .subagent, title: "worker", status: "running")
-        let lane = SidebarActivityProjection.lane(
-            from: [
-                input(sessionA, title: "Alpha", background: [activity]),
-                input(sessionB, title: "Beta", background: [activity]),
-            ],
-            limit: 10
-        )
-        XCTAssertEqual(lane.entries.count, 2)
-        XCTAssertEqual(Set(lane.entries.map(\.id)).count, 2)
-        XCTAssertEqual(Set(lane.entries.map(\.sessionID)), [sessionA, sessionB])
-    }
-
-    func testEmptySessionsProduceAnEmptyLaneSoTheSectionStaysHidden() {
-        let lane = SidebarActivityProjection.lane(from: [input(sessionA, title: "Alpha")])
-        XCTAssertTrue(lane.isEmpty)
-        XCTAssertEqual(lane.overflowCount, 0)
-    }
-
-    /// Agentic roadmap Slice 3: live tool metadata carries kind, status, and authoritative
-    /// MCP attribution — and never invents a "via" segment without a server receipt.
     func testLiveToolMetadataFormatsKindStatusAndMCPAttribution() {
         XCTAssertEqual(
             ActivitySidebarPresentation.liveToolMetadata(kind: "execute", status: "Running", mcpServerName: "chrome-devtools"),
@@ -142,9 +28,10 @@ final class SidebarActivityTests: XCTestCase {
         )
     }
 
-    /// Agentic roadmap Slices 3+4 source contracts: the live tool inspector expands the
-    /// full redacted receipt, live workers surface mid-turn receipts, and the sidebar
-    /// Connections lane toggles prompt attachments without writing any configuration.
+    /// Agentic roadmap Slice 3 + Codex parity Slice 1 source contracts: the live tool
+    /// inspector still expands the full redacted receipt and live workers still surface
+    /// mid-turn receipts, while the sidebar no longer renders a Connections lane — MCP
+    /// attachment stays reachable from the composer without any configuration writes.
     func testDelegationInspectorAndConnectionsWiring() throws {
         let repositoryRoot = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent()
@@ -177,24 +64,32 @@ final class SidebarActivityTests: XCTestCase {
             contentsOf: repositoryRoot.appendingPathComponent("GrokBuild/Views/SidebarView.swift"),
             encoding: .utf8
         )
-        XCTAssertTrue(sidebarSource.contains("ConnectionSidebarRow("),
-                      "Connections lane rows render through the dedicated component")
-        XCTAssertTrue(sidebarSource.contains("Label(\"Connections\", systemImage: \"network\")"))
-        XCTAssertTrue(sidebarSource.contains("if !connections.isEmpty {"),
-                      "an empty inventory must hide the Connections section")
+        XCTAssertFalse(sidebarSource.contains("ConnectionSidebarRow"),
+                       "Codex parity Slice 1: the sidebar renders no Connections lane")
+        XCTAssertFalse(sidebarSource.contains("Label(\"Connections\""),
+                       "Codex parity Slice 1: the sidebar renders no Connections section header")
 
-        let contentSource = try String(
-            contentsOf: repositoryRoot.appendingPathComponent("GrokBuild/ContentView.swift"),
+        // The capability the lane exposed remains reachable from the composer.
+        let chatSource = try String(
+            contentsOf: repositoryRoot.appendingPathComponent("GrokBuild/Views/ChatView.swift"),
             encoding: .utf8
         )
-        XCTAssertTrue(contentSource.contains("activeStore.togglePromptMCPAttachment(named: name)"),
-                      "toggling reuses the existing per-tab attachment machinery — no config writes")
-        XCTAssertTrue(contentSource.contains("connections: activeStore.promptMCPOptions"))
-        XCTAssertTrue(contentSource.contains("onManageConnections: { openSettings(tab: .mcpServers) }"))
+        XCTAssertTrue(chatSource.contains("grok-composer-add-menu"),
+                      "the composer add/context menu remains the visible MCP attachment surface (Slice 4 home)")
+        XCTAssertTrue(chatSource.contains("togglePromptMCPAttachment"),
+                      "attachment toggling stays wired from the composer")
+        let storeSource = try String(
+            contentsOf: repositoryRoot.appendingPathComponent("GrokBuild/Services/ChatStore.swift"),
+            encoding: .utf8
+        )
+        XCTAssertTrue(storeSource.contains("func togglePromptMCPAttachment(named name: String)"),
+                      "per-tab attachment machinery survives the sidebar removal — no config writes")
     }
 
-    /// Source contract: the lane renders in the sidebar, navigates to the owning session,
-    /// and ContentView builds it from the live stores' observed mirrors only.
+    /// Codex parity Slice 1 source contract: the sidebar is navigation-only. The
+    /// Activity lane, Agents hub, and primary Activity/Workflows rows are gone; the
+    /// header bell remains the activity entry point, and the lane projection models
+    /// stay for their remaining consumers until Slice 6 decides ownership.
     func testSidebarAndContentViewWiring() throws {
         let repositoryRoot = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent()
@@ -204,18 +99,26 @@ final class SidebarActivityTests: XCTestCase {
             contentsOf: repositoryRoot.appendingPathComponent("GrokBuild/Views/SidebarView.swift"),
             encoding: .utf8
         )
-        XCTAssertTrue(sidebarSource.contains("if !activityLane.isEmpty {"),
-                      "empty lane must hide the section entirely")
-        XCTAssertTrue(sidebarSource.contains("SidebarActivityRow(entry: entry)"),
-                      "lane rows render through the dedicated row component")
+        XCTAssertFalse(sidebarSource.contains("SidebarActivityRow"),
+                       "Codex parity Slice 1: the sidebar renders no Activity lane rows")
+        XCTAssertFalse(sidebarSource.contains("Label(\"Activity\""),
+                       "Codex parity Slice 1: the sidebar renders no Activity section header")
+        XCTAssertFalse(sidebarSource.contains("CodexRailButton(title: \"Activity\""),
+                       "Activity is not a large primary rail row; the bell owns it")
+        XCTAssertFalse(sidebarSource.contains("CodexRailButton(title: \"Workflows\""),
+                       "Workflows is not a primary rail row; Settings and the composer command menu own it")
+        XCTAssertTrue(sidebarSource.contains("Button(action: onOpenActivity) {"),
+                      "the header bell remains and opens the activity surface")
 
         let contentSource = try String(
             contentsOf: repositoryRoot.appendingPathComponent("GrokBuild/ContentView.swift"),
             encoding: .utf8
         )
-        XCTAssertTrue(contentSource.contains("activityLane: sidebarActivityLane"),
-                      "ContentView must pass the projected lane to the sidebar")
-        XCTAssertTrue(contentSource.contains("selectSession(entry.sessionID)"),
-                      "activating a lane row navigates to the owning session")
+        XCTAssertFalse(contentSource.contains("activityLane:"),
+                       "ContentView no longer feeds an operational lane into the sidebar")
+        XCTAssertFalse(contentSource.contains("agentEntries:"),
+                       "ContentView no longer feeds agent hub entries into the sidebar")
+        XCTAssertFalse(contentSource.contains("connections: activeStore.promptMCPOptions"),
+                       "ContentView no longer feeds MCP connections into the sidebar")
     }
 }

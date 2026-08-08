@@ -264,6 +264,32 @@ Stop after baseline tests and screenshots. Handoff: "Slice 0 froze the exact ins
 residue and target photographs. Begin Slice 1 by changing the left sidebar only; do not
 touch the composer, transcript, inspector, or runtime."
 
+### Slice 0 receipt — completed 2026-08-07
+
+- Identity: clean worktree on `main` == `personal/main` at HEAD
+  `4d724e5e61ca03cbcafb0ad6b648c5553b3978f7`; the installed bundle stamps the same
+  commit with `GrokBuildSourceDirty = false`; dist/installed executable SHA-256 both
+  `740c93839625ff80e7e0198d7f07bbbf712a4343201a97e7c8429d3f9515f562`; deep/strict
+  signing under Team `DD2GCQJVB4`; quarantine absent. The dirty baseline at slice start
+  was empty, so preservation required no action; Slice 0 added only its named files and
+  screenshot fixtures.
+- Photographs: both `/tmp/codex-remote-attachments/...` fixtures verified present and
+  readable; referenced in place, not copied (repository retention was not authorized).
+- Installed evidence: six screenshots under
+  `docs/images/codex-parity-baseline-2026-08-07/` covering active transcript with and
+  without the inspector, the expanded Details shelf, the open Review pane, the New chat
+  empty state, and the 1100×720 minimum window. Captured with accessibility automation
+  against the exact installed bundle; no provider prompt sent; the only backend process
+  was the documented New-chat warm start; the app quit with zero remaining processes.
+- Matrix: `docs/UI_ACCEPTANCE_MATRIX.md` § "Codex parity Slice 0" names the mismatch
+  and backend owner for sidebar, task header, transcript, inline file summary,
+  composer, inspector, Review pane, empty state, and resizing.
+- Tests: `Tests/GrokBuildTests/CodexShellParityTests.swift` — five red-baseline
+  inventory tests pinning the Details shelf (with its duplicated Review/Activity
+  controls), the sidebar operational lanes and their ContentView wiring, the 620-point
+  Activity dashboard, the empty-state pills, and the buried Review entry point. Each
+  test names the slice that must replace it. No production code changed.
+
 ## Slice 1 — rebuild the left sidebar as navigation, not operations
 
 ### Objective
@@ -321,6 +347,34 @@ tests remain green. No composer or right-panel changes yet.
 "Slice 1 made the left sidebar navigation-only without deleting agent or MCP capability.
 Begin Slice 2 by correcting the task header and route ownership only."
 
+### Slice 1 receipt — completed 2026-08-07
+
+- Removed from `SidebarView.swift`: the Activity lane (`SidebarActivityRow` + overflow),
+  the Agents section (`AgentHubRow`), the Connections section (`ConnectionSidebarRow`),
+  the primary Activity and Workflows rail rows, and their properties/callbacks. The rail
+  is New chat / Sessions / Plugins / Security; the header bell opens the activity
+  surface (currently the Session Dashboard — re-routing belongs to Slice 2). Projects,
+  nested sessions, pins, filter, add project, and the account/settings footer remain.
+- `ContentView.swift`: stopped passing `activityLane`/`agentEntries`/`connections`;
+  removed `agentHubRoles`, `agentHubEntries`, and `sidebarActivityLane` (sole consumer
+  was the deleted rendering); `refreshAgentHubRoles` became
+  `refreshWorkspaceAgentInventories`, preserving the bootstrap/role-change refresh of
+  discovered agents and prompt-MCP options. `createLiveSession(for:agent:)` and its
+  pre-launch `TabAgentIntent` binding are retained. `AgentHubProjection` and
+  `SidebarActivityProjection` models and their pure tests remain pending Slice 6.
+- Tests: `SidebarActivityTests.testDelegationInspectorAndConnectionsWiring` and
+  `testSidebarAndContentViewWiring`, `AgentsAndCapabilitiesTests.testAgentHubSidebarAndLaunchWiring`,
+  and `CodexShellParityTests.testSidebarOperationalLanesResidueStillExists` were replaced
+  with exclusion + capability-preservation contracts (`testSidebarIsNavigationOnly`).
+  Focused suites 40/40; full `make test` 616/0; `git diff --check` clean.
+- Ship/acceptance: `make ship` all-PASS at stamp `4d724e5e…` == HEAD with dirty=true
+  disclosed; dist/installed SHA-256 `439cbc1e…`; Team `DD2GCQJVB4`; no quarantine.
+  Installed Computer Use acceptance verified the navigation-only sidebar, the bell →
+  Session Dashboard → Escape round trip with intact session identity, and untouched
+  composer/transcript/inspector surfaces. No provider prompt; clean quit, zero orphans.
+- Docs: `ARCHITECTURE.md` (Key views row, three lane sections, common-tasks row) and
+  `README.md` (navigation-only sidebar bullet) updated in the same pass.
+
 ## Slice 2 — task header and workspace routing
 
 ### Objective
@@ -357,6 +411,35 @@ and returns to the same task without resetting the transcript.
 
 "Slice 2 established one header and one route owner per surface. Begin Slice 3 by moving
 work evidence into the transcript and Review pane; do not touch the composer yet."
+
+### Slice 2 receipt — completed 2026-08-07
+
+- Route ownership: `ContentView` now documents one owner per surface — `route` for the
+  canvas, a new mutually exclusive `SessionModal` enum (+ `sessionModalBinding`) for the
+  Browse Sessions / activity-dashboard sheets replacing two independent Booleans,
+  `showPreview` for the Git review split, and per-tab `ChatView.showActivitySidebar`
+  for the inspector. The bell, ellipsis entries, and the `.sessionsRequested` menu
+  command all route through the modal owner.
+- Header: the trailing cluster is now contextual Review (`grok-header-review-toggle`,
+  shown only when the generation-bound Git snapshot reports changed files or the pane
+  is open), the inspector toggle, and Settings. The leading side keeps sidebar toggle,
+  folder glyph, title, and ellipsis. The header Review targets the same real
+  `PreviewPane` destination as the changed-files entry.
+- Inspector presentation: `ChatView`'s body changed from an HStack third column to a
+  `ZStack(alignment: .topTrailing)` overlay, so opening the inspector no longer
+  compresses the conversation. ActivitySidebar content is untouched (Slice 5 owns it).
+- Tests: `SessionDashboardNavigationTests` updated to the modal dismissal pattern;
+  `CodexShellParityTests` gained `testHeaderAndRouteOwnership` and the review-residue
+  inventory was renamed to reflect the new header entry beside the Slice 4 shelf
+  target. Focused suites green; full `make test` 617/0; `git diff --check` clean.
+- Ship/acceptance: `make ship` all-PASS at stamp `4d724e5e…` == HEAD, dirty=true
+  disclosed; dist/installed SHA-256 `d1be0d4d…`; Team `DD2GCQJVB4`; no quarantine.
+  Installed Computer Use acceptance verified header Review ↔ real Git pane, the
+  non-compressing inspector overlay, bell → dashboard → Escape, Settings → Escape, and
+  cross-project task switching with exact transcript identity on return. No provider
+  prompt; clean quit with zero orphans. Automation caveat: the dashboard sheet ignored
+  synthesized clicks/AX row presses, so task switching was driven through the sidebar
+  project rows; recorded in the matrix for the Slice 7 accessibility pass.
 
 ## Slice 3 — transcript hierarchy and inline changed-files card
 
@@ -408,6 +491,34 @@ that Review opens the exact diff. Existing dirty work is not falsely attributed.
 
 "Slice 3 put changed-file truth in the conversation and real diffs in Review. Begin Slice
 4 by replacing the composer and deleting the Details shelf."
+
+### Slice 3 receipt — completed 2026-08-07
+
+- New pure projection `ChangedFilesSummaryProjection`
+  (`GrokBuild/Models/ChangedFilesSummary.swift`): gates on the settled
+  `RunEvidenceSnapshot` and its generation-bound `gitReviewFiles`; turn attribution is
+  only successful workspace write/edit artifacts intersected with the Git list;
+  external artifacts and writes Git cannot see never inflate the Edited claim; +/−
+  counts parse from the already-fetched unified diffs with nil (never zero) for
+  untracked placeholders and disclosed partial totals.
+- New `ChangedFilesSummaryCard` view renders inline in the transcript tail after a
+  settled turn: headline ("Edited N files" vs "N changed files in project"), totals,
+  three visible rows with per-file counts, "Show N more files", a Review button
+  targeting the real `PreviewPane`, and an explicit unattributed-scope note. No Undo
+  control — no safe real undo exists. `RunEvidenceSnapshot` was untouched; ContentView
+  gained one documented pass-through line (`reviewDiffs: activeReviewDiffs`).
+- Tests: focused `ChangedFilesSummaryTests` 7/7; full `make test` 624/0;
+  `git diff --check` clean; `make ship` all-PASS at stamp `4d724e5e…` == HEAD
+  (dirty=true disclosed), dist/installed SHA-256 `74ecc6f7…`, Team `DD2GCQJVB4`,
+  no quarantine.
+- Installed acceptance used the slice-gate's required bounded live probe: one
+  authorized billable Grok 4.5 turn (31.9k tokens, 2 calls) wrote `SLICE3_PROBE.md`;
+  the settled card read **Edited 1 file +367 −339 (counted files)** with the probe file
+  leading and "15 more changed files … not attributed to this turn"; the card's Review
+  opened the pane at identical totals (16 files +367 −339) and the exact
+  `ARCHITECTURE.md` unified diff. The probe file was verified and removed after
+  acceptance; the auto-fork continuity path ran and was visibly disclosed. Clean quit,
+  zero orphans.
 
 ## Slice 4 — replace the composer; delete the Details shelf
 
@@ -474,6 +585,36 @@ still work.
 "Slice 4 removed the composer telemetry shelf and preserved every authoring/runtime
 control in a Codex-shaped composer. Begin Slice 5 by replacing the right-side Activity
 dashboard with a contextual inspector."
+
+### Slice 4 receipt — completed 2026-08-07
+
+- Deleted from `ChatView.swift`: `showComposerDetails`, `composerDetailsToggle`,
+  `composerDetailsDisclosure`, `composerDetailsAccessibilityValue`, `composerCenterHint`
+  (keyboard-hint prose included), `projectStatusRow`, the duplicate Details
+  Review/Activity controls (`reviewControls`), the standalone MCP and hammer menus, the
+  branch label plumbing (`refreshBranchLabel`), and `sessionReceiptMenu`.
+- Relocations (no data or action deleted): files + MCP toggles + skills/workflows +
+  Browser Tools/Computer Use submenus → one `composerAddMenu` (`grok-composer-add-menu`)
+  with the status-refresh tasks reattached; run mode → compact bottom-row control;
+  context budget, settled usage, and the `grok-model-route-contract` route/process/model
+  receipt → the model popover ("Session telemetry" + receipt submenu); Review → header
+  + inline card (Slices 2–3 homes); Activity → header toggle; branch/worktree →
+  header More menu ("Branches & Worktrees…"). Chips stay inside the composer envelope;
+  the editor keeps its one-to-eight-line growth on one rounded surface.
+- Tests: new plan-named `ComposerPresentationContractTests` (3 contracts: authoring
+  controls present, Details absent in every spelling, telemetry reachable from truthful
+  homes); replaced the named assertions in `ACPClientContractTests`,
+  `WorkbenchIntentTests`, `ChatTranscriptLayoutTests`, `UsageAndRoutingTests`, plus
+  `CodexShellParityTests` and `SidebarActivityTests` follow-ups. Full `make test`
+  **627/0**; `git diff --check` clean.
+- Ship/acceptance: `make ship` all-PASS at stamp `4d724e5e…` == HEAD (dirty=true
+  disclosed), dist/installed SHA-256 `d960de25…`, Team `DD2GCQJVB4`, no quarantine.
+  Installed Computer Use acceptance verified the wide and 1100×720 narrow composer with
+  no Details surface, the complete add/context menu, the Agent/Plan/YOLO mode menu, and
+  the model popover's telemetry + route receipt. UI-only: no provider prompt; clean
+  quit with zero orphans. `ContextUsageIndicator`/`agentStatusPill`/`memoryStatusPill`
+  remain unreferenced pending Slice 6. ARCHITECTURE.md and README.md updated in the
+  same pass.
 
 ## Slice 5 — contextual right inspector, not an Activity dashboard
 
@@ -547,6 +688,32 @@ action or turn a failed tool into success.
 receipts and recovery actions truthful. Begin Slice 6 by removing duplicate presentation
 projections and dead code only."
 
+### Slice 5 receipt — completed 2026-08-07
+
+- New pure `ContextInspectorProjection` (`Models/ContextInspectorProjection.swift`):
+  Subagents (running/done/failed/no-final-report from real workers only), Computer Use
+  (gated on configuration or a lifecycle receipt; no invented controls), Sources
+  (attachments, requested MCPs explicitly "not yet evidenced", used servers only from
+  tool receipts), Run details flag, and preserved failure counts.
+- `ActivitySidebar.swift` refactored in place: compact content-height top-trailing
+  overlay (620-pt budget deleted) with recovery card first, the four short sections,
+  a non-collapsible unresolved-errors line, and the full former evidence stack —
+  summary, artifacts, review files, workers, run/tool receipts, live sections —
+  unchanged inside one **Run details** disclosure. Escape now closes the panel
+  (`.cancelAction`); X and the header toggle remain. The idle Workspace panel and
+  "Ready to work" card were removed (changed files live in the inline card and Review
+  pane); the dead `reviewFileNames` pass-through was removed from ChatView/ContentView.
+- Tests: `ContextInspectorProjectionTests` (4 pure contracts), replaced dashboard
+  residue pins in `CodexShellParityTests` and `ActivitySidebarTests`; full `make test`
+  **631/0**; `git diff --check` clean; `make ship` all-PASS at stamp `4d724e5e…`
+  (dirty disclosed), dist/installed `818c8dc7…`, Team `DD2GCQJVB4`.
+- Installed acceptance: idle/no-evidence, live (LIVE badge + real Computer Use Ready
+  lifecycle), and settled ("Subagents ▸ 1 done") states verified against the exact
+  installed bundle via one authorized bounded subagent probe (44.5k tokens · 3 calls ·
+  1 turn); Escape-close verified; the recovery-required state is fixture-proven with
+  the recovery-first ordering pinned, since manufacturing a real one would mutate user
+  state or risk an unintended billable resume. Clean quit, zero orphans.
+
 ## Slice 6 — backend projection cleanup and single ownership
 
 ### Objective
@@ -587,6 +754,23 @@ within the prior accepted envelope.
 
 "Slice 6 removed duplicate presentation ownership without changing runtime authority.
 Begin Slice 7 for visual metrics, resizing, and accessibility only."
+
+### Slice 6 receipt — completed 2026-08-07
+
+- Deleted (zero truthful consumers after Slices 1–5): `Models/SidebarActivity.swift`,
+  `Models/AgentHub.swift`, their pure tests, and ChatView's dead chrome —
+  `agentStatusPill`, `memoryStatusPill` + unreachable Remember sheet and its three
+  states, and the unused `ContextUsageIndicator` struct. Memory notes/browsing remain
+  in Settings → Memory; `MemoryStore` runtime is untouched.
+- Retained with live consumers: `RunEvidenceLiveProjection`, `RunEvidenceSnapshot`,
+  `ToolPillStatus`, prompt-MCP inventories, usage/route receipts. Presentation is
+  already split into small pure models (sidebar, composer, `ChangedFilesSummary`,
+  `ContextInspectorProjection`); no polling or duplicate refresh triggers added.
+- New `testDeletedProjectionsAndChromeStayDeleted` pins single ownership; existing
+  isolation/stale-generation suites stay green. Full `make test` **624/0**;
+  `git diff --check` clean; `make ship` all-PASS at stamp `4d724e5e…`, dist/installed
+  `bd601108…`, Team `DD2GCQJVB4`. Installed idle: ≤1.7% CPU, ~103–108 MB RSS, clean
+  quit, zero orphans. ARCHITECTURE.md lane/hub sections updated.
 
 ## Slice 7 — visual metrics, responsive behavior, and accessibility
 

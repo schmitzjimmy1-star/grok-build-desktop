@@ -1243,20 +1243,12 @@ final class ACPClientContractTests: XCTestCase {
         XCTAssertTrue(chatSource.contains("private var browserStatusIndicator"))
         XCTAssertTrue(chatSource.contains("private var computerUseStatusIndicator"))
         XCTAssertTrue(chatSource.contains("TextField(\"Do anything\""))
-        XCTAssertTrue(chatSource.contains("@State private var showComposerDetails = false"))
-        XCTAssertTrue(chatSource.contains("private var composerDetailsToggle"))
-        XCTAssertTrue(chatSource.contains("private var composerDetailsDisclosure"))
-        XCTAssertTrue(chatSource.contains("grok-composer-details-toggle"))
         XCTAssertTrue(chatSource.contains("ComposerDensityPolicy.minimumLineCount...ComposerDensityPolicy.maximumLineCount"))
-
-        let statusStart = try XCTUnwrap(chatSource.range(of: "private var projectStatusRow"))
-        let statusEnd = try XCTUnwrap(chatSource.range(of: "private func refreshBranchLabel", range: statusStart.upperBound..<chatSource.endIndex))
-        let statusSource = String(chatSource[statusStart.lowerBound..<statusEnd.lowerBound])
-        XCTAssertFalse(statusSource.contains("agentStatusPill"))
-        XCTAssertFalse(statusSource.contains("sessionReceiptMenu"))
-        XCTAssertFalse(statusSource.contains("workflowsStatusPill"))
-        XCTAssertFalse(statusSource.contains("tasksStatusPill"))
-        XCTAssertFalse(statusSource.contains("memoryStatusPill"))
+        // Codex parity Slice 4: the composer Details shelf and project status row
+        // were deleted; no telemetry shelf may return below the composer.
+        XCTAssertFalse(chatSource.contains("showComposerDetails"))
+        XCTAssertFalse(chatSource.contains("composerDetailsDisclosure"))
+        XCTAssertFalse(chatSource.contains("private var projectStatusRow"))
 
         let sidebarSource = try String(
             contentsOf: repositoryRoot.appendingPathComponent("GrokBuild/Views/ActivitySidebar.swift"),

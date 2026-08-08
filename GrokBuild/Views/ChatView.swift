@@ -244,7 +244,10 @@ struct ChatView: View {
     var onToggleSidebar: () -> Void = {}
     var onOpenSettings: () -> Void = {}
     var reviewFileCount: Int = 0
-    var reviewFileNames: [String] = []
+    /// The already-fetched project diffs, used only to derive per-file +/− counts
+    /// for the inline changed-files card (Codex parity Slice 3). Git remains the
+    /// authority; ChatView never fetches or refreshes.
+    var reviewDiffs: [ChatStore.DetectedDiff] = []
     var isReviewVisible: Bool = false
     var onToggleReview: () -> Void = {}
     var onSelectSession: (UUID) -> Void = { _ in }
@@ -289,18 +292,13 @@ struct ChatView: View {
     // Keep the composer calm. Backend receipts and worker/file evidence live in
     // the optional right-side activity drawer instead of permanent chrome.
     @State private var showActivitySidebar = false
-    @State private var showComposerDetails = false
     @State private var toolPillStatus = ToolPillStatus()
-    @State private var branchLabel = "No branch"
     @FocusState private var inputFocused: Bool
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @AppStorage(BrowserSettingsKeys.appliedEnabled) private var browserToolsEnabled = BrowserSettings.defaults.enabled
     @AppStorage(ComputerUseSettingsKeys.appliedEnabled) private var computerUseEnabled = ComputerUseSettings.defaults.enabled
     @AppStorage(GrokSettingsKeys.memoryEnabled) private var memoryEnabled = GrokPermissionSettings.defaults.memoryEnabled
 
-    @State private var showMemoryBrowser = false
-    @State private var showRememberPrompt = false
-    @State private var memoryNoteText = ""
     @State private var cachedCustomSubagentNames: [String] = []
     @State private var showSavedWorkflows = false
     @State private var showDeepResearch = false
@@ -541,7 +539,10 @@ struct ChatView: View {
     }
 
     var body: some View {
-        HStack(spacing: 0) {
+        // Codex parity Slice 2: the contextual Activity inspector overlays the
+        // top-trailing corner instead of mounting as a third HStack column, so
+        // opening it never compresses the conversation's reading width.
+        ZStack(alignment: .topTrailing) {
             VStack(spacing: 0) {
             topBar
 
@@ -676,6 +677,23 @@ struct ChatView: View {
                             ) { optionId in
                                 store.respondToPermission(perm, with: optionId)
                             }
+                        }
+
+                        // Codex parity Slice 3: one inline changed-files card after a
+                        // settled turn whose generation-bound Git recording reports
+                        // changes. The projection separates turn-attributed edits from
+                        // repository-wide dirt; Review opens the real Git pane.
+                        if let changedFilesSummary = ChangedFilesSummaryProjection.summary(
+                            snapshot: store.runEvidenceSnapshot,
+                            diffs: reviewDiffs,
+                            workspace: store.currentWorkspace?.path
+                        ) {
+                            ChangedFilesSummaryCard(
+                                summary: changedFilesSummary,
+                                onOpenReview: {
+                                    if !isReviewVisible { onToggleReview() }
+                                }
+                            )
                         }
 
                         // A fixed 1pt element at the true bottom. Scrolling to a
@@ -885,13 +903,8 @@ struct ChatView: View {
                         Task { await store.reviewRecoveryCandidates() }
                     },
                     onRevealArtifact: onRevealArtifact,
-                    idleChangedFiles: reviewFileNames,
-                    onOpenReview: onToggleReview,
-                    onRevealFile: { file in
-                        guard let root = store.currentWorkspace?.path else { return }
-                        let url = root.appendingPathComponent(file)
-                        NSWorkspace.shared.activateFileViewerSelecting([url])
-                    }
+                    inspector: contextInspectorModel,
+                    onOpenComputerUseSettings: onOpenComputerUseSettings
                 )
                 .padding(.top, 12)
                 .padding(.trailing, 12)
@@ -971,12 +984,6 @@ struct ChatView: View {
             if let effort = pendingReasoningEffortChange {
                 Text("Apply \(store.reasoningEffortDisplayName(effort)) when Grok restarts. Summarize & restart runs /compact first to preserve context.")
             }
-        }
-        .sheet(isPresented: $showMemoryBrowser) {
-            MemoryBrowserPanel()
-        }
-        .sheet(isPresented: $showRememberPrompt) {
-            rememberPromptSheet
         }
         .sheet(isPresented: $showSavedWorkflows) {
             SavedWorkflowsPanel(projectRoot: store.currentWorkspace?.path) { workflow, argsJSON in
@@ -1090,6 +1097,12 @@ struct ChatView: View {
                 if store.currentWorkspace != nil {
                     Divider()
 
+                    // Branch/worktree switching relocated here from the deleted
+                    // composer project-status row (Codex parity Slice 4).
+                    Button("Branches & Worktrees…", systemImage: "point.topleft.down.curvedto.point.bottomright.up") {
+                        onSwitchBranch()
+                    }
+
                     Menu("Open project in", systemImage: "arrow.up.forward.app") {
                         openInButton(title: "Finder", target: .finder, appURL: InstalledAppFinder.finderURL, fallbackSystemImage: "finder")
                         if let app = InstalledAppFinder.installedApp(bundleIdentifiers: ["com.todesktop.230313mzl4w4u92", "com.cursor.Cursor"], appNames: ["Cursor"]) {
@@ -1119,6 +1132,8 @@ struct ChatView: View {
             .accessibilityLabel("More actions")
 
             Spacer()
+
+            headerReviewToggle
 
             activitySidebarToggle
 
@@ -1300,48 +1315,6 @@ struct ChatView: View {
         return "\(workspace):\(tab)"
     }
 
-    private var composerCommandMenu: some View {
-        Menu {
-            if composerChips.isEmpty {
-                Button {
-                    input = "/"
-                    inputFocused = true
-                } label: {
-                    Label("Browse commands with /", systemImage: "text.cursor")
-                }
-            } else {
-                ForEach(composerChips) { command in
-                    Button {
-                        Task { await handleComposerChip(command) }
-                    } label: {
-                        Label(
-                            command.name.replacingOccurrences(of: "-", with: " ").capitalized,
-                            systemImage: "hammer"
-                        )
-                    }
-                    .disabled(store.isStreaming || store.currentWorkspace == nil)
-                }
-            }
-        } label: {
-            Image(systemName: "hammer")
-                .font(.system(size: 13, weight: .medium))
-                .foregroundStyle(.secondary)
-                // Visual glyph stays 13pt; the tappable region meets the composer's
-                // 36pt pointer/keyboard target contract.
-                .frame(width: ComposerControlMetrics.minimumHitTarget, height: ComposerControlMetrics.minimumHitTarget)
-                .contentShape(Rectangle())
-        }
-        .menuStyle(.button)
-        .buttonStyle(.plain)
-        .accessibilityLabel("Skills and workflows")
-        .accessibilityValue(
-            composerChips.isEmpty
-                ? "Browse commands"
-                : "\(composerChips.count) available"
-        )
-        .help("Skills and workflows")
-    }
-
     private var toolActivityBlock: some View {
         ToolActivityGroup(
             tools: store.liveToolCalls,
@@ -1464,11 +1437,12 @@ struct ChatView: View {
                     }
                 }
 
+                // Codex parity Slice 4: the bottom row carries only immediate
+                // authoring/run controls — add/context, run mode, then model,
+                // voice, and send. No keyboard-hint prose, no Details shelf.
                 ViewThatFits(in: .horizontal) {
                     HStack(spacing: 9) {
                         composerPrimaryControls
-                        Spacer(minLength: 12)
-                        composerCenterHint
                         Spacer(minLength: 12)
                         composerActionControls
                     }
@@ -1490,221 +1464,151 @@ struct ChatView: View {
                 handleFileDrop(providers)
             }
             .frame(maxWidth: .infinity, alignment: .center)
-
-            composerDetailsDisclosure
         }
         .padding(.horizontal, 20)
         .padding(.vertical, 8)
     }
 
-    /// Fills the wide row's dead middle with quiet utility: the session usage meter once
-    /// turns have settled, otherwise the keyboard affordances. Disappears at narrow widths
-    /// via the existing ViewThatFits fallback.
-    private var composerCenterHint: some View {
-        Group {
-            if let usage = store.sessionUsageSummary {
-                Label(usage, systemImage: "gauge.with.needle")
-                    .help("Session usage across settled turns. Dollar figures are estimates from provider catalog pricing.")
-                    .accessibilityLabel("Session usage")
-                    .accessibilityValue(usage)
-                    .accessibilityIdentifier("grok-session-usage")
-            } else {
-                Text("⏎ send · ⇧⏎ new line · / skills")
-                    .accessibilityHidden(true)
-            }
-        }
-        .font(AppTheme.Typography.caption)
-        .foregroundStyle(.tertiary)
-        .lineLimit(1)
-    }
-
     private var composerPrimaryControls: some View {
         HStack(spacing: 9) {
-            composerMCPMenu
-            composerCommandMenu
-            composerDetailsToggle
-            modelSelector
+            composerAddMenu
+            modeSelector
         }
     }
 
-    private var composerMCPMenu: some View {
+    /// Codex parity Slice 4: the single add/context menu. Files, MCP
+    /// connections, skills/workflows, and the Browser/Computer Use project
+    /// tools all attach or launch from here; selected files and MCPs render as
+    /// chips inside the composer envelope above the text area.
+    private var composerAddMenu: some View {
         Menu {
-            if store.promptMCPInventoryIsLoading && store.promptMCPOptions.isEmpty {
-                Text("Checking connections…")
-            } else if store.promptMCPOptions.isEmpty {
-                Text(store.promptMCPInventoryUnavailable ? "MCP connections unavailable" : "No connected MCPs")
-            } else {
-                ForEach(store.promptMCPOptions) { option in
-                    Button {
-                        store.togglePromptMCPAttachment(named: option.name)
-                    } label: {
-                        Label(
-                            option.name,
-                            systemImage: store.selectedPromptMCPNames.contains(option.name)
-                                ? "checkmark.circle.fill"
-                                : (option.isReady ? "circle" : "circle.dashed")
-                        )
+            Button {
+                chooseFiles()
+            } label: {
+                Label("Attach Files…", systemImage: "paperclip")
+            }
+
+            Section("MCP connections") {
+                if store.promptMCPInventoryIsLoading && store.promptMCPOptions.isEmpty {
+                    Text("Checking connections…")
+                } else if store.promptMCPOptions.isEmpty {
+                    Text(store.promptMCPInventoryUnavailable ? "MCP connections unavailable" : "No connected MCPs")
+                } else {
+                    ForEach(store.promptMCPOptions) { option in
+                        Button {
+                            store.togglePromptMCPAttachment(named: option.name)
+                        } label: {
+                            Label(
+                                option.name,
+                                systemImage: store.selectedPromptMCPNames.contains(option.name)
+                                    ? "checkmark.circle.fill"
+                                    : (option.isReady ? "circle" : "circle.dashed")
+                            )
+                        }
+                        .disabled(store.isStreaming)
+                        .help(option.detail)
                     }
-                    .help(option.detail)
+                }
+                Button {
+                    Task { await store.refreshPromptMCPOptions(force: true) }
+                } label: {
+                    Label("Refresh Connections", systemImage: "arrow.clockwise")
                 }
             }
 
-            Divider()
-            Button {
-                Task { await store.refreshPromptMCPOptions(force: true) }
-            } label: {
-                Label("Refresh Connections", systemImage: "arrow.clockwise")
-            }
-        } label: {
-            HStack(spacing: 4) {
-                Image(systemName: "network")
-                    .font(.caption.weight(.semibold))
-                if !store.selectedPromptMCPNames.isEmpty {
-                    Text("\(store.selectedPromptMCPNames.count)")
-                        .font(.caption2.weight(.semibold))
+            Section("Skills and workflows") {
+                if composerChips.isEmpty {
+                    Button {
+                        input = "/"
+                        inputFocused = true
+                    } label: {
+                        Label("Browse commands with /", systemImage: "text.cursor")
+                    }
+                } else {
+                    ForEach(composerChips) { command in
+                        Button {
+                            Task { await handleComposerChip(command) }
+                        } label: {
+                            Label(
+                                command.name.replacingOccurrences(of: "-", with: " ").capitalized,
+                                systemImage: "hammer"
+                            )
+                        }
+                        .disabled(store.isStreaming || store.currentWorkspace == nil)
+                    }
                 }
             }
-            .frame(minWidth: ComposerControlMetrics.minimumHitTarget, minHeight: ComposerControlMetrics.minimumHitTarget)
-            .contentShape(Rectangle())
+
+            Section("Project tools") {
+                browserStatusIndicator
+                computerUseStatusIndicator
+            }
+        } label: {
+            Image(systemName: "plus")
+                .font(.system(size: 13, weight: .medium))
+                .frame(width: ComposerControlMetrics.minimumHitTarget, height: ComposerControlMetrics.minimumHitTarget)
+                .contentShape(Rectangle())
         }
         .menuStyle(.borderlessButton)
         .menuIndicator(.hidden)
         .fixedSize()
         .foregroundStyle(store.selectedPromptMCPNames.isEmpty ? Color.secondary : Color.accentColor)
-        .disabled(store.isStreaming)
-        .help("Attach connected MCPs to this prompt")
-        .accessibilityLabel("MCP connections")
+        .help("Add files, MCP connections, skills, and project tools")
+        .accessibilityLabel("Add context")
         .accessibilityValue(
-            "\(store.selectedPromptMCPNames.count) attached, \(store.promptMCPOptions.count) available"
+            "\(store.fileAttachments.count) files, \(store.selectedPromptMCPNames.count) MCPs attached"
         )
-        .accessibilityHint("Choose connected MCPs that may be used for the next prompt.")
-        .accessibilityIdentifier("grok-mcp-attachment-menu")
+        .accessibilityHint("Attach files or MCP connections, insert skills and workflows, or manage Browser Tools and Computer Use.")
+        .accessibilityIdentifier("grok-composer-add-menu")
+        // The Browser/Computer Use pill inputs previously refreshed from the
+        // project status row; the add menu is their surviving surface.
+        .task(id: store.currentWorkspace?.id) {
+            await refreshToolPillStatus()
+        }
+        .task(id: store.connectionState) {
+            await refreshToolPillStatus()
+        }
     }
 
     private var composerActionControls: some View {
         HStack(spacing: 9) {
+            modelSelector
             MicButton(voice: voiceInput, input: $input)
-
-            Button {
-                chooseFiles()
-            } label: {
-                Image(systemName: "plus")
-                    .frame(width: ComposerControlMetrics.minimumHitTarget, height: ComposerControlMetrics.minimumHitTarget)
-                    .contentShape(Rectangle())
-            }
-            .buttonStyle(.plain)
-            .foregroundStyle(.secondary)
-            .help("Attach files")
-            .accessibilityLabel("Attach files")
-            .accessibilityHint("Choose files to include with the next request.")
-
             sessionActionButton
         }
     }
 
-    private var composerDetailsToggle: some View {
-        Button {
-            if reduceMotion {
-                showComposerDetails.toggle()
-            } else {
-                withAnimation(.easeInOut(duration: 0.18)) {
-                    showComposerDetails.toggle()
-                }
-            }
-        } label: {
-            HStack(spacing: 5) {
-                Image(systemName: "slider.horizontal.3")
-                    .font(.caption.weight(.semibold))
-                Text("Details")
-                    .font(.caption.weight(.medium))
-                Image(systemName: showComposerDetails ? "chevron.up" : "chevron.down")
-                    .font(.system(size: 8, weight: .semibold))
-                    .foregroundStyle(.tertiary)
-                if let snapshot = store.runEvidenceSnapshot {
-                    Circle()
-                        .fill(snapshot.outcome == .completionReceiptMissing ? Color.orange : Color.secondary)
-                        .frame(width: 6, height: 6)
-                        .accessibilityHidden(true)
-                } else if store.liveRunEvidenceProjection != nil {
-                    Circle()
-                        .fill(Color.accentColor)
-                        .frame(width: 6, height: 6)
-                        .accessibilityHidden(true)
-                }
-            }
-            .padding(.horizontal, 7)
-            .frame(minHeight: ComposerControlMetrics.minimumHitTarget)
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .foregroundStyle(.secondary)
-        .help(showComposerDetails ? "Hide workspace details" : "Show workspace details")
-        .accessibilityLabel(showComposerDetails ? "Hide workspace details" : "Show workspace details")
-        .accessibilityValue(composerDetailsAccessibilityValue)
-        .accessibilityHint("Shows model, context, changed files, project tools, branch, and Activity.")
-        .accessibilityIdentifier("grok-composer-details-toggle")
-    }
-
+    /// Contextual header Review control (Codex parity Slice 2). Rendered only when
+    /// the generation-bound Git snapshot reports changed files, or the pane is
+    /// already open so it can always be closed from the header. It targets the real
+    /// Git review split — the same `onToggleReview` destination the changed-files
+    /// entry uses — never a duplicate surface.
     @ViewBuilder
-    private var composerDetailsDisclosure: some View {
-        if showComposerDetails {
-            VStack(alignment: .leading, spacing: 7) {
-                ViewThatFits(in: .horizontal) {
-                    HStack(spacing: 9) {
-                        composerDetailLeadingControls
-                        Spacer(minLength: 4)
-                        composerDetailActionControls
-                    }
-                    VStack(alignment: .leading, spacing: 5) {
-                        composerDetailLeadingControls
-                        composerDetailActionControls
+    private var headerReviewToggle: some View {
+        if reviewFileCount > 0 || isReviewVisible {
+            Button(action: onToggleReview) {
+                HStack(spacing: 6) {
+                    Image(systemName: "doc.on.doc")
+                        .font(.system(size: 12, weight: .semibold))
+                    Text("Review")
+                        .font(AppTheme.Typography.label)
+                    if reviewFileCount > 0 {
+                        Text("\(reviewFileCount)")
+                            .font(AppTheme.Typography.label)
+                            .foregroundStyle(.secondary)
                     }
                 }
-
-                projectStatusRow
+                .padding(.horizontal, 8)
+                .frame(minHeight: ComposerControlMetrics.minimumHitTarget)
+                .contentShape(Rectangle())
             }
-            .padding(.horizontal, 4)
-            .frame(maxWidth: AppTheme.Layout.composerMaxWidth)
-            .frame(maxWidth: .infinity, alignment: .center)
-            .transition(.move(edge: .bottom).combined(with: .opacity))
+            .buttonStyle(GrokChromeButtonStyle())
+            .foregroundStyle(.secondary)
+            .help(isReviewVisible ? "Hide the Git review pane" : "Show the Git review pane")
+            .accessibilityLabel(isReviewVisible ? "Hide changed files review" : "Show changed files review")
+            .accessibilityValue("\(reviewFileCount) changed \(reviewFileCount == 1 ? "file" : "files")")
+            .accessibilityIdentifier("grok-header-review-toggle")
         }
-    }
-
-    private var composerDetailLeadingControls: some View {
-        HStack(spacing: 9) {
-            ContextUsageIndicator(
-                label: store.currentModelContextLabel,
-                fraction: store.contextUsageFraction
-            )
-            .help("Context usage")
-            .accessibilityLabel("Context usage")
-            .accessibilityValue(store.currentModelContextLabel)
-
-            sessionReceiptMenu
-        }
-    }
-
-    private var composerDetailActionControls: some View {
-        HStack(spacing: 9) {
-            // Agent mode lives with the other agent-facing actions on the trailing
-            // edge; the leading edge stays pure telemetry (context + usage).
-            modeSelector
-            reviewControls
-            activitySidebarToggle
-        }
-    }
-
-    private var composerDetailsAccessibilityValue: String {
-        var parts = [showComposerDetails ? "Expanded" : "Collapsed"]
-        if reviewFileCount > 0 {
-            parts.append("\(reviewFileCount) changed \(reviewFileCount == 1 ? "file" : "files")")
-        }
-        if let snapshot = store.runEvidenceSnapshot {
-            parts.append(snapshot.outcome.displayName)
-        } else if store.liveRunEvidenceProjection != nil {
-            parts.append("Live run evidence, not settled")
-        }
-        return parts.joined(separator: ", ")
     }
 
     private var activitySidebarToggle: some View {
@@ -1747,6 +1651,35 @@ struct ChatView: View {
         .accessibilityIdentifier("grok-activity-sidebar-toggle")
     }
 
+    /// MCP servers actually evidenced by tool receipts: the live projection's
+    /// tool receipts mid-turn, else the latest assistant trace after settlement.
+    /// Requested attachments never enter this list (Slice 11 evidence rule).
+    private var evidencedMCPServers: [String] {
+        if let live = store.liveRunEvidenceProjection {
+            return live.tools.compactMap(\.mcpServerName)
+        }
+        if let trace = store.messages.last(where: { $0.role == .assistant })?.assistantTrace {
+            return trace.tools.compactMap(\.mcpServerName)
+        }
+        return []
+    }
+
+    /// Codex parity Slice 5: the compact inspector's presentation model, built
+    /// from existing authorities only.
+    private var contextInspectorModel: ContextInspectorProjection.Model {
+        let computerUseState: String? = store.mcpServerStatus(named: "grokbuild-computer-use")
+            .map(\.state.displayName)
+        return ContextInspectorProjection.model(
+            live: store.liveRunEvidenceProjection,
+            snapshot: store.runEvidenceSnapshot,
+            attachmentNames: store.fileAttachments.map(\.relativePath),
+            requestedMCPNames: store.selectedPromptMCPOptions.map(\.name),
+            evidencedMCPServers: evidencedMCPServers,
+            computerUseConfigured: computerUseEnabled,
+            computerUseStateLabel: computerUseState
+        )
+    }
+
     private var activityEvidenceAccessibilityValue: String {
         if let snapshot = store.runEvidenceSnapshot {
             return "Settled: \(snapshot.outcome.displayName)"
@@ -1755,154 +1688,6 @@ struct ChatView: View {
             return "Live run evidence, not settled"
         }
         return "No run evidence"
-    }
-
-    private var projectStatusRow: some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 10) {
-                if let project = store.currentWorkspace {
-                    Label(project.displayName, systemImage: "folder")
-                        .lineLimit(1)
-                    Button {
-                        onSwitchBranch()
-                        // Best-effort refresh once the checkout sheet has had time to act.
-                        Task {
-                            try? await Task.sleep(for: .seconds(3))
-                            await refreshBranchLabel(project.path)
-                        }
-                    } label: {
-                        Label(branchLabel, systemImage: "point.topleft.down.curvedto.point.bottomright.up")
-                    }
-                    .buttonStyle(.plain)
-                    .help("Branches & worktrees")
-                    browserStatusIndicator
-                    computerUseStatusIndicator
-                } else {
-                    Label("No project selected", systemImage: "folder")
-                }
-            }
-        }
-        .font(.caption.weight(.medium))
-        .foregroundStyle(.secondary)
-        .padding(.horizontal, 4)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .task(id: store.currentWorkspace?.id) {
-            await refreshToolPillStatus()
-            if let path = store.currentWorkspace?.path {
-                await refreshBranchLabel(path)
-            }
-        }
-        // Applied settings only change through flows that restart the connection,
-        // so this re-probes the cached pill inputs exactly when they can differ.
-        .task(id: store.connectionState) {
-            await refreshToolPillStatus()
-            if let path = store.currentWorkspace?.path {
-                await refreshBranchLabel(path)
-            }
-        }
-        // A finished turn may have moved HEAD (grok runs git); one read per message
-        // beats the old read-on-every-render.
-        .onChange(of: store.messages.count) { _, _ in
-            guard let path = store.currentWorkspace?.path else { return }
-            Task { await refreshBranchLabel(path) }
-        }
-    }
-
-    private func refreshBranchLabel(_ projectURL: URL) async {
-        let label = await Task.detached(priority: .utility) {
-            GitService.currentBranch(in: projectURL) ?? "No branch"
-        }.value
-        branchLabel = label
-    }
-
-    private var sessionReceiptMenu: some View {
-        Menu {
-            Section("Route, process, and model receipt") {
-                ForEach(store.sessionReceiptDetailLines.indices, id: \.self) { index in
-                    Text(store.sessionReceiptDetailLines[index])
-                }
-            }
-        } label: {
-            Label(store.currentRouteCompactLabel, systemImage: store.currentRouteSystemImage)
-                .font(.caption2.weight(.semibold))
-                .padding(.horizontal, 2)
-                .padding(.vertical, 2)
-                .foregroundStyle(.secondary)
-                .lineLimit(1)
-        }
-        .menuStyle(.borderlessButton)
-        .fixedSize()
-        .help("Open the configured route and generation-bound process/model receipt")
-        .accessibilityLabel("Open model route and process receipt")
-        .accessibilityValue("\(store.currentRouteAccessibilityValue) \(store.modelAccessibilityValue)")
-        .accessibilityIdentifier("grok-model-route-contract")
-    }
-
-    private var agentStatusPill: some View {
-        let effective = store.effectiveAgentSelection
-        let title = store.effectiveAgentDisplayName
-        let overriding = store.hasExplicitAgent
-
-        return Menu {
-            Section("This session's agent") {
-                ForEach(GrokAgentProfiles.builtInOptions) { option in
-                    Button {
-                        Task { await store.setSessionAgent(option.id) }
-                    } label: {
-                        Label(option.title, systemImage: effective == option.id ? "checkmark" : "person")
-                    }
-                }
-            }
-
-            let discovered = store.discoveredAgents.map(\.name)
-                .filter { name in !GrokAgentProfiles.builtInOptions.contains { $0.id == name } }
-            if !discovered.isEmpty {
-                Section("Discovered") {
-                    ForEach(discovered, id: \.self) { name in
-                        Button {
-                            Task { await store.setSessionAgent(name) }
-                        } label: {
-                            Label(name, systemImage: effective == name ? "checkmark" : "person.crop.square")
-                        }
-                    }
-                }
-            }
-
-            let excluded = Set(GrokAgentProfiles.builtInOptions.map(\.id) + store.discoveredAgents.map(\.name))
-            let customSubagents = cachedCustomSubagentNames.filter { !excluded.contains($0) }
-            if !customSubagents.isEmpty {
-                Section("Run as custom role") {
-                    ForEach(customSubagents, id: \.self) { name in
-                        Button {
-                            Task { await store.setSessionAgent(name) }
-                        } label: {
-                            Label(name, systemImage: effective == name ? "checkmark" : "person.2")
-                        }
-                    }
-                }
-            }
-
-            Divider()
-
-            Button {
-                onOpenAgentSettings()
-            } label: {
-                Label("Open Agent Settings", systemImage: "gearshape")
-            }
-        } label: {
-            Label(title, systemImage: "person.2.badge.gearshape")
-                .font(.caption2.weight(.semibold))
-                .padding(.horizontal, 2)
-                .padding(.vertical, 2)
-                .foregroundStyle(.secondary)
-        }
-        .menuStyle(.borderlessButton)
-        .fixedSize()
-        .disabled(store.currentWorkspace == nil)
-        .help(overriding
-            ? "Session agent (overrides the default). Changing it restarts this session's grok."
-            : "Session agent (follows the Settings default). Changing it restarts this session's grok.")
-        .accessibilityLabel("Session agent")
     }
 
     private var showWorkflowsPill: Bool {
@@ -2204,73 +1989,6 @@ struct ChatView: View {
         return "\(interval): \(shortPrompt)"
     }
 
-    // Only shown while cross-session memory is enabled (see `projectStatusRow`); the pill label
-    // is just "Memory" — an off state isn't surfaced because the pill is hidden when disabled.
-    private var memoryStatusPill: some View {
-        Menu {
-            Button {
-                showMemoryBrowser = true
-            } label: {
-                Label("Browse Memory Files…", systemImage: "folder")
-            }
-
-            Button {
-                memoryNoteText = ""
-                showRememberPrompt = true
-            } label: {
-                Label("Remember…", systemImage: "text.badge.plus")
-            }
-
-            Divider()
-
-            Button {
-                onOpenMemorySettings()
-            } label: {
-                Label("Open Memory Settings", systemImage: "gearshape")
-            }
-        } label: {
-            Label("Memory", systemImage: "brain.head.profile")
-                .font(.caption2.weight(.semibold))
-                .padding(.horizontal, 2)
-                .padding(.vertical, 2)
-                .foregroundStyle(.secondary)
-        }
-        .menuStyle(.borderlessButton)
-        .fixedSize()
-        .disabled(store.currentWorkspace == nil)
-        .help("Cross-session memory is on. Browse files, save a note, or open Memory settings.")
-        .accessibilityLabel("Memory")
-    }
-
-    private var rememberPromptSheet: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            Text("Remember a Note")
-                .font(.headline)
-            Text("Saved to your global memory so Grok can recall it in future sessions.")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-            TextEditor(text: $memoryNoteText)
-                .font(.body)
-                .frame(minWidth: 380, minHeight: 120)
-                .padding(6)
-                .background(RoundedRectangle(cornerRadius: AppTheme.Radius.large).fill(Color(nsColor: .textBackgroundColor)))
-                .overlay(RoundedRectangle(cornerRadius: AppTheme.Radius.large).stroke(Color(nsColor: .separatorColor)))
-            HStack {
-                Spacer()
-                Button("Cancel") { showRememberPrompt = false }
-                    .keyboardShortcut(.cancelAction)
-                Button("Save") {
-                    _ = store.remember(memoryNoteText)
-                    showRememberPrompt = false
-                }
-                .buttonStyle(.borderedProminent)
-                .disabled(memoryNoteText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-            }
-        }
-        .padding(20)
-        .frame(width: 460)
-    }
-
     /// Filesystem-derived pill inputs, cached so the status row's render loop stops
     /// stat-ing helper paths on every body evaluation (they only change after an
     /// Apply, which restarts the connection and re-triggers the refresh task).
@@ -2527,26 +2245,6 @@ struct ChatView: View {
         }
     }
 
-    @ViewBuilder
-    private var reviewControls: some View {
-        if reviewFileCount > 0 {
-            Button {
-                onToggleReview()
-            } label: {
-                Label(
-                    "\(reviewFileCount) Changed \(reviewFileCount == 1 ? "File" : "Files")",
-                    systemImage: "doc.on.doc"
-                )
-                .font(.caption.weight(.semibold))
-            }
-            .buttonStyle(.bordered)
-            .controlSize(.small)
-            .help(isReviewVisible ? "Hide changed files" : "Show changed files")
-            .accessibilityLabel(isReviewVisible ? "Hide changed files" : "Show changed files")
-            .accessibilityValue("\(reviewFileCount) changed \(reviewFileCount == 1 ? "file" : "files")")
-        }
-    }
-
     private var modeSelector: some View {
         Menu {
             ForEach(store.availableModes, id: \.rawValue) { mode in
@@ -2643,6 +2341,28 @@ struct ChatView: View {
             } else if store.isCurrentModelCustom {
                 Text("Reasoning effort unavailable")
             }
+
+            // Codex parity Slice 4: session telemetry relocated from the deleted
+            // Details shelf into the model popover — context budget, settled
+            // usage, and the generation-bound route/process/model receipt.
+            Divider()
+            Section("Session telemetry") {
+                Text("Context: \(store.currentModelContextLabel)")
+                if let usage = store.sessionUsageSummary {
+                    Text("Usage: \(usage)")
+                        .accessibilityIdentifier("grok-session-usage")
+                }
+            }
+            Menu {
+                Section("Route, process, and model receipt") {
+                    ForEach(store.sessionReceiptDetailLines.indices, id: \.self) { index in
+                        Text(store.sessionReceiptDetailLines[index])
+                    }
+                }
+            } label: {
+                Label(store.currentRouteCompactLabel, systemImage: store.currentRouteSystemImage)
+            }
+            .accessibilityIdentifier("grok-model-route-contract")
         } label: {
             HStack(spacing: 4) {
                 Text(modelSelectorLabel)
@@ -2874,32 +2594,6 @@ private struct CodexPromptPill: View {
 }
 
 // MARK: - Context Usage
-
-private struct ContextUsageIndicator: View {
-    let label: String
-    let fraction: Double
-
-    var body: some View {
-        HStack(spacing: 6) {
-            ZStack {
-                Circle()
-                    .stroke(Color.primary.opacity(0.15), lineWidth: 2)
-                Circle()
-                    .trim(from: 0, to: max(0.04, fraction))
-                    .stroke(Color.secondary, style: StrokeStyle(lineWidth: 2, lineCap: .round))
-                    .rotationEffect(.degrees(-90))
-            }
-            .frame(width: 14, height: 14)
-
-            Text(label)
-                .font(.caption.weight(.medium))
-                .foregroundStyle(.secondary)
-                .monospacedDigit()
-        }
-        .padding(.horizontal, 3)
-        .padding(.vertical, 2)
-    }
-}
 
 // MARK: - Auth Banner
 

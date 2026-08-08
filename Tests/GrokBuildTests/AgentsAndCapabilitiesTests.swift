@@ -325,53 +325,9 @@ extension AgentsAndCapabilitiesTests {
 /// Agentic roadmap Slice 2: the sidebar Agents hub is a pure projection over the default
 /// agent, custom roles, and discovered agents — ordered, deduplicated, and default-flagged.
 extension AgentsAndCapabilitiesTests {
-    func testAgentHubOrdersDefaultThenRolesThenDiscoveredWithRoleWinningNameCollisions() {
-        let discovered = [
-            GrokAgentInfo(dictionary: ["name": "zeta", "description": "Discovered zeta"]),
-            GrokAgentInfo(dictionary: ["name": "researcher", "description": "Shadowed by role"]),
-        ]
-        let roles = [
-            SubagentRole(name: "researcher", model: "deepseek/deepseek-v4-flash-0731", instruction: "dig"),
-            SubagentRole(name: "author", model: "", instruction: "write"),
-        ]
-        let entries = AgentHubProjection.entries(
-            discovered: discovered,
-            roles: roles,
-            defaultSelection: ""
-        )
+    // The pure AgentHubProjection cases were removed with the projection
+    // itself in Codex parity Slice 6 (zero remaining consumers).
 
-        XCTAssertEqual(entries.map(\.id), [
-            "builtin/",
-            "role/author",
-            "role/researcher",
-            "discovered/zeta",
-        ])
-        // The role beats the same-named discovered agent, keeping its model routing hint.
-        XCTAssertEqual(entries[2].subtitle, "deepseek/deepseek-v4-flash-0731")
-        // Empty role model reads as inheritance, not as a blank.
-        XCTAssertEqual(entries[1].subtitle, "Inherits session model")
-        // "" default selection flags the built-in Default row.
-        XCTAssertTrue(entries[0].isSessionDefault)
-        XCTAssertFalse(entries.dropFirst().contains(where: \.isSessionDefault))
-    }
-
-    func testAgentHubFlagsNamedDefaultAndKeepsSelectionValuesLaunchable() {
-        let roles = [SubagentRole(name: "verifier", model: "grok-4.5", instruction: "check")]
-        let entries = AgentHubProjection.entries(
-            discovered: [],
-            roles: roles,
-            defaultSelection: "verifier"
-        )
-        let verifier = try! XCTUnwrap(entries.first { $0.id == "role/verifier" })
-        XCTAssertTrue(verifier.isSessionDefault)
-        XCTAssertFalse(entries[0].isSessionDefault)
-        // The selection value feeds the existing --agent launch path unchanged.
-        XCTAssertEqual(GrokAgentProfiles.launchArgument(for: verifier.agentSelection), "verifier")
-        XCTAssertNil(GrokAgentProfiles.launchArgument(for: entries[0].agentSelection))
-    }
-
-    /// Source contract: the hub renders in the sidebar and starting a session binds the
-    /// explicit agent intent before any process launch (no restart of a fresh session).
     func testAgentHubSidebarAndLaunchWiring() throws {
         let repositoryRoot = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent()
@@ -381,17 +337,20 @@ extension AgentsAndCapabilitiesTests {
             contentsOf: repositoryRoot.appendingPathComponent("GrokBuild/Views/SidebarView.swift"),
             encoding: .utf8
         )
-        XCTAssertTrue(sidebarSource.contains("AgentHubRow(entry: entry)"))
-        XCTAssertTrue(sidebarSource.contains("Label(\"Agents\", systemImage: \"person.2\")"))
+        XCTAssertFalse(sidebarSource.contains("AgentHubRow"),
+                       "Codex parity Slice 1: the sidebar renders no Agents hub rows")
+        XCTAssertFalse(sidebarSource.contains("Label(\"Agents\""),
+                       "Codex parity Slice 1: the sidebar renders no Agents section header")
 
         let contentSource = try String(
             contentsOf: repositoryRoot.appendingPathComponent("GrokBuild/ContentView.swift"),
             encoding: .utf8
         )
         XCTAssertTrue(contentSource.contains("agentIntent: agent.map { .explicit($0) } ?? .inheritGlobalDefault"),
-                      "an Agents-hub launch must bind agent intent at session creation, pre-launch")
-        XCTAssertTrue(contentSource.contains("onStartSessionAsAgent: { entry in"))
+                      "explicit agent intent still binds at session creation, pre-launch")
         XCTAssertTrue(contentSource.contains(".onReceive(NotificationCenter.default.publisher(for: .subagentRolesChanged))"),
-                      "saving roles in Settings must refresh the hub")
+                      "saving roles in Settings still refreshes agent/MCP inventories")
+        XCTAssertTrue(contentSource.contains("refreshWorkspaceAgentInventories"),
+                      "discovered-agent and prompt-MCP refreshes survive the hub removal")
     }
 }

@@ -35,29 +35,12 @@ struct SidebarView: View {
     var sessions: [SidebarSession] = []
     var hiddenSessionCounts: [Workspace.ID: Int] = [:]
     var selectedSessionID: UUID?
-    /// Persistent agentic-work lane: live subagents, background commands, monitors,
-    /// scheduled tasks, and workflow runs across every live session. Pure read-model;
-    /// rows navigate to the owning session.
-    var activityLane: SidebarActivityLane = SidebarActivityLane()
-    /// Agents hub: grok's default, custom subagent roles, and discovered agents.
-    /// Selecting a row starts a new session as that agent in the selected project.
-    var agentEntries: [AgentHubEntry] = []
-    /// MCP connections known to grok (user/project scope plus live app connections),
-    /// from the existing prompt-attachment inventory. Toggling a row attaches or
-    /// detaches it for the active session's next message — no config is written.
-    var connections: [PromptMCPOption] = []
-    var attachedConnectionNames: Set<String> = []
     @Binding var expandedSessionWorkspaceIDs: Set<Workspace.ID>
     @Binding var hiddenSessionWorkspaceIDs: Set<Workspace.ID>
 
     var onAddWorkspace: () -> Void
     var onSelectWorkspace: (Workspace) -> Void
     var onSelectSession: (UUID) -> Void = { _ in }
-    var onSelectActivity: (SidebarActivityEntry) -> Void = { _ in }
-    var onStartSessionAsAgent: (AgentHubEntry) -> Void = { _ in }
-    var onOpenAgentSettings: () -> Void = {}
-    var onToggleConnection: (String) -> Void = { _ in }
-    var onManageConnections: () -> Void = {}
     var onNewSessionForWorkspace: (Workspace) -> Void = { _ in }
     var onRenameSession: (UUID, String) -> Void = { _, _ in }
     var onCloseSession: (UUID) -> Void = { _ in }
@@ -72,7 +55,6 @@ struct SidebarView: View {
     var onNewChat: () -> Void = {}
     var onBrowseSessions: () -> Void = {}
     var onOpenActivity: () -> Void = {}
-    var onOpenWorkflows: () -> Void = {}
     var onOpenPlugins: () -> Void = {}
     var onOpenSecurity: () -> Void = {}
     var onOpenSettings: () -> Void
@@ -139,11 +121,11 @@ struct SidebarView: View {
             .padding(.top, 12)
             .padding(.bottom, 8)
 
+            // Navigation-only rail (Codex parity Slice 1): Activity moved to the
+            // header bell; Workflows lives in Settings and the composer command menu.
             VStack(spacing: 2) {
                 CodexRailButton(title: "New chat", systemImage: "square.and.pencil", action: onNewChat)
                 CodexRailButton(title: "Sessions", systemImage: "clock.arrow.circlepath", action: onBrowseSessions)
-                CodexRailButton(title: "Activity", systemImage: "waveform", action: onOpenActivity)
-                CodexRailButton(title: "Workflows", systemImage: "calendar", action: onOpenWorkflows)
                 CodexRailButton(title: "Plugins", systemImage: "shippingbox", action: onOpenPlugins)
                 CodexRailButton(title: "Security", systemImage: "checkmark.shield", action: onOpenSecurity)
             }
@@ -169,27 +151,6 @@ struct SidebarView: View {
             }
 
             List {
-                if !activityLane.isEmpty {
-                    Section {
-                        ForEach(activityLane.entries) { entry in
-                            SidebarActivityRow(entry: entry) {
-                                onSelectActivity(entry)
-                            }
-                            .listRowInsets(EdgeInsets(top: 2, leading: 8, bottom: 2, trailing: 8))
-                            .listRowBackground(Color.clear)
-                        }
-                        if activityLane.overflowCount > 0 {
-                            Text("\(activityLane.overflowCount) more in Activity")
-                                .font(.caption2)
-                                .foregroundStyle(.tertiary)
-                                .listRowInsets(EdgeInsets(top: 0, leading: 18, bottom: 4, trailing: 10))
-                                .listRowBackground(Color.clear)
-                        }
-                    } header: {
-                        Label("Activity", systemImage: "waveform")
-                    }
-                }
-
                 Section {
                     ForEach(filtered) { ws in
                         Button {
@@ -281,55 +242,6 @@ struct SidebarView: View {
                         }
                         .buttonStyle(.plain)
                         .help("New project")
-                    }
-                }
-
-                if !agentEntries.isEmpty {
-                    Section {
-                        ForEach(agentEntries) { entry in
-                            AgentHubRow(entry: entry) {
-                                onStartSessionAsAgent(entry)
-                            }
-                            .listRowInsets(EdgeInsets(top: 2, leading: 8, bottom: 2, trailing: 8))
-                            .listRowBackground(Color.clear)
-                            .contextMenu {
-                                Button("New Session as \(entry.displayName)") {
-                                    onStartSessionAsAgent(entry)
-                                }
-                                Button("Manage Agents…") {
-                                    onOpenAgentSettings()
-                                }
-                            }
-                        }
-                    } header: {
-                        Label("Agents", systemImage: "person.2")
-                    }
-                }
-
-                if !connections.isEmpty {
-                    Section {
-                        ForEach(connections) { connection in
-                            ConnectionSidebarRow(
-                                connection: connection,
-                                isAttached: attachedConnectionNames.contains(connection.name)
-                            ) {
-                                onToggleConnection(connection.name)
-                            }
-                            .listRowInsets(EdgeInsets(top: 2, leading: 8, bottom: 2, trailing: 8))
-                            .listRowBackground(Color.clear)
-                            .contextMenu {
-                                Button(attachedConnectionNames.contains(connection.name)
-                                       ? "Detach from Next Message"
-                                       : "Attach to Next Message") {
-                                    onToggleConnection(connection.name)
-                                }
-                                Button("Manage Connections…") {
-                                    onManageConnections()
-                                }
-                            }
-                        }
-                    } header: {
-                        Label("Connections", systemImage: "network")
                     }
                 }
             }
@@ -476,142 +388,6 @@ private struct CodexRailButton: View {
         }
         .buttonStyle(.plain)
         .onHover { isHovered = $0 }
-    }
-}
-
-private struct ConnectionSidebarRow: View {
-    let connection: PromptMCPOption
-    let isAttached: Bool
-    var onToggle: () -> Void
-
-    var body: some View {
-        Button(action: onToggle) {
-            HStack(spacing: 8) {
-                Circle()
-                    .fill(connection.isReady ? Color.green : AppTheme.Palette.textMuted)
-                    .frame(width: 6, height: 6)
-                VStack(alignment: .leading, spacing: 1) {
-                    Text(connection.name)
-                        .font(.callout)
-                        .lineLimit(1)
-                        .foregroundStyle(.primary)
-                    Text(connection.detail)
-                        .font(.caption2)
-                        .foregroundStyle(.tertiary)
-                        .lineLimit(1)
-                }
-                Spacer(minLength: 0)
-                if isAttached {
-                    Image(systemName: "checkmark.circle.fill")
-                        .font(.caption)
-                        .foregroundStyle(.tint)
-                        .accessibilityHidden(true)
-                }
-            }
-            .padding(.horizontal, 8)
-            .padding(.vertical, 4)
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .help(isAttached
-              ? "\(connection.name) is attached to the next message. Click to detach."
-              : "Attach \(connection.name) to the next message in the active session.")
-        .accessibilityLabel("Connection: \(connection.name), \(connection.detail)\(isAttached ? ", attached" : "")")
-        .accessibilityHint("Toggles this MCP connection for the active session's next message. No configuration changes.")
-        .accessibilityIdentifier("grok-sidebar-connection-row")
-    }
-}
-
-private struct AgentHubRow: View {
-    let entry: AgentHubEntry
-    var onStart: () -> Void
-
-    var body: some View {
-        Button(action: onStart) {
-            HStack(spacing: 8) {
-                Image(systemName: entry.systemImageName)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .frame(width: 14)
-                VStack(alignment: .leading, spacing: 1) {
-                    HStack(spacing: 5) {
-                        Text(entry.displayName)
-                            .font(.callout)
-                            .lineLimit(1)
-                            .foregroundStyle(.primary)
-                        if entry.isSessionDefault {
-                            Image(systemName: "checkmark.circle")
-                                .font(.caption2)
-                                .foregroundStyle(.secondary)
-                                .help("Default for new sessions")
-                                .accessibilityHidden(true)
-                        }
-                    }
-                    if !entry.subtitle.isEmpty {
-                        Text(entry.subtitle)
-                            .font(.caption2)
-                            .foregroundStyle(.tertiary)
-                            .lineLimit(1)
-                    }
-                }
-                Spacer(minLength: 0)
-            }
-            .padding(.horizontal, 8)
-            .padding(.vertical, 4)
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .help("Start a new session as \(entry.displayName)")
-        .accessibilityLabel(entry.accessibilityLabel)
-        .accessibilityHint("Starts a new session with this agent in the selected project.")
-        .accessibilityIdentifier("grok-sidebar-agent-row")
-    }
-}
-
-private struct SidebarActivityRow: View {
-    let entry: SidebarActivityEntry
-    var onSelect: () -> Void
-
-    var body: some View {
-        Button(action: onSelect) {
-            HStack(spacing: 8) {
-                Image(systemName: entry.systemImageName)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .frame(width: 14)
-                VStack(alignment: .leading, spacing: 1) {
-                    Text(entry.title)
-                        .font(.callout)
-                        .lineLimit(1)
-                        .foregroundStyle(.primary)
-                    HStack(spacing: 4) {
-                        if entry.isRunning {
-                            Circle()
-                                .fill(Color.green)
-                                .frame(width: 5, height: 5)
-                        }
-                        Text(entry.statusLabel)
-                            .font(.caption2)
-                            .foregroundStyle(entry.isRunning ? .secondary : .tertiary)
-                        Text("·")
-                            .font(.caption2)
-                            .foregroundStyle(.tertiary)
-                        Text(entry.sessionTitle)
-                            .font(.caption2)
-                            .foregroundStyle(.tertiary)
-                            .lineLimit(1)
-                    }
-                }
-                Spacer(minLength: 0)
-            }
-            .padding(.horizontal, 8)
-            .padding(.vertical, 4)
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .help("\(entry.title) — \(entry.statusLabel)\nOpens \(entry.sessionTitle)")
-        .accessibilityLabel(entry.accessibilityLabel)
-        .accessibilityIdentifier("grok-sidebar-activity-row")
     }
 }
 
