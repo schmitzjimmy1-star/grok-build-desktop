@@ -61,6 +61,7 @@ struct SidebarView: View {
 
     @State private var filter = ""
     @State private var isFilterVisible = false
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var renamingSessionID: UUID?
     @State private var renameText = ""
 
@@ -103,7 +104,7 @@ struct SidebarView: View {
                     .foregroundStyle(.secondary)
                 Spacer()
                 Button {
-                    withAnimation(.easeInOut(duration: 0.16)) { isFilterVisible.toggle() }
+                    withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.16)) { isFilterVisible.toggle() }
                 } label: {
                     Image(systemName: "magnifyingglass")
                         .frame(width: 24, height: 24)

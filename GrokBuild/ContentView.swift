@@ -53,6 +53,9 @@ struct ContentView: View {
     @State private var gitCheckoutRequest: GitCheckoutRequest?
     @State private var gitError: String?
     @State private var projectChangedDiffs: [ChatStore.DetectedDiff] = []
+    /// Review pane scope (OUTSTANDING D-1). Presentation-only: the header chip
+    /// and inline-card attribution always read the full working tree.
+    @State private var reviewScope: GitService.ReviewScope = .workingTree
     @State private var boundedGitRefreshTask: Task<Void, Never>?
     @State private var didBootstrap = false
     @State private var isRestoringSessions = false
@@ -251,7 +254,9 @@ struct ContentView: View {
                         PreviewPane(
                             diffs: activeReviewDiffs,
                             workspace: currentWorkspace,
-                            onClose: { showPreview = false }
+                            scope: $reviewScope,
+                            onClose: { showPreview = false },
+                            onRevertFile: { path in await revertReviewFile(path) }
                         )
                         .frame(minWidth: 360, idealWidth: 460, maxWidth: 620, maxHeight: .infinity)
                         .disabled(isRestoringSessions)
@@ -278,6 +283,9 @@ struct ContentView: View {
         .onAppear { refreshSessionTitles() }
         .onChange(of: sessionListRevision) { _, _ in
             refreshSessionTitles()
+        }
+        .onChange(of: reviewScope) { _, _ in
+            Task { @MainActor in await refreshProjectChangedFiles() }
         }
         .onChange(of: activeStore.gitRefreshRevision) { _, _ in
             scheduleBoundedGitRefresh(for: activeStore)
@@ -1271,22 +1279,59 @@ struct ContentView: View {
         }
 
         do {
-            let files = try await GitService.changedFiles(in: workspace.path)
+            // The scope narrows only the pane's presentation (OUTSTANDING D-1).
+            // The inline card's attribution gate and the header chip count keep
+            // reading the full working-tree truth via recordGitReviewFiles.
+            let workingTreeFiles = try await GitService.changedFiles(in: workspace.path)
+            var files: [GitChangedFile]
+            switch reviewScope {
+            case .workingTree:
+                files = workingTreeFiles
+            case .lastTurn:
+                if let snapshot = activeStore.runEvidenceSnapshot {
+                    let attributed = ChangedFilesSummaryProjection.attributedWorkspacePaths(
+                        snapshot: snapshot,
+                        workspace: workspace.path
+                    )
+                    files = workingTreeFiles.filter { attributed.contains($0.path) }
+                } else {
+                    files = []
+                }
+            case .staged, .lastCommit, .branch:
+                files = try await GitService.changedFiles(scope: reviewScope, in: workspace.path)
+            }
             var diffs: [ChatStore.DetectedDiff] = []
             for file in files {
-                let diff = try await GitService.diffForChangedFile(file, in: workspace.path)
+                let diff = try await GitService.diffForChangedFile(
+                    file, scope: reviewScope, in: workspace.path)
                 diffs.append(ChatStore.DetectedDiff(raw: diff, filePath: file.path))
             }
             guard currentWorkspace?.id == workspace.id else { return }
             projectChangedDiffs = diffs
-            activeStore.recordGitReviewFiles(diffs.compactMap(\.filePath), workspaceID: workspace.id)
-            if diffs.isEmpty {
+            activeStore.recordGitReviewFiles(
+                workingTreeFiles.map(\.path), workspaceID: workspace.id)
+            // Auto-close only on the default scope: a narrower scope coming up
+            // empty is information, not a reason to slam the pane shut.
+            if diffs.isEmpty, reviewScope == .workingTree {
                 showPreview = false
             }
         } catch {
             guard currentWorkspace?.id == workspace.id else { return }
             projectChangedDiffs = []
         }
+    }
+
+    /// OUTSTANDING D-2: the gated per-file revert. The confirmation lives in
+    /// the Review pane; errors surface through the existing Git-action alert.
+    @MainActor
+    private func revertReviewFile(_ path: String) async {
+        guard let workspace = currentWorkspace else { return }
+        do {
+            try await GitService.revertPath(path, in: workspace.path)
+        } catch {
+            gitError = error.localizedDescription
+        }
+        await refreshProjectChangedFiles()
     }
 
     @MainActor

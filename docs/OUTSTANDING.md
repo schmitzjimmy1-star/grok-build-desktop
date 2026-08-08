@@ -23,18 +23,18 @@ W-6 (docked inspector) remain available for the owner to pick.
 | O-3 | **"Jump to latest" pill — CLOSED 2026-08-08, already instrumented.** The pill carries `grok-jump-to-latest`, a label, value, and hint; the acceptance script had matched titles instead of identifiers (the O-4 quirk). Scripts must match the identifier. | Closed | No change needed |
 | O-4 | **System Events cannot read AXDescription on SwiftUI elements** (identifier matching works; description matching does not). Affects scripted automation only; raw AX API surfaces names correctly. Known macOS/SwiftUI quirk, kept for awareness. | Environment quirk | Documented |
 
-## Manual passes owed (need a human or a system-settings change)
+## Manual passes owed
 
 | # | Item | State |
 |---|---|---|
-| M-1 | **Reduced-motion OS-level sweep.** Code honors `accessibilityReduceMotion` (chrome, Settings transitions, rich messages); flipping the system toggle for a live sweep needs Jimmy or explicit authorization to change system settings. | Owed |
+| M-1 | **Reduced motion — CLOSED 2026-08-08, code-enforced.** Every animating view file consults `accessibilityReduceMotion` (four ungated sites fixed: slash autocomplete scroll, sidebar filter toggle, models-pane scroll and templates toggle) and a repo-wide tripwire test fails the suite if a new `withAnimation` ships ungated. The optional OS-toggle glance remains available to the owner but is no longer tracked. | Closed |
 
-## Deferred features (explicitly decided, separately authorized when wanted)
+## Deferred features
 
 | # | Item | Decision record |
 |---|---|---|
-| D-1 | **Review pane scope model** (Unstaged/Staged/Commit/Branch/Last-turn). Single implicit unstaged-project scope is the accepted contract. | Worklist "gaps 10–15", disposition 10 |
-| D-2 | **Safe Undo** on the changed-files card. No Undo control until a gated per-file revert exists in `GitService`. | Worklist disposition 11 |
+| D-1 | **Review scopes — SHIPPED 2026-08-08.** The Review pane carries a scope picker: Working tree (default, the pre-existing everything-vs-HEAD view), Staged, Last commit, Branch (merge-base vs default base; empty when no base resolves), and Last turn (working tree filtered to the run's attributed paths). The header chip and inline-card attribution always read the full working tree; only the default scope may auto-close the pane. | Closed; `GitReviewScopeTests` |
+| D-2 | **Safe per-file revert — SHIPPED 2026-08-08.** `GitService.revertPath` (live status check → `restore --source=HEAD --staged --worktree` for tracked, `clean -f` for untracked) surfaces as a working-tree-scope-only control in the Review pane behind an explicit confirmation dialog. The inline card stays deliberately Undo-free per the quiet-thread direction. | Closed; `GitReviewScopeTests` |
 
 ## Standing behavioral caveats (documented contracts, not defects)
 

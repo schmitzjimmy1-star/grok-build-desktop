@@ -17,6 +17,7 @@ private struct SlashDisplayRow: Identifiable {
 }
 
 struct SlashAutocompleteView: View {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     let entries: [SlashMenuEntry]
     let activeIndex: Int
     var onSelect: (SlashCommand) -> Void
@@ -99,7 +100,7 @@ struct SlashAutocompleteView: View {
                 .padding(.vertical, 8)
             }
             .onChange(of: activeIndex) { _, newIndex in
-                withAnimation(.easeOut(duration: 0.12)) {
+                withAnimation(reduceMotion ? nil : .easeOut(duration: 0.12)) {
                     proxy.scrollTo("slash-nav-\(newIndex)", anchor: .center)
                 }
             }
