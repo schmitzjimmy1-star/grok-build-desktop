@@ -63,6 +63,7 @@ struct SessionsBrowserPanel: View {
             HStack {
                 TextField("Search sessions", text: $query)
                     .textFieldStyle(.roundedBorder)
+                    .accessibilityIdentifier("grok-sessions-search")
                     .onSubmit {
                         Task { await loadSessions() }
                     }
@@ -77,10 +78,12 @@ struct SessionsBrowserPanel: View {
                 Button("Search") {
                     Task { await loadSessions() }
                 }
+                .accessibilityIdentifier("grok-sessions-search-run")
                 Button("Recent") {
                     query = ""
                     Task { await loadSessions() }
                 }
+                .accessibilityIdentifier("grok-sessions-recent")
                 if cleanableCount > 0 {
                     Button(role: .destructive) {
                         showClearEmptyConfirm = true
@@ -89,6 +92,7 @@ struct SessionsBrowserPanel: View {
                     }
                     .help("Delete unnamed sessions with no summary that are not open or active")
                     .disabled(isMutating)
+                    .accessibilityIdentifier("grok-sessions-clear-empty")
                 }
             }
             .padding(.horizontal, 12)
@@ -131,6 +135,8 @@ struct SessionsBrowserPanel: View {
                     .padding()
             }
         }
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("grok-sessions-browser")
         .task { await loadSessions() }
         .alert(item: $pendingDeletion) { deletion in
             Alert(
@@ -237,6 +243,7 @@ struct SessionsBrowserPanel: View {
                 .buttonStyle(.borderedProminent)
                 .controlSize(.small)
                 .disabled(isOpenLive && isActive)
+                .accessibilityIdentifier("grok-sessions-resume")
 
                 Button(role: .destructive) {
                     pendingDeletion = SessionDeletion(session: session, workspace: workspace)
@@ -246,6 +253,7 @@ struct SessionsBrowserPanel: View {
                 .buttonStyle(.borderless)
                 .controlSize(.small)
                 .accessibilityLabel("Delete session")
+                .accessibilityIdentifier("grok-sessions-delete")
                 .disabled(isMutating || isOpenLive || isActive)
                 .help(isOpenLive ? "Close this session before deleting it" : isActive ? "Switch away from this session before deleting it" : "Delete this session permanently")
             }
@@ -266,6 +274,8 @@ struct SessionsBrowserPanel: View {
         .padding(.horizontal, 12)
         .padding(.vertical, 8)
         .contentShape(Rectangle())
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("grok-sessions-row")
     }
 
     private func displayName(for session: GrokSessionInfo) -> String {

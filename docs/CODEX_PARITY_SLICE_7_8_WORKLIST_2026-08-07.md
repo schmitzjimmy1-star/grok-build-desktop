@@ -396,3 +396,57 @@ Both remaining P1s are repaired on `agent/restore-quit-latency` (634 tests /
   children (which exit only on stdin EOF) can never outlive the app.
 - `purgeEmptySessions` now batches one layout save per purge instead of one
   full encode/HMAC/verify cycle per closed session.
+
+## OUTSTANDING close-out receipts (2026-08-08)
+
+`docs/OUTSTANDING.md` went all-clear on 2026-08-08. Per its contract, the
+closed rows' receipts land here; standing documented behaviors stay in that
+file as contracts, not defects.
+
+- **O-1 — External Chromium auto-start frontmost steal (fixed earlier
+  2026-08-08).** `--no-startup-window` added to the CDP launch arguments: the
+  auto-started browser opens no window (and steals no focus) until a page is
+  actually driven.
+- **O-3 — "Jump to latest" pill (closed 2026-08-08, no change needed).** The
+  pill already carried `grok-jump-to-latest`, a label, value, and hint; the
+  acceptance script had matched titles instead of identifiers (the O-4
+  quirk). Scripts must match the identifier.
+- **O-5 — Commit/PR popovers instrumented (2026-08-08).** The git popover
+  focuses its title field on open (`@FocusState` + presentation-time focus);
+  `popoverActionRow` now *requires* an identifier and help text, and all five
+  rows carry them (`grok-git-create-draft-pr`, `grok-git-create-pr`,
+  `grok-git-open-pr`, `grok-git-commit-and-push`, `grok-git-push-only`) plus
+  the two opener rows (`grok-review-commit-or-push`, `grok-review-create-pr`)
+  and the title/description/toggle fields. The two popovers are now mutually
+  exclusive, so exactly one primary can ever claim ⌘↩ at a time.
+  `OutstandingClosureTests`.
+- **O-6 — Session-migration banner de-permanented (2026-08-08).** The banner
+  is dismissible per run (the failure keeps writes disabled either way and
+  resurfaces next launch by design), counts the read-only sessions in its
+  message, and carries a Details popover naming the failure reason + code and
+  every session loaded read-only this launch (captured from the actual
+  fallback snapshot at bootstrap; untitled records fall back to "Untitled
+  session"). New `SessionMigrationBannerPresentation` policy; all three
+  persistence guards on the failure state are untouched and test-pinned.
+  `OutstandingClosureTests`.
+- **O-7 — SessionsBrowserPanel + GitCheckoutSheet instrumented (2026-08-08).**
+  Eight stable identifiers on the sessions browser (panel, search field/run,
+  recent, clear-empty, row, resume, delete) and ten on the checkout sheet
+  (sheet, filter, branch/worktree rows, both create forms' fields and
+  primaries, close). `OutstandingClosureTests`.
+- **M-1 — Reduced motion (closed 2026-08-08, code-enforced).** Every
+  animating view file consults `accessibilityReduceMotion` (four ungated
+  sites fixed: slash autocomplete scroll, sidebar filter toggle, models-pane
+  scroll and templates toggle) and a repo-wide tripwire test fails the suite
+  if a new `withAnimation` ships ungated.
+- **D-1 — Review scopes (shipped 2026-08-08).** Scope picker in the Review
+  pane: Working tree (default), Staged, Last commit, Branch (merge-base vs
+  default base; empty when no base resolves), Last turn (working tree
+  filtered to the run's attributed paths). Header chip and inline-card
+  attribution always read the full working tree; only the default scope may
+  auto-close the pane. `GitReviewScopeTests`.
+- **D-2 — Safe per-file revert (shipped 2026-08-08).** `GitService.revertPath`
+  (live status check → `restore --source=HEAD --staged --worktree` for
+  tracked, `clean -f` for untracked) surfaces as a working-tree-scope-only
+  control behind an explicit confirmation dialog; the inline card stays
+  deliberately Undo-free per the quiet-thread direction. `GitReviewScopeTests`.

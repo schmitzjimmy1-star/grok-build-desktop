@@ -92,6 +92,13 @@ struct ContentView: View {
     @State private var showUpgradeBanner = false
     @State private var bannerAppVersion: String?
     @State private var bannerCLIVersion: String?
+    /// O-6: banner dismissal is per-run only — the failure keeps writes
+    /// disabled either way and resurfaces on the next launch by design.
+    @State private var isMigrationBannerDismissed = false
+    @State private var showMigrationDetails = false
+    /// Captured at bootstrap when the layout load fails: the sessions that
+    /// loaded read-only this launch, for the banner's Details receipt.
+    @State private var migrationReadOnlySessionTitles: [String] = []
     @AppStorage(SidebarVisibility.storageKey)
     private var isSidebarVisible = SidebarVisibility.defaultVisible
 
@@ -107,18 +114,51 @@ struct ContentView: View {
     var body: some View {
         ZStack {
             VStack(spacing: 0) {
-            if sessionLayoutFailure != nil {
+            if let migrationFailure = sessionLayoutFailure, !isMigrationBannerDismissed {
                 HStack(spacing: 8) {
                     Image(systemName: "exclamationmark.triangle.fill")
-                    Text("Saved session migration failed. Legacy sessions are open read-only.")
-                        .font(.caption.weight(.medium))
+                        .accessibilityHidden(true)
+                    Text(SessionMigrationBannerPresentation.message(
+                        readOnlyCount: migrationReadOnlySessionTitles.count
+                    ))
+                    .font(.caption.weight(.medium))
+                    Spacer(minLength: 8)
+                    Button("Details…") { showMigrationDetails = true }
+                        .buttonStyle(.plain)
+                        .font(.caption.weight(.semibold))
+                        .help("Show which sessions are read-only and why saving is paused")
+                        .accessibilityIdentifier("grok-migration-banner-details")
+                        .popover(isPresented: $showMigrationDetails, arrowEdge: .bottom) {
+                            Text(SessionMigrationBannerPresentation.detail(
+                                failure: migrationFailure,
+                                sessionTitles: migrationReadOnlySessionTitles
+                            ))
+                            .font(.caption)
+                            .textSelection(.enabled)
+                            .frame(width: 380, alignment: .leading)
+                            .padding(14)
+                            .accessibilityIdentifier("grok-migration-details")
+                        }
+                    Button {
+                        // Hides the banner for this run only. Saving stays
+                        // paused; the failure returns next launch.
+                        isMigrationBannerDismissed = true
+                    } label: {
+                        Image(systemName: "xmark")
+                            .font(.caption.weight(.semibold))
+                    }
+                    .buttonStyle(.plain)
+                    .help("Hide this banner until the next launch")
+                    .accessibilityLabel("Dismiss migration banner")
+                    .accessibilityIdentifier("grok-migration-banner-dismiss")
                 }
                 .foregroundStyle(Color.orange)
                 .padding(.horizontal, 12)
                 .padding(.vertical, 8)
                 .frame(maxWidth: .infinity)
                 .background(Color.orange.opacity(0.10))
-                .accessibilityElement(children: .combine)
+                .accessibilityElement(children: .contain)
+                .accessibilityIdentifier("grok-migration-banner")
             }
             if showUpgradeBanner {
                 UpdatesBanner(
@@ -1084,6 +1124,11 @@ struct ContentView: View {
             sessionLayout = loaded.snapshot
             sessionLayoutAuthority = loaded.authority
             sessionLayoutFailure = loaded.failure
+            // O-6 receipt: on failure, every session in the fallback snapshot
+            // is open read-only — capture their names for the banner's Details.
+            migrationReadOnlySessionTitles = loaded.failure == nil
+                ? []
+                : SessionMigrationBannerPresentation.readOnlySessionTitles(records: loaded.snapshot.records)
             await restorePersistedSessions()
             isRestoringSessions = false
             refreshWorkspaceAgentInventories()
