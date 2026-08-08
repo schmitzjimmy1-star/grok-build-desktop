@@ -64,7 +64,8 @@ final class SessionDashboardNavigationTests: XCTestCase {
         XCTAssertTrue(panel.contains(".contentShape(Rectangle())"))
         XCTAssertTrue(panel.contains("grok-session-dashboard-row-"))
         XCTAssertFalse(panel.contains("onSelect(entry.id)\n                                        dismiss()"))
-        XCTAssertTrue(content.contains("showSessionDashboard = false\n                selectSession(sessionID)"))
+        XCTAssertTrue(content.contains("sessionModal = .none\n                selectSession(sessionID)"),
+                      "the presenting ContentView stays the single dismissal owner through the Slice 2 sessionModal route")
         XCTAssertTrue(selection.contains("sessionSelectionGeneration == selectionGeneration"))
         XCTAssertFalse(selection.contains("ensureSessionStarted"))
         XCTAssertFalse(selection.contains("session.store.start"))

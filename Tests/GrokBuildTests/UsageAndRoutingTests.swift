@@ -177,16 +177,16 @@ final class UsageAndRoutingTests: XCTestCase {
                       "model menus must present provider-grouped choices")
         XCTAssertTrue(chatViewSource.contains("store.setCurrentModelAsProjectDefault()"),
                       "the menu offers making the current model the project default for new sessions")
-        // Agent mode belongs with the trailing action cluster, not leading telemetry.
-        let leadingStart = try XCTUnwrap(chatViewSource.range(of: "private var composerDetailLeadingControls"))
-        let actionStart = try XCTUnwrap(
-            chatViewSource.range(of: "private var composerDetailActionControls", range: leadingStart.upperBound..<chatViewSource.endIndex)
+        // Codex parity Slice 4: agent mode is a compact composer control beside the
+        // add/context menu, and session telemetry lives in the model popover.
+        let primaryStart = try XCTUnwrap(chatViewSource.range(of: "private var composerPrimaryControls"))
+        let primaryEnd = try XCTUnwrap(
+            chatViewSource.range(of: "private var composerAddMenu", range: primaryStart.upperBound..<chatViewSource.endIndex)
         )
-        let leading = String(chatViewSource[leadingStart.lowerBound..<actionStart.lowerBound])
-        XCTAssertFalse(leading.contains("modeSelector"), "leading edge stays pure telemetry")
-        let actionEnd = chatViewSource.range(of: "private var composerDetailsAccessibilityValue", range: actionStart.upperBound..<chatViewSource.endIndex) ?? actionStart
-        let action = String(chatViewSource[actionStart.lowerBound..<actionEnd.lowerBound])
-        XCTAssertTrue(action.contains("modeSelector"), "agent mode moved to the trailing action cluster")
+        let primary = String(chatViewSource[primaryStart.lowerBound..<primaryEnd.lowerBound])
+        XCTAssertTrue(primary.contains("modeSelector"), "run mode stays an immediate composer control")
+        XCTAssertTrue(chatViewSource.contains("Section(\"Session telemetry\")"),
+                      "context and usage telemetry relocated to the model popover")
 
         let activitySource = try String(
             contentsOf: repositoryRoot.appendingPathComponent("GrokBuild/Views/ActivitySidebar.swift"),
@@ -239,7 +239,7 @@ final class UsageAndRoutingTests: XCTestCase {
             encoding: .utf8
         )
         XCTAssertTrue(chatViewSource.contains("store.sessionUsageSummary"),
-                      "the Details bar surfaces the session usage HUD")
+                      "the model popover surfaces the session usage HUD (Slice 4 home)")
 
         let settingsSource = try String(
             contentsOf: repositoryRoot.appendingPathComponent("GrokBuild/Views/Settings/CustomModelsSettingsPane.swift"),

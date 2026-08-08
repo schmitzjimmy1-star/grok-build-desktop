@@ -232,7 +232,7 @@ final class ChatTranscriptLayoutTests: XCTestCase {
         XCTAssertTrue(toolView.contains("Text(\"Using \\(server)\")"))
     }
 
-    func testComposerOrdersMCPHammerDetailsThenModel() throws {
+    func testComposerOrdersAddModeThenModelMicSend() throws {
         let repositoryRoot = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent()
             .deletingLastPathComponent()
@@ -241,19 +241,25 @@ final class ChatTranscriptLayoutTests: XCTestCase {
             contentsOf: repositoryRoot.appendingPathComponent("GrokBuild/Views/ChatView.swift"),
             encoding: .utf8
         )
+        // Codex parity Slice 4: leading cluster is add/context then run mode.
         let start = try XCTUnwrap(source.range(of: "private var composerPrimaryControls"))
         let end = try XCTUnwrap(
-            source.range(of: "private var composerMCPMenu", range: start.upperBound..<source.endIndex)
+            source.range(of: "private var composerAddMenu", range: start.upperBound..<source.endIndex)
         )
         let controls = String(source[start.lowerBound..<end.lowerBound])
+        let add = try XCTUnwrap(controls.range(of: "composerAddMenu"))
+        let mode = try XCTUnwrap(controls.range(of: "modeSelector"))
+        XCTAssertLessThan(add.lowerBound, mode.lowerBound)
+        XCTAssertFalse(controls.contains("composerDetailsToggle"))
 
-        let mcp = try XCTUnwrap(controls.range(of: "composerMCPMenu"))
-        let hammer = try XCTUnwrap(controls.range(of: "composerCommandMenu"))
-        let details = try XCTUnwrap(controls.range(of: "composerDetailsToggle"))
-        let model = try XCTUnwrap(controls.range(of: "modelSelector"))
-        XCTAssertLessThan(mcp.lowerBound, hammer.lowerBound)
-        XCTAssertLessThan(hammer.lowerBound, details.lowerBound)
-        XCTAssertLessThan(details.lowerBound, model.lowerBound)
+        // Trailing cluster is model, voice, then send/stop.
+        let actionStart = try XCTUnwrap(source.range(of: "private var composerActionControls"))
+        let actionSlice = String(source[actionStart.lowerBound..<source.index(actionStart.upperBound, offsetBy: 400)])
+        let model = try XCTUnwrap(actionSlice.range(of: "modelSelector"))
+        let mic = try XCTUnwrap(actionSlice.range(of: "MicButton"))
+        let send = try XCTUnwrap(actionSlice.range(of: "sessionActionButton"))
+        XCTAssertLessThan(model.lowerBound, mic.lowerBound)
+        XCTAssertLessThan(mic.lowerBound, send.lowerBound)
         XCTAssertTrue(source.contains(".task(id: promptMCPRefreshIdentity)"))
         XCTAssertTrue(source.contains("store.currentWorkspace?.id.uuidString"))
         XCTAssertTrue(source.contains("store.tabSessionID?.uuidString"))

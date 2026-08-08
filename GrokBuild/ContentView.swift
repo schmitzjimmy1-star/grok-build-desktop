@@ -2,9 +2,24 @@ import SwiftUI
 import AppKit
 
 struct ContentView: View {
+    // Route ownership (Codex parity Slice 2) — one owner per workspace surface:
+    // - `route` owns the canvas: the session workspace or Settings.
+    // - `sessionModal` owns the mutually exclusive transient sheets above the
+    //   session (Browse Sessions or the activity dashboard); the enum makes it
+    //   impossible for both to be presented at once.
+    // - `showPreview` owns the Git review split inside the session canvas and
+    //   always targets the real `PreviewPane`.
+    // - The contextual Activity inspector is per-tab presentation state owned by
+    //   `ChatView.showActivitySidebar` (reset naturally on tab switch).
     private enum AppRoute: Equatable {
         case session
         case settings
+    }
+
+    private enum SessionModal: Equatable {
+        case none
+        case sessionBrowser
+        case activityDashboard
     }
 
     fileprivate struct LiveSession: Identifiable {
@@ -33,8 +48,7 @@ struct ContentView: View {
     @State private var showPicker = false
     @State private var route: AppRoute = .session
     @State private var selectedSettingsTab: SettingsTab = .agents
-    @State private var showSessions = false
-    @State private var showSessionDashboard = false
+    @State private var sessionModal: SessionModal = .none
     @State private var showPreview = false
     @State private var gitCheckoutRequest: GitCheckoutRequest?
     @State private var gitError: String?
@@ -129,10 +143,6 @@ struct ContentView: View {
                 sessions: sidebarSessions,
                 hiddenSessionCounts: hiddenSessionCounts,
                 selectedSessionID: selectedSessionID,
-                activityLane: sidebarActivityLane,
-                agentEntries: agentHubEntries,
-                connections: activeStore.promptMCPOptions,
-                attachedConnectionNames: activeStore.selectedPromptMCPNames,
                 expandedSessionWorkspaceIDs: $sessionLayout.expandedSessionWorkspaceIDs,
                 hiddenSessionWorkspaceIDs: $sessionLayout.hiddenSessionWorkspaceIDs,
                 onAddWorkspace: { showPicker = true },
@@ -141,26 +151,6 @@ struct ContentView: View {
                     selectProject(ws)
                 },
                 onSelectSession: { selectSession($0) },
-                onSelectActivity: { entry in
-                    route = .session
-                    selectSession(entry.sessionID)
-                },
-                onStartSessionAsAgent: { entry in
-                    route = .session
-                    let workspace = workspaceStore.workspaces.first(where: { $0.id == selectedWorkspaceID })
-                        ?? workspaceStore.orderedWorkspaces.first
-                    guard let workspace else {
-                        showPicker = true
-                        return
-                    }
-                    let agent = entry.agentSelection.isEmpty ? nil : entry.agentSelection
-                    Task { await createLiveSession(for: workspace, agent: agent) }
-                },
-                onOpenAgentSettings: { openSettings(tab: .agents) },
-                onToggleConnection: { name in
-                    activeStore.togglePromptMCPAttachment(named: name)
-                },
-                onManageConnections: { openSettings(tab: .mcpServers) },
                 onNewSessionForWorkspace: { workspace in
                     Task { await createLiveSession(for: workspace) }
                 },
@@ -183,9 +173,8 @@ struct ContentView: View {
                 onCreateWorktree: { gitCheckoutRequest = GitCheckoutRequest(project: $0, focusCreateWorktree: true) },
                 onSessionDisclosureChanged: { persistSessionLayout() },
                 onNewChat: { startNewSessionForCurrentProject() },
-                onBrowseSessions: { showSessions = true },
-                onOpenActivity: { showSessionDashboard = true },
-                onOpenWorkflows: { openSettings(tab: .workflows) },
+                onBrowseSessions: { sessionModal = .sessionBrowser },
+                onOpenActivity: { sessionModal = .activityDashboard },
                 onOpenPlugins: { openSettings(tab: .plugins) },
                 onOpenSecurity: { openSettings(tab: .permissions) },
                 onOpenSettings: { openSettings(tab: selectedSettingsTab) }
@@ -211,7 +200,7 @@ struct ContentView: View {
                         onToggleSidebar: { isSidebarVisible.toggle() },
                         onOpenSettings: { openSettings(tab: selectedSettingsTab) },
                         reviewFileCount: activeReviewDiffs.count,
-                        reviewFileNames: activeReviewDiffs.compactMap(\.filePath),
+                        reviewDiffs: activeReviewDiffs,
                         isReviewVisible: showPreview,
                         onToggleReview: {
                             if !activeReviewDiffs.isEmpty {
@@ -219,7 +208,7 @@ struct ContentView: View {
                             }
                         },
                         onSelectSession: { selectSession($0) },
-                        onBrowseSessions: { showSessions = true },
+                        onBrowseSessions: { sessionModal = .sessionBrowser },
                         onNewSession: { startNewSessionForCurrentProject() },
                         onAddProject: { showPicker = true },
                         onOpenProjectIn: { openCurrentProject(in: $0) },
@@ -234,7 +223,7 @@ struct ContentView: View {
                         onOpenMemorySettings: { openSettings(tab: .memory) },
                         onOpenWorkflowSettings: { openSettings(tab: .workflows) },
                         onForkSession: { Task { await forkCurrentSession() } },
-                        onOpenDashboard: { showSessionDashboard = true },
+                        onOpenDashboard: { sessionModal = .activityDashboard },
                         onSwitchBranch: {
                             if let workspace = currentWorkspace {
                                 gitCheckoutRequest = GitCheckoutRequest(project: workspace)
@@ -286,7 +275,7 @@ struct ContentView: View {
             isSidebarVisible.toggle()
         }
         .onReceive(NotificationCenter.default.publisher(for: .subagentRolesChanged)) { _ in
-            refreshAgentHubRoles()
+            refreshWorkspaceAgentInventories()
         }
         .onReceive(NotificationCenter.default.publisher(for: NSApplication.willTerminateNotification)) { _ in
             flushTranscriptsForTermination()
@@ -304,25 +293,25 @@ struct ContentView: View {
                 addWorkspace(url: url)
             }
         }
-        .sheet(isPresented: $showSessions) {
+        .sheet(isPresented: sessionModalBinding(.sessionBrowser)) {
             SessionBrowserView(
                 workspaces: currentWorkspace.map { [$0] } ?? [],
                 highlightedWorkspaceID: selectedWorkspaceID,
                 liveSessionsByGrokID: liveSessionsByGrokID,
                 selectedGrokSessionID: activeStore.grokSessionId,
-                onResume: { showSessions = false },
+                onResume: { sessionModal = .none },
                 onResumeSession: { session, workspace in
                     Task { await createLiveSession(for: workspace, resumeSession: session) }
                 },
                 onSelectLive: { selectSession($0) }
             )
         }
-        .sheet(isPresented: $showSessionDashboard) {
+        .sheet(isPresented: sessionModalBinding(.activityDashboard)) {
             SessionDashboardPanel(
                 entries: dashboardEntries,
                 selectedSessionID: selectedSessionID
             ) { sessionID in
-                showSessionDashboard = false
+                sessionModal = .none
                 selectSession(sessionID)
             }
         }
@@ -357,7 +346,7 @@ struct ContentView: View {
             sessionListRevision: $sessionListRevision,
             selectedWorkspaceID: $selectedWorkspaceID,
             showPicker: $showPicker,
-            showSessions: $showSessions,
+            showSessions: sessionModalBinding(.sessionBrowser),
             onWorkspaceChange: handleWorkspaceChange,
             onRefreshGitReview: refreshGitReviewFromTranscriptBoundary,
             onNewSession: startNewSessionForCurrentProject,
@@ -489,44 +478,26 @@ struct ContentView: View {
         }
     }
 
-    /// Agents hub roles snapshot, loaded off the main actor at bootstrap and whenever
-    /// Settings saves roles (`.subagentRolesChanged`).
-    @State private var agentHubRoles: [SubagentRole] = []
-
-    /// Agents hub entries: grok's default + custom roles + the active store's discovered
-    /// agents. Reading `discoveredAgents` here registers observation, so late discovery
-    /// updates the hub without extra plumbing.
-    private var agentHubEntries: [AgentHubEntry] {
-        AgentHubProjection.entries(
-            discovered: activeStore.discoveredAgents,
-            roles: agentHubRoles,
-            defaultSelection: UserDefaults.standard.string(forKey: GrokSettingsKeys.selectedAgent) ?? ""
+    /// Projects the single `sessionModal` owner into the Boolean shape SwiftUI sheets
+    /// and the existing notification handler expect. Setting one modal true replaces
+    /// any other; setting it false returns to `.none` — two sheets can never be
+    /// requested at once.
+    private func sessionModalBinding(_ modal: SessionModal) -> Binding<Bool> {
+        Binding(
+            get: { sessionModal == modal },
+            set: { sessionModal = $0 ? modal : .none }
         )
     }
 
-    private func refreshAgentHubRoles() {
+    /// Discovered agents and prompt-MCP inventories are per-workspace; refresh them at
+    /// bootstrap and when Settings saves subagent roles so the composer MCP menu and
+    /// agent pickers stay current. The former sidebar Agents hub rendering was removed
+    /// in Codex parity Slice 1, and its orphaned projection was deleted in Slice 6.
+    private func refreshWorkspaceAgentInventories() {
         Task {
-            let roles = await GrokBuildBackgroundWork.run({ SubagentRoleStore.load() }, priority: .utility)
-            agentHubRoles = roles
             await activeStore.loadDiscoveredAgentsIfNeeded()
             await activeStore.refreshPromptMCPOptions()
         }
-    }
-
-    /// Sidebar Activity lane: a pure projection over every live session's already-observed
-    /// agentic mirrors. Reading the `@Observable` store fields here registers observation,
-    /// so the lane updates live without any polling or notification plumbing.
-    private var sidebarActivityLane: SidebarActivityLane {
-        _ = sessionListRevision
-        return SidebarActivityProjection.lane(from: liveSessions.map { session in
-            SidebarActivityProjection.SessionInput(
-                sessionID: session.id,
-                sessionTitle: sessionTitle(for: session),
-                backgroundActivities: session.store.backgroundActivities,
-                scheduledTasks: session.store.scheduledTasks,
-                workflowRuns: session.store.workflowRuns
-            )
-        })
     }
 
     private var dashboardEntries: [SessionDashboardEntry] {
@@ -1061,7 +1032,7 @@ struct ContentView: View {
             sessionLayoutFailure = loaded.failure
             await restorePersistedSessions()
             isRestoringSessions = false
-            refreshAgentHubRoles()
+            refreshWorkspaceAgentInventories()
         }
     }
 

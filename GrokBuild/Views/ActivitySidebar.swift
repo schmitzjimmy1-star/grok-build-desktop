@@ -145,60 +145,76 @@ struct ActivitySidebar: View {
     let onContinueAsNew: () -> Void
     let onReviewRecovery: () -> Void
     let onRevealArtifact: (ChatStore.RunArtifact) -> Void
-    /// Idle-panel context: current changed files plus actions, so the drawer is useful
-    /// before any run instead of a dead "no evidence" placard.
-    var idleChangedFiles: [String] = []
-    var onOpenReview: () -> Void = {}
-    var onRevealFile: (String) -> Void = { _ in }
+    /// Codex parity Slice 5: the compact grouped presentation (Subagents,
+    /// Computer Use, Sources, Run details) built by `ContextInspectorProjection`.
+    var inspector: ContextInspectorProjection.Model = .empty
+    var onOpenComputerUseSettings: () -> Void = {}
 
     @State private var confirmsContinueAsNew = false
     @State private var showsExecutionReceipts = false
+    @State private var subagentRowsExpanded = false
 
     var body: some View {
+        // Codex parity Slice 5: a compact contextual inspector, not a dashboard.
+        // Short optional sections; deep generation-bound receipts stay one
+        // disclosure away under Run details. Recovery always outranks parity.
         VStack(spacing: 0) {
             header
             Divider()
-            if let snapshot {
-                ScrollView {
-                    LazyVStack(alignment: .leading, spacing: 14) {
-                        summaryCard(snapshot)
-                        if snapshot.continuity.requiresRecoveryAction { continuityCard(snapshot) }
-                        // The summary grid already reports zeros; an empty section
-                        // repeating "none observed" below it is pure redundancy.
-                        if !snapshot.artifacts.isEmpty { artifacts(snapshot) }
-                        if !snapshot.gitReviewFiles.isEmpty { reviewFiles(snapshot) }
-                        if !snapshot.workers.isEmpty { workers(snapshot) }
-                        DisclosureGroup(isExpanded: $showsExecutionReceipts) {
-                            VStack(alignment: .leading, spacing: 14) {
-                                runDetails(snapshot)
-                                toolStatus(snapshot)
-                            }
-                            .padding(.top, 10)
-                        } label: {
-                            Label("Technical details", systemImage: "list.bullet.rectangle")
-                                .font(AppTheme.Typography.captionStrong)
+            VStack(alignment: .leading, spacing: 12) {
+                if let snapshot, snapshot.continuity.requiresRecoveryAction {
+                    continuityCard(snapshot)
+                }
+
+                if let subagents = inspector.subagents {
+                    subagentsSection(subagents)
+                }
+
+                if let computerUse = inspector.computerUse {
+                    computerUseSection(computerUse)
+                }
+
+                if let sources = inspector.sources {
+                    sourcesSection(sources)
+                }
+
+                if inspector.failedToolCount > 0 || !inspector.unresolvedErrors.isEmpty {
+                    unresolvedErrorsLine
+                }
+
+                if inspector.hasRunDetails {
+                    Divider()
+                    DisclosureGroup(isExpanded: $showsExecutionReceipts) {
+                        ScrollView {
+                            runDetailsContent
+                                .padding(.top, 10)
                         }
-                        .accessibilityHint("Shows model, process, continuity, usage, and MCP details.")
+                        .frame(maxHeight: 360)
+                    } label: {
+                        Label("Run details", systemImage: "list.bullet.rectangle")
+                            .font(AppTheme.Typography.captionStrong)
                     }
-                    .padding(14)
+                    .accessibilityHint("Opens the generation-bound worker, tool, artifact, model, process, continuity, and usage receipts.")
+                    .accessibilityIdentifier("grok-inspector-run-details")
                 }
-            } else if let liveProjection {
-                ScrollView {
-                    LazyVStack(alignment: .leading, spacing: 14) {
-                        liveSummaryCard(liveProjection)
-                        if !liveProjection.plan.isEmpty { livePlan(liveProjection) }
-                        if !liveProjection.artifacts.isEmpty { liveArtifacts(liveProjection) }
-                        if !liveProjection.workers.isEmpty { liveWorkers(liveProjection) }
-                        if !liveProjection.tools.isEmpty { liveTools(liveProjection) }
-                        liveRunDetails(liveProjection)
-                    }
-                    .padding(14)
+
+                if inspector.isEmpty {
+                    Text("No activity for this task yet.")
+                        .font(AppTheme.Typography.caption)
+                        .foregroundStyle(.secondary)
                 }
-            } else {
-                idleWorkspacePanel
             }
+            .padding(12)
+
+            // Escape closes the inspector without losing state (Slice 5 contract).
+            Button("") { onClose() }
+                .keyboardShortcut(.cancelAction)
+                .opacity(0)
+                .frame(width: 0, height: 0)
+                .accessibilityHidden(true)
         }
-        .frame(minWidth: 260, idealWidth: 290, maxWidth: 320, maxHeight: 620)
+        .frame(minWidth: 260, idealWidth: 290, maxWidth: 320)
+        .fixedSize(horizontal: false, vertical: true)
         .background(AppTheme.Palette.sidebar)
         .clipShape(RoundedRectangle(cornerRadius: AppTheme.Radius.composer, style: .continuous))
         .overlay {
@@ -217,63 +233,149 @@ struct ActivitySidebar: View {
         }
     }
 
-    /// What the drawer shows before any run: the working state of the project, not a
-    /// dead placard. Changed files open the diff review or reveal in Finder; run
-    /// receipts take this space over as soon as a turn starts.
-    private var idleWorkspacePanel: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 14) {
-                if idleChangedFiles.isEmpty {
-                    VStack(alignment: .leading, spacing: 6) {
-                        Label("Ready to work", systemImage: "checkmark.seal")
-                            .font(AppTheme.Typography.captionStrong)
-                        Text("Send a request and this panel fills with live workers, tools, artifacts, and usage. Changed files in the project will also appear here for review.")
-                            .font(AppTheme.Typography.caption)
-                            .foregroundStyle(.secondary)
-                            .fixedSize(horizontal: false, vertical: true)
-                    }
-                } else {
-                    VStack(alignment: .leading, spacing: 8) {
-                        Label("Changed files (\(idleChangedFiles.count))", systemImage: "doc.on.doc")
-                            .font(AppTheme.Typography.captionStrong)
-                        ForEach(idleChangedFiles, id: \.self) { file in
-                            HStack(spacing: 6) {
-                                Button {
-                                    onOpenReview()
-                                } label: {
-                                    Label(file, systemImage: "doc.text")
-                                        .font(AppTheme.Typography.caption)
-                                        .lineLimit(2)
-                                        .multilineTextAlignment(.leading)
-                                        .contentShape(Rectangle())
-                                }
-                                .buttonStyle(.plain)
-                                .help("Open the diff review for this project")
-                                Spacer(minLength: 0)
-                                Button {
-                                    onRevealFile(file)
-                                } label: {
-                                    Image(systemName: "magnifyingglass.circle")
-                                        .foregroundStyle(.secondary)
-                                }
-                                .buttonStyle(.plain)
-                                .help("Reveal \(file) in Finder")
-                                .accessibilityLabel("Reveal \(file) in Finder")
-                            }
+    /// Compact Subagents section: status counts with an optional row disclosure.
+    private func subagentsSection(_ subagents: ContextInspectorProjection.Subagents) -> some View {
+        VStack(alignment: .leading, spacing: 5) {
+            Text("Subagents").font(AppTheme.Typography.captionStrong)
+            DisclosureGroup(isExpanded: $subagentRowsExpanded) {
+                VStack(alignment: .leading, spacing: 4) {
+                    ForEach(subagents.rows.prefix(ContextInspectorProjection.visibleSubagentRowLimit)) { row in
+                        HStack(spacing: 6) {
+                            Circle()
+                                .fill(row.isActive ? Color.green : AppTheme.Palette.textMuted)
+                                .frame(width: 5, height: 5)
+                            Text(row.name)
+                                .font(AppTheme.Typography.caption)
+                                .lineLimit(1)
+                            Spacer(minLength: 4)
+                            Text(row.statusLabel)
+                                .font(AppTheme.Typography.caption)
+                                .foregroundStyle(.secondary)
                         }
-                        Button("Open Review", action: onOpenReview)
-                            .controlSize(.small)
-                            .accessibilityIdentifier("grok-activity-open-review")
+                        .accessibilityElement(children: .combine)
                     }
-                    Text("Run receipts take over this panel as soon as a turn starts.")
-                        .font(AppTheme.Typography.section)
-                        .foregroundStyle(.secondary)
+                    if subagents.rows.count > ContextInspectorProjection.visibleSubagentRowLimit {
+                        Text("\(subagents.rows.count - ContextInspectorProjection.visibleSubagentRowLimit) more in Run details")
+                            .font(AppTheme.Typography.caption)
+                            .foregroundStyle(.tertiary)
+                    }
                 }
+                .padding(.top, 4)
+            } label: {
+                Text(subagents.compactLabel)
+                    .font(AppTheme.Typography.caption)
+                    .foregroundStyle(.secondary)
             }
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(14)
+            .accessibilityIdentifier("grok-inspector-subagents")
         }
-        .accessibilityIdentifier("grok-activity-idle-workspace")
+    }
+
+    /// Computer Use: current state and one truthful control — a link to the
+    /// existing settings pane. GrokBuild has no Picture-in-Picture surface, so
+    /// no such toggle is invented.
+    private func computerUseSection(_ computerUse: ContextInspectorProjection.ComputerUse) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text("Computer Use").font(AppTheme.Typography.captionStrong)
+            HStack(spacing: 8) {
+                Text(computerUse.stateLabel)
+                    .font(AppTheme.Typography.caption)
+                    .foregroundStyle(.secondary)
+                Spacer(minLength: 4)
+                Button("Settings", action: onOpenComputerUseSettings)
+                    .buttonStyle(.plain)
+                    .font(AppTheme.Typography.caption)
+                    .foregroundStyle(Color.accentColor)
+                    .accessibilityLabel("Open Computer Use settings")
+            }
+            if let detail = computerUse.detail {
+                Text(detail)
+                    .font(AppTheme.Typography.caption)
+                    .foregroundStyle(.tertiary)
+            }
+        }
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("grok-inspector-computer-use")
+    }
+
+    /// Sources/Context: attachments and requested MCPs are intents; only
+    /// receipt-evidenced servers are labeled used.
+    private func sourcesSection(_ sources: ContextInspectorProjection.Sources) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text("Sources").font(AppTheme.Typography.captionStrong)
+            ForEach(sources.usedMCPServers) { item in
+                sourceRow(item, systemImage: "checkmark.circle")
+            }
+            ForEach(sources.requestedMCPs) { item in
+                sourceRow(item, systemImage: "circle.dotted")
+            }
+            ForEach(sources.attachments) { item in
+                sourceRow(item, systemImage: "paperclip")
+            }
+        }
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("grok-inspector-sources")
+    }
+
+    private func sourceRow(_ item: ContextInspectorProjection.SourceItem, systemImage: String) -> some View {
+        HStack(spacing: 6) {
+            Image(systemName: systemImage)
+                .font(.system(size: 10))
+                .foregroundStyle(.tertiary)
+            Text(item.label)
+                .font(AppTheme.Typography.caption)
+                .lineLimit(1)
+                .truncationMode(.middle)
+            Spacer(minLength: 4)
+        }
+        .help(item.detail ?? item.label)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("\(item.label)\(item.detail.map { ", " + $0 } ?? "")")
+    }
+
+    /// Failed tools and unresolved errors never disappear behind compactness.
+    private var unresolvedErrorsLine: some View {
+        VStack(alignment: .leading, spacing: 3) {
+            Label(
+                inspector.failedToolCount > 0
+                    ? "\(inspector.failedToolCount) failed \(inspector.failedToolCount == 1 ? "tool" : "tools")"
+                    : "Unresolved errors",
+                systemImage: "exclamationmark.triangle"
+            )
+            .font(AppTheme.Typography.captionStrong)
+            .foregroundStyle(.orange)
+            ForEach(inspector.unresolvedErrors.indices, id: \.self) { index in
+                Text(inspector.unresolvedErrors[index])
+                    .font(AppTheme.Typography.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(2)
+            }
+        }
+        .accessibilityIdentifier("grok-inspector-unresolved")
+    }
+
+    /// The deep evidence stack, unchanged in content: settled snapshots keep the
+    /// summary, artifacts, review files, workers, run/tool receipts; live turns
+    /// keep the generation-bound live sections.
+    @ViewBuilder private var runDetailsContent: some View {
+        if let snapshot {
+            VStack(alignment: .leading, spacing: 14) {
+                summaryCard(snapshot)
+                if !snapshot.artifacts.isEmpty { artifacts(snapshot) }
+                if !snapshot.gitReviewFiles.isEmpty { reviewFiles(snapshot) }
+                if !snapshot.workers.isEmpty { workers(snapshot) }
+                runDetails(snapshot)
+                toolStatus(snapshot)
+            }
+        } else if let liveProjection {
+            VStack(alignment: .leading, spacing: 14) {
+                liveSummaryCard(liveProjection)
+                if !liveProjection.plan.isEmpty { livePlan(liveProjection) }
+                if !liveProjection.artifacts.isEmpty { liveArtifacts(liveProjection) }
+                if !liveProjection.workers.isEmpty { liveWorkers(liveProjection) }
+                if !liveProjection.tools.isEmpty { liveTools(liveProjection) }
+                liveRunDetails(liveProjection)
+            }
+        }
     }
 
     private var header: some View {
