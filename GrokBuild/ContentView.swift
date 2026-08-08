@@ -56,6 +56,8 @@ struct ContentView: View {
     @State private var boundedGitRefreshTask: Task<Void, Never>?
     @State private var didBootstrap = false
     @State private var isRestoringSessions = false
+    /// Window content width feeding the Slice 7 responsive order's sidebar step.
+    @State private var contentAreaWidth: Double = .infinity
     @State private var restoredSessionCount = 0
     @State private var totalSessionsToRestore = 0
     @State private var restoreStatusText = "Restoring sessions..."
@@ -134,7 +136,11 @@ struct ContentView: View {
             }
 
             HSplitView {
-            if SidebarVisibility.shouldShow(preference: isSidebarVisible, settingsPresented: route == .settings) {
+            if SidebarVisibility.shouldShow(
+                preference: isSidebarVisible,
+                settingsPresented: route == .settings,
+                availableContentWidth: contentAreaWidth
+            ) {
             SidebarView(
                 workspaces: $workspaceStore.workspaces,
                 orderedWorkspaces: workspaceStore.orderedWorkspaces,
@@ -179,7 +185,11 @@ struct ContentView: View {
                 onOpenSecurity: { openSettings(tab: .permissions) },
                 onOpenSettings: { openSettings(tab: selectedSettingsTab) }
             )
-            .frame(minWidth: 220, idealWidth: 244, maxWidth: 280)
+            .frame(
+                minWidth: ResponsiveLayoutPolicy.sidebarMinimumWidth,
+                idealWidth: 244,
+                maxWidth: 280
+            )
             .disabled(isRestoringSessions)
             }
 
@@ -258,6 +268,11 @@ struct ContentView: View {
         }
         .background(AppTheme.Palette.canvas)
         .tint(AppTheme.Palette.accent)
+        .onGeometryChange(for: Double.self) { proxy in
+            proxy.size.width
+        } action: { width in
+            contentAreaWidth = width
+        }
         .onAppear(perform: bootstrap)
         .onAppear { refreshUpgradeBannerState() }
         .onAppear { refreshSessionTitles() }
@@ -1691,9 +1706,12 @@ private struct UpdatesBanner: View {
             Button(action: onDismiss) {
                 Image(systemName: "xmark.circle.fill")
                     .foregroundStyle(.secondary)
+                    .contentShape(Rectangle().inset(by: -8))
             }
             .buttonStyle(.plain)
             .help("Dismiss until next launch")
+            .accessibilityLabel("Dismiss upgrade notice")
+            .accessibilityHint("Hides this notice until the next launch.")
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 10)

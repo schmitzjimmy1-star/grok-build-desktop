@@ -110,6 +110,7 @@ struct PluginsSettingsPane: View {
                         .controlSize(.small)
                         .fixedSize()
                         .help("Plugin actions")
+                        .accessibilityLabel("Plugin actions")
 
                         if let receipt = rowReceipts[plugin.id] {
                             SettingsRowOperationReceiptView(
@@ -181,8 +182,11 @@ struct PluginsSettingsPane: View {
                 Task { await refresh() }
             } label: {
                 Image(systemName: "arrow.clockwise")
+                    .contentShape(Rectangle().inset(by: -8))
             }
             .buttonStyle(.plain)
+            .help("Refresh plugins")
+            .accessibilityLabel("Refresh plugins")
         }
     }
 

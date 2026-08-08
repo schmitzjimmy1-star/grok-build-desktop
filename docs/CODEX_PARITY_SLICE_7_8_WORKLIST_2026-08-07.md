@@ -110,6 +110,51 @@ decision.
   Undo, bell destination, live-worker photograph, count freshness, provider
   history replay) are unchanged.
 
+## Slice 7 close-out (2026-08-07 late night, 636 tests / 0 failures)
+
+- **Light mode proven (item 7).** The adaptive `AppTheme` ladder (dynamic
+  NSColor providers with real light values) was exercised installed:
+  fixtures `30-slice7-light-wide.png` and `31-slice7-light-narrow-1100x720.png`
+  show correct canvas/sidebar/surface separation, border strength, and text
+  contrast with no dark-on-white artifacts; `32-slice7-dark-narrow-1100x720.png`
+  is the dark pair. Appearance honors the Settings → App System/Light/Dark
+  control (`GrokBuildAppearance`); nothing force-locks dark.
+- **Sidebar responsive step wired (item 5).**
+  `SidebarVisibility.shouldShow(availableContentWidth:)` now consults
+  `ResponsiveLayoutPolicy.sidebarFits` with the 220-pt sidebar minimum, fed by
+  root geometry observation. At the 1100-pt window minimum the collapse stays
+  unreachable by construction (1100 − 220 ≥ 812); the wiring exists so any
+  smaller future minimum sacrifices the sidebar before the transcript. Pinned
+  by `testSidebarVisibilityWiresTheResponsiveThreshold`.
+- **Icon-only audit swept (item 9).** Source-wide sweep found 13 genuinely
+  icon-only controls missing explicit labels (sidebar filter/bell/new-project/
+  help, review-pane close, banner dismissals, session delete, memory reveal,
+  subagent edit/remove, MCP argument up/down/remove and env-entry remove,
+  marketplace remove-source and plugin-actions menus, plugins refresh, both
+  reveal-key toggles). All now carry explicit `accessibilityLabel` (+hints/
+  values where state matters) and inset content shapes for ≥36-pt effective
+  targets on the small chrome buttons. SF Symbol fallback names are no longer
+  load-bearing; pinned by `testAuditedIconOnlyControlsCarryExplicitLabels`.
+  The bell's spoken label is "Session activity" (the Slice 1 contract forbids
+  the literal `Label("Activity"` substring in SidebarView).
+- **Keyboard pass (item 4).** With full keyboard access, the Tab ring was
+  walked installed: composer → composer controls (add/mode/model/mic) →
+  sidebar (filter, bell, rail, project outline, help) → header (sidebar
+  toggle, More actions, review, activity, settings) → transcript → composer —
+  matching the declared sidebar → header → transcript → composer order as a
+  cycle. Escape with the inspector open closed only the inspector (session,
+  transcript, and selection intact — verified with before/after captures);
+  ⌘, opened Settings and returned to the same task (verified live earlier in
+  this session's Settings → Models work).
+- **Inspector overlay (item 6).** Compact 290-pt width confirmed against the
+  900-pt `inspectorMinimumChatWidth` gate (fixtures 21–23 + tonight's
+  captures). No reading-column-aware offset added: at wide sizes the centered
+  760-pt column leaves the trailing gutter to the overlay by geometry, and the
+  Slice 2 overlay contract already accepts medium-width overlap. Decision
+  recorded here so the "consider" item is closed, not silently dropped.
+- Carried (not Slice 7 scope): VoiceOver spot-check of the System Events
+  AXDescription quirk, and items 10–15.
+
 16. **OpenRouter models and tool use (owner-flagged, 2026-08-07).** Jimmy has
     flagged OpenRouter-routed models' tool use as unresolved: the 2026-08-02
     receipts record that cross-provider web/tool history replay fails

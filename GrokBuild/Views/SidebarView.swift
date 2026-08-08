@@ -107,15 +107,22 @@ struct SidebarView: View {
                 } label: {
                     Image(systemName: "magnifyingglass")
                         .frame(width: 24, height: 24)
+                        .contentShape(Rectangle().inset(by: -6))
                 }
                 .buttonStyle(.plain)
                 .foregroundStyle(.secondary)
+                .accessibilityLabel("Filter sessions")
+                .accessibilityHint(isFilterVisible ? "Hides the session filter field." : "Shows a field that filters sessions by title.")
+                .accessibilityValue(isFilterVisible ? "Visible" : "Hidden")
                 Button(action: onOpenActivity) {
                     Image(systemName: "bell")
                         .frame(width: 24, height: 24)
+                        .contentShape(Rectangle().inset(by: -6))
                 }
                 .buttonStyle(.plain)
                 .foregroundStyle(.secondary)
+                .accessibilityLabel("Session activity")
+                .accessibilityHint("Opens the session activity dashboard.")
             }
             .padding(.horizontal, 14)
             .padding(.top, 12)
@@ -239,9 +246,12 @@ struct SidebarView: View {
                         Spacer()
                         Button(action: onAddWorkspace) {
                             Image(systemName: "plus")
+                                .contentShape(Rectangle().inset(by: -8))
                         }
                         .buttonStyle(.plain)
                         .help("New project")
+                        .accessibilityLabel("New project")
+                        .accessibilityHint("Opens the folder picker to add a project.")
                     }
                 }
             }
@@ -267,9 +277,12 @@ struct SidebarView: View {
                 Button(action: onOpenSettings) {
                     Image(systemName: "questionmark.circle")
                         .frame(width: 24, height: 24)
+                        .contentShape(Rectangle().inset(by: -6))
                 }
                 .buttonStyle(.plain)
                 .foregroundStyle(.secondary)
+                .accessibilityLabel("Help and settings")
+                .accessibilityHint("Opens Settings.")
             }
             .padding(.horizontal, 12)
             .frame(height: 44)

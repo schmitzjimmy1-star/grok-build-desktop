@@ -310,10 +310,13 @@ struct MCPSettingsPane: View {
                     TextField("Argument", text: argumentBinding(id: argument.id))
                     Button { moveArgument(from: index, offset: -1) } label: { Image(systemName: "arrow.up") }
                         .disabled(index == 0).help("Move argument up")
+                        .accessibilityLabel("Move argument up")
                     Button { moveArgument(from: index, offset: 1) } label: { Image(systemName: "arrow.down") }
                         .disabled(index == draft.arguments.count - 1).help("Move argument down")
+                        .accessibilityLabel("Move argument down")
                     Button(role: .destructive) { draft.arguments.remove(at: index) } label: { Image(systemName: "minus.circle") }
                         .help("Remove argument")
+                        .accessibilityLabel("Remove argument")
                 }
                 .controlSize(.small)
             }
@@ -348,6 +351,7 @@ struct MCPSettingsPane: View {
                         acknowledgedLiteralStorage = false
                     } label: { Image(systemName: "minus.circle") }
                         .help("Remove \(title.lowercased()) entry")
+                        .accessibilityLabel("Remove \(title.lowercased()) entry")
                 }
                 .controlSize(.small)
             }

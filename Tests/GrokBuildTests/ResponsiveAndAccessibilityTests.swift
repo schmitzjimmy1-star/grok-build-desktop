@@ -65,4 +65,58 @@ final class ResponsiveAndAccessibilityTests: XCTestCase {
         XCTAssertEqual(chatView.components(separatedBy: ".focusSection()").count - 1, 3,
                        "workbench controls, transcript, and composer each own one focus section")
     }
+
+    /// Slice 7 close-out: the sidebar step of the responsive order is wired into
+    /// the actual visibility decision, not just declared as a pure policy.
+    func testSidebarVisibilityWiresTheResponsiveThreshold() {
+        // Preference and Settings behavior are unchanged.
+        XCTAssertTrue(SidebarVisibility.shouldShow(preference: true, settingsPresented: false))
+        XCTAssertFalse(SidebarVisibility.shouldShow(preference: true, settingsPresented: true))
+        XCTAssertFalse(SidebarVisibility.shouldShow(preference: false, settingsPresented: false))
+        // At the 1100-pt window minimum the collapse is unreachable by construction.
+        XCTAssertTrue(SidebarVisibility.shouldShow(
+            preference: true, settingsPresented: false, availableContentWidth: 1100
+        ))
+        // A hypothetical smaller window sacrifices the sidebar before the transcript.
+        XCTAssertFalse(SidebarVisibility.shouldShow(
+            preference: true, settingsPresented: false, availableContentWidth: 1000
+        ))
+        XCTAssertEqual(ResponsiveLayoutPolicy.sidebarMinimumWidth, 220)
+    }
+
+    /// Slice 7 icon-only audit: every audited icon-only control carries an explicit
+    /// accessibility label (SF Symbol fallback names are not the contract).
+    func testAuditedIconOnlyControlsCarryExplicitLabels() throws {
+        let expectations: [(file: String, labels: [String])] = [
+            ("GrokBuild/Views/SidebarView.swift",
+             ["Filter sessions", "Session activity", "New project", "Help and settings"]),
+            ("GrokBuild/Views/PreviewPane.swift", ["Close review pane"]),
+            ("GrokBuild/Views/SessionsBrowserPanel.swift", ["Delete session"]),
+            ("GrokBuild/Views/MemoryBrowserPanel.swift", ["Reveal in Finder"]),
+            ("GrokBuild/Views/Settings/AgentsSettingsPane.swift",
+             ["Edit subagent", "Remove subagent"]),
+            ("GrokBuild/Views/Settings/MCPSettingsPane.swift",
+             ["Move argument up", "Move argument down", "Remove argument"]),
+            ("GrokBuild/Views/Settings/MarketplaceSettingsPane.swift",
+             ["Remove source", "Plugin actions"]),
+            ("GrokBuild/Views/Settings/PluginsSettingsPane.swift",
+             ["Plugin actions", "Refresh plugins"])
+        ]
+        for expectation in expectations {
+            let contents = try source(expectation.file)
+            for label in expectation.labels {
+                XCTAssertTrue(
+                    contents.contains(".accessibilityLabel(\"\(label)\")"),
+                    "\(expectation.file) lost the explicit \"\(label)\" label"
+                )
+            }
+        }
+        let customModels = try source("GrokBuild/Views/Settings/CustomModelsSettingsPane.swift")
+        XCTAssertEqual(
+            customModels.components(separatedBy: "accessibilityLabel(revealProviderKey").count
+                + customModels.components(separatedBy: "accessibilityLabel(revealKey").count - 2,
+            2,
+            "both reveal-key toggles speak their current action"
+        )
+    }
 }

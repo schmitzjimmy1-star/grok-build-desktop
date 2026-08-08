@@ -207,10 +207,12 @@ struct MarketplaceSettingsPane: View {
                     } label: {
                         Image(systemName: "minus.circle")
                             .frame(width: 20, height: 20)
+                            .contentShape(Rectangle().inset(by: -8))
                     }
                     .buttonStyle(.plain)
                     .controlSize(.small)
                     .help("Remove source")
+                    .accessibilityLabel("Remove source")
                 }
                 if let receipt = rowReceipts[source.id] {
                     SettingsRowOperationReceiptView(receipt: receipt)
@@ -288,6 +290,7 @@ struct MarketplaceSettingsPane: View {
                 .controlSize(.small)
                 .fixedSize()
                 .help("Plugin actions")
+                .accessibilityLabel("Plugin actions")
             }
 
             if let receipt = rowReceipts[plugin.id] {
