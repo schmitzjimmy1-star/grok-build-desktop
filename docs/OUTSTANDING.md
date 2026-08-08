@@ -5,6 +5,14 @@
 > and `docs/UI_ACCEPTANCE_MATRIX.md`; when an item below closes, move its receipt
 > there and delete the row. Created 2026-08-08 at owner request.
 
+## Active direction — agentic workbench, not chatbot (2026-08-08)
+
+Owner directive under review: the app must read as an agentic platform
+(Codex-like), not a chatbot. Findings F-1..F-5 and proposed slices W-1..W-6
+live in `docs/AGENTIC_WORKBENCH_REVIEW_2026-08-08.md`; W-1 (chrome budget
+trim, incl. sidebar size) is the owner's tentative first pick pending
+confirmation. No slice is implemented until the owner chooses.
+
 ## Open defects
 
 | # | Item | Severity | State |
