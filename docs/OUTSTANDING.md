@@ -9,15 +9,15 @@
 
 Owner directive: the app must read as an agentic platform (Codex-like),
 not a chatbot. Findings F-1..F-5 and slices W-1..W-6 live in
-`docs/AGENTIC_WORKBENCH_REVIEW_2026-08-08.md`. **W-1, W-2, W-3 (workspace
-landing), and W-4 (task context strip) shipped 2026-08-08**, along with the
-owner-requested live tool visibility (auto-expanded live trace; worker
-counts only when nonzero) and a twelve-item straggler sweep (Preview→Review
-naming, task-framed composer, dynamic a11y announcements, dead-code
-removal, tools-count receipt, scope-aware empty states, Stop-turn naming,
-send/stop/rail identifiers, card→Last-turn scope). Remaining: W-5 (plan as
-spine) and W-6 (docked inspector), plus the deferred instrumentation items
-below.
+`docs/AGENTIC_WORKBENCH_REVIEW_2026-08-08.md`. **All six slices shipped
+2026-08-08**: W-1/W-2 (chrome trim, de-bubbled task statements), W-3/W-4
+(workspace landing, task context strip) with the owner-requested live tool
+visibility and the twelve-item straggler sweep, and W-5/W-6 closing the
+list — the live plan now renders as the transcript spine during runs
+(settled turns keep the compact trace), and at ≥1,500-pt chat width the
+open inspector docks as a real 260-pt third column while still hiding
+first below 900 pt. Remaining from this direction: only the deferred
+instrumentation items below (O-5..O-7).
 
 ## Open defects
 

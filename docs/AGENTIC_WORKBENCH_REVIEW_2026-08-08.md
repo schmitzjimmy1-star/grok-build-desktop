@@ -94,5 +94,13 @@ Suggested order: W-1 now (answers "reduce the sidebar"), then W-3 + W-4
   visibility ask shipped with them: live turns auto-open their trace so
   running tool calls are visible, and worker counts appear only when
   nonzero.
-- W-5 (plan as spine) and W-6 (docked inspector) remain.
+- **W-5 and W-6 shipped 2026-08-08**, closing the slice list. W-5: while a
+  run is active, the live plan projection renders in the transcript flow as
+  a `Plan · m of n done` spine on the streaming turn — independent of the
+  trace disclosure, gone at settlement (the snapshot keeps the authoritative
+  copy in the inspector); settled turns keep the compact trace. W-6: at
+  ≥1,500-pt chat-area width the open inspector mounts as a docked 260-pt
+  third column instead of the top-trailing overlay — same panel and state,
+  no overlap — while the hide-first responsive order below 900 pt is
+  unchanged.
 - PR #16 merged 2026-08-08.
