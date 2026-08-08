@@ -18,6 +18,8 @@ struct PreviewPane: View {
     @State private var baseBranch = "main"
     @State private var showCommitPopover = false
     @State private var showPRPopover = false
+    /// O-5: the popover opens ready to type — the title field takes focus.
+    @FocusState private var gitTitleFieldFocused: Bool
     @State private var gitTitle = ""
     @State private var gitDescription = ""
     @State private var commitAndPushLocalChanges = true
@@ -146,6 +148,9 @@ struct PreviewPane: View {
             environmentStaticRow(title: branchName, systemImage: "point.topleft.down.curvedto.point.bottomright.up", showsChevron: false)
 
             Button {
+                // O-5: the two popovers are mutually exclusive so exactly one
+                // primary can ever claim ⌘↩ at a time.
+                showPRPopover = false
                 showCommitPopover = true
             } label: {
                 environmentRowContent(
@@ -156,11 +161,14 @@ struct PreviewPane: View {
             }
             .buttonStyle(.plain)
             .disabled(!canCommitOrPush || isRunningGitOperation)
+            .help("Commit and push this branch's changes")
+            .accessibilityIdentifier("grok-review-commit-or-push")
             .popover(isPresented: $showCommitPopover, arrowEdge: .bottom) {
                 gitActionPopover(isPullRequest: false)
             }
 
             Button {
+                showCommitPopover = false
                 showPRPopover = true
             } label: {
                 environmentRowContent(
@@ -171,6 +179,8 @@ struct PreviewPane: View {
             }
             .buttonStyle(.plain)
             .disabled(!canCreatePullRequest || isRunningGitOperation)
+            .help("Create or open a pull request for this branch")
+            .accessibilityIdentifier("grok-review-create-pr")
             .popover(isPresented: $showPRPopover, arrowEdge: .bottom) {
                 gitActionPopover(isPullRequest: true)
             }
@@ -312,18 +322,22 @@ struct PreviewPane: View {
                 TextField("Title", text: $gitTitle)
                     .textFieldStyle(.plain)
                     .font(.title3.weight(.semibold))
+                    .focused($gitTitleFieldFocused)
+                    .accessibilityIdentifier("grok-git-title")
 
                 TextField("Description (leave empty to generate)", text: $gitDescription, axis: .vertical)
                     .textFieldStyle(.plain)
                     .font(.body)
                     .foregroundStyle(.secondary)
                     .lineLimit(3, reservesSpace: true)
+                    .accessibilityIdentifier("grok-git-description")
 
                 Spacer(minLength: 60)
 
                 Toggle("Commit and push local changes", isOn: $commitAndPushLocalChanges)
                     .toggleStyle(.checkbox)
                     .font(.body.weight(.medium))
+                    .accessibilityIdentifier("grok-git-include-local-changes")
 
                 if let gitOperationStatus {
                     Text(gitOperationStatus)
@@ -341,11 +355,15 @@ struct PreviewPane: View {
 
             VStack(spacing: 2) {
                 if isPullRequest {
+                    // The ⌘↩ primary is unambiguous: the two popovers are
+                    // mutually exclusive, so only one primary is ever mounted.
                     popoverActionRow(
                         title: "Create draft PR",
                         systemImage: "arrow.triangle.pull",
                         isPrimary: true,
-                        showsShortcut: true
+                        showsShortcut: true,
+                        identifier: "grok-git-create-draft-pr",
+                        help: "Create a draft pull request from this branch (⌘↩)"
                     ) {
                         Task { await createPullRequest(draft: true) }
                     }
@@ -354,7 +372,9 @@ struct PreviewPane: View {
                     popoverActionRow(
                         title: "Create PR",
                         systemImage: "arrow.triangle.pull",
-                        isPrimary: false
+                        isPrimary: false,
+                        identifier: "grok-git-create-pr",
+                        help: "Create a ready-for-review pull request from this branch"
                     ) {
                         Task { await createPullRequest(draft: false) }
                     }
@@ -362,7 +382,9 @@ struct PreviewPane: View {
                     popoverActionRow(
                         title: "Open PR in browser",
                         systemImage: "arrow.up.right",
-                        isPrimary: false
+                        isPrimary: false,
+                        identifier: "grok-git-open-pr",
+                        help: "Open this branch's existing pull request in the browser"
                     ) {
                         Task { await openPullRequestInBrowser() }
                     }
@@ -371,7 +393,9 @@ struct PreviewPane: View {
                         title: "Commit and push",
                         systemImage: "arrow.up.circle",
                         isPrimary: true,
-                        showsShortcut: true
+                        showsShortcut: true,
+                        identifier: "grok-git-commit-and-push",
+                        help: "Commit the changes with this title, then push (⌘↩)"
                     ) {
                         Task { await commitAndPush() }
                     }
@@ -380,7 +404,9 @@ struct PreviewPane: View {
                     popoverActionRow(
                         title: "Push only",
                         systemImage: "arrow.up",
-                        isPrimary: false
+                        isPrimary: false,
+                        identifier: "grok-git-push-only",
+                        help: "Push existing commits without committing new changes"
                     ) {
                         Task { await pushOnly() }
                     }
@@ -391,13 +417,22 @@ struct PreviewPane: View {
         .disabled(isRunningGitOperation)
         .frame(width: 460)
         .background(Color(nsColor: .windowBackgroundColor))
+        // O-5: the popover opens ready to type. Async so the field exists
+        // before focus lands (popover content mounts on presentation).
+        .onAppear {
+            DispatchQueue.main.async { gitTitleFieldFocused = true }
+        }
     }
 
+    /// O-5: identifier and help are required, not optional — a future action
+    /// row cannot ship uninstrumented.
     private func popoverActionRow(
         title: String,
         systemImage: String,
         isPrimary: Bool,
         showsShortcut: Bool = false,
+        identifier: String,
+        help: String,
         action: @escaping () -> Void
     ) -> some View {
         Button(action: action) {
@@ -431,6 +466,8 @@ struct PreviewPane: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        .help(help)
+        .accessibilityIdentifier(identifier)
     }
 
     private func changedFilesRows(defaultHeight: CGFloat) -> some View {

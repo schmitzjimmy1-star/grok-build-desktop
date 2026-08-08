@@ -50,6 +50,7 @@ struct GitCheckoutSheet: View {
             TextField("Search branches and worktrees", text: $filter)
                 .textFieldStyle(.roundedBorder)
                 .padding()
+                .accessibilityIdentifier("grok-checkout-filter")
 
             if isLoading {
                 ProgressView()
@@ -97,10 +98,13 @@ struct GitCheckoutSheet: View {
             HStack {
                 Spacer()
                 Button("Close") { dismiss() }
+                    .accessibilityIdentifier("grok-checkout-close")
             }
             .padding()
         }
         .frame(width: 520, height: 560)
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("grok-git-checkout-sheet")
         .task { await reload() }
         .onAppear {
             if focusCreateWorktree {
@@ -169,6 +173,7 @@ struct GitCheckoutSheet: View {
         }
         .buttonStyle(.plain)
         .disabled(branch.isCurrent)
+        .accessibilityIdentifier("grok-checkout-branch-row")
     }
 
     private func worktreeRow(_ worktree: GitWorktreeInfo) -> some View {
@@ -203,6 +208,7 @@ struct GitCheckoutSheet: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        .accessibilityIdentifier("grok-checkout-worktree-row")
     }
 
     @ViewBuilder
@@ -212,6 +218,7 @@ struct GitCheckoutSheet: View {
                 HStack {
                     TextField("Branch name", text: $newBranchName)
                         .textFieldStyle(.roundedBorder)
+                        .accessibilityIdentifier("grok-checkout-new-branch-name")
                     Button("Create & switch") {
                         let name = newBranchName.trimmingCharacters(in: .whitespacesAndNewlines)
                         guard !name.isEmpty else { return }
@@ -220,6 +227,7 @@ struct GitCheckoutSheet: View {
                     }
                     .buttonStyle(.borderedProminent)
                     .disabled(newBranchName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                    .accessibilityIdentifier("grok-checkout-create-branch")
                 }
             }
             .padding(.horizontal, 16)
@@ -228,8 +236,10 @@ struct GitCheckoutSheet: View {
                 VStack(alignment: .leading, spacing: 8) {
                     TextField("New branch name", text: $newWorktreeBranch)
                         .textFieldStyle(.roundedBorder)
+                        .accessibilityIdentifier("grok-checkout-new-worktree-branch")
                     TextField("Worktree path", text: $newWorktreePath)
                         .textFieldStyle(.roundedBorder)
+                        .accessibilityIdentifier("grok-checkout-new-worktree-path")
                     HStack {
                         Spacer()
                         Button("Create worktree") {
@@ -244,6 +254,7 @@ struct GitCheckoutSheet: View {
                             newWorktreeBranch.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ||
                             newWorktreePath.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
                         )
+                        .accessibilityIdentifier("grok-checkout-create-worktree")
                     }
                 }
             }
