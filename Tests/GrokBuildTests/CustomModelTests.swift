@@ -719,4 +719,17 @@ final class CustomModelTests: XCTestCase {
     func testParseModelsRejectsGarbage() {
         XCTAssertNil(ProviderModelFetcher.parse(Data("not json".utf8)))
     }
+
+    /// Generic catalog `owned_by` strings must never auto-fill a model's display
+    /// name: OpenAI's /v1/models reports "system", which rendered the composer
+    /// entry as a model literally called "system" until hand-corrected.
+    func testGenericCatalogOwnerLabelsExcludeRealLabNames() {
+        let generic = CustomModelsSettingsPane.genericCatalogOwnerLabels
+        XCTAssertTrue(generic.contains("system"))
+        XCTAssertTrue(generic.contains("openai"))
+        XCTAssertTrue(generic.contains("openai-internal"))
+        XCTAssertFalse(generic.contains("anthropic"))
+        XCTAssertFalse(generic.contains("google"))
+        XCTAssertFalse(generic.contains("moonshot"))
+    }
 }

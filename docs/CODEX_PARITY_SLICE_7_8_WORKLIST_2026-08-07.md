@@ -65,6 +65,33 @@ Measured against them (installed AX bounds):
     doc + matrix carry the new-session-per-provider rule. Re-confirmed by the
     Slice 8 matrix running each OpenRouter route in a fresh session.
 
+## Backlog burn-down (2026-08-08 early morning)
+
+- **Multiprompt subagent thread verified installed** (three back-and-forth
+  turns, one session, Grok 4.5): turn 1 spawned two parallel workers (exact
+  `WORKER-A-DONE` output + correct PNG count 37); turn 2 spawned a 60-second
+  worker and the **live running-subagent state is finally photographed** —
+  Activity LIVE "Happening now — not final", "Subagents › 1 running", live
+  status line "Using tools · 1 active worker · Get task output …" (fixture
+  38, closing item 13's carried photograph); turn 3's no-tool recall listed
+  all three prior results exactly, in order (fixture 39). Bottom-follow
+  honesty rode along: a settled turn while scrolled away produced the
+  "Jump to latest (2 new)" pill instead of yanking the viewport.
+- **Add Model filter-leak P2 FIXED**: `modelFilterText` now resets on editor
+  mount (`.onAppear`), not only on provider change (which never fires at
+  mount). Verified installed by poisoning one editor's filter, cancelling,
+  and opening the Moonshot editor: the picker shows all 12 models (was the
+  stuck "0/12" with the filter field hidden below its 12-model visibility
+  threshold).
+- **"system" display-name P3 FIXED**: generic catalog `owned_by` values
+  (`system`, `openai`, `openai-internal`, `organization-owner`) no longer
+  auto-fill Display name; pinned by
+  `testGenericCatalogOwnerLabelsExcludeRealLabNames` (637 tests / 0 failures).
+- **VoiceOver spot-check removed from the list by owner decision.**
+- Remaining open: per-New-chat helper spawn weight P2, frontmost-loss P2,
+  manual reduced-motion sweep, and the deferred product features (Review
+  scopes, safe Undo).
+
 ## Slice 8 acceptance flows — ALL COMPLETE
 
 All eleven flows in the plan's Slice 8 section are verified with receipts in
@@ -72,8 +99,9 @@ the progress logs and the "Slice 8 close-out and decision" section below.
 The decision is **ACCEPT WITH FOLLOW-UP (final)**; the only open work is the
 bounded follow-up list recorded there plus the defect backlog below (Add
 Model filter-leak P2, "system" display-name P3, per-New-chat helper weight
-P2, frontmost-loss P2, VoiceOver spot-check, manual reduced-motion sweep,
-and the opportunistic live-worker photograph from item 13).
+P2, frontmost-loss P2, manual reduced-motion sweep, and the opportunistic
+live-worker photograph from item 13). The VoiceOver spot-check was removed
+from the list by owner decision on 2026-08-07 night.
 
 ## Slice 7 progress log (updated 2026-08-07 evening)
 
@@ -144,8 +172,9 @@ and the opportunistic live-worker photograph from item 13).
   760-pt column leaves the trailing gutter to the overlay by geometry, and the
   Slice 2 overlay contract already accepts medium-width overlap. Decision
   recorded here so the "consider" item is closed, not silently dropped.
-- Carried (not Slice 7 scope): VoiceOver spot-check of the System Events
-  AXDescription quirk, and items 10–15.
+- Carried (not Slice 7 scope): items 10–15. (A VoiceOver spot-check of the
+  System Events AXDescription quirk was carried here originally; the owner
+  removed it from the list on 2026-08-07 night.)
 
 ## Slice 8 close-out and decision (2026-08-07 late night)
 
@@ -184,13 +213,14 @@ and the opportunistic live-worker photograph from item 13).
 
 **Decision: ACCEPT WITH FOLLOW-UP (final).** The target hierarchy is met, and
 no identity, transcript, review, approval, receipt, or recovery regression
-appeared in any Slice 7/8 pass. Exact bounded follow-ups: (1) VoiceOver
-spot-check of the System Events AXDescription quirk; (2) manual OS-level
-reduced-motion sweep; (3) Kimi K3 re-add once the Add Model filter-leak P2 is
-fixed; (4) product gaps items 10–15 (Review scopes, safe Undo, bell
-destination, live-worker photograph, count freshness, provider history
-replay); (5) P2s: per-New-chat helper spawn weight and frontmost loss during
+appeared in any Slice 7/8 pass. Exact bounded follow-ups: (1) manual
+OS-level reduced-motion sweep; (2) Kimi K3 re-add once the Add Model
+filter-leak P2 is fixed (done by owner 2026-08-07 night); (3) product gaps
+items 10–15 (Review scopes, safe Undo, bell destination, live-worker
+photograph, count freshness, provider history replay — all dispositioned
+above); (4) P2s: per-New-chat helper spawn weight and frontmost loss during
 long launches (both softened by the restore/quit repairs, neither closed).
+The VoiceOver spot-check was removed from this list by owner decision.
 
 16. **OpenRouter models and tool use (owner-flagged, 2026-08-07).** Jimmy has
     flagged OpenRouter-routed models' tool use as unresolved: the 2026-08-02

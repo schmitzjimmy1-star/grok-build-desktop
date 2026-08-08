@@ -1176,6 +1176,12 @@ struct CustomModelsSettingsPane: View {
                             }
                         }
                         .onChange(of: draft.providerID) { _, _ in modelFilterText = "" }
+                        // The provider-change reset alone leaked filter text across
+                        // editor sessions: reopening the editor mounts fresh, so
+                        // onChange never fires, and a catalog small enough to hide
+                        // the filter field (≤ 12 models) left a stale invisible
+                        // filter showing "0/N" with no way to clear it in the UI.
+                        .onAppear { modelFilterText = "" }
                     }
                 }
 
@@ -1345,7 +1351,11 @@ struct CustomModelsSettingsPane: View {
                 syncModelID(from: newValue)
                 if let picked = selectableModelsForDraft.first(where: { $0.id == newValue }),
                    let displayName = picked.ownedBy,
-                   !displayName.isEmpty {
+                   !displayName.isEmpty,
+                   !Self.genericCatalogOwnerLabels.contains(displayName.lowercased()) {
+                    // Generic owner strings (OpenAI's /v1/models reports owned_by
+                    // "system") are not display names; auto-filling them made the
+                    // composer show a model called "system" unless hand-corrected.
                     if draftProvider?.supportsLiveCatalogRefresh == true {
                         draft.name = ClinePassCatalog.displayName(for: displayName)
                     } else {
@@ -1848,6 +1858,11 @@ struct CustomModelsSettingsPane: View {
         guard let id = draft.providerID else { return nil }
         return providers.first { $0.id == id }
     }
+
+    /// Catalog `owned_by` values that identify an account tier, not a model name.
+    static let genericCatalogOwnerLabels: Set<String> = [
+        "system", "openai", "openai-internal", "organization-owner"
+    ]
 
     private var modelIDPlaceholder: String {
         let trimmed = draft.model.trimmingCharacters(in: .whitespaces)
