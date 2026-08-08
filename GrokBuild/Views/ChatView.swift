@@ -292,6 +292,8 @@ struct ChatView: View {
     // Keep the composer calm. Backend receipts and worker/file evidence live in
     // the optional right-side activity drawer instead of permanent chrome.
     @State private var showActivitySidebar = false
+    /// Measured chat-area width driving the Slice 7 responsive policy.
+    @State private var chatAreaWidth: Double = .infinity
     @State private var toolPillStatus = ToolPillStatus()
     @FocusState private var inputFocused: Bool
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -881,7 +883,11 @@ struct ChatView: View {
                 .focusSection()
             }
 
-            if showActivitySidebar {
+            // Slice 7 responsive order: the inspector hides first when the chat
+            // area cannot host the overlay without covering the reading column.
+            // `showActivitySidebar` is preserved so widening restores the panel.
+            if showActivitySidebar,
+               ResponsiveLayoutPolicy.inspectorFits(chatAreaWidth: chatAreaWidth) {
                 ActivitySidebar(
                     snapshot: store.runEvidenceSnapshot,
                     liveProjection: store.liveRunEvidenceProjection,
@@ -912,6 +918,11 @@ struct ChatView: View {
                 .frame(maxHeight: .infinity, alignment: .top)
                 .transition(.move(edge: .trailing).combined(with: .opacity))
             }
+        }
+        .onGeometryChange(for: Double.self) { proxy in
+            proxy.size.width
+        } action: { width in
+            chatAreaWidth = width
         }
         .onAppear { inputFocused = true }
         .onDisappear {
@@ -2275,8 +2286,9 @@ struct ChatView: View {
             .foregroundStyle(.secondary)
             .accessibilityElement(children: .ignore)
         }
-        .menuStyle(.button)
-        .buttonStyle(.plain)
+        .menuStyle(.borderlessButton)
+        .menuIndicator(.hidden)
+        .fixedSize()
         .help("Change agent mode")
         .accessibilityLabel("Agent mode")
         .accessibilityValue(displayName(for: store.currentMode))
@@ -2379,8 +2391,9 @@ struct ChatView: View {
             .foregroundStyle(.secondary)
             .accessibilityElement(children: .ignore)
         }
-        .menuStyle(.button)
-        .buttonStyle(.plain)
+        .menuStyle(.borderlessButton)
+        .menuIndicator(.hidden)
+        .fixedSize()
         .accessibilityLabel("Model and reasoning effort")
         .accessibilityValue(store.modelAccessibilityValue)
         .accessibilityIdentifier("grok-model-effort-selector")

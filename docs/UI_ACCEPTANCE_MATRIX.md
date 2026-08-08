@@ -719,3 +719,24 @@ Scope: `ActivitySidebar.swift` refactor, new `Models/ContextInspectorProjection.
 | Isolation / stale-generation | **Pass** — existing deterministic suites (`LifecycleAndSubprocessTests` cross-session/LRU identity, generation-bound ACP fixtures) remain green in the 624-test run; no polling added, no refresh triggers duplicated. |
 | Idle envelope | **Pass** — installed relaunch settled at 1.7/0.0/0.7% CPU over three samples at ~103–108 MB RSS (within the prior accepted envelope); clean quit, zero orphans. |
 | Ship | **Pass** — `make ship` all-PASS: stamp `4d724e5e…` == HEAD (dirty disclosed), dist == installed `62b1…` prefix verified below, Team `DD2GCQJVB4`, no quarantine; full suite **624 tests, 0 failures**; `git diff --check` clean. |
+
+## Codex parity Slice 7 (first pass) — responsive policy and accessibility repairs (2026-08-07)
+
+Scope: new pure `ResponsiveLayoutPolicy` (`Models/ResponsiveLayoutPolicy.swift`),
+ChatView geometry wiring, the composer menubutton AXPress repair, the sidebar
+session-row identifier, and focused `ResponsiveAndAccessibilityTests`.
+
+| Check | Installed-app result |
+|---|---|
+| Inspector hides first | **Pass** — at 1100×720 with the sidebar visible (chat area ≈856 pt < 900), the open inspector auto-hid; `showActivitySidebar` stayed true. Fixture `22-slice7-narrow-inspector-hidden.png`. |
+| State-preserving return | **Pass** — collapsing the sidebar at 1100 pt (chat area 1100 ≥ 900) brought the inspector back with no re-toggle. Fixture `23-slice7-sidebar-collapsed-inspector-returns.png`; wide state in `21-slice7-inspector-wide.png`. |
+| Transcript never compresses | **Pass / policy** — `sidebarFits` guards the 812-pt readable minimum (760 column + padding); with the 1100-pt window minimum the sidebar remains user-controlled, and the pure tests pin the sacrifice order for any future smaller minimum. |
+| Menubutton AXPress repair | **Pass** — the model menu opened from a plain `AXPress` (previously required `AXShowMenu`); mode/model menus moved from `.menuStyle(.button)` to the proven `.borderlessButton` style, pinned by `testComposerMenusUseThePressableMenuStyle`. |
+| Session-row AX identity | **Pass / source** — nested sidebar session rows now carry `grok-sidebar-session-row` alongside their spoken label. (The Slice 0 observation of missing rows was collapsed-disclosure state plus the missing identifier.) |
+| Focus order declared | **Pass / source** — workbench controls, transcript, and composer each own one focus section with sort priorities 3/2/1, pinned by test. |
+| Automated verification | **Pass** — `ResponsiveAndAccessibilityTests` 6/6; full `make test` **630 tests, 0 failures**; `git diff --check` clean; `make ship` all-PASS (stamp `ef7570c0…` == HEAD, dirty=true disclosed, dist == installed, Team `DD2GCQJVB4`, no quarantine). |
+| Shutdown | **Pass** — UI-only acceptance, no provider prompt; clean quit, zero orphans. |
+
+Remaining Slice 7 items (tracked in `docs/CODEX_PARITY_SLICE_7_8_WORKLIST_2026-08-07.md`):
+Session Dashboard sheet AX exposure, light-mode parity tuning and captures, the
+icon-only control audit sweep, and the end-to-end keyboard/VoiceOver pass.
