@@ -186,6 +186,26 @@ The Gemini and GPT-4.1 Mini results are **capable with a readiness caveat**, not
 clean first-turn passes. Prompts should name the required surface and exact MCP
 tools after readiness rather than accepting a guessed substitute.
 
+### Slice 8 close-out re-probe (2026-08-07 late night, owner-authorized)
+
+After the model tables were restored through Settings → Models (the config-loss
+P1), each OpenRouter route ran one bounded installed terminal-tool probe in a
+fresh session (`echo OPENROUTER-<ROUTE>-OK`, exact-output contract):
+
+| Model route | Terminal tool | Result |
+|---|---:|---|
+| OpenRouter DeepSeek V4 Flash | Pass (first try) | Exact marker output; receipt `deepseek/deepseek-v4-flash-0731 · Live`; fixture 35 |
+| OpenRouter Gemini 2.5 Flash | Pass (first try) | Exact marker output; receipt `google/gemini-2.5-flash · Live`; fixture 36 |
+| OpenRouter GPT-4.1 Mini | Pass (first try) | Exact marker output; receipt `openai/gpt-4.1-mini · Live`; fixture 37 |
+
+No readiness stall reproduced in this pass (single named tool, no MCP fan-out).
+**Recommendation per route:** all three are cleared for tool-backed work; for
+compound multi-MCP turns keep the readiness-gate prompt rule above (Gemini and
+GPT-4.1 Mini historically needed one same-session retry when MCP servers were
+still connecting). Cross-provider history replay remains the standing
+limitation: start a new session before switching provider after a web/tool
+turn.
+
 ## Verified acceptance receipts
 
 | Session | Route / purpose | Billable total tokens | Model calls |

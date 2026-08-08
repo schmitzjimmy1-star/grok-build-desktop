@@ -155,6 +155,51 @@ decision.
 - Carried (not Slice 7 scope): VoiceOver spot-check of the System Events
   AXDescription quirk, and items 10–15.
 
+## Slice 8 close-out and decision (2026-08-07 late night)
+
+**Remaining flows, all verified installed (build off `29300bb8`):**
+
+- **Stop with local stopped outcome (flow 9):** a `sleep 60` terminal turn was
+  stopped mid-tool; the transcript kept the trace ("26s thought · 1 tool"),
+  the inspector settled FINISHED with the local **Stopped** outcome, no
+  completion was fabricated, and the receipt dropped honestly to
+  "Grok 4.5 · Last live" (fixture 33).
+- **Attach file + MCP requested-vs-used (flow 8):** one turn carried an
+  attached file plus a requested `chrome-devtools` MCP connection. The
+  scaffold's honesty rule is explicit in the sent prompt ("If no attached MCP
+  tool is actually called, do not claim that an MCP was used"); the reply
+  returned the exact marker from the file via one read tool, the MCP stayed
+  requested-but-unused in Sources, and the inline card refused repository-wide
+  attribution (fixture 34). Bonus receipts from the same flow: the stopped
+  session's next send was correctly refused ("Grok is not ready yet"), the
+  draft and both attachment chips survived, and the recovery ledger recorded
+  "Continue as New" before the fresh thread ran.
+- **OpenRouter tool-use matrix (item 16, owner-authorized):** all three
+  restored routes passed a bounded terminal-tool probe first-try with exact
+  marker output and matching live receipts (fixtures 35–37; matrix table
+  updated in TOOL_USE_AND_MULTI_TURN_CONTRACT.md). Item 16 is closed;
+  cross-provider history replay remains the standing documented limitation.
+- **Sweeps (flow 11):** light/dark and narrow/wide stand on Slice 7's fixtures
+  30–32; keyboard-only stands on the Slice 7 Tab-ring/Escape/⌘, pass; reduced
+  motion is honored in code (`accessibilityReduceMotion` gates chrome,
+  Settings transitions, and rich-message rendering) — the OS-toggle sweep
+  would require changing a system accessibility setting and stays owed as a
+  manual pass.
+- **Final gates:** 636 tests / 0 failures; `make ship` PASS (clean stamp);
+  loaded-case quit gate passed with 8 live grok/helper children → 0.86 s full
+  exit → **zero orphans** → 1.18 s relaunch to interactive with transcript,
+  selection, model intent, and layout restored.
+
+**Decision: ACCEPT WITH FOLLOW-UP (final).** The target hierarchy is met, and
+no identity, transcript, review, approval, receipt, or recovery regression
+appeared in any Slice 7/8 pass. Exact bounded follow-ups: (1) VoiceOver
+spot-check of the System Events AXDescription quirk; (2) manual OS-level
+reduced-motion sweep; (3) Kimi K3 re-add once the Add Model filter-leak P2 is
+fixed; (4) product gaps items 10–15 (Review scopes, safe Undo, bell
+destination, live-worker photograph, count freshness, provider history
+replay); (5) P2s: per-New-chat helper spawn weight and frontmost loss during
+long launches (both softened by the restore/quit repairs, neither closed).
+
 16. **OpenRouter models and tool use (owner-flagged, 2026-08-07).** Jimmy has
     flagged OpenRouter-routed models' tool use as unresolved: the 2026-08-02
     receipts record that cross-provider web/tool history replay fails
