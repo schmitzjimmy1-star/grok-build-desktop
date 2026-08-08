@@ -6,7 +6,7 @@ import Foundation
 /// 2. the sidebar collapses next;
 /// 3. the transcript never compresses below its readable minimum.
 enum ResponsiveLayoutPolicy {
-    /// Minimum chat-area width at which the 290-pt top-trailing inspector
+    /// Minimum chat-area width at which the 260-pt top-trailing inspector
     /// overlay can be shown without covering most of the reading column.
     /// Below this the inspector hides first; the user's open/closed state is
     /// preserved and the panel returns when the window widens.
@@ -19,7 +19,8 @@ enum ResponsiveLayoutPolicy {
     /// The narrowest the project sidebar can render. Auto-collapse triggers only
     /// when even this minimum would compress the conversation below its readable
     /// minimum, so a user-chosen wider sidebar never flips visibility by itself.
-    static let sidebarMinimumWidth: Double = 220
+    /// Workbench W-1 (2026-08-08): 220 → 200; the rail is navigation, not a pane.
+    static let sidebarMinimumWidth: Double = 200
 
     static func inspectorFits(chatAreaWidth: Double) -> Bool {
         chatAreaWidth >= inspectorMinimumChatWidth

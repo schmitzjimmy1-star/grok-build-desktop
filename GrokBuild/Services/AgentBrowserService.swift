@@ -200,7 +200,13 @@ enum AgentBrowserService {
             "--remote-debugging-port=\(externalBrowserPort(settings: settings))",
             "--user-data-dir=\(externalBrowserProfileDirectory(settings: settings).path)",
             "--no-first-run",
-            "--no-default-browser-check"
+            "--no-default-browser-check",
+            // OUTSTANDING O-1 (2026-08-08): the auto-started CDP browser must not
+            // open a startup window and steal frontmost while the user is typing
+            // (the first-intent warm start can launch it mid-keystroke). Browser
+            // tools create their own pages over CDP; a visible window appears
+            // only when a page is actually driven.
+            "--no-startup-window"
         ]
     }
 

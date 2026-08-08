@@ -81,7 +81,8 @@ final class ResponsiveAndAccessibilityTests: XCTestCase {
         XCTAssertFalse(SidebarVisibility.shouldShow(
             preference: true, settingsPresented: false, availableContentWidth: 1000
         ))
-        XCTAssertEqual(ResponsiveLayoutPolicy.sidebarMinimumWidth, 220)
+        XCTAssertEqual(ResponsiveLayoutPolicy.sidebarMinimumWidth, 200,
+                       "Workbench W-1: the rail is navigation, not a pane")
     }
 
     /// Slice 7 icon-only audit: every audited icon-only control carries an explicit
