@@ -628,7 +628,37 @@ final class ChatStore {
     /// Unsent composer text for this tab. ChatView is recreated on tab switch
     /// (`.id(tabSessionID)` resets scroll identity), so the draft lives here to
     /// survive switching away and back. In-memory only — not persisted.
-    var composerDraft: String = ""
+    ///
+    /// The empty → non-empty transition is also the warm-start trigger: the first
+    /// keystroke is the first real intent to work, so the grok process (session/new,
+    /// MCP wiring, model readback) launches then — never at tab creation, which
+    /// left one full helper set per untouched New chat.
+    var composerDraft: String = "" {
+        didSet { warmStartOnFirstIntentIfNeeded(previousDraft: oldValue) }
+    }
+    private var firstIntentWarmStartTask: Task<Void, Never>?
+
+    /// Launch the backend for a brand-new tab on first typing. Deliberately narrow:
+    /// only a truly fresh local-only tab qualifies — restored tabs, tabs with any
+    /// transcript, saved backend bindings, or pending recovery intents keep their
+    /// continuity-gated lazy start in `deliverPrompt`, and an already starting or
+    /// live process is never touched.
+    private func warmStartOnFirstIntentIfNeeded(previousDraft: String) {
+        guard previousDraft.isEmpty, !composerDraft.isEmpty else { return }
+        guard currentWorkspace != nil,
+              connectionState == .idle,
+              process.sessionId == nil,
+              messages.isEmpty,
+              savedGrokSessionID == nil,
+              continuityBackendID == nil,
+              persistedPendingRecoveryIntent == nil,
+              firstIntentWarmStartTask == nil else { return }
+        firstIntentWarmStartTask = Task { [weak self] in
+            guard let self else { return }
+            await self.startNewSession()
+            self.firstIntentWarmStartTask = nil
+        }
+    }
 
     // MARK: - /btw aside panel
     private(set) var btwAsideText: String?
@@ -3845,10 +3875,17 @@ final class ChatStore {
                 mcpServerName: tool.mcpServerName
             )
         }
+        // Stamp the turn's model identity only from the confirmed execution
+        // receipt — the receipts contract forbids naming a model without one.
+        let confirmedModelID: String? = modelExecutionState.status == .confirmed
+            ? modelExecutionState.effectiveModelID
+            : nil
         let trace = AssistantTurnTrace(
             reasoningSummaryChunks: summary,
             thinkingDuration: duration,
-            tools: tools
+            tools: tools,
+            modelDisplayName: confirmedModelID.map { modelDisplayName($0) },
+            agentName: currentAgent.isEmpty ? nil : currentAgent
         )
         if trace.hasContent {
             messages[index].assistantTrace = trace

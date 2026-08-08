@@ -151,7 +151,10 @@ struct ActivitySidebar: View {
     var onOpenComputerUseSettings: () -> Void = {}
 
     @State private var confirmsContinueAsNew = false
-    @State private var showsExecutionReceipts = false
+    /// The run-evidence ledger opens in view by default (owner decision,
+    /// 2026-08-08): the collapsed disclosure hid the most information-dense
+    /// receipts behind an extra click every time the inspector opened.
+    @State private var showsExecutionReceipts = true
     @State private var subagentRowsExpanded = false
 
     var body: some View {
@@ -170,9 +173,11 @@ struct ActivitySidebar: View {
                     subagentsSection(subagents)
                 }
 
-                if let computerUse = inspector.computerUse {
-                    computerUseSection(computerUse)
-                }
+                // The Computer Use readiness note was removed from the inspector
+                // (owner decision, 2026-08-08): it restated a feature toggle on
+                // every open. The projection still carries the receipt
+                // (`inspector.computerUse`) for tests and future surfaces;
+                // Settings → Computer Use remains the control surface.
 
                 if let sources = inspector.sources {
                     sourcesSection(sources)
@@ -268,33 +273,6 @@ struct ActivitySidebar: View {
             }
             .accessibilityIdentifier("grok-inspector-subagents")
         }
-    }
-
-    /// Computer Use: current state and one truthful control — a link to the
-    /// existing settings pane. GrokBuild has no Picture-in-Picture surface, so
-    /// no such toggle is invented.
-    private func computerUseSection(_ computerUse: ContextInspectorProjection.ComputerUse) -> some View {
-        VStack(alignment: .leading, spacing: 4) {
-            Text("Computer Use").font(AppTheme.Typography.captionStrong)
-            HStack(spacing: 8) {
-                Text(computerUse.stateLabel)
-                    .font(AppTheme.Typography.caption)
-                    .foregroundStyle(.secondary)
-                Spacer(minLength: 4)
-                Button("Settings", action: onOpenComputerUseSettings)
-                    .buttonStyle(.plain)
-                    .font(AppTheme.Typography.caption)
-                    .foregroundStyle(Color.accentColor)
-                    .accessibilityLabel("Open Computer Use settings")
-            }
-            if let detail = computerUse.detail {
-                Text(detail)
-                    .font(AppTheme.Typography.caption)
-                    .foregroundStyle(.tertiary)
-            }
-        }
-        .accessibilityElement(children: .contain)
-        .accessibilityIdentifier("grok-inspector-computer-use")
     }
 
     /// Sources/Context: attachments and requested MCPs are intents; only

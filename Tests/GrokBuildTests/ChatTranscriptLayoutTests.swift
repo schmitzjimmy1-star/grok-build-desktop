@@ -439,4 +439,41 @@ extension ChatTranscriptLayoutTests {
         let interrupted = afterNote + [Message(role: .assistant, content: "Answer")]
         XCTAssertFalse(ChatStore.isDuplicateTrailingNote(note, in: interrupted))
     }
+
+    /// Transcripts recorded before the per-turn model stamp existed must decode
+    /// with `nil` identity — the header then falls back to "Build agent" rather
+    /// than guessing a model name without a receipt.
+    func testAssistantTraceDecodesLegacyJSONWithoutModelStamp() throws {
+        let legacy = """
+        {"reasoningSummaryChunks":["thought"],"thinkingDuration":2.5,
+         "tools":[{"id":"t1","title":"Execute","status":"Done","mcpServerName":null}]}
+        """.data(using: .utf8)!
+        let trace = try JSONDecoder().decode(AssistantTurnTrace.self, from: legacy)
+        XCTAssertNil(trace.modelDisplayName)
+        XCTAssertNil(trace.agentName)
+        XCTAssertEqual(trace.tools.count, 1)
+    }
+
+    /// The turn header names the model that ran the turn when (and only when)
+    /// the trace carries the confirmed receipt; the neutral label is the fallback.
+    func testAssistantTurnHeaderUsesStampedModelIdentity() throws {
+        let repositoryRoot = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        let chatSource = try String(
+            contentsOf: repositoryRoot.appendingPathComponent("GrokBuild/Views/ChatView.swift"),
+            encoding: .utf8
+        )
+        XCTAssertTrue(chatSource.contains("Text(assistantTurnTitle(trace: trace))"),
+                      "the header renders the dynamic per-turn identity")
+        XCTAssertTrue(chatSource.contains("return \"Build agent\""),
+                      "unstamped turns keep the neutral fallback, never a guessed model")
+        let storeSource = try String(
+            contentsOf: repositoryRoot.appendingPathComponent("GrokBuild/Services/ChatStore.swift"),
+            encoding: .utf8
+        )
+        XCTAssertTrue(storeSource.contains("modelExecutionState.status == .confirmed"),
+                      "the stamp comes only from the confirmed execution receipt")
+    }
 }
