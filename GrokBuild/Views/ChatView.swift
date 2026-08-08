@@ -2854,9 +2854,11 @@ struct AuthBanner: View {
                         onDismiss()
                     } label: {
                         Image(systemName: "xmark.circle.fill")
+                            .contentShape(Rectangle().inset(by: -8))
                     }
                     .buttonStyle(.plain)
                     .foregroundStyle(.secondary)
+                    .accessibilityLabel("Dismiss")
                 }
             }
         }

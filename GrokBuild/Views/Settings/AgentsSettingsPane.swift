@@ -258,6 +258,7 @@ struct AgentsSettingsPane: View {
             }
             .buttonStyle(.borderless)
             .help("Edit subagent")
+            .accessibilityLabel("Edit subagent")
             Button(role: .destructive) {
                 removeRole(role)
             } label: {
@@ -265,6 +266,7 @@ struct AgentsSettingsPane: View {
             }
             .buttonStyle(.borderless)
             .help("Remove subagent")
+            .accessibilityLabel("Remove subagent")
         }
         .padding(12)
     }

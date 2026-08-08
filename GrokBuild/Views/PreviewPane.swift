@@ -61,10 +61,13 @@ struct PreviewPane: View {
             Button(action: onClose) {
                 Image(systemName: "sidebar.right")
                     .font(.headline)
+                    .contentShape(Rectangle().inset(by: -8))
             }
             .buttonStyle(.plain)
             .foregroundStyle(.secondary)
             .help("Close Preview")
+            .accessibilityLabel("Close review pane")
+            .accessibilityHint("Closes the changed-files review split.")
 
             Text("Preview")
                 .font(.headline)

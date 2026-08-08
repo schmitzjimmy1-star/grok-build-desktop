@@ -180,6 +180,7 @@ struct MemoryBrowserPanel: View {
                         }
                         .buttonStyle(.borderless)
                         .help("Reveal in Finder")
+                        .accessibilityLabel("Reveal in Finder")
                     }
                     .padding(10)
                     Divider()

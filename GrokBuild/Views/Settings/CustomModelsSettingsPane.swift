@@ -833,6 +833,8 @@ struct CustomModelsSettingsPane: View {
                             Image(systemName: revealProviderKey ? "eye.slash" : "eye")
                         }
                         .buttonStyle(.borderless)
+                        .help(revealProviderKey ? "Hide API key" : "Show API key")
+                        .accessibilityLabel(revealProviderKey ? "Hide API key" : "Show API key")
                     }
                 }
 
@@ -1240,6 +1242,7 @@ struct CustomModelsSettingsPane: View {
                             }
                             .buttonStyle(.borderless)
                             .help(revealKey ? "Hide API key" : "Show API key")
+                            .accessibilityLabel(revealKey ? "Hide API key" : "Show API key")
                         }
                     }
                     Text("Advanced manual models write the CLI-required api_key only to the owner-readable ~/.grok/config.toml file. Prefer a saved provider so its credential is also backed by Keychain. Local/open servers don't need a key.")

@@ -16,6 +16,11 @@ enum ResponsiveLayoutPolicy {
     /// 26-pt horizontal padding on each side.
     static let conversationReadableMinimum: Double = 812
 
+    /// The narrowest the project sidebar can render. Auto-collapse triggers only
+    /// when even this minimum would compress the conversation below its readable
+    /// minimum, so a user-chosen wider sidebar never flips visibility by itself.
+    static let sidebarMinimumWidth: Double = 220
+
     static func inspectorFits(chatAreaWidth: Double) -> Bool {
         chatAreaWidth >= inspectorMinimumChatWidth
     }

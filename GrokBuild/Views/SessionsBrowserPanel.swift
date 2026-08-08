@@ -245,6 +245,7 @@ struct SessionsBrowserPanel: View {
                 }
                 .buttonStyle(.borderless)
                 .controlSize(.small)
+                .accessibilityLabel("Delete session")
                 .disabled(isMutating || isOpenLive || isActive)
                 .help(isOpenLive ? "Close this session before deleting it" : isActive ? "Switch away from this session before deleting it" : "Delete this session permanently")
             }

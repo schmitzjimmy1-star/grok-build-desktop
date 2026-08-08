@@ -37,8 +37,25 @@ enum SidebarVisibility {
 
     /// Settings owns its own navigation and should use the full window instead of
     /// stacking a second sidebar beside the project sidebar.
-    static func shouldShow(preference: Bool, settingsPresented: Bool) -> Bool {
-        preference && !settingsPresented
+    ///
+    /// `availableContentWidth` wires the Slice 7 responsive order's second step:
+    /// the sidebar auto-collapses when even its minimum width would compress the
+    /// conversation below `ResponsiveLayoutPolicy.conversationReadableMinimum`.
+    /// At the current 1100-pt window minimum this is unreachable by construction
+    /// (1100 − 220 ≥ 812), so today the sidebar stays user-controlled; the wiring
+    /// exists so any future smaller minimum collapses the sidebar before the
+    /// transcript ever compresses.
+    static func shouldShow(
+        preference: Bool,
+        settingsPresented: Bool,
+        availableContentWidth: Double = .infinity
+    ) -> Bool {
+        preference
+            && !settingsPresented
+            && ResponsiveLayoutPolicy.sidebarFits(
+                contentWidth: availableContentWidth,
+                sidebarWidth: ResponsiveLayoutPolicy.sidebarMinimumWidth
+            )
     }
 
     /// The persisted preference as ContentView's `@AppStorage` sees it: a
