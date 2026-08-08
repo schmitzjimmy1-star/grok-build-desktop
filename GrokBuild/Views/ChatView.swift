@@ -269,6 +269,10 @@ struct ChatView: View {
     var onOpenDashboard: () -> Void = {}
     var onSwitchBranch: () -> Void = {}
     var onRevealArtifact: (ChatStore.RunArtifact) -> Void = { _ in }
+    /// True while launch restore rebuilds saved tabs. The composer stays typeable so a
+    /// draft is never swallowed, but sends and header/empty-state actions stay inert
+    /// until restore completes.
+    var isSessionRestoreInProgress: Bool = false
 
     @State private var input: String = ""
     @State private var isFileDropTargeted = false
@@ -547,6 +551,7 @@ struct ChatView: View {
         ZStack(alignment: .topTrailing) {
             VStack(spacing: 0) {
             topBar
+                .disabled(isSessionRestoreInProgress)
 
             if let authMsg = store.authRequiredMessage {
                 AuthBanner(
@@ -588,10 +593,12 @@ struct ChatView: View {
                         if store.showsEmptyTranscriptWelcome {
                             if store.currentWorkspace == nil {
                                 noProjectState
+                                    .disabled(isSessionRestoreInProgress)
                             } else if case .failed = store.connectionState {
                                 EmptyView()
                             } else {
                                 welcomeState
+                                    .disabled(isSessionRestoreInProgress)
                             }
                         }
 
@@ -2251,7 +2258,8 @@ struct ChatView: View {
             .disabled(input.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && !store.hasVisibleFileAttachments ||
                       store.currentWorkspace == nil ||
                       store.authRequiredMessage != nil ||
-                      store.connectionState == .starting)
+                      store.connectionState == .starting ||
+                      isSessionRestoreInProgress)
             .keyboardShortcut(.return, modifiers: .command)
         }
     }
@@ -2477,6 +2485,9 @@ struct ChatView: View {
     }
 
     private func submit() async {
+        // Launch restore keeps the composer typeable for draft capture, but a send
+        // must wait until the restored session is actually selected and bound.
+        guard !isSessionRestoreInProgress else { return }
         let submittedDraft = input
         let text = submittedDraft.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty else { return }

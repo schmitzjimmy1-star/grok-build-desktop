@@ -965,12 +965,15 @@ final class GrokProcess: @unchecked Sendable {
     /// after LRU eviction or a configuration reload; call this only when the session's
     /// tab closes for good or the app is quitting.
     func shutdown() async {
-        await cleanupProcess(setIdle: false)
+        // Skip the courtesy session/cancel: it is a blocking pipe write with no
+        // timeout, and at quit the immediate stdin close below already tells grok to
+        // exit. A stuck child could otherwise hold the whole teardown hostage.
+        await cleanupProcess(setIdle: false, sendCancel: false)
         acpEventContinuation?.finish()
         acpEventContinuation = nil
     }
 
-    private func cleanupProcess(setIdle: Bool) async {
+    private func cleanupProcess(setIdle: Bool, sendCancel: Bool = true) async {
         if modelExecutionState.isPending,
            let identity = modelExecutionState.identity,
            identity.processGeneration == activeProcessGeneration {
@@ -988,7 +991,7 @@ final class GrokProcess: @unchecked Sendable {
         terminalManager.releaseAll()
         finishTurnCompletionWait()
 
-        if let sid = sessionId {
+        if sendCancel, let sid = sessionId {
             _ = writeJson(["jsonrpc": "2.0", "method": "session/cancel", "params": ["sessionId": sid]])
         }
         try? stdin?.close()
@@ -996,6 +999,14 @@ final class GrokProcess: @unchecked Sendable {
         if let p = process, p.isRunning {
             try? await Task.sleep(for: .milliseconds(100))
             if p.isRunning { p.terminate() }
+            // SIGTERM alone can lose the race with a busy child, and grok's MCP helper
+            // children (browser, computer use) exit only when their stdin pipes close —
+            // which happens exactly when grok dies. Escalate so quit can never strand
+            // the whole process tree past the app's own exit.
+            if p.isRunning {
+                try? await Task.sleep(for: .milliseconds(300))
+                if p.isRunning { kill(p.processIdentifier, SIGKILL) }
+            }
         }
 
         process = nil

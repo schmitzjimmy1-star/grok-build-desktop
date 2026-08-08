@@ -194,3 +194,86 @@ follow-ups bounded and tracked.
 **Slice 8 decision remains ACCEPT WITH FOLLOW-UP (provisional)** for the
 parity frontend itself; the P1 defects above are runtime/scale issues outside
 the slice scope but block full Slice 8 closure and item 16.
+
+## Model-table restoration receipt (2026-08-07 night)
+
+**The lost-model-tables P1 is repaired.** All restoration was done through the
+installed app's own Settings → Models flows (Test connection → Add model
+catalog picks), never by hand-editing config.toml:
+
+- Provider state on open: all three providers survived with Keychain-backed
+  credentials (ChatGPT/OpenAI API key, Kimi/Moonshot API key, OpenRouter
+  OAuth), each "Not tested" with Add model disabled; Models section read
+  "0/28 custom models."
+- Test connection receipts: OpenAI Connected — 124 models; Moonshot
+  Connected — 12 models; OpenRouter OAuth Connected — 400 models. Keychain
+  credentials all valid; no secret was displayed or touched.
+- Re-added via catalog picks: `gpt-5.6-terra` (OpenAI Responses, 128K,
+  display name corrected from auto-filled "system"), `gpt-5.6-luna` (OpenAI
+  Responses, 200K, same correction), `deepseek/deepseek-v4-flash-0731`,
+  `google/gemini-2.5-flash`, and `openai/gpt-4.1-mini` (all three OpenRouter,
+  Standard chat, ids auto-derived to the exact pre-loss table keys).
+- Verified: `~/.grok/config.toml` (mode 0600, 2,430 bytes) now carries all
+  five `[model.*]` tables byte-equivalent to the 2026-08-05 backup where they
+  existed there; the composer model menu lists all five under "Your models"
+  alongside Grok 4.5. Item 16's OpenRouter tool-use matrix is unblocked
+  (still needs its separate billable authorization).
+- **Kimi K3 was intentionally skipped** (owner said move on): blocked by the
+  new editor defect below. Moonshot provider itself is Connected, so the
+  re-add is a one-minute job once the defect is fixed or a fresh editor
+  cooperates.
+
+**New defects found during restoration:**
+
+- **P2 — Add Model editor leaks catalog filter text across provider
+  editors.** The filter field kept "gpt-5.6-luna" when opening Kimi's and
+  OpenRouter's editors. With Moonshot's 12-model catalog the filter row is
+  hidden below the visibility threshold, so the stale filter left the picker
+  at "0/12" with no way to clear it in the UI — this is what blocked the
+  kimi-k3 re-add. Fix: reset filter state per editor open (or always show the
+  filter row).
+- **P3 — Display name auto-fills the OpenAI catalog's "system" label** when
+  picking gpt-5.6-terra/luna ("system — <id>" entries), which would render
+  the composer entry as "system" unless manually corrected.
+- **Automation/AX notes:** Settings-surface buttons expose no
+  title/description/identifier through System Events (position-matched
+  AXPress was required; the automator MCP's own AX snapshot sees the names) —
+  same family as the Slice 7 AXDescription finding. Full-window capture also
+  times out while a composer NSMenu is open.
+
+## Restore-latency and quit P1 repair receipt (2026-08-07 late night)
+
+Both remaining P1s are repaired on `agent/restore-quit-latency` (634 tests /
+0 failures, `make ship` PASS, installed-verified):
+
+- **Launch restore: 60–80 s → 2.32 s to interactive** (window at 0.72 s),
+  measured installed with 111 restored tabs. Root cause was not data volume:
+  the serial main-actor loop re-read and re-parsed `~/.grok/config.toml` 3–4×
+  per tab and re-decoded the workspace-layout blob ~5× per tab. Fixes:
+  mtime+size-stamped contents cache in `GrokConfigRepository.read()` (external
+  TUI/CLI writes still invalidate), a decoded workspace-layout cache in
+  `SessionLayoutStore`, and an in-memory `SessionNameStore` mirror.
+- **Progress counter honest:** the rebuild loop now yields once per tab so the
+  "X of N" counter and per-workspace status actually paint; at the new speed
+  the overlay is visible only briefly.
+- **Stale-empty pruning (owner-approved deletion):**
+  `SessionRestorePolicy.pruneDecision` drops records with no restorable local
+  transcript, not selected anywhere, no pending recovery intent, and untouched
+  for 24 h — a warm-start backend binding alone no longer immortalizes an
+  empty New chat. First launch pruned 19 husks (130 → 111 records); most
+  remaining acceptance sessions hold real transcripts and are protected.
+  Deleting those contentful old threads stays a manual/dashboard action.
+- **Draft capture during restore:** only sidebar/settings/review disable
+  during restore; the composer stays typeable with sends gated, and
+  `selectSession` carries a placeholder-store draft across the `.id()`
+  remount that previously swallowed it.
+- **Quit: scripted AppleEvent quit 0.31 s full exit, zero orphaned helpers**
+  (was two -1712 timeouts and a ~20 s ⌘Q). `applicationShouldTerminate` no
+  longer downgrades a re-entrant quit to `.terminateNow` (and resets its
+  pending flag); teardown runs in a `TaskGroup` with the completion posted
+  from the main actor (the background-thread post raced the 3 s poll);
+  `GrokProcess.shutdown()` skips the unbounded-blocking courtesy
+  `session/cancel` and escalates SIGTERM → 300 ms → SIGKILL so grok's MCP
+  children (which exit only on stdin EOF) can never outlive the app.
+- `purgeEmptySessions` now batches one layout save per purge instead of one
+  full encode/HMAC/verify cycle per closed session.

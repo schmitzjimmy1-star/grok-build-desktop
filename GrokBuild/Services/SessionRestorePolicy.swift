@@ -36,6 +36,11 @@ struct RestoreDecision: Equatable, Sendable {
     let deferBackendStart: Bool
 }
 
+struct SessionPruneDecision: Equatable, Sendable {
+    let keptRecords: [SavedSessionRecord]
+    let prunedRecordIDs: [UUID]
+}
+
 /// Pure session-selection rules for launch restore and workspace switching.
 enum SessionRestorePolicy {
     static func sessionHasPersistedContent(_ sessionID: UUID) -> Bool {
@@ -63,6 +68,43 @@ enum SessionRestorePolicy {
     /// UUID order makes ties deterministic without consulting transcript size.
     static func recentSessionOrder(from records: [SavedSessionRecord]) -> [UUID] {
         records.sorted(by: isMoreRecent).map(\.id)
+    }
+
+    /// How long an empty session survives before launch restore deletes it. Warm-started
+    /// "New chat" tabs acquire a backend binding without ever holding a message, so a
+    /// binding alone is not content; only a restorable local transcript is.
+    static let emptySessionPruneAge: TimeInterval = 24 * 60 * 60
+
+    /// Decide which saved records launch restore should drop instead of rebuilding.
+    /// A record is prunable when every one of these holds:
+    /// - it has no restorable local transcript (`restorableMessageCount == 0` or no sidecar),
+    /// - it is not the saved selection for any workspace or globally,
+    /// - it carries no pending explicit-recovery intent (Continue as New must survive),
+    /// - it was last touched more than `emptySessionPruneAge` ago, so a chat the user
+    ///   just opened before quitting is never deleted out from under them.
+    /// Deletion is layout-level: pruned records simply are not restored, and the next
+    /// committed layout save persists the smaller set.
+    static func pruneDecision(
+        records: [SavedSessionRecord],
+        restorableMessageCounts: [UUID: Int],
+        selectedSessionIDs: Set<UUID>,
+        now: Date = Date()
+    ) -> SessionPruneDecision {
+        var kept: [SavedSessionRecord] = []
+        var pruned: [UUID] = []
+        for record in records {
+            let hasTranscript = (restorableMessageCounts[record.id] ?? 0) > 0
+            let isProtected = hasTranscript
+                || selectedSessionIDs.contains(record.id)
+                || record.pendingRecoveryIntent != nil
+                || now.timeIntervalSince(record.lastAccessed) < emptySessionPruneAge
+            if isProtected {
+                kept.append(record)
+            } else {
+                pruned.append(record.id)
+            }
+        }
+        return SessionPruneDecision(keptRecords: kept, prunedRecordIDs: pruned)
     }
 
     static func restoreDecision(input: SessionRestoreInput) -> RestoreDecision {

@@ -530,24 +530,49 @@ struct QuestionRequest: Identifiable, Hashable, @unchecked Sendable {
 enum SessionNameStore {
     private static let key = "grokbuild.sessionNames.v1"
 
+    /// In-memory mirror of the names dictionary. Title refreshes call `name(for:)`
+    /// twice per session per pass; bridging the full UserDefaults dictionary out on
+    /// every call made a 130-tab title refresh do hundreds of plist copies. The key
+    /// is written only through `setName`, which keeps the mirror exact.
+    private static let cacheLock = NSLock()
+    nonisolated(unsafe) private static var cachedMap: [String: String]?
+
+    private static func loadMap() -> [String: String] {
+        cacheLock.lock()
+        defer { cacheLock.unlock() }
+        if let cachedMap { return cachedMap }
+        let map = UserDefaults.standard.dictionary(forKey: key) as? [String: String] ?? [:]
+        cachedMap = map
+        return map
+    }
+
     static func name(for sessionId: String) -> String? {
-        guard let map = UserDefaults.standard.dictionary(forKey: key) as? [String: String] else { return nil }
-        return map[sessionId]
+        loadMap()[sessionId]
     }
 
     static func setName(_ name: String, for sessionId: String) {
-        var map = UserDefaults.standard.dictionary(forKey: key) as? [String: String] ?? [:]
+        var map = loadMap()
         let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
         if trimmed.isEmpty {
             map.removeValue(forKey: sessionId)
         } else {
             map[sessionId] = trimmed
         }
+        cacheLock.lock()
+        defer { cacheLock.unlock() }
         UserDefaults.standard.set(map, forKey: key)
+        cachedMap = map
     }
 
     static func removeName(for sessionId: String) {
         setName("", for: sessionId)
+    }
+
+    /// Tests write the names key directly; give them an explicit reset.
+    static func invalidateCacheForTesting() {
+        cacheLock.lock()
+        defer { cacheLock.unlock() }
+        cachedMap = nil
     }
 }
 
