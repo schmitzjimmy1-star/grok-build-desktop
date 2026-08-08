@@ -120,3 +120,77 @@ decision.
     OpenRouter), explicit handling or disclosure when a route cannot replay
     provider-specific tool history, and a documented recommendation per route.
     Requires separate billable authorization.
+
+## Slice 8 progress log (2026-08-07 night, published build 957810ac)
+
+**Flows verified installed:** relaunch into the existing active task with exact
+transcript identity (flow 1/10 — full transcript, continuity banner, honest
+`Grok 4.5 · Last live` receipt after quit/relaunch); project/task switching
+(flow 2, re-driven); flows 4–9's streaming/thinking/subagent/settlement,
+inline card, inspector states, and requested-vs-used MCP behavior stand on the
+Slice 3/5 installed probes recorded in the matrix.
+
+**New findings this pass (need addressing):**
+- **Saved-layout scale: 129 sessions restore at launch**, with a visible
+  progress overlay and correctly disabled UI — but launch-to-interactive is
+  tens of seconds. Needs a pruning/archiving policy for stale tabs (most are
+  old acceptance sessions) or a faster deferred restore.
+- **Frontmost instability during automation:** GrokBuild repeatedly lost
+  frontmost to other apps mid-flow, which also affects real long launches;
+  full-screen captures grabbed the wrong app twice. Harmless to users but
+  worth a launch-activation review alongside the restore-latency fix.
+
+**Slice 8 flows still owed before a decision:** one bounded fixture turn with
+a deliberate tool failure observed live; attach-file + MCP requested-vs-used
+in the same turn; Stop with the local stopped outcome; light/dark,
+reduced-motion, and keyboard-only sweeps; and the OpenRouter tool-use matrix
+(item 16, separate billable authorization). Decision stands at
+**ACCEPT WITH FOLLOW-UP (provisional)** — the target hierarchy is visibly met
+and no identity/review/receipt regressions have appeared, with the listed
+follow-ups bounded and tracked.
+
+## Billable probe session findings (2026-08-07 late night, build 957810ac)
+
+**Verified working (2 authorized Grok 4.5 turns):**
+- Deliberate tool failure stays failed everywhere: transcript trace shows
+  "Execute `/usr/bin/false` — Failed"; the inspector shows the orange
+  "1 failed tool — Command exited with status 1" line; exact marker returned;
+  the inline card correctly refused attribution (fixtures 27–28).
+- Long-answer flow: a 400-line answer streamed, followed to the bottom, and
+  settled cleanly with the card unattributed (fixture 29). Stop could not be
+  exercised because the single-chunk reveal finished before the Stop press —
+  Stop stands on its 2026-07-31 live receipt; a tool-backed long turn is the
+  way to re-exercise it.
+
+**Defects found (need addressing, roughly in priority order):**
+- **P1 — Custom model tables are GONE from `~/.grok/config.toml`** (1,057
+  bytes; only `[models]` default remains — no `[models.<id>]` entries). The
+  composer's model menu therefore shows only "Grok 4.5": the OpenRouter
+  routes (DeepSeek/Gemini/GPT-4.1-mini) and OpenAI/Kimi entries cannot be
+  selected anywhere, in GrokBuild or the TUI. Keychain still holds provider
+  credentials (openai metadata confirmed; no secret touched), so the repair is
+  re-adding models via Settings → Models catalog flows. Until then, item 16's
+  OpenRouter tool-use matrix is blocked. Root cause unknown — the config was
+  2,308 bytes on 2026-08-02; something (CLI update/migration/TUI action)
+  rewrote it outside GrokBuild's slices. Consider a GrokBuild startup check
+  that detects Keychain-credentialed providers with zero config model tables
+  and offers restoration.
+- **P1 — Launch restore at 130 tabs takes 60–80s** with the progress counter
+  stuck at "0 of N" the whole time (batch update only at the end), all input
+  disabled, and typed text silently discarded (no draft preservation).
+  Needs: pruning/archiving policy for stale tabs, honest incremental
+  progress, and draft capture during restore.
+- **P1 — Quit at scale is degraded**: scripted AppleEvent quit timed out twice
+  (-1712) with app + two browser-mcp + two ComputerUseMCP children alive;
+  ⌘Q then took ~20 s to full exit (accepted envelope was 0.32 s). Likely the
+  130-tab flush plus multi-child teardown.
+- **P2 — Two warm-started process pairs observed** (two browser-mcp + two
+  ComputerUseMCP children) after two New chats — each empty New chat spawns
+  and keeps a full helper set; combined with layout growth, every acceptance
+  session adds a permanent empty tab and transient helper load.
+- **P2 — Frontmost loss during long launches** (recorded earlier) compounds
+  the restore-latency defect.
+
+**Slice 8 decision remains ACCEPT WITH FOLLOW-UP (provisional)** for the
+parity frontend itself; the P1 defects above are runtime/scale issues outside
+the slice scope but block full Slice 8 closure and item 16.
