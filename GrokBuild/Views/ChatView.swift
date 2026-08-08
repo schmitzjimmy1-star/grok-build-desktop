@@ -1622,9 +1622,12 @@ struct ChatView: View {
             }
             .buttonStyle(GrokChromeButtonStyle())
             .foregroundStyle(.secondary)
-            .help(isReviewVisible ? "Hide the Git review pane" : "Show the Git review pane")
+            .help(isReviewVisible
+                ? "Hide the Git review pane"
+                : "Show the Git review pane. Counts refresh at selection and turn boundaries.")
             .accessibilityLabel(isReviewVisible ? "Hide changed files review" : "Show changed files review")
             .accessibilityValue("\(reviewFileCount) changed \(reviewFileCount == 1 ? "file" : "files")")
+            .accessibilityHint("Counts refresh when you switch sessions or a turn completes, not on external edits.")
             .accessibilityIdentifier("grok-header-review-toggle")
         }
     }
