@@ -1235,14 +1235,15 @@ final class ACPClientContractTests: XCTestCase {
             encoding: .utf8
         )
         XCTAssertTrue(previewSource.contains("Repository changes from Git"))
-        XCTAssertTrue(previewSource.contains("Assistant examples never appear here"))
+        XCTAssertTrue(previewSource.contains("Diffs come only\n    /// from Git") || previewSource.contains("This panel reflects a fresh Git working-tree snapshot."),
+                      "the pane stays a Git-truth surface")
         XCTAssertFalse(previewSource.contains("Apply All"))
         XCTAssertFalse(chatSource.contains("SessionContinuityBanner("))
         XCTAssertTrue(chatSource.contains("What do you want to work on?"))
         XCTAssertTrue(chatSource.contains("private struct CodexPromptPill"))
         XCTAssertTrue(chatSource.contains("private var browserStatusIndicator"))
         XCTAssertTrue(chatSource.contains("private var computerUseStatusIndicator"))
-        XCTAssertTrue(chatSource.contains("TextField(\"Do anything\""))
+        XCTAssertTrue(chatSource.contains("TextField(\"Describe a task\""))
         XCTAssertTrue(chatSource.contains("ComposerDensityPolicy.minimumLineCount...ComposerDensityPolicy.maximumLineCount"))
         // Codex parity Slice 4: the composer Details shelf and project status row
         // were deleted; no telemetry shelf may return below the composer.
@@ -1266,7 +1267,8 @@ final class ACPClientContractTests: XCTestCase {
         XCTAssertTrue(contentSource.contains(".onChange(of: activeStore.gitRefreshRevision)"))
         XCTAssertTrue(contentSource.contains("Task.sleep(for: .milliseconds(250))"))
         XCTAssertTrue(contentSource.contains("boundedGitRefreshTask?.cancel()"))
-        XCTAssertTrue(bubbleSource.contains("Text(\"Build agent\")"))
+        XCTAssertFalse(bubbleSource.contains("Text(\"Build agent\")"),
+                       "the dead bubble header branch stays deleted; turn identity lives in the ChatView header")
         XCTAssertFalse(bubbleSource.contains("Text(\"Grok\")"))
     }
 }

@@ -23,7 +23,7 @@ final class ComposerPresentationContractTests: XCTestCase {
         let chatView = try source("GrokBuild/Views/ChatView.swift")
 
         // One rounded surface with the Do anything editor on top…
-        XCTAssertTrue(chatView.contains("TextField(\"Do anything\""))
+        XCTAssertTrue(chatView.contains("TextField(\"Describe a task\""))
         XCTAssertTrue(chatView.contains("ComposerDensityPolicy.minimumLineCount...ComposerDensityPolicy.maximumLineCount"),
                       "one-line idle height growing to the existing eight-line cap")
         XCTAssertTrue(chatView.contains(".grokGlassSurface("),

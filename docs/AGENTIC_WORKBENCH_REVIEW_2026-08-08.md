@@ -87,5 +87,12 @@ Suggested order: W-1 now (answers "reduce the sidebar"), then W-3 + W-4
   all-zero stat grid collapsed to one line, Files in review capped at 5,
   and user prompts rendered as full-width task statements with a leading
   rule and "You" caption.
-- W-3..W-6 remain available for the owner to pick.
+- **W-3 and W-4 shipped 2026-08-08**: the landing is a workspace overview
+  (branch, changed files, intent cards, MRU recent tasks with one-click
+  resume) and a context strip above the transcript carries
+  project · branch · changes · live model receipt. The owner's tool-
+  visibility ask shipped with them: live turns auto-open their trace so
+  running tool calls are visible, and worker counts appear only when
+  nonzero.
+- W-5 (plan as spine) and W-6 (docked inspector) remain.
 - PR #16 merged 2026-08-08.

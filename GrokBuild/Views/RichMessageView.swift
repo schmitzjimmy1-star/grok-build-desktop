@@ -984,7 +984,7 @@ struct RichMessageView: View {
                     .lineSpacing(4)
                     .textSelection(.enabled)
                     .frame(maxWidth: .infinity, alignment: .leading)
-                    .accessibilityLabel("Build agent response: \(text)")
+                    .accessibilityLabel("Agent response: \(text)")
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)

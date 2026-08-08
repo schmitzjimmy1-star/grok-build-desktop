@@ -250,7 +250,12 @@ struct ChatView: View {
     var reviewDiffs: [ChatStore.DetectedDiff] = []
     var isReviewVisible: Bool = false
     var onToggleReview: () -> Void = {}
+    /// Straggler fix (2026-08-08): the inline card's Review selects the Last
+    /// turn scope before the pane opens.
+    var onOpenTurnReview: () -> Void = {}
     var onSelectSession: (UUID) -> Void = { _ in }
+    /// Workbench W-3: recent tasks for this project, MRU-ordered, resume on click.
+    var recentSessions: [RecentSessionEntry] = []
     var onBrowseSessions: () -> Void = {}
     var onNewSession: () -> Void = {}
     var onAddProject: () -> Void = {}
@@ -280,6 +285,8 @@ struct ChatView: View {
     @State private var slashSkillsExpanded = false
     @State private var slashCommandsExpanded = false
     @State private var toolActivityExpanded = false
+    /// W-4 context strip: cached branch name (reads .git/HEAD, no subprocess).
+    @State private var contextBranchName: String?
     @State private var expandedAssistantTraceIDs: Set<UUID> = []
     @State private var autoScrollTask: Task<Void, Never>?
     @State private var programmaticScrollReleaseTask: Task<Void, Never>?
@@ -568,6 +575,10 @@ struct ChatView: View {
             topBar
                 .disabled(isSessionRestoreInProgress)
 
+            if store.currentWorkspace != nil {
+                taskContextStrip
+            }
+
             if let authMsg = store.authRequiredMessage {
                 AuthBanner(
                     message: authMsg,
@@ -664,8 +675,7 @@ struct ChatView: View {
                                         isStreaming: store.isStreaming && msg.id == store.streamingMessageID,
                                         streamingPresentation: msg.id == store.streamingMessageID
                                             ? store.streamingPresentation
-                                            : nil,
-                                        showsAssistantHeader: msg.role != .assistant
+                                            : nil
                                     )
                                     .id(msg.id)
                                 }
@@ -719,6 +729,9 @@ struct ChatView: View {
                             ChangedFilesSummaryCard(
                                 summary: changedFilesSummary,
                                 onOpenReview: {
+                                    // The card is turn-attribution truth, so its
+                                    // Review lands in the Last turn scope.
+                                    onOpenTurnReview()
                                     if !isReviewVisible { onToggleReview() }
                                 }
                             )
@@ -793,7 +806,7 @@ struct ChatView: View {
                     if wasStreaming && !isStreaming {
                         if store.latestTurnOutcome != .completionReceiptMissing {
                             let outcome = store.latestTurnOutcome?.displayName ?? "Turn ended"
-                            VoiceOverAnnouncer.announce("Build agent finished. \(outcome).")
+                            VoiceOverAnnouncer.announce("Turn finished. \(outcome).")
                         }
                     }
                     wasStreaming = isStreaming
@@ -935,8 +948,7 @@ struct ChatView: View {
                         Task { await store.reviewRecoveryCandidates() }
                     },
                     onRevealArtifact: onRevealArtifact,
-                    inspector: contextInspectorModel,
-                    onOpenComputerUseSettings: onOpenComputerUseSettings
+                    inspector: contextInspectorModel
                 )
                 .padding(.top, 12)
                 .padding(.trailing, 12)
@@ -960,9 +972,18 @@ struct ChatView: View {
         .onChange(of: store.liveToolCalls.isEmpty) { _, isEmpty in
             if isEmpty { toolActivityExpanded = false }
         }
+        .onChange(of: store.streamingMessageID) { _, id in
+            // Tool visibility (owner ask, 2026-08-08): a live turn opens its
+            // trace so running tool calls are visible as they happen, not
+            // hidden behind a disclosure. Collapsing manually still sticks
+            // for the rest of the turn.
+            if let id, store.isStreaming {
+                expandedAssistantTraceIDs.insert(id)
+            }
+        }
         .onChange(of: store.connectionState) { _, state in
             if case .failed = state {
-                VoiceOverAnnouncer.announce("Build agent connection failed. Review the connection error.")
+                VoiceOverAnnouncer.announce("Agent connection failed. Review the connection error.")
             }
         }
         .onChange(of: store.continuityRequiresRecovery) { _, needsRecovery in
@@ -1225,6 +1246,45 @@ struct ChatView: View {
         }
     }
 
+    /// Workbench W-4 (2026-08-08): one quiet line that always says where you
+    /// are — project · branch · changed files · model receipt. Facts only; the
+    /// header chip and composer menu stay the controls.
+    private var taskContextStrip: some View {
+        HStack(spacing: 6) {
+            Text(store.currentWorkspace?.displayName ?? "")
+                .fontWeight(.medium)
+            if let branch = contextBranchName {
+                Text("·").foregroundStyle(.tertiary)
+                Label(branch, systemImage: "arrow.triangle.branch")
+                    .labelStyle(.titleAndIcon)
+            }
+            if reviewFileCount > 0 {
+                Text("·").foregroundStyle(.tertiary)
+                Text("\(reviewFileCount) changed \(reviewFileCount == 1 ? "file" : "files")")
+            }
+            Text("·").foregroundStyle(.tertiary)
+            Text(store.sessionReceiptCompactLabel)
+            Spacer(minLength: 0)
+        }
+        .font(AppTheme.Typography.caption)
+        .foregroundStyle(.secondary)
+        .lineLimit(1)
+        .padding(.horizontal, 12)
+        .frame(height: 26)
+        .background(AppTheme.Palette.canvas)
+        .overlay(alignment: .bottom) { Divider() }
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("grok-task-context-strip")
+        .task(id: store.currentWorkspace?.id) { refreshContextBranch() }
+        .onChange(of: store.gitRefreshRevision) { _, _ in refreshContextBranch() }
+    }
+
+    private func refreshContextBranch() {
+        contextBranchName = store.currentWorkspace.flatMap {
+            GitService.currentBranch(in: $0.path)
+        }
+    }
+
     private var welcomeState: some View {
         VStack(spacing: 18) {
             brandMark
@@ -1243,10 +1303,62 @@ struct ChatView: View {
                     }
                 }
             }
+
+            // Workbench W-3 (2026-08-08): the landing is a workspace overview,
+            // not a void — where you are, what changed, what you worked on last.
+            VStack(spacing: 10) {
+                HStack(spacing: 6) {
+                    if let branch = contextBranchName {
+                        Label(branch, systemImage: "arrow.triangle.branch")
+                    }
+                    if reviewFileCount > 0 {
+                        Text("·").foregroundStyle(.tertiary)
+                        Text("\(reviewFileCount) changed \(reviewFileCount == 1 ? "file" : "files")")
+                    }
+                }
+                .font(AppTheme.Typography.caption)
+                .foregroundStyle(.secondary)
+
+                if !recentSessions.isEmpty {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Recent tasks")
+                            .font(AppTheme.Typography.section)
+                            .foregroundStyle(.tertiary)
+                        ForEach(recentSessions.prefix(4)) { entry in
+                            Button {
+                                onSelectSession(entry.id)
+                            } label: {
+                                HStack(spacing: 8) {
+                                    Image(systemName: "clock.arrow.circlepath")
+                                        .foregroundStyle(.tertiary)
+                                    Text(entry.title)
+                                        .lineLimit(1)
+                                        .truncationMode(.tail)
+                                    Spacer(minLength: 8)
+                                    if let subtitle = entry.subtitle {
+                                        Text(subtitle)
+                                            .foregroundStyle(.tertiary)
+                                    }
+                                }
+                                .font(AppTheme.Typography.caption)
+                                .padding(.horizontal, 10)
+                                .padding(.vertical, 6)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .contentShape(Rectangle())
+                            }
+                            .buttonStyle(.plain)
+                            .accessibilityLabel("Resume \(entry.title)")
+                            .accessibilityIdentifier("grok-recent-task-\(entry.id.uuidString)")
+                        }
+                    }
+                    .frame(maxWidth: 480)
+                }
+            }
+            .padding(.top, 6)
         }
         .frame(maxWidth: 720)
         .frame(maxWidth: .infinity)
-        .padding(.vertical, 96)
+        .padding(.vertical, 48)
         .padding(.horizontal, 32)
     }
 
@@ -1401,7 +1513,7 @@ struct ChatView: View {
                         )
                     }
 
-                    TextField("Do anything", text: $input, axis: .vertical)
+                    TextField("Describe a task", text: $input, axis: .vertical)
                     .textFieldStyle(.plain)
                     .font(AppTheme.Typography.composer)
                     .lineSpacing(4)
@@ -2260,9 +2372,10 @@ struct ChatView: View {
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
-            .help("Stop session (⌘.)")
-            .accessibilityLabel("Stop generation")
+            .help("Stop turn (⌘.)")
+            .accessibilityLabel("Stop turn")
             .accessibilityHint("Stops the active build response without sending another request.")
+            .accessibilityIdentifier("grok-stop")
             .keyboardShortcut(".", modifiers: .command)
         } else {
             Button {
@@ -2277,6 +2390,7 @@ struct ChatView: View {
             .help(sendButtonHelp)
             .accessibilityLabel(sendButtonAccessibilityLabel)
             .accessibilityHint(sendButtonAccessibilityHint)
+            .accessibilityIdentifier("grok-send")
             .disabled(input.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && !store.hasVisibleFileAttachments ||
                       store.currentWorkspace == nil ||
                       store.authRequiredMessage != nil ||

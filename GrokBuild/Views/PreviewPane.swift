@@ -90,11 +90,11 @@ struct PreviewPane: View {
             }
             .buttonStyle(.plain)
             .foregroundStyle(.secondary)
-            .help("Close Preview")
+            .help("Close review")
             .accessibilityLabel("Close review pane")
             .accessibilityHint("Closes the changed-files review split.")
 
-            Text("Preview")
+            Text("Review")
                 .font(.headline)
 
             Picker("Scope", selection: $scope) {
@@ -547,15 +547,43 @@ struct PreviewPane: View {
         .buttonStyle(.bordered)
     }
 
+    /// Straggler fix (2026-08-08): the empty state names the scope that is
+    /// empty instead of always describing the working tree. Diffs come only
+    /// from Git — never from assistant output — in every scope.
+    private var emptyTitle: String {
+        switch scope {
+        case .workingTree: return "No code changes"
+        case .staged: return "No staged changes"
+        case .lastCommit: return "No changes in the last commit"
+        case .branch: return "No branch changes"
+        case .lastTurn: return "No changes attributed to the last turn"
+        }
+    }
+
+    private var emptyDetail: String {
+        switch scope {
+        case .workingTree:
+            return "This panel reflects a fresh Git working-tree snapshot."
+        case .staged:
+            return "Stage files with git add to review them here."
+        case .lastCommit:
+            return "HEAD has no parent diff to show."
+        case .branch:
+            return "No default base branch resolved, or this branch matches it."
+        case .lastTurn:
+            return "Run a turn that edits workspace files; its attributed changes appear here."
+        }
+    }
+
     private var empty: some View {
         VStack(spacing: 14) {
             Image(systemName: "doc.text.magnifyingglass")
                 .font(.system(size: 44))
                 .foregroundStyle(.tertiary)
-            Text("No code changes")
+            Text(emptyTitle)
                 .font(.callout.weight(.medium))
                 .foregroundStyle(.secondary)
-            Text("This panel reflects a fresh Git working-tree snapshot. Assistant examples never appear here.")
+            Text(emptyDetail)
                 .font(.caption)
                 .foregroundStyle(.tertiary)
                 .multilineTextAlignment(.center)

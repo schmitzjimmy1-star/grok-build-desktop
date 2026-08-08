@@ -7,7 +7,7 @@ import SwiftUI
 /// The card presents `ChangedFilesSummaryProjection` facts only: turn-attributed
 /// edits lead, repository-wide changes are disclosed as such, absent diff counts
 /// stay absent, and the Review action opens the real Git review pane for the
-/// current project (Unstaged scope; a proven last-turn scope does not exist yet).
+/// current project (its Review opens the pane in the Last turn scope, shipped 2026-08-08).
 /// There is deliberately no Undo control: GrokBuild has no safe, real undo
 /// operation for agent edits today, and a decorative one is forbidden.
 struct ChangedFilesSummaryCard: View {

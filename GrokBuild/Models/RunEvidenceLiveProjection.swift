@@ -100,8 +100,12 @@ struct LiveProgressPresentation: Equatable, Sendable {
     }
 
     var compactText: String {
+        // Worker counts appear only when workers exist: "0 active workers" was
+        // noise on every ordinary prompt and buried the running tool's name.
         var parts = [phase]
-        parts.append("\(activeWorkers) active \(activeWorkers == 1 ? "worker" : "workers")")
+        if activeWorkers > 0 {
+            parts.append("\(activeWorkers) active \(activeWorkers == 1 ? "worker" : "workers")")
+        }
         if let activeTool {
             parts.append(TranscriptTextPresentation.singleLine(activeTool, maxLength: 48))
         }
@@ -112,7 +116,10 @@ struct LiveProgressPresentation: Equatable, Sendable {
     }
 
     var accessibilityValue: String {
-        var parts = [phase, "\(activeWorkers) active \(activeWorkers == 1 ? "worker" : "workers")"]
+        var parts = [phase]
+        if activeWorkers > 0 {
+            parts.append("\(activeWorkers) active \(activeWorkers == 1 ? "worker" : "workers")")
+        }
         if let activeTool { parts.append("Active tool \(activeTool)") }
         if let elapsedSeconds { parts.append("\(elapsedSeconds) seconds elapsed") }
         return parts.joined(separator: ", ")

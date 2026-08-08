@@ -53,7 +53,7 @@ final class CodexShellParityTests: XCTestCase {
         }
 
         for retained in [
-            "TextField(\"Do anything\"",
+            "TextField(\"Describe a task\"",
             "private var composerAddMenu",
             "grok-composer-add-menu",
             "Attach Files…",
