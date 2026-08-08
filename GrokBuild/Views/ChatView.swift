@@ -109,24 +109,30 @@ enum ChatTranscriptLayout {
         case agentHeader
         case thinking
         case toolActivity
+        case planSpine
         case liveProgress
         case answer
     }
 
     /// One turn has one stable semantic order. Thinking and tool receipts may
     /// appear or settle at any point in the event stream, but neither is allowed
-    /// to migrate below the answer it explains.
+    /// to migrate below the answer it explains. The plan spine (Workbench W-5)
+    /// is deliberately independent of the trace disclosure: while a run is
+    /// active the plan is the spine of the transcript, not a receipt hidden
+    /// behind a click.
     static func messageBlockOrder(
         containsAgentHeader: Bool,
         traceExpanded: Bool,
         containsThinking: Bool,
         containsToolActivity: Bool,
-        containsLiveProgress: Bool = false
+        containsLiveProgress: Bool = false,
+        containsPlanSpine: Bool = false
     ) -> [MessageBlock] {
         var blocks: [MessageBlock] = []
         if containsAgentHeader { blocks.append(.agentHeader) }
         if traceExpanded && containsThinking { blocks.append(.thinking) }
         if traceExpanded && containsToolActivity { blocks.append(.toolActivity) }
+        if containsPlanSpine { blocks.append(.planSpine) }
         if containsLiveProgress { blocks.append(.liveProgress) }
         blocks.append(.answer)
         return blocks
@@ -566,10 +572,48 @@ struct ChatView: View {
         }
     }
 
+    /// The one Activity inspector instance. Workbench W-6 mounts it either as
+    /// the top-trailing overlay (the Slice 2 default) or, when the chat area
+    /// is wide enough, as a docked third column — same panel, same state.
+    private func activityInspector(docked: Bool) -> some View {
+        ActivitySidebar(
+            snapshot: store.runEvidenceSnapshot,
+            liveProjection: store.liveRunEvidenceProjection,
+            workspace: store.currentWorkspace?.path,
+            onClose: {
+                if reduceMotion {
+                    showActivitySidebar = false
+                } else {
+                    withAnimation(.easeInOut(duration: 0.18)) {
+                        showActivitySidebar = false
+                    }
+                }
+            },
+            onContinueAsNew: {
+                Task { _ = await store.continueAsNew() }
+            },
+            onReviewRecovery: {
+                showRecoveryReview = true
+                Task { await store.reviewRecoveryCandidates() }
+            },
+            onRevealArtifact: onRevealArtifact,
+            inspector: contextInspectorModel
+        )
+        .frame(width: docked ? 260 : nil)
+        .padding(.top, 12)
+        .padding(.trailing, 12)
+        .padding(.bottom, 12)
+        .frame(maxHeight: .infinity, alignment: .top)
+        .transition(.move(edge: .trailing).combined(with: .opacity))
+    }
+
     var body: some View {
         // Codex parity Slice 2: the contextual Activity inspector overlays the
-        // top-trailing corner instead of mounting as a third HStack column, so
-        // opening it never compresses the conversation's reading width.
+        // top-trailing corner so opening it never compresses the conversation's
+        // reading width. Workbench W-6 (2026-08-08): once the chat area can
+        // host both surfaces at full width, the same panel docks as a real
+        // third column; the hide-first responsive order is unchanged.
+        HStack(alignment: .top, spacing: 0) {
         ZStack(alignment: .topTrailing) {
             VStack(spacing: 0) {
             topBar
@@ -647,7 +691,10 @@ struct ChatView: View {
                                     containsToolActivity: hasLiveTools || hasPersistedTools,
                                     containsLiveProgress: msg.role == .assistant
                                         && msg.id == store.streamingMessageID
-                                        && (store.liveRunEvidenceProjection != nil || store.isGrokking)
+                                        && (store.liveRunEvidenceProjection != nil || store.isGrokking),
+                                    containsPlanSpine: msg.role == .assistant
+                                        && msg.id == store.streamingMessageID
+                                        && store.liveRunEvidenceProjection?.plan.isEmpty == false
                                 ),
                                 id: \.self
                             ) { block in
@@ -667,6 +714,14 @@ struct ChatView: View {
                                     )
                                 case .toolActivity:
                                     assistantToolDetails(message: msg, useLiveTrace: hasLiveTools)
+                                case .planSpine:
+                                    // Workbench W-5: the live plan renders in the
+                                    // transcript flow while the run is active; it
+                                    // vanishes at settlement (the snapshot keeps
+                                    // the authoritative copy in the inspector).
+                                    if let plan = store.liveRunEvidenceProjection?.plan, !plan.isEmpty {
+                                        LivePlanSpineView(plan: plan)
+                                    }
                                 case .liveProgress:
                                     liveProgressControl
                                 case .answer:
@@ -926,37 +981,22 @@ struct ChatView: View {
             // area cannot host the overlay without covering the reading column.
             // `showActivitySidebar` is preserved so widening restores the panel.
             if showActivitySidebar,
-               ResponsiveLayoutPolicy.inspectorFits(chatAreaWidth: chatAreaWidth) {
-                ActivitySidebar(
-                    snapshot: store.runEvidenceSnapshot,
-                    liveProjection: store.liveRunEvidenceProjection,
-                    workspace: store.currentWorkspace?.path,
-                    onClose: {
-                        if reduceMotion {
-                            showActivitySidebar = false
-                        } else {
-                            withAnimation(.easeInOut(duration: 0.18)) {
-                                showActivitySidebar = false
-                            }
-                        }
-                    },
-                    onContinueAsNew: {
-                        Task { _ = await store.continueAsNew() }
-                    },
-                    onReviewRecovery: {
-                        showRecoveryReview = true
-                        Task { await store.reviewRecoveryCandidates() }
-                    },
-                    onRevealArtifact: onRevealArtifact,
-                    inspector: contextInspectorModel
-                )
-                .padding(.top, 12)
-                .padding(.trailing, 12)
-                .padding(.bottom, 12)
-                .frame(maxHeight: .infinity, alignment: .top)
-                .transition(.move(edge: .trailing).combined(with: .opacity))
+               ResponsiveLayoutPolicy.inspectorFits(chatAreaWidth: chatAreaWidth),
+               !ResponsiveLayoutPolicy.inspectorDocks(chatAreaWidth: chatAreaWidth) {
+                activityInspector(docked: false)
             }
         }
+
+        // Workbench W-6: at ≥1,500 pt the open inspector is a real third
+        // column — same panel and state, no overlap with the transcript.
+        if showActivitySidebar,
+           ResponsiveLayoutPolicy.inspectorDocks(chatAreaWidth: chatAreaWidth) {
+            activityInspector(docked: true)
+        }
+        }
+        // W-6: the measurement wraps the whole chat area including the docked
+        // column — measuring only the transcript stack would shrink the width
+        // at the moment of docking and oscillate across the 1,500-pt threshold.
         .onGeometryChange(for: Double.self) { proxy in
             proxy.size.width
         } action: { width in

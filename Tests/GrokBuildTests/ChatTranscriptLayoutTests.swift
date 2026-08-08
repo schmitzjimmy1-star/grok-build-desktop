@@ -111,9 +111,23 @@ final class ChatTranscriptLayoutTests: XCTestCase {
                 traceExpanded: true,
                 containsThinking: true,
                 containsToolActivity: true,
-                containsLiveProgress: true
+                containsLiveProgress: true,
+                containsPlanSpine: true
             ),
-            [.agentHeader, .thinking, .toolActivity, .liveProgress, .answer]
+            [.agentHeader, .thinking, .toolActivity, .planSpine, .liveProgress, .answer]
+        )
+        // Workbench W-5: the plan spine is independent of the trace disclosure —
+        // collapsing thinking/tools never hides the plan during a live run.
+        XCTAssertEqual(
+            ChatTranscriptLayout.messageBlockOrder(
+                containsAgentHeader: true,
+                traceExpanded: false,
+                containsThinking: true,
+                containsToolActivity: true,
+                containsLiveProgress: true,
+                containsPlanSpine: true
+            ),
+            [.agentHeader, .planSpine, .liveProgress, .answer]
         )
         XCTAssertEqual(
             ChatTranscriptLayout.messageBlockOrder(
@@ -134,6 +148,64 @@ final class ChatTranscriptLayoutTests: XCTestCase {
             ),
             [.answer]
         )
+    }
+
+    /// Workbench W-5 — the plan spine formats existing generation-bound steps;
+    /// it never invents progress or decides lifecycle state.
+    func testPlanSpinePresentationCountsOnlySettledStepStatuses() {
+        XCTAssertTrue(PlanSpinePresentation.isCompleted(" Completed "))
+        XCTAssertTrue(PlanSpinePresentation.isCompleted("done"))
+        XCTAssertFalse(PlanSpinePresentation.isCompleted("in_progress"))
+        XCTAssertFalse(PlanSpinePresentation.isCompleted("pending"))
+
+        let plan = [
+            RunEvidenceSnapshot.PlanStep(id: "1", title: "Read the failing test", status: "completed"),
+            RunEvidenceSnapshot.PlanStep(id: "2", title: "Patch the parser", status: "in_progress"),
+            RunEvidenceSnapshot.PlanStep(id: "3", title: "Re-run the suite", status: "pending")
+        ]
+        XCTAssertEqual(PlanSpinePresentation.completedCount(plan), 1)
+        XCTAssertEqual(PlanSpinePresentation.progressLabel(plan), "1 of 3 done")
+        XCTAssertEqual(
+            PlanSpinePresentation.stepAccessibilityLabel(plan[0]),
+            "Read the failing test, completed"
+        )
+        XCTAssertEqual(
+            PlanSpinePresentation.stepAccessibilityLabel(plan[1]),
+            "Patch the parser, in progress"
+        )
+        XCTAssertEqual(
+            PlanSpinePresentation.stepAccessibilityLabel(plan[2]),
+            "Re-run the suite, pending"
+        )
+    }
+
+    /// Workbench W-5 — the spine renders only for the streaming assistant turn
+    /// with a non-empty live plan, and vanishes at settlement (the snapshot
+    /// keeps the authoritative copy in the inspector).
+    func testPlanSpineIsGatedOnTheLiveProjectionAndStreamingTurn() throws {
+        let repositoryRoot = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        let chatSource = try String(
+            contentsOf: repositoryRoot.appendingPathComponent("GrokBuild/Views/ChatView.swift"),
+            encoding: .utf8
+        )
+        XCTAssertTrue(
+            chatSource.contains("containsPlanSpine: msg.role == .assistant"),
+            "the spine belongs to the assistant turn"
+        )
+        XCTAssertTrue(
+            chatSource.contains("&& store.liveRunEvidenceProjection?.plan.isEmpty == false"),
+            "the spine requires a non-empty live plan — no fabricated steps"
+        )
+        let spineSource = try String(
+            contentsOf: repositoryRoot.appendingPathComponent("GrokBuild/Views/LivePlanSpine.swift"),
+            encoding: .utf8
+        )
+        XCTAssertTrue(spineSource.contains("grok-plan-spine"),
+                      "the spine carries a stable accessibility identifier")
+        XCTAssertTrue(spineSource.contains("accessibilityLabel(\"Run plan\")"))
     }
 
     func testPromptMCPAttachmentIsTruthfulSanitizedAndDeterministic() throws {

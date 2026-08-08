@@ -18,6 +18,25 @@ final class ResponsiveAndAccessibilityTests: XCTestCase {
                       "the unmeasured initial state never suppresses the panel")
     }
 
+    /// Workbench W-6 — three regimes, one order of sacrifice: hidden below
+    /// 900, a top-trailing overlay through 1,499, a docked third column from
+    /// 1,500 up. Docking never changes when the inspector hides.
+    func testInspectorDocksOnlyAtFullThirdColumnWidth() {
+        XCTAssertFalse(ResponsiveLayoutPolicy.inspectorDocks(chatAreaWidth: 899),
+                       "hidden regime: the inspector hides first, so it cannot dock")
+        XCTAssertFalse(ResponsiveLayoutPolicy.inspectorDocks(chatAreaWidth: 1499),
+                       "overlay regime: below the dock threshold the panel overlays")
+        XCTAssertTrue(ResponsiveLayoutPolicy.inspectorDocks(chatAreaWidth: 1500),
+                      "dock regime: a real third column once both surfaces fit at full width")
+        XCTAssertEqual(ResponsiveLayoutPolicy.inspectorDockMinimumChatWidth, 1500)
+        // Docking must leave the transcript above its readable minimum.
+        XCTAssertGreaterThanOrEqual(
+            ResponsiveLayoutPolicy.inspectorDockMinimumChatWidth - 284,
+            ResponsiveLayoutPolicy.conversationReadableMinimum,
+            "1,500 − (260-pt panel + padding) keeps the reading column readable"
+        )
+    }
+
     func testSidebarCollapsesBeforeTheTranscriptCompresses() {
         // Current minimums keep the sidebar user-controlled…
         XCTAssertTrue(ResponsiveLayoutPolicy.sidebarFits(contentWidth: 1100, sidebarWidth: 280))
@@ -35,6 +54,14 @@ final class ResponsiveAndAccessibilityTests: XCTestCase {
                       "the user's open state is preserved so widening restores the panel")
         XCTAssertTrue(chatView.contains(".onGeometryChange(for: Double.self)"),
                       "width comes from geometry observation, not polling")
+        // Workbench W-6: exactly one mount at a time — the overlay branch
+        // excludes the dock regime, and the docked column requires it.
+        XCTAssertTrue(chatView.contains("!ResponsiveLayoutPolicy.inspectorDocks(chatAreaWidth: chatAreaWidth)"),
+                      "the overlay stands down when the panel docks")
+        XCTAssertTrue(chatView.contains("ResponsiveLayoutPolicy.inspectorDocks(chatAreaWidth: chatAreaWidth) {\n            activityInspector(docked: true)"),
+                      "the docked column is gated by the same policy and preserved open state")
+        XCTAssertTrue(chatView.contains("activityInspector(docked: false)"),
+                      "both mounts share the one inspector instance")
     }
 
     /// Slice 4 acceptance found `.menuStyle(.button)` menus ignored AXPress and

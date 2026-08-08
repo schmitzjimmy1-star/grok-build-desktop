@@ -12,6 +12,13 @@ enum ResponsiveLayoutPolicy {
     /// preserved and the panel returns when the window widens.
     static let inspectorMinimumChatWidth: Double = 900
 
+    /// Workbench W-6 (2026-08-08): at this chat-area width the open inspector
+    /// stops overlaying the reading column and docks as a real third column.
+    /// 1,500 − ~284 (260-pt panel + padding) leaves ≥1,200 pt of transcript,
+    /// comfortably above the readable minimum. The hide-first order is
+    /// unchanged: below 900 the inspector still hides before anything else.
+    static let inspectorDockMinimumChatWidth: Double = 1500
+
     /// The transcript's readable minimum: the 760-pt reading column plus its
     /// 26-pt horizontal padding on each side.
     static let conversationReadableMinimum: Double = 812
@@ -24,6 +31,14 @@ enum ResponsiveLayoutPolicy {
 
     static func inspectorFits(chatAreaWidth: Double) -> Bool {
         chatAreaWidth >= inspectorMinimumChatWidth
+    }
+
+    /// Whether the open inspector mounts as a docked third column instead of a
+    /// top-trailing overlay. The measured width must include the docked column
+    /// itself (the whole chat area), or docking would shrink the measurement
+    /// and immediately undock — an oscillation, not a layout.
+    static func inspectorDocks(chatAreaWidth: Double) -> Bool {
+        chatAreaWidth >= inspectorDockMinimumChatWidth
     }
 
     /// Whether the sidebar can stay visible without compressing the
