@@ -159,6 +159,69 @@ final class BrowserIntegrationTests: XCTestCase {
         })
     }
 
+    func testBrowserBridgeOwnsUniqueSessionAndClosesItOnEOF() throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("GrokBuildBrowserBridgeTests")
+            .appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        let logURL = root.appendingPathComponent("agent-browser.log")
+        let fakeURL = root.appendingPathComponent("agent-browser")
+        let fake = """
+        #!/bin/sh
+        printf '%s|%s|%s|%s\\n' "$AGENT_BROWSER_SESSION" "$AGENT_BROWSER_RESTORE" "$AGENT_BROWSER_PROFILE" "$*" >> "$GROKBUILD_TEST_BROWSER_LOG"
+        if [ "$1" = "open" ]; then printf 'opened\\n'; fi
+        exit 0
+        """
+        try fake.write(to: fakeURL, atomically: true, encoding: .utf8)
+        try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: fakeURL.path)
+
+        let bridgeURL = try XCTUnwrap(AgentBrowserService.bridgeScriptURL())
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/env")
+        process.arguments = ["python3", bridgeURL.path]
+        var environment = ProcessInfo.processInfo.environment
+        environment["AGENT_BROWSER_PATH"] = fakeURL.path
+        environment["GROKBUILD_BROWSER_PROFILE"] = "project-profile"
+        environment["GROKBUILD_TEST_BROWSER_LOG"] = logURL.path
+        process.environment = environment
+
+        let input = Pipe()
+        let output = Pipe()
+        process.standardInput = input
+        process.standardOutput = output
+        process.standardError = Pipe()
+        try process.run()
+        let requests = """
+        {"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2024-11-05"}}
+        {"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"browser_open_url","arguments":{"url":"https://example.com"}}}
+        """
+        try input.fileHandleForWriting.write(contentsOf: Data((requests + "\n").utf8))
+        try input.fileHandleForWriting.close()
+        process.waitUntilExit()
+
+        XCTAssertEqual(process.terminationStatus, 0)
+        let responses = String(decoding: output.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self)
+        XCTAssertTrue(responses.contains("opened"))
+        let lines = try String(contentsOf: logURL, encoding: .utf8)
+            .split(separator: "\n")
+            .map(String.init)
+        XCTAssertEqual(lines.count, 2)
+        let open = lines[0].split(separator: "|", omittingEmptySubsequences: false).map(String.init)
+        let close = lines[1].split(separator: "|", omittingEmptySubsequences: false).map(String.init)
+        XCTAssertEqual(open.count, 4)
+        XCTAssertEqual(close.count, 4)
+        XCTAssertTrue(open[0].hasPrefix("grokbuild-"))
+        XCTAssertEqual(close[0], open[0])
+        XCTAssertEqual(open[1], "project-profile")
+        XCTAssertEqual(close[1], "project-profile")
+        XCTAssertEqual(open[2], "")
+        XCTAssertEqual(close[2], "")
+        XCTAssertEqual(open[3], "open https://example.com")
+        XCTAssertEqual(close[3], "close")
+    }
+
     func testAgentBrowserCommandPreviewKeepsArguments() {
         let command = AgentBrowserService.commandPreview(["open", "https://example.com"])
 

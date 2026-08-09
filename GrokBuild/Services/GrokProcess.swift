@@ -545,6 +545,9 @@ final class GrokProcess: @unchecked Sendable {
     /// recent receipt is historical rather than a live-process claim.
     private(set) var processGeneration: UInt64 = 0
     private(set) var activeProcessGeneration: UInt64?
+    /// Exact root/descendant evidence for this generation. Teardown signals only
+    /// fingerprints captured from this root; it never searches by executable name.
+    private(set) var ownedProcessLedger = OwnedProcessLedger()
     /// Set when `session/load` failed with missing on-disk data and `session/new` was used instead.
     private(set) var sessionLoadStartedFreshFallback = false
     private(set) var staleResumeSessionID: String?
@@ -1008,6 +1011,12 @@ final class GrokProcess: @unchecked Sendable {
             processIdentifier: proc.processIdentifier,
             processGeneration: launchGeneration
         )
+        ownedProcessLedger.begin(OwnedProcessIdentity(
+            localTabID: options.localTabID,
+            backendSessionID: nil,
+            processGeneration: launchGeneration,
+            rootPID: proc.processIdentifier
+        ))
 
         self.process = proc
         self.stdin = i.fileHandleForWriting
@@ -1041,6 +1050,7 @@ final class GrokProcess: @unchecked Sendable {
                 try await createSession(workspace: workspace, mcpServers: options.mcpServers)
                 launchOutcome = .new
             }
+            ownedProcessLedger.rebindBackend(sessionId)
             guard activeProcessGeneration == launchGeneration else { return }
             try await confirmRequestedLaunchModel(
                 options.model,
@@ -1098,6 +1108,23 @@ final class GrokProcess: @unchecked Sendable {
                 state: &modelExecutionState
             )
         }
+        let closingGeneration = activeProcessGeneration
+        let closingBackendID = sessionId ?? launchReceipt?.backendSessionID
+        let closingTabID = launchReceipt?.localTabID
+        if let rootPID = process?.processIdentifier {
+            ownedProcessLedger.record(OwnedProcessTree.fingerprints(
+                of: OwnedProcessTree.descendants(of: rootPID)
+            ))
+        }
+        let ownedChildren = ownedProcessLedger.children.filter {
+            guard let closingGeneration else { return false }
+            return ownedProcessLedger.owns(
+                localTabID: closingTabID,
+                backendSessionID: closingBackendID,
+                processGeneration: closingGeneration,
+                child: $0
+            )
+        }
         activeProcessGeneration = nil
         readerTask?.cancel()
         readerTask = nil
@@ -1122,6 +1149,14 @@ final class GrokProcess: @unchecked Sendable {
                 try? await Task.sleep(for: .milliseconds(300))
                 if p.isRunning { kill(p.processIdentifier, SIGKILL) }
             }
+        }
+        // A helper can outlive its parent after reparenting, so a post-parent tree
+        // search is too late. Signal only the pre-close fingerprints that still match
+        // their original executable and process start time.
+        OwnedProcessTree.signal(SIGTERM, to: ownedChildren)
+        if ownedChildren.contains(where: OwnedProcessTree.stillMatches) {
+            try? await Task.sleep(for: .milliseconds(300))
+            OwnedProcessTree.signal(SIGKILL, to: ownedChildren)
         }
 
         process = nil

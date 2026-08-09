@@ -1,66 +1,55 @@
 # GrokBuild Desktop
 
-Native SwiftUI macOS frontend for the `grok` CLI (`grok agent stdio`).
+Native SwiftUI macOS workbench for `grok agent stdio`.
 
-## Canonical worktree — hard stop
+## Hard identity stop
 
-> [!CAUTION]
-> Active work belongs only in
-> `/Users/jimmyschmitz/Desktop/Projects/MCP Servers/Grok Build/grok-build-desktop`,
-> on Jimmy's `schmitzjimmy1-star/grok-build-desktop` fork. The old
-> `/Users/jimmyschmitz/Documents/Grok Builf` / `jimmmy-Jim/Grok-Build-GUI`
-> line is retired evidence: do not build, install, or continue it. Read
-> `CANONICAL_WORKTREE.md` and run its preflight before editing.
+Work only in `/Users/jimmyschmitz/Desktop/Projects/MCP Servers/Grok Build/grok-build-desktop`
+on Jimmy's `schmitzjimmy1-star/grok-build-desktop` fork, installed as
+`/Applications/GrokBuild.app`. Preserve `rimusz/grok-build-desktop` as read-only
+upstream. Never build, install, publish, or borrow from the retired
+`/Users/jimmyschmitz/Documents/Grok Builf` / `jimmmy-Jim/Grok-Build-GUI` line.
 
-## Read first
+Before edits or acceptance, read and follow in order:
 
-1. `CANONICAL_WORKTREE.md` — immutable repository/worktree identity and retired-line stop rule.
-2. `ARCHITECTURE.md` — app map, data flow, persistence keys, feature subsystems, and **“common tasks → files”** lookup for new chats.
+1. `CANONICAL_WORKTREE.md` — canonical identity and mandatory live preflight.
+2. `ARCHITECTURE.md` — ownership, data flow, persistence, and file map.
+3. `docs/OUTSTANDING.md` — current slice scope and Gates A–H when a campaign slice is active.
 
-## Cursor in this repo
+Stop on a path, branch, remote, installed-stamp, signing, hash, or dirty-state mismatch.
 
-- Rules: `.cursor/rules/` (architecture, SwiftUI, grok CLI integration, AppKit panels, **docs-and-tests**)
-- Skills: `.cursor/skills/` (dev workflow, release, grok CLI checks)
+## Architecture boundary
 
-## Grok CLI in this repo
+Keep GrokBuild thin. The CLI owns ACP, MCP execution, skills, permissions, memory,
+plan mode, and subagents. Prefer existing owners: `GrokProcess`, `GrokCLIService`,
+`ChatStore`, `WorkspaceStore`, `SessionLayoutStore`, and `UpdateChecker`.
+Feature owners are `AgentBrowserService`, `ComputerUseService`, and
+`CustomModelStore`. Browser/Computer Use skills live under
+`GrokBuild/Resources/Skills/`; `GrokBuildComputerUseMCP` and `agent-desktop` are
+packaged helpers, not alternate runtimes. Keep session/workspace state in its existing
+stores, minimize scope, and match surrounding Swift/SwiftUI conventions.
 
-GrokBuild stays close to the CLI. Do not reimplement CLI features (ACP, MCP, skills, permissions, plan mode) in the app unless the UI truly needs a thin wrapper.
+## Required verification for every code change
 
-When changing app behavior that touches the CLI:
+- Add or update behavioral tests in `Tests/GrokBuildTests/`; run focused tests, then
+  `make test`.
+- Package, sign, and install only through `make`; final acceptance uses `make ship`.
+  It must prove stamp == HEAD, `dirty=false` on the committed build, dist/installed
+  byte parity, deep/strict signing under Team `DD2GCQJVB4`, and no quarantine.
+- Rebuild/relaunch and perform focused Computer Use acceptance against the real
+  `/Applications/GrokBuild.app`. Reach the changed state and verify meaningful AX
+  names/roles. Compilation or helper output is not installed-app proof.
+- Update `ARCHITECTURE.md` for services, flows, persistence, notifications, or
+  ownership; update `README.md` for visible behavior; update `BUILDING.md` or
+  `scripts/README.md` for packaging/release changes; update bundled skills or
+  `.cursor` rules/skills when their contracts change.
+- Run `git diff --check` and review every intended path. Preserve unrelated changes;
+  stage only the authorized slice. Commit/push/PR/merge only when authorized.
 
-1. Prefer existing services: `GrokProcess`, `GrokCLIService`, `ChatStore`, `UpdateChecker`.
-2. Feature subsystems have their own services: `AgentBrowserService` (browser tools), `ComputerUseService` (desktop automation via `agent-desktop`, bundled at packaging time — packaging fails if it is missing; install with `npm install -g agent-desktop`), `CustomModelStore` (OpenAI-compatible models in `~/.grok/config.toml`).
-3. Keep workspace/session state in `WorkspaceStore` and `SessionLayoutStore`.
-4. Bundled grok skills live in `GrokBuild/Resources/Skills/` (`grokbuild-browser-control`, `grokbuild-computer-use`, `grokbuild-grok-web`) and are copied into the app bundle at build time. (`grokbuild-desktop` was removed 2026-07-31: it shipped in every build but no code ever installed or looked it up.)
+Money, auth, provider routing, model selection, entitlements, and signing require the
+full receipt and explicitly authorized bounded live probes. Local UX/service changes
+still require `make test`, `make ship`, and focused installed Computer Use.
 
-## Code style
-
-- Minimize diff scope; match surrounding Swift/SwiftUI conventions.
-- AppKit panels (About, Updates) share `AboutStyle` metrics.
-- Version strings: `VERSION` file, surfaced through `AppVersion`.
-- Build with `make run` or `swift build`; do not require an Xcode project.
-
-## Documentation, tests & Computer Use (required)
-
-Every code change must ship with **updated documentation**, **tests**, and **Computer Use verification** in the same session — not as a follow-up.
-
-1. **Tests** — run `make test`; add or extend `Tests/GrokBuildTests/` for new or changed behavior.
-2. **Computer Use** — required for **every** code change (not only view files). `make run` to repackage/relaunch, then drive the running app with whatever computer-use tooling the current environment provides (the bundled `GrokBuildComputerUseMCP` helper and `agent-desktop` also work directly). Reach the state your change affects and confirm it in the live UI (e.g. restored transcripts, settings, tab switches).
-3. **ARCHITECTURE.md** — update for new services, persistence keys, notifications, subsystems, or flows (canonical app map).
-4. **README.md** — update for user-visible features or install/requirements changes.
-5. **BUILDING.md** / **scripts/README.md** — update for build, release, packaging, or script changes.
-6. **Skills / rules** — update `.cursor/skills/` or `.cursor/rules/` when workflows or integration contracts change.
-7. **Bundled skills** — update `GrokBuild/Resources/Skills/*/SKILL.md` when agent-facing skill behavior changes.
-
-See `.cursor/rules/docs-and-tests.mdc` for the full checklist.
-
-## Verification: use `make ship`, and tier it to the change
-
-Do not hand-track or memorize build hashes. `make ship` runs `make test` + `make install`, then verifies the installed app in one shot: commit stamp == `HEAD`, `dirty=false`, `dist` == installed binary SHA, signing team == `EXPECTED_TEAM` (`DD2GCQJVB4`), `codesign --verify --deep --strict`, and no quarantine — printing PASS/FAIL and exiting non-zero on any real failure. The commit is auto-stamped into `Info.plist` (`AppBuildIdentity`) and re-derivable with `git rev-parse HEAD`, so there is never a number to remember.
-
-Match the ceremony to the blast radius:
-
-- **Money / auth / provider routing / signing** (billable calls, OAuth, model selection, entitlements): full acceptance — `make ship` **plus** a recorded receipt in `CANONICAL_WORKTREE.md` and any explicitly authorized live probe. This is where the repo got burned before; keep it strict.
-- **UX / rendering / docs / local-only tweaks**: `make test` + `make ship` (which auto-verifies signature and identity) + a focused Computer Use check of the affected state. No manual hash ledger, no full acceptance write-up.
-
-Always build/install through `make` so `SIGN_IDENTITY` from `.env` re-signs with Jimmy's Apple Development cert; an ad-hoc signature rotates identity and drops the app's Accessibility/Screen-Recording grants.
+Never hand-track a remembered hash or accept version `0.1.20` as identity. Re-derive
+all receipts live. Always retain model/route, permission, continuity, MCP discovery vs
+use, and process-generation boundaries; never invent provider fallback or success.
