@@ -1932,9 +1932,23 @@ smoke threads, and pass Gates F–H.
 - Candidate process-zero proof: normal quit left zero exact processes named
   `GrokBuild`, `grok`, `GrokBuildComputerUseMCP`, or `agent-desktop`, and zero
   GrokBuild-owned Browser profile processes.
-- PR URL/number, reviewed head, merge commit, post-merge install, visible Settings ->
-  App acceptance, final parity, and final process-zero: pending the authorized normal
-  publication and merged-main closeout; no later slice may begin first.
+- Ready PR `https://github.com/schmitzjimmy1-star/grok-build-desktop/pull/35`
+  reviewed exact head `466a06a37961efb3af555841177e9090a1cd34cb`, was cleanly
+  mergeable with no configured checks, and merged normally as
+  `2e7c2177bfe7dc85aee9bae3e40effde464d73cd`.
+- Post-merge `make ship`: `714/714`, zero failures; installed version `0.1.20`,
+  `personal` / `main` / `2e7c2177`, `dirty=false`; installed/dist executable
+  SHA-256 `936c97abeb29947baa7a8b968f38115ecc2957710a0b7d459fd6766a08f1903b`;
+  Team `DD2GCQJVB4`, deep/strict valid, no quarantine.
+- Post-merge visible acceptance: Settings -> App showed
+  `Personal • main @ 2e7c2177`, version `0.1.20`, the canonical personal repository,
+  and `Unknown — no active process receipt for this tab`, correctly separating the
+  installed build receipt from session identity.
+- Final Gates A-H: every exact Slice 8 local tab, backend directory, and marker remains
+  absent; local `main` and `personal/main` both equal
+  `2e7c2177bfe7dc85aee9bae3e40effde464d73cd`; final normal quit left all four
+  exact-name process checks and the GrokBuild-owned Browser process check at zero.
+  This ledger-only closeout changes no app behavior and needs no provider prompt.
 - Known residual risk: helper selection is intentionally per-thread and in-memory;
   global Settings must make a helper available before its thread toggle can select
   it. The app does not infer Browser or Computer Use from speculative prompt parsing.
