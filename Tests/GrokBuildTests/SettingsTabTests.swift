@@ -266,6 +266,16 @@ final class SettingsTabTests: XCTestCase {
         XCTAssertTrue(browser.contains("currentConfigurationGeneration: valueState.configurationGeneration"))
     }
 
+    func testComputerUseSelfTestKeepsRawReceiptBehindDiagnostics() throws {
+        let pane = try paneSource(named: "ComputerUseSettingsPane")
+
+        XCTAssertTrue(pane.contains("Text(endToEndResult.compactDetail)"))
+        XCTAssertFalse(pane.contains("Text(endToEndResult.detail)"))
+        XCTAssertTrue(pane.contains("Text(endToEndResult.diagnostic)"))
+        XCTAssertTrue(pane.contains("Show diagnostics"))
+        XCTAssertTrue(pane.contains("if let endToEndResult, !endToEndResult.diagnostic.isEmpty"))
+    }
+
     func testPermissionDraftPersistsOnlyAtExplicitBoundary() {
         let suite = "SettingsTabTests.\(UUID().uuidString)"
         guard let defaults = UserDefaults(suiteName: suite) else {

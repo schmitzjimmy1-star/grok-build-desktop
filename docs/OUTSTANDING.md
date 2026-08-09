@@ -17,7 +17,7 @@
 > User conversations, historical acceptance evidence, unnamed sessions that were not
 > created by the current slice, and unrelated browser/app state are protected.
 
-## Status — seven repair slices open
+## Status — seven-slice repair campaign
 
 The installed-app audit on 2026-08-08 verified the canonical repository and
 installed application, then exposed seven bounded repair areas. They are ordered
@@ -28,7 +28,7 @@ below so truth and lifecycle contracts land before presentation and optimization
 | 0 | Freeze the audit baseline and remove the four audit-only threads | Low | None; control slice creates no product behavior | Merged and accepted |
 | 1 | Stop Activity from claiming task success from transport completion | High | 4 prompts; up to 220K tokens | Merged and accepted |
 | 2 | Separate browser process readiness, catalog capability, requested use, and proven use | High | 5 prompts; up to 320K tokens | Merged and accepted |
-| 3 | Replace Browser Settings false-negative startup flicker with an unresolved/checking state | Medium | 3 prompts; up to 5,000,000 tokens | Open |
+| 3 | Replace Browser Settings false-negative startup flicker with an unresolved/checking state | Medium | 3 prompts; up to 5,000,000 tokens | Merged and accepted |
 | 4 | Replace raw Computer Use self-test JSON with a compact parsed receipt | Medium | 4 prompts; up to 240K tokens | Open |
 | 5 | Repair navigation-rail accessibility selection semantics | Medium | 3 prompts; up to 200K tokens | Open |
 | 6 | Reduce tiny-turn context cost and guarantee zero owned processes at slice close | High | 6 prompts; up to 480K tokens | Open |
@@ -1147,6 +1147,17 @@ missing marker, process-generation change, or false Setup needed presentation.
   marker matches (excluding global composer history), and the exact process gate
   remained zero. Gate F therefore passes for active session/thread storage; the Trash
   entry remains an explicit recoverable rollback receipt until separately emptied.
+- Slice 3 publication and merged-main acceptance completed in PR #25. Reviewed head
+  `95c6e2503b52f7004ceab3418d1d2d42962e0499` merged normally as
+  `3000fe4fc5569f2a396d5444c8817127de4dff0f`; clean merged `main`,
+  `personal/main`, and the installed stamp agree. The merged install passed 687 tests,
+  deep/strict signing under Team `DD2GCQJVB4`, no quarantine, and executable hash
+  parity at `2a6ddf480eca1f355d1bf7f22765ca19f55c3b94e81a494bffc4ebb45b08925c`.
+  Post-merge S3-A used the same native Grok backend before/after the idle Browser
+  Settings round trip, consumed 123,908 actual tokens, and returned the same proof-page
+  marker with exact discovery/new-page/snapshot receipts. Its exact local and backend
+  threads were deleted, the proof server stopped, active Slice 3 marker storage and
+  owned processes reached zero, and Slice 4 remained untouched until this branch.
 
 ---
 
@@ -1211,6 +1222,109 @@ version and command contract. Record before/during/after process lists for each 
 The main pane stays compact, diagnostics remain opt-in, and no temporary helper survives.
 Delete all threads, quit, process-zero, merge, rebuild merged `main`, repeat the Settings
 self-test plus S4-C and S4-D, delete smoke threads, and pass Gates F–H.
+
+### Frozen Slice 4 candidate matrix — `20260809T165153Z`
+
+Every lane uses one fresh disposable tab, Medium effort, the named route, and the
+`grokbuild-computer-use` attachment. One exact discovery call is allowed only to resolve
+the named qualified tool. No lane may retry, substitute a tool/server/model, write a
+file, change settings, or invoke Browser tools. Stop on route drift, fallback, an extra
+tool/worker, missing terminal receipt, or accumulated actual usage already at/above the
+240,000-token ceiling before the next prompt.
+
+- **S4-A — native Grok 4.5, marker `GB-S4-LIST-20260809T165153Z`:** search exactly
+  once for `grokbuild-computer-use__computer_list_apps`, invoke it exactly once with
+  no screenshot, then report only the returned app count and `GB-S4-LIST`. No other
+  tool, retry, worker, or raw inventory repetition.
+- **S4-B — direct `gpt-5.6-terra`, marker `GB-S4-INSPECT-20260809T165153Z`:** search
+  exactly once for `grokbuild-computer-use__computer_snapshot`, invoke it exactly once
+  against GrokBuild, inspect only the semantic accessibility result, and emit
+  `GB-S4-INSPECT`. No click, type, screenshot, retry, worker, or mutation.
+- **S4-C — pinned OpenRouter `deepseek/deepseek-v4-flash-0731`, marker
+  `GB-S4-FAIL-20260809T165153Z`:** search exactly once for
+  `grokbuild-computer-use__computer_snapshot`, invoke it exactly once against frozen
+  nonexistent bundle ID `com.grokbuild.slice4.nonexistent`, do not recover or retry,
+  and emit `GB-S4-FAIL` while preserving the failed tool receipt separately from the
+  parent completion.
+- **S4-D — native Grok 4.5, marker `GB-S4-WORKER-20260809T165153Z`:** spawn exactly
+  one `general-purpose` child, then only wait/collect it. The child searches exactly
+  once for `grokbuild-computer-use__computer_list_apps`, invokes it exactly once, and
+  reports the app count. The parent emits `GB-S4-WORKER` without duplicating the
+  child's tool call; no second child, screenshot, retry, or substitution.
+
+### Slice 4 candidate acceptance receipt — 2026-08-09
+
+- Starting `main` SHA/tree: `3000fe4fc5569f2a396d5444c8817127de4dff0f` /
+  `ca37bb4a0c5995524c07efbc55219f7116ce25ea`; clean local `main` matched
+  `personal/main` before the branch was created.
+- Candidate branch: `codex/grokbuild-audit-s4-computer-use-receipt`; seven intended
+  files were modified and no unexpected path appeared.
+- Focused tests: `ComputerUseIntegrationTests` 36/36 and `SettingsTabTests` 18/18.
+  Full `make test` and candidate `make ship` each passed 695 tests with zero failures.
+- Candidate installed stamp/hash/signing: `personal` /
+  `codex/grokbuild-audit-s4-computer-use-receipt` / `3000fe4f`, `dirty=true`, version
+  `0.1.20`; installed/dist executable SHA-256
+  `d4bdd1a783756fbe4762495bc25f364d7a16c3a9a26b2c54e10c5a0530606e2c` with byte
+  parity; Apple Development Team `DD2GCQJVB4`, deep/strict valid, no quarantine.
+- Settings -> Computer Use self-test: visible compact success reported protocol
+  `2024-11-05`, helper `0.1.1`, command `computer_list_apps`, 34 apps, 191 ms,
+  Accessibility proven, and screenshots not required. The default pane contained no
+  PID, process-instance identifier, path, or raw inventory. Opt-in diagnostics showed
+  only `{"command":"list-apps","data":{"apps":["<redacted 34 app records>"]},
+  "ok":true,"version":"2.1"}` for the helper payload.
+- S4-A: native Grok 4.5, one exact discovery plus one successful
+  `grokbuild-computer-use__computer_list_apps`, 35 apps, no screenshot or raw
+  inventory repetition; 3 model calls / 49,961 tokens.
+- S4-B: direct `gpt-5.6-terra`, one exact discovery plus one successful semantic
+  `grokbuild-computer-use__computer_snapshot` against GrokBuild, no screenshot or
+  mutation; 3 calls / 41,363 tokens.
+- S4-C: pinned OpenRouter `deepseek/deepseek-v4-flash-0731`, one exact discovery plus
+  one intentional failed snapshot against `com.grokbuild.slice4.nonexistent`; Activity
+  preserved `APP_NOT_FOUND` as one unresolved failed tool separately from the completed
+  parent turn, with no retry; 3 calls / 45,979 tokens.
+- S4-D: native Grok 4.5 spawned exactly one `general-purpose` child
+  `019fe77c-4192-7353-a0fb-c4d247687734`. The child searched once, invoked
+  `computer_list_apps` once, returned 40 apps, and finished 2/2 tools successfully;
+  the parent only spawned, waited, collected, and emitted the marker. Activity reported
+  6 model calls / 88,136 tokens for the settled parent row and no worker/tool failure.
+- Candidate Activity total: 15 model calls / 225,439 displayed row tokens. The stop
+  check was below 240,000 before every next prompt (137,303 before S4-D); no prompt was
+  sent after S4-D. Route receipts showed no GrokBuild fallback. Pricing was not exposed
+  consistently enough for a defensible combined cost.
+- Exact local tab/backend receipts:
+  - S4-A: `17F2CD02-BC60-435D-8E0A-C392E4366A45` /
+    `019fe776-1ef5-7183-a5a4-36c4bd1a4570`;
+  - S4-B: `D81C311A-B54F-404F-9E3C-70DECA677CFB` /
+    `019fe779-6aae-7f43-8adf-5c741c05ecea`;
+  - S4-C: `6FB7734D-4BEF-4AB6-ABC2-6A343B424D59` /
+    `019fe77a-b23b-7c82-a5a4-4bd00429d144`;
+  - S4-D: `03C105E4-EE02-4E50-B361-181B88BC883D` / parent
+    `019fe77b-ec56-7e93-ac2f-b31ee60a6ea5` / child
+    `019fe77c-4192-7353-a0fb-c4d247687734`.
+- Process receipts: each fresh tab owned one exact `grok agent stdio` process and one
+  browser/Computer Use MCP pair. S4-D's child tool helper exited after completion; no
+  extra child ACP process or duplicated parent Computer Use receipt appeared. Closing
+  the four exact tabs terminated every candidate process tree.
+- Candidate cleanup: the four exact local tabs were closed; the four parent backends
+  were deleted; deleting S4-D's parent cascaded the child from the backend registry.
+  The remaining exact local child directory was moved to Trash for recoverability
+  after permanent deletion was safety-blocked. All four markers then returned zero in
+  live GrokBuild transcripts and `.grok/sessions`; no non-test tab or backend changed.
+- Candidate process-zero/relaunch proof: normal Command-Q left zero GrokBuild-owned
+  processes; a clean relaunch showed none of the four Slice 4 tabs; the second normal
+  quit again left zero owned processes.
+- Final-candidate race hardening: the first post-matrix focused rerun exposed a real
+  SIGTERM/termination-handler race in `runResult`: a fast child exit could publish a
+  success before the timeout error. Publishing the timeout before SIGTERM fixed it;
+  the timeout test then passed five consecutive isolation runs, both focused suites
+  passed, and full `make test` plus final `make ship` each passed 695/695. The four
+  billable route lanes ran on the immediately preceding signed candidate hash
+  `1ee4068abca1863a19ba65bec10018279e01fb76b35023e4aa90512cedafff23`; the only later
+  source change was that two-line timeout ordering fix. No additional billable prompt
+  was sent beyond the frozen matrix. On the final installed hash, the non-billable
+  self-test repeated the compact receipt with protocol `2024-11-05`, helper `0.1.1`,
+  31 apps, 191 ms, Accessibility proven, screenshots not required, and opt-in-only
+  `<redacted 31 app records>` diagnostics; final normal quit left zero owned processes.
 
 ---
 

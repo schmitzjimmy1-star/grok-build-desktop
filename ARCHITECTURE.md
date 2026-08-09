@@ -677,7 +677,7 @@ grok owns memory storage, indexing, search, and first-turn injection ([`13-memor
 | Piece | Location |
 |-------|----------|
 | Settings | `SettingsView` → `.computerUse` tab; keys in `ComputerUseSettings.swift` |
-| Service | `ComputerUseService.swift` — agent-desktop discovery, permissions probe |
+| Service | `ComputerUseService.swift` — agent-desktop discovery, permissions probe, typed end-to-end self-test receipt |
 | MCP helper | **`GrokBuildComputerUseMCP/`** separate SPM executable (stdio MCP → `agent-desktop`, spawned per tool call with concurrent pipe drain + SIGKILL escalation) |
 | Shared contract | **`GrokBuildComputerUseCore/`** library target — tool table, argv mapping, policy, error mapping, env keys; shared by app, helper, and tests |
 | MCP name | `grokbuild-computer-use` |
@@ -687,6 +687,8 @@ grok owns memory storage, indexing, search, and first-turn injection ([`13-memor
 **Tools (complete surface):** `computer_snapshot`, `computer_screenshot` (gated on the screenshots setting), `computer_click`, `computer_type`, `computer_press` (also how scrolling happens — there is no scroll tool), `computer_close_app`, `computer_get`, `computer_wait`, `computer_list_apps`, `computer_list_windows`, `computer_permissions`. `computer_close_app` maps to agent-desktop's native graceful `close-app`; optional `force: true` is an explicit app-targeted termination path that may discard unsaved work. Force is not exposed on generic key presses. App snapshots without a supplied `window_id` first rank list-windows candidates by visible/positive size, focus, area, title quality, and stable ID so hidden menu/helper surfaces cannot outrank the main standard window. Env contract: `AGENT_DESKTOP_PATH`, `GROKBUILD_COMPUTER_USE_POLICY` (`auto`/`deny`; only deny enforces), `GROKBUILD_COMPUTER_USE_TIMEOUT`, `GROKBUILD_COMPUTER_USE_SCREENSHOTS` — pinned by an env-parity test.
 
 **Permissions:** macOS Accessibility (+ Screen Recording when screenshots are enabled). Bundled agent-desktop shares the app's signing identity, so any of GrokBuild/helper/agent-desktop grants proves trust; an **external** agent-desktop is authoritative for itself — only its own grant counts, and GrokBuild's trust never masks a denied actuator. Screen Recording uses `CGPreflightScreenCaptureAccess` for the bundled copy; a known denial blocks readiness when screenshots are on. Editing the screenshots toggle is draft-only and never triggers a system prompt; the explicit **Request Screen Recording** action is the sole in-pane prompt gate and is available only after that setting is applied.
+
+**End-to-end self-test:** Settings → Computer Use sends `initialize` followed by exactly one `computer_list_apps` call through `GrokBuildComputerUseMCP`. `ComputerUseService` validates the final request ID, JSON-RPC envelope, helper protocol/version, agent-desktop `list-apps` schema, command identity, and app count, then reports a bounded duration plus Accessibility/screenshot prerequisite proof. The default success surface never renders app names, bundle IDs, PIDs, process instances, paths, command lines, or raw JSON. A bounded diagnostic receipt is opt-in under **Show diagnostics** and collapses the entire app inventory to one redacted count. Timeout, nonzero helper exit, wrong response ID, malformed JSON, JSON-RPC error, and empty content remain separate failures, and the RPC runner closes stdin and terminates its exact helper after settlement.
 
 ### Custom models
 
