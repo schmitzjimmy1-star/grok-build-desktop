@@ -1774,7 +1774,7 @@ smoke threads, and pass Gates F–H.
 
 ---
 
-## Thread-native Slice 7 candidate receipt — 2026-08-09
+## Thread-native Slice 7 completion receipt — 2026-08-09
 
 - Objective: make first submission exactly once while process/model startup is still
   pending, expose real startup stages, and delete one exact Grok backend when its
@@ -1842,8 +1842,21 @@ smoke threads, and pass Gates F–H.
 - Candidate close gate: every exact Slice 7 tab/backend is gone, local marker searches
   are zero, normal Command-Q completed, and exact-name checks are zero for
   `GrokBuild`, `grok`, `GrokBuildComputerUseMCP`, and `agent-desktop`.
-- Publication, normal merge, merged-main reinstall, visible Settings identity, and
-  final Gates A–H remain pending; Slice 8 has not begun.
+- Implementation commit/tree: `a8ccc3c027b667f6d9bf705a62f8f24d37d2d80f` /
+  `d3ae11e6328e2327f94cfed32b1f27c68f8321fe`. Ready PR
+  `https://github.com/schmitzjimmy1-star/grok-build-desktop/pull/33` reviewed that
+  exact head, reported mergeable with no configured checks, and merged normally as
+  `f5542a074e4e555020d5ce0ca732bb7fb16c5aaa`.
+- Post-merge `make ship`: `711/711`, zero failures; installed version `0.1.20`,
+  `personal` / `main` / `f5542a07`, `dirty=false`; installed/dist executable SHA-256
+  `3b3d60ef637e11a34cf836663d82783d19c9fd4946e084f883f2db16637f175d`;
+  Team `DD2GCQJVB4`, deep/strict valid, no quarantine. Settings → App visibly agreed
+  with `Personal • main @ f5542a07` and reported no active process receipt.
+- Final Gates A–H: every exact Slice 7 marker, local tab, and backend remains absent;
+  local `main` and `personal/main` both equal `f5542a074e4e555020d5ce0ca732bb7fb16c5aaa`;
+  final normal quit left exact-name process checks at zero. This ledger-only closeout
+  changes no app behavior and needs no additional provider turn. Slice 8 remains next
+  and has not begun.
 
 ---
 
