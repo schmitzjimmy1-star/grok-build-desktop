@@ -6,6 +6,57 @@ import XCTest
 /// streaming turn.
 @MainActor
 final class SessionLifecycleTests: XCTestCase {
+    func testGrokProcessStopTerminatesExactSpawnedChild() async throws {
+        let fixtureRoot = FileManager.default.temporaryDirectory
+            .appendingPathComponent("grokbuild-owned-process-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: fixtureRoot, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: fixtureRoot) }
+
+        let childPIDFile = fixtureRoot.appendingPathComponent("child.pid")
+        let scriptURL = fixtureRoot.appendingPathComponent("fake-grok")
+        let script = """
+        #!/bin/sh
+        sleep 30 &
+        child=$!
+        printf '%s' "$child" > '\(childPIDFile.path)'
+        while IFS= read -r line; do
+          id=$(printf '%s' "$line" | sed -E 's/.*"id":([0-9]+).*/\\1/')
+          case "$line" in
+            *'"method":"initialize"'*)
+              printf '{"jsonrpc":"2.0","id":%s,"result":{}}\\n' "$id"
+              ;;
+            *'"method":"session/new"'*)
+              printf '{"jsonrpc":"2.0","id":%s,"result":{"sessionId":"owned-child-backend"}}\\n' "$id"
+              ;;
+          esac
+        done
+        wait "$child" 2>/dev/null
+        """
+        try script.write(to: scriptURL, atomically: true, encoding: .utf8)
+        try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: scriptURL.path)
+
+        GrokProcess.cliOverrideForTests = scriptURL
+        defer { GrokProcess.cliOverrideForTests = nil }
+        let tabID = UUID()
+        let process = GrokProcess()
+        await process.start(
+            workspace: Workspace(name: "fixture", path: fixtureRoot),
+            options: GrokLaunchOptions(localTabID: tabID)
+        )
+        XCTAssertEqual(process.state, .ready)
+        let childPID = try XCTUnwrap(pid_t(String(contentsOf: childPIDFile, encoding: .utf8)))
+        let childFingerprint = try XCTUnwrap(OwnedProcessTree.fingerprint(of: childPID))
+
+        await process.stop()
+
+        for _ in 0..<50 where OwnedProcessTree.stillMatches(childFingerprint) {
+            try await Task.sleep(for: .milliseconds(20))
+        }
+        XCTAssertFalse(OwnedProcessTree.stillMatches(childFingerprint))
+        XCTAssertNil(process.activeProcessGeneration)
+        XCTAssertEqual(process.state, .idle)
+    }
+
     func testSubagentLifecycleRejectsWrongTabBackendAndGeneration() {
         let tabID = UUID()
         let identity = ACPEventIdentity(

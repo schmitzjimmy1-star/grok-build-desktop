@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 import json
 import os
+import signal
 import shlex
 import subprocess
 import sys
@@ -9,6 +10,9 @@ from pathlib import Path
 
 
 AGENT_BROWSER = os.environ.get("AGENT_BROWSER_PATH") or "agent-browser"
+AGENT_BROWSER_SESSION = (
+    os.environ.get("GROKBUILD_BROWSER_SESSION") or f"grokbuild-{os.getpid()}"
+)
 
 
 TOOLS = [
@@ -87,12 +91,22 @@ def notify(method, params=None):
     sys.stdout.flush()
 
 
-def run_agent_browser(args, stdin_text=None):
+def agent_browser_environment():
     env = os.environ.copy()
     if env.get("GROKBUILD_BROWSER_CDP_URL"):
         env["BU_CDP_URL"] = env["GROKBUILD_BROWSER_CDP_URL"]
     if env.get("GROKBUILD_BROWSER_PROFILE"):
-        env["BU_NAME"] = env["GROKBUILD_BROWSER_PROFILE"]
+        # GrokBuild's existing setting is a persistent automation-session name,
+        # not the display name of an installed Chrome profile.
+        env["AGENT_BROWSER_RESTORE"] = env["GROKBUILD_BROWSER_PROFILE"]
+    # One bridge process owns one isolated daemon/browser session. The optional
+    # restore key remains reusable login state; it is not the process-ownership key.
+    env["AGENT_BROWSER_SESSION"] = AGENT_BROWSER_SESSION
+    return env
+
+
+def run_agent_browser(args, stdin_text=None):
+    env = agent_browser_environment()
 
     proc = subprocess.run(
         [AGENT_BROWSER] + args,
@@ -107,6 +121,23 @@ def run_agent_browser(args, stdin_text=None):
     if proc.returncode != 0:
         raise RuntimeError(output or f"agent-browser exited with {proc.returncode}")
     return output
+
+
+def close_agent_browser():
+    try:
+        subprocess.run(
+            [AGENT_BROWSER, "close"],
+            text=True,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            env=agent_browser_environment(),
+            timeout=10,
+            check=False,
+        )
+    except (OSError, subprocess.SubprocessError):
+        # Teardown is best-effort here; GrokBuild still owns and fingerprints the
+        # bridge/root process tree as the final generation-bound backstop.
+        pass
 
 
 def text_result(text):
@@ -162,14 +193,23 @@ def handle(request):
 
 
 def main():
-    for line in sys.stdin:
-        line = line.strip()
-        if not line:
-            continue
-        try:
-            handle(json.loads(line))
-        except Exception as exc:
-            respond(None, error=exc)
+    def request_shutdown(signum, _frame):
+        raise SystemExit(128 + signum)
+
+    signal.signal(signal.SIGTERM, request_shutdown)
+    signal.signal(signal.SIGINT, request_shutdown)
+
+    try:
+        for line in sys.stdin:
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                handle(json.loads(line))
+            except Exception as exc:
+                respond(None, error=exc)
+    finally:
+        close_agent_browser()
 
 
 if __name__ == "__main__":

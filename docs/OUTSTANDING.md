@@ -1665,6 +1665,69 @@ smoke threads, and pass Gates F–H.
 
 ---
 
+### Slice 6 candidate receipt — 2026-08-09
+
+- Objective: deterministically reduce fresh tiny-turn non-user context without losing
+  required contracts, and terminate each exact tab/backend generation's Grok and MCP
+  process tree, including its managed browser session.
+- Starting main SHA/tree: `b0953277f2b15013184c2db34f66e4967cf63198` /
+  `7364231f079e3bac38736c3dc217c03d39f8ffe1`; branch
+  `codex/grokbuild-audit-s6-context-lifecycle`.
+- Intended files: `AGENTS.md`, `ARCHITECTURE.md`, `README.md`,
+  `GrokBuild/Models/PromptContextBudget.swift`, `GrokBuild/Services/GrokProcess.swift`,
+  `GrokBuild/Services/OwnedProcessTree.swift`, `scripts/grokbuild-browser-mcp`, three
+  focused test files, and this ledger. Unexpected files: none.
+- Deterministic packet fixture: project instructions fell from `5,015` to `3,112`
+  bytes (`37%`) while retaining canonical repository, signing, model, permission,
+  Computer Use, testing, shipping, and documentation anchors. The report separately
+  measures project instructions, skills, MCP catalog, requested/deferred tool schemas,
+  history, memory, and an explicitly opaque provider wrapper.
+- Lifecycle: teardown is keyed by exact tab, backend, generation, root PID, executable
+  fingerprint, and start time. The browser bridge assigns a unique
+  `AGENT_BROWSER_SESSION`, preserves its restore key in `AGENT_BROWSER_RESTORE`, and
+  closes only that runtime session on EOF or signal.
+- Focused verification: context/ownership `4/4`, wider lifecycle/policy `11/11`, five
+  consecutive lifecycle runs green, and browser integration `19/19`. Final full
+  `make test` and candidate `make ship`: `706/706`, zero failures.
+- Candidate install: version `0.1.20`, `personal` /
+  `codex/grokbuild-audit-s6-context-lifecycle` / `b0953277`, `dirty=true`; installed /
+  `dist` SHA-256 `07e45e017c744f51cb5a44b958df067c1722748d38eb464e39c20ff74527488a`;
+  Team `DD2GCQJVB4`, deep/strict valid, no quarantine; CLI
+  `1.0.0 (3cd0d0cbcebe) [stable]`; `git diff --check` clean.
+- Accepted frozen matrix `20260809T145200Z`: S6-A native `/bin/pwd`, backend
+  `019fe7e0-a856-7080-a600-ce8ba054a95b`, `2` calls / `31,027` tokens; S6-B direct
+  Terra `printf`, `019fe7e2-12a0-7ce1-a425-4914c4540bd4`, `2` / `22,889`; S6-C pinned
+  DeepSeek `/usr/bin/false` once with no retry,
+  `019fe7e3-73f6-77f2-9c31-52423dd03cc5`, `2` / `29,714`; S6-D pinned GPT-4.1 Mini
+  exact `pwd` then browser open, `019fe7e7-49b4-78c3-b474-dd6d56b6a88b`, `2` /
+  `22,975`; S6-E native semantic Computer Use snapshot only,
+  `019fe7e9-1fde-7911-b88f-bbd81e81e52f`, `2` / `36,725`; S6-F native two parallel
+  children plus one wait, parent `019fe7ea-561d-70b0-9c35-1365b73491bc`, children
+  `019fe7ea-9d61-7ca2-8c87-37a37bb8ef4e` and
+  `019fe7ea-9d63-7311-82ad-813d6404e2e1`, `7` / `96,907`.
+- Accepted total: `240,237` tokens. Honest campaign total including the user-authorized
+  rejected S6-D argument-key retry: `263,300`, below `480K`. Provider receipts lacked
+  comparable cost fields, so no exact cost total is claimed. Live token changes versus
+  the four matching baselines were `31,715` to `31,027`, `23,535` to `22,889`,
+  `29,566` to `29,714`, and `23,815` to `22,975`; only the deterministic `37%` packet
+  reduction is claimed as causally attributable.
+- Browser lifecycle repair: original closeout exposed a reparented managed-browser
+  daemon. The repaired final S6-F marker `GB-S6-F-REPAIR-20260809T151400Z`, parent
+  `019fe7f8-fb68-7e00-a8fb-d3a8229bafc6`, children
+  `019fe7f9-56d0-7540-8478-6461c20af28d` and
+  `019fe7f9-56d2-70a2-a12d-99a89918c7de`, passed with two exact parallel children,
+  one wait, `7` calls / `96,247` tokens; exact tab close produced `No active sessions`
+  and zero managed-browser/helper processes within five seconds.
+- Cleanup: every exact comparison/retry/repair tab was closed, every exact parent
+  backend deleted, four unindexed child directories moved by validated ID to
+  recoverable Trash paths prefixed `GrokBuild-S6-child-` or
+  `GrokBuild-S6-repair-child-`, marker searches returned zero, the disposable page and
+  listener were removed, and normal app quit left zero owned processes.
+- PR/merge, merged-main signed install, S6-A/S6-D/S6-F smoke and cleanup, and final
+  Gates F-H remain mandatory. No later slice may begin.
+
+---
+
 ## Slice receipt template
 
 Append a completed receipt beneath the relevant slice before merging:
