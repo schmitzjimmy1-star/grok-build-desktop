@@ -84,7 +84,8 @@ enum ActivitySidebarPresentation {
             status: activity.status,
             durationMilliseconds: activity.durationMilliseconds,
             toolCallCount: activity.toolCallCount,
-            redactedError: activity.redactedError
+            redactedError: activity.redactedError,
+            childToolReceipts: activity.childToolReceipts
         )
     }
 
@@ -93,6 +94,7 @@ enum ActivitySidebarPresentation {
         durationMilliseconds: Int?,
         toolCallCount: Int?,
         redactedError: String?,
+        childToolReceipts: [ChildToolReceipt]? = nil,
         routedModel: String? = nil
     ) -> String {
         var parts: [String] = []
@@ -117,7 +119,20 @@ enum ActivitySidebarPresentation {
             parts.append("Error: \(TranscriptTextPresentation.singleLine(redactedError, maxLength: 120))")
         } else if BackgroundActivityStatusPolicy.canonicalWorkerTerminalStatus(status) == "completed",
                   (toolCallCount ?? 0) > 0 {
-            parts.append("Child tool outcomes were not reported to the parent receipt")
+            if let childToolReceipts, childToolReceipts.count == toolCallCount {
+                let succeeded = childToolReceipts.filter { $0.status == .succeeded }.count
+                parts.append("Child receipts: \(succeeded)/\(toolCallCount ?? 0) succeeded")
+                let exercised = childToolReceipts.filter { $0.mcpReceiptRole == .invocation }
+                    .compactMap { receipt -> String? in
+                        guard let name = receipt.qualifiedToolName else { return nil }
+                        let server = MCPQualifiedToolIdentity.serverName(from: name)
+                        return server.map { "\(name) \(receipt.status.rawValue) via \($0)" }
+                            ?? "\(name) \(receipt.status.rawValue)"
+                    }
+                parts.append(contentsOf: exercised)
+            } else {
+                parts.append("Child tool outcomes were not reported to the parent receipt")
+            }
         }
         return parts.joined(separator: " • ")
     }
@@ -199,6 +214,10 @@ struct ActivitySidebar: View {
                 // every open. The projection still carries the receipt
                 // (`inspector.computerUse`) for tests and future surfaces;
                 // Settings → Computer Use remains the control surface.
+
+                if let capabilities = inspector.mcpCapabilities {
+                    mcpCapabilitiesSection(capabilities)
+                }
 
                 if let sources = inspector.sources {
                     sourcesSection(sources)
@@ -306,15 +325,52 @@ struct ActivitySidebar: View {
             ForEach(sources.usedMCPServers) { item in
                 sourceRow(item, systemImage: "checkmark.circle")
             }
-            ForEach(sources.requestedMCPs) { item in
-                sourceRow(item, systemImage: "circle.dotted")
-            }
             ForEach(sources.attachments) { item in
                 sourceRow(item, systemImage: "paperclip")
             }
         }
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("grok-inspector-sources")
+    }
+
+    /// Five non-interchangeable MCP facts. Catalog discovery never receives a
+    /// "used" checkmark, and a process-ready row never names a capability.
+    private func mcpCapabilitiesSection(_ capabilities: ContextInspectorProjection.MCPCapabilities) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text("MCP evidence").font(AppTheme.Typography.captionStrong)
+            ForEach(capabilities.requestedServers) { capabilityRow($0, systemImage: "circle.dotted") }
+            ForEach(capabilities.configuredServers) { capabilityRow($0, systemImage: "gearshape") }
+            ForEach(capabilities.processStates) { capabilityRow($0, systemImage: "bolt.horizontal.circle") }
+            ForEach(capabilities.discoveredTools) { capabilityRow($0, systemImage: "magnifyingglass.circle") }
+            ForEach(capabilities.exercisedTools) { capabilityRow($0, systemImage: "play.circle") }
+            ForEach(capabilities.unavailableTools) { capabilityRow($0, systemImage: "questionmark.circle") }
+        }
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("grok-inspector-mcp-evidence")
+    }
+
+    private func capabilityRow(_ item: ContextInspectorProjection.SourceItem, systemImage: String) -> some View {
+        HStack(alignment: .top, spacing: 6) {
+            Image(systemName: systemImage)
+                .font(.system(size: 10))
+                .foregroundStyle(.tertiary)
+                .padding(.top, 2)
+            VStack(alignment: .leading, spacing: 1) {
+                Text(item.label)
+                    .font(AppTheme.Typography.caption)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+                if let detail = item.detail {
+                    Text(detail)
+                        .font(AppTheme.Typography.section)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+            Spacer(minLength: 4)
+        }
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("\(item.label)\(item.detail.map { ", " + $0 } ?? "")")
     }
 
     private func sourceRow(_ item: ContextInspectorProjection.SourceItem, systemImage: String) -> some View {
@@ -510,6 +566,7 @@ struct ActivitySidebar: View {
                                 durationMilliseconds: worker.durationMilliseconds,
                                 toolCallCount: worker.toolCallCount,
                                 redactedError: worker.redactedError,
+                                childToolReceipts: worker.childToolReceipts,
                                 routedModel: worker.routedModel
                             )
                             if !detail.isEmpty {
@@ -752,6 +809,7 @@ struct ActivitySidebar: View {
             durationMilliseconds: worker.durationMilliseconds,
             toolCallCount: worker.toolCallCount,
             redactedError: worker.redactedError,
+            childToolReceipts: worker.childToolReceipts,
             routedModel: worker.routedModel
         )
         return detail.isEmpty

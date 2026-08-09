@@ -33,6 +33,46 @@ struct AssistantTurnTrace: Codable, Sendable, Hashable {
         let title: String
         let status: String
         let mcpServerName: String?
+        let mcpReceiptRole: MCPToolReceiptRole?
+        let qualifiedToolName: String?
+        let discoveredQualifiedToolNames: [String]
+
+        init(
+            id: String,
+            title: String,
+            status: String,
+            mcpServerName: String?,
+            mcpReceiptRole: MCPToolReceiptRole? = nil,
+            qualifiedToolName: String? = nil,
+            discoveredQualifiedToolNames: [String] = []
+        ) {
+            self.id = id
+            self.title = title
+            self.status = status
+            self.mcpServerName = mcpServerName
+            self.mcpReceiptRole = mcpReceiptRole
+            self.qualifiedToolName = qualifiedToolName
+            self.discoveredQualifiedToolNames = discoveredQualifiedToolNames
+        }
+
+        private enum CodingKeys: String, CodingKey {
+            case id, title, status, mcpServerName, mcpReceiptRole
+            case qualifiedToolName, discoveredQualifiedToolNames
+        }
+
+        init(from decoder: Decoder) throws {
+            let values = try decoder.container(keyedBy: CodingKeys.self)
+            id = try values.decode(String.self, forKey: .id)
+            title = try values.decode(String.self, forKey: .title)
+            status = try values.decode(String.self, forKey: .status)
+            mcpServerName = try values.decodeIfPresent(String.self, forKey: .mcpServerName)
+            mcpReceiptRole = try values.decodeIfPresent(MCPToolReceiptRole.self, forKey: .mcpReceiptRole)
+            qualifiedToolName = try values.decodeIfPresent(String.self, forKey: .qualifiedToolName)
+            discoveredQualifiedToolNames = try values.decodeIfPresent(
+                [String].self,
+                forKey: .discoveredQualifiedToolNames
+            ) ?? []
+        }
     }
 
     let reasoningSummaryChunks: [String]

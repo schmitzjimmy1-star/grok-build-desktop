@@ -2,6 +2,65 @@ import XCTest
 @testable import GrokBuild
 
 final class RunEvidenceSnapshotTests: XCTestCase {
+    func testCompletedWorkerResolvesOnlyWhenTypedChildReceiptsReconcile() {
+        let receipts = [
+            ChildToolReceipt(
+                id: "search",
+                title: "search_tool",
+                status: .succeeded,
+                mcpReceiptRole: .discovery,
+                qualifiedToolName: nil,
+                discoveredQualifiedToolNames: ["grokbuild-browser__browser_open_url"]
+            ),
+            ChildToolReceipt(
+                id: "use",
+                title: "grokbuild-browser__browser_open_url",
+                status: .succeeded,
+                mcpReceiptRole: .invocation,
+                qualifiedToolName: "grokbuild-browser__browser_open_url",
+                discoveredQualifiedToolNames: []
+            ),
+        ]
+        let worker = RunEvidenceSnapshot.Worker(
+            id: "worker",
+            title: "Inspect page",
+            status: "completed",
+            childID: "child",
+            durationMilliseconds: 10,
+            toolCallCount: 2,
+            redactedError: nil,
+            childToolReceipts: receipts
+        )
+
+        XCTAssertTrue(worker.hasReconciledChildToolReceipts)
+        XCTAssertFalse(worker.hasUnresolvedChildToolOutcome)
+        XCTAssertFalse(worker.isUnresolved)
+    }
+
+    func testFailedTypedChildReceiptRemainsUnresolved() {
+        let worker = RunEvidenceSnapshot.Worker(
+            id: "worker",
+            title: "Inspect page",
+            status: "completed",
+            childID: "child",
+            durationMilliseconds: 10,
+            toolCallCount: 1,
+            redactedError: nil,
+            childToolReceipts: [ChildToolReceipt(
+                id: "use",
+                title: "browser",
+                status: .failed,
+                mcpReceiptRole: .invocation,
+                qualifiedToolName: "server__browser",
+                discoveredQualifiedToolNames: []
+            )]
+        )
+
+        XCTAssertTrue(worker.hasReconciledChildToolReceipts)
+        XCTAssertTrue(worker.hasUnresolvedChildToolOutcome)
+        XCTAssertTrue(worker.isUnresolved)
+    }
+
     func testCompletedWorkerLifecycleDoesNotProveChildToolSuccess() {
         let worker = RunEvidenceSnapshot.Worker(
             id: "worker",

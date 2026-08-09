@@ -2,6 +2,14 @@ import XCTest
 @testable import GrokBuild
 
 final class GrokSessionTranscriptImporterTests: XCTestCase {
+    func testWorkspaceEncodingMatchesGrokForSpacesAndReservedCharacters() {
+        let workspace = URL(fileURLWithPath: "/Users/test/MCP Servers/Grok Build/100% ready")
+        XCTAssertEqual(
+            GrokSessionTranscriptImporter.encodeWorkspacePath(workspace),
+            "%2FUsers%2Ftest%2FMCP%20Servers%2FGrok%20Build%2F100%25%20ready"
+        )
+    }
+
     private var savedGrokHome: URL!
 
     override func setUp() {

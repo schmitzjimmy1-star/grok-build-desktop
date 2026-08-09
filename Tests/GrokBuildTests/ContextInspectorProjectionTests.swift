@@ -38,8 +38,8 @@ final class ContextInspectorProjectionTests: XCTestCase {
             requestedMCPNames: ["chrome-devtools"],
             evidencedMCPServers: []
         ))
-        XCTAssertEqual(sources.requestedMCPs.map(\.label), ["chrome-devtools"])
-        XCTAssertEqual(sources.requestedMCPs.first?.detail, "Requested — not yet evidenced")
+        XCTAssertTrue(sources.requestedMCPs.isEmpty,
+                      "Activity Sources must not name request-only MCPs")
         XCTAssertTrue(sources.usedMCPServers.isEmpty,
                       "a requested MCP without a tool receipt must never appear used")
 
@@ -51,6 +51,145 @@ final class ContextInspectorProjectionTests: XCTestCase {
         XCTAssertEqual(evidenced.usedMCPServers.map(\.label), ["chrome-devtools"],
                        "used servers deduplicate and drop empties")
         XCTAssertEqual(evidenced.usedMCPServers.first?.detail, "Used — tool receipt observed")
+    }
+
+    func testConfiguredWithoutProcessOrCatalogIsConfiguredOnly() throws {
+        let inventoryOnly = PromptMCPOption(
+            name: "chrome-devtools",
+            detail: "User connection · STDIO · Configured; process readiness not checked",
+            isReady: false
+        )
+        XCTAssertFalse(inventoryOnly.isReady)
+        let capabilities = try XCTUnwrap(ContextInspectorProjection.capabilitiesSection(
+            configuredMCPNames: ["chrome-devtools"],
+            processStatuses: [],
+            requestedMCPNames: ["chrome-devtools"],
+            requestedQualifiedToolNames: [],
+            receipts: []
+        ))
+
+        XCTAssertEqual(capabilities.configuredServers.map(\.label), ["chrome-devtools"])
+        XCTAssertEqual(capabilities.requestedServers.first?.detail,
+                       "Requested for this turn — use unproven")
+        XCTAssertTrue(capabilities.processStates.isEmpty)
+        XCTAssertTrue(capabilities.discoveredTools.isEmpty)
+        XCTAssertTrue(capabilities.exercisedTools.isEmpty)
+        XCTAssertTrue(capabilities.unavailableTools.isEmpty)
+    }
+
+    func testProcessReadyWithoutInventoryRemainsProcessReadyOnly() throws {
+        let capabilities = try XCTUnwrap(ContextInspectorProjection.capabilitiesSection(
+            configuredMCPNames: ["grokbuild-browser"],
+            processStatuses: [MCPServerStatus(
+                name: "grokbuild-browser",
+                state: .ready,
+                reason: nil,
+                evidence: MCPReadinessPolicy.readyEvidence
+            )],
+            requestedMCPNames: ["grokbuild-browser"],
+            requestedQualifiedToolNames: [],
+            receipts: []
+        ))
+
+        XCTAssertEqual(capabilities.processStates.first?.detail, "Process ready")
+        XCTAssertTrue(capabilities.discoveredTools.isEmpty)
+        XCTAssertTrue(capabilities.exercisedTools.isEmpty)
+    }
+
+    func testDiscoveryAndExerciseStaySeparateWithAuthoritativeQualifiedName() throws {
+        let discovery = ContextInspectorProjection.MCPToolReceipt(
+            id: "search",
+            role: .discovery,
+            qualifiedToolName: nil,
+            serverName: nil,
+            discoveredQualifiedToolNames: ["chrome-devtools__list_pages"],
+            statusLabel: "Succeeded",
+            isSettled: true
+        )
+        let discoveredOnly = try XCTUnwrap(ContextInspectorProjection.capabilitiesSection(
+            configuredMCPNames: ["chrome-devtools"],
+            processStatuses: [],
+            requestedMCPNames: [],
+            requestedQualifiedToolNames: ["chrome-devtools__list_pages"],
+            receipts: [discovery]
+        ))
+        XCTAssertEqual(discoveredOnly.discoveredTools.map(\.label), ["chrome-devtools__list_pages"])
+        XCTAssertTrue(discoveredOnly.exercisedTools.isEmpty,
+                      "catalog search must never count as browser execution")
+
+        let invocation = ContextInspectorProjection.MCPToolReceipt(
+            id: "use",
+            role: .invocation,
+            qualifiedToolName: "chrome-devtools__list_pages",
+            serverName: "chrome-devtools",
+            discoveredQualifiedToolNames: [],
+            statusLabel: "Succeeded",
+            isSettled: true
+        )
+        let exercised = try XCTUnwrap(ContextInspectorProjection.capabilitiesSection(
+            configuredMCPNames: ["chrome-devtools", "grokbuild-browser"],
+            processStatuses: [],
+            requestedMCPNames: [],
+            requestedQualifiedToolNames: ["chrome-devtools__list_pages"],
+            receipts: [discovery, invocation]
+        ))
+        XCTAssertEqual(exercised.exercisedTools.map(\.label), ["chrome-devtools__list_pages"])
+        XCTAssertFalse(exercised.configuredServers.contains { $0.label == "grokbuild-browser" },
+                       "a qualified chrome-devtools receipt must not synthesize a grokbuild-browser alias")
+    }
+
+    func testQualifiedToolRequestExtractionDoesNotAbsorbSentencePunctuation() {
+        XCTAssertEqual(
+            MCPQualifiedToolIdentity.names(
+                in: "Discover chrome-devtools__list_pages. Do not invoke chrome-devtools__take_snapshot!"
+            ),
+            ["chrome-devtools__list_pages", "chrome-devtools__take_snapshot"]
+        )
+    }
+
+    func testRequestedAbsentToolIsUnavailableNotFailedOrExercised() throws {
+        let capabilities = try XCTUnwrap(ContextInspectorProjection.capabilitiesSection(
+            configuredMCPNames: ["chrome-devtools"],
+            processStatuses: [],
+            requestedMCPNames: [],
+            requestedQualifiedToolNames: ["chrome-devtools__read_browser_history"],
+            receipts: [.init(
+                id: "search",
+                role: .discovery,
+                qualifiedToolName: nil,
+                serverName: nil,
+                discoveredQualifiedToolNames: ["chrome-devtools__list_pages"],
+                statusLabel: "Succeeded",
+                isSettled: true
+            )]
+        ))
+
+        XCTAssertEqual(capabilities.unavailableTools.map(\.label), ["chrome-devtools__read_browser_history"])
+        XCTAssertEqual(capabilities.unavailableTools.first?.detail, "Unavailable for this turn")
+        XCTAssertTrue(capabilities.exercisedTools.isEmpty)
+    }
+
+    func testFailedInvocationRemainsFailedExerciseWithoutProcessPromotion() throws {
+        let capabilities = try XCTUnwrap(ContextInspectorProjection.capabilitiesSection(
+            configuredMCPNames: ["chrome-devtools"],
+            processStatuses: [],
+            requestedMCPNames: [],
+            requestedQualifiedToolNames: ["chrome-devtools__list_pages"],
+            receipts: [.init(
+                id: "failed-use",
+                role: .invocation,
+                qualifiedToolName: "chrome-devtools__list_pages",
+                serverName: "chrome-devtools",
+                discoveredQualifiedToolNames: [],
+                statusLabel: "Failed",
+                isSettled: true
+            )]
+        ))
+
+        XCTAssertEqual(capabilities.exercisedTools.first?.detail,
+                       "Exercised — current-turn tool receipt: Failed")
+        XCTAssertTrue(capabilities.processStates.isEmpty,
+                      "restored actual-use evidence must not become current process readiness")
     }
 
     func testComputerUseSectionGatesOnConfigurationOrLifecycle() {

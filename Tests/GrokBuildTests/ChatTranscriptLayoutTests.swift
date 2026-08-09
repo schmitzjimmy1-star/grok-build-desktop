@@ -235,12 +235,57 @@ final class ChatTranscriptLayoutTests: XCTestCase {
 
         PromptMCPInventoryCatalog.record(options, defaults: defaults)
 
-        XCTAssertEqual(PromptMCPInventoryCatalog.cached(defaults: defaults), options)
+        let restored = PromptMCPInventoryCatalog.cached(defaults: defaults)
+        XCTAssertEqual(restored.map(\.name), options.map(\.name))
+        XCTAssertTrue(restored.allSatisfy { !$0.isReady },
+                      "cached configuration must never survive as process readiness")
         let raw = try XCTUnwrap(defaults.data(forKey: "grokbuild.promptMCPInventory.v1"))
         let text = String(decoding: raw, as: UTF8.self)
         XCTAssertFalse(text.localizedCaseInsensitiveContains("environment"))
         XCTAssertFalse(text.localizedCaseInsensitiveContains("command"))
         XCTAssertFalse(text.localizedCaseInsensitiveContains("secret"))
+        XCTAssertTrue(text.contains(#""isReady":false"#))
+    }
+
+    func testRestoredTraceRetainsActualUseWithoutInventingCurrentReadiness() throws {
+        let trace = AssistantTurnTrace(
+            reasoningSummaryChunks: [],
+            thinkingDuration: nil,
+            tools: [.init(
+                id: "use-1",
+                title: "chrome-devtools__list_pages",
+                status: "Succeeded",
+                mcpServerName: "chrome-devtools",
+                mcpReceiptRole: .invocation,
+                qualifiedToolName: "chrome-devtools__list_pages"
+            )]
+        )
+        let restored = try JSONDecoder().decode(
+            AssistantTurnTrace.self,
+            from: JSONEncoder().encode(trace)
+        )
+
+        XCTAssertEqual(restored.tools.first?.mcpReceiptRole, .invocation)
+        XCTAssertEqual(restored.tools.first?.qualifiedToolName, "chrome-devtools__list_pages")
+        let capabilities = try XCTUnwrap(ContextInspectorProjection.capabilitiesSection(
+            configuredMCPNames: [],
+            processStatuses: [],
+            requestedMCPNames: [],
+            requestedQualifiedToolNames: [],
+            receipts: restored.tools.map {
+                .init(
+                    id: $0.id,
+                    role: $0.mcpReceiptRole,
+                    qualifiedToolName: $0.qualifiedToolName,
+                    serverName: $0.mcpServerName,
+                    discoveredQualifiedToolNames: $0.discoveredQualifiedToolNames,
+                    statusLabel: $0.status,
+                    isSettled: true
+                )
+            }
+        ))
+        XCTAssertEqual(capabilities.exercisedTools.map(\.label), ["chrome-devtools__list_pages"])
+        XCTAssertTrue(capabilities.processStates.isEmpty)
     }
 
     func testMCPIdentityRequiresExplicitOrProviderQualifiedReceipt() {
@@ -299,7 +344,9 @@ final class ChatTranscriptLayoutTests: XCTestCase {
         )
         let toolView = String(composerViews[toolViewStart.lowerBound..<toolViewEnd.lowerBound])
 
-        XCTAssertTrue(toolView.contains("qualifiedToolName: tool.title"))
+        XCTAssertTrue(toolView.contains("qualifiedToolName: tool.qualifiedToolName ?? tool.title"))
+        XCTAssertTrue(toolView.contains("tool.mcpReceiptRole == .discovery"))
+        XCTAssertTrue(toolView.contains("Capability discovery"))
         XCTAssertTrue(toolView.contains("if let server = displayedMCPServer"))
         XCTAssertTrue(toolView.contains("Text(\"Using \\(server)\")"))
     }

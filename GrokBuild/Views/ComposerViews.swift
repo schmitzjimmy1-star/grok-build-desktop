@@ -132,9 +132,9 @@ struct AssistantToolTraceView: View {
                 .font(.system(size: 13, weight: .semibold))
                 .foregroundStyle(.secondary)
             ForEach(tools) { tool in
-                let displayedMCPServer = MCPToolReceiptIdentity.serverName(
+                let displayedMCPServer = tool.mcpReceiptRole == .discovery ? nil : MCPToolReceiptIdentity.serverName(
                     explicitName: tool.mcpServerName,
-                    qualifiedToolName: tool.title,
+                    qualifiedToolName: tool.qualifiedToolName ?? tool.title,
                     knownServerNames: []
                 )
                 HStack(alignment: .firstTextBaseline, spacing: 7) {
@@ -142,7 +142,10 @@ struct AssistantToolTraceView: View {
                         .font(.caption2.weight(.semibold))
                         .foregroundStyle(displayedMCPServer == nil ? Color.secondary : Color.accentColor)
                     VStack(alignment: .leading, spacing: 2) {
-                        if let server = displayedMCPServer {
+                        if tool.mcpReceiptRole == .discovery {
+                            Text("Capability discovery")
+                                .font(.system(size: 13, weight: .semibold))
+                        } else if let server = displayedMCPServer {
                             Text("Using \(server)")
                                 .font(.system(size: 13, weight: .semibold))
                         }

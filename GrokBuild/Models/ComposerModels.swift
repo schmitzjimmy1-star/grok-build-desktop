@@ -333,9 +333,57 @@ struct FileAttachment: Identifiable, Hashable, Sendable {
 struct PromptMCPOption: Identifiable, Hashable, Codable, Sendable {
     let name: String
     let detail: String
+    /// True only when the current Grok process owns a bounded startup receipt
+    /// for this exact configured server. CLI inventory alone leaves this false.
     let isReady: Bool
 
     var id: String { name }
+}
+
+/// The Grok CLI exposes catalog lookup (`search_tool`) and MCP invocation
+/// (`use_tool`) as different ACP tools. Keep that distinction on every receipt:
+/// discovering a schema is not exercising the discovered capability.
+enum MCPToolReceiptRole: String, Codable, Sendable, Hashable {
+    case discovery
+    case invocation
+}
+
+enum MCPQualifiedToolIdentity {
+    private static let pattern = #"[A-Za-z0-9._-]+__[A-Za-z0-9._-]+"#
+
+    static func normalized(_ value: String?) -> String? {
+        guard let value else { return nil }
+        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard trimmed.range(of: #"^[A-Za-z0-9._-]+__[A-Za-z0-9._-]+$"#,
+                            options: .regularExpression) != nil else {
+            return nil
+        }
+        return String(trimmed.prefix(240))
+    }
+
+    static func names(in text: String?) -> [String] {
+        guard let text, !text.isEmpty else { return [] }
+        guard let expression = try? NSRegularExpression(pattern: pattern) else { return [] }
+        var seen = Set<String>()
+        let range = NSRange(text.startIndex..<text.endIndex, in: text)
+        return expression.matches(in: text, range: range)
+            .compactMap { Range($0.range, in: text) }
+            // A qualified name at the end of a sentence must not absorb prose
+            // punctuation into the requested identity. Authoritative receipt
+            // parsing remains strict and unchanged.
+            .compactMap {
+                normalized(String(text[$0]).trimmingCharacters(
+                    in: CharacterSet(charactersIn: ".,;:!?")
+                ))
+            }
+            .filter { seen.insert($0).inserted }
+    }
+
+    static func serverName(from qualifiedToolName: String?) -> String? {
+        guard let qualified = normalized(qualifiedToolName),
+              let separator = qualified.range(of: "__") else { return nil }
+        return String(qualified[..<separator.lowerBound])
+    }
 }
 
 enum PromptMCPInventoryCatalog {
@@ -346,11 +394,18 @@ enum PromptMCPInventoryCatalog {
               let options = try? JSONDecoder().decode([PromptMCPOption].self, from: data) else {
             return []
         }
-        return options
+        // A persisted inventory outlives every Grok process generation. Preserve
+        // only configuration metadata; process readiness must be reacquired live.
+        return options.map {
+            PromptMCPOption(name: $0.name, detail: $0.detail, isReady: false)
+        }
     }
 
     static func record(_ options: [PromptMCPOption], defaults: UserDefaults = .standard) {
-        guard let data = try? JSONEncoder().encode(options) else { return }
+        let configurationOnly = options.map {
+            PromptMCPOption(name: $0.name, detail: $0.detail, isReady: false)
+        }
+        guard let data = try? JSONEncoder().encode(configurationOnly) else { return }
         defaults.set(data, forKey: cacheKey)
     }
 }

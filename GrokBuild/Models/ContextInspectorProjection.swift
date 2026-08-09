@@ -8,9 +8,9 @@ import Foundation
 ///   mid-turn, the generation-bound live projection. No invented workers.
 /// - The Computer Use section appears only when the capability is configured or
 ///   a lifecycle receipt exists; its state is the receipt's own label.
-/// - Sources separate three claims that must never merge: prompt attachments,
-///   MCPs *requested* for the next prompt, and MCP servers *actually evidenced*
-///   by tool receipts. A requested MCP is never presented as used.
+/// - MCP evidence separates request/configuration/process/catalog/invocation.
+///   Sources names only attachments and MCP servers actually evidenced by a
+///   current-turn invocation receipt.
 /// - `unresolvedErrorCount`/`failedToolCount` preserve failure visibility; the
 ///   compact panel may summarize but never hide a failed tool.
 enum ContextInspectorProjection {
@@ -60,10 +60,36 @@ enum ContextInspectorProjection {
         }
     }
 
+    struct MCPToolReceipt: Equatable {
+        let id: String
+        let role: MCPToolReceiptRole?
+        let qualifiedToolName: String?
+        let serverName: String?
+        let discoveredQualifiedToolNames: [String]
+        let statusLabel: String
+        let isSettled: Bool
+    }
+
+    struct MCPCapabilities: Equatable {
+        let requestedServers: [SourceItem]
+        let configuredServers: [SourceItem]
+        let processStates: [SourceItem]
+        let discoveredTools: [SourceItem]
+        let exercisedTools: [SourceItem]
+        let unavailableTools: [SourceItem]
+
+        var isEmpty: Bool {
+            requestedServers.isEmpty && configuredServers.isEmpty && processStates.isEmpty
+                && discoveredTools.isEmpty && exercisedTools.isEmpty
+                && unavailableTools.isEmpty
+        }
+    }
+
     struct Model: Equatable {
         let subagents: Subagents?
         let computerUse: ComputerUse?
         let sources: Sources?
+        let mcpCapabilities: MCPCapabilities?
         let hasRunDetails: Bool
         let failedToolCount: Int
         let unresolvedErrors: [String]
@@ -71,7 +97,7 @@ enum ContextInspectorProjection {
         let isLive: Bool
 
         var isEmpty: Bool {
-            subagents == nil && computerUse == nil && sources == nil
+            subagents == nil && computerUse == nil && sources == nil && mcpCapabilities == nil
                 && !hasRunDetails && failedToolCount == 0 && unresolvedErrors.isEmpty
         }
 
@@ -79,6 +105,7 @@ enum ContextInspectorProjection {
             subagents: nil,
             computerUse: nil,
             sources: nil,
+            mcpCapabilities: nil,
             hasRunDetails: false,
             failedToolCount: 0,
             unresolvedErrors: [],
@@ -97,7 +124,11 @@ enum ContextInspectorProjection {
         requestedMCPNames: [String],
         evidencedMCPServers: [String],
         computerUseConfigured: Bool,
-        computerUseStateLabel: String?
+        computerUseStateLabel: String?,
+        configuredMCPNames: [String] = [],
+        mcpProcessStatuses: [MCPServerStatus] = [],
+        requestedQualifiedToolNames: [String] = [],
+        mcpToolReceipts: [MCPToolReceipt] = []
     ) -> Model {
         let workers = snapshot?.workers ?? live?.workers ?? []
         let subagents: Subagents? = workers.isEmpty ? nil : subagentSummary(workers)
@@ -119,11 +150,19 @@ enum ContextInspectorProjection {
             requestedMCPNames: requestedMCPNames,
             evidencedMCPServers: evidencedMCPServers
         )
+        let mcpCapabilities = capabilitiesSection(
+            configuredMCPNames: configuredMCPNames,
+            processStatuses: mcpProcessStatuses,
+            requestedMCPNames: requestedMCPNames,
+            requestedQualifiedToolNames: requestedQualifiedToolNames,
+            receipts: mcpToolReceipts
+        )
 
         return Model(
             subagents: subagents,
             computerUse: computerUse,
             sources: sources,
+            mcpCapabilities: mcpCapabilities,
             hasRunDetails: snapshot != nil || live != nil,
             failedToolCount: snapshot?.tools.failed ?? 0,
             unresolvedErrors: snapshot?.unresolvedErrors ?? [],
@@ -169,9 +208,9 @@ enum ContextInspectorProjection {
     ) -> Sources? {
         let attachments = attachmentNames
             .map { SourceItem(id: "file|\($0)", label: $0, detail: "Attached file") }
-        // Requested is a per-prompt intent — never a usage claim.
-        let requested = requestedMCPNames
-            .map { SourceItem(id: "mcp-requested|\($0)", label: $0, detail: "Requested — not yet evidenced") }
+        // Requested MCP intent belongs in the MCP evidence section. Activity
+        // Sources contains only files plus servers with actual tool receipts.
+        let requested: [SourceItem] = []
         var seen = Set<String>()
         let used = evidencedMCPServers
             .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
@@ -180,5 +219,105 @@ enum ContextInspectorProjection {
             .map { SourceItem(id: "mcp-used|\($0)", label: $0, detail: "Used — tool receipt observed") }
         let sources = Sources(attachments: attachments, requestedMCPs: requested, usedMCPServers: used)
         return sources.isEmpty ? nil : sources
+    }
+
+    static func capabilitiesSection(
+        configuredMCPNames: [String],
+        processStatuses: [MCPServerStatus],
+        requestedMCPNames: [String],
+        requestedQualifiedToolNames: [String],
+        receipts: [MCPToolReceipt]
+    ) -> MCPCapabilities? {
+        let requestedTools = uniqueQualified(requestedQualifiedToolNames)
+        let discoveredTools = uniqueQualified(receipts.flatMap(\.discoveredQualifiedToolNames))
+        let exercisedTools = uniqueQualified(receipts.compactMap { receipt in
+            receipt.role == .invocation ? receipt.qualifiedToolName : nil
+        })
+        let relevantServers = Set(
+            requestedMCPNames
+                + requestedTools.compactMap(MCPQualifiedToolIdentity.serverName)
+                + receipts.compactMap(\.serverName)
+                + discoveredTools.compactMap(MCPQualifiedToolIdentity.serverName)
+        )
+
+        let configured = uniqueNames(configuredMCPNames)
+            .filter { relevantServers.contains($0) }
+            .map {
+                SourceItem(
+                    id: "mcp-configured|\($0)",
+                    label: $0,
+                    detail: "Configured — process readiness separate"
+                )
+            }
+        let requested = uniqueNames(requestedMCPNames).map {
+            SourceItem(
+                id: "mcp-requested|\($0)",
+                label: $0,
+                detail: "Requested for this turn — use unproven"
+            )
+        }
+        let process = processStatuses
+            .filter { relevantServers.contains($0.name) }
+            .map {
+                SourceItem(
+                    id: "mcp-process|\($0.name)",
+                    label: $0.name,
+                    detail: $0.state.displayName
+                )
+            }
+        let discovered = discoveredTools
+            .filter { requestedTools.isEmpty || requestedTools.contains($0) }
+            .map {
+                SourceItem(
+                    id: "mcp-discovered|\($0)",
+                    label: $0,
+                    detail: "Discovered — current-turn catalog receipt"
+                )
+            }
+        let exercised = exercisedTools.map { qualified in
+            let status = receipts.last(where: {
+                $0.role == .invocation && $0.qualifiedToolName == qualified
+            })?.statusLabel ?? "Status not settled"
+            return SourceItem(
+                id: "mcp-exercised|\(qualified)",
+                label: qualified,
+                detail: "Exercised — current-turn tool receipt: \(status)"
+            )
+        }
+        let hasSettledDiscovery = receipts.contains { $0.role == .discovery && $0.isSettled }
+        let unavailable = hasSettledDiscovery
+            ? requestedTools.filter { !discoveredTools.contains($0) && !exercisedTools.contains($0) }
+                .map {
+                    SourceItem(
+                        id: "mcp-unavailable|\($0)",
+                        label: $0,
+                        detail: "Unavailable for this turn"
+                    )
+                }
+            : []
+
+        let result = MCPCapabilities(
+            requestedServers: requested,
+            configuredServers: configured,
+            processStates: process,
+            discoveredTools: discovered,
+            exercisedTools: exercised,
+            unavailableTools: unavailable
+        )
+        return result.isEmpty ? nil : result
+    }
+
+    private static func uniqueNames(_ values: [String]) -> [String] {
+        var seen = Set<String>()
+        return values.map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty && seen.insert($0).inserted }
+            .sorted()
+    }
+
+    private static func uniqueQualified(_ values: [String]) -> [String] {
+        var seen = Set<String>()
+        return values.compactMap(MCPQualifiedToolIdentity.normalized)
+            .filter { seen.insert($0).inserted }
+            .sorted()
     }
 }

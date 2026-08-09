@@ -247,13 +247,14 @@ final class ChatStore {
                 durationMilliseconds: $0.durationMilliseconds,
                 toolCallCount: $0.toolCallCount,
                 redactedError: $0.redactedError,
+                childToolReceipts: $0.childToolReceipts,
                 routedModel: SubagentRouting.routedModel(
                     forWorkerTitle: $0.title,
                     rolesByName: subagentRoleModelsByName
                 )
             )
         }
-        let tools = liveToolCalls.map { tool in
+        let tools = parentLiveToolCalls().map { tool in
             let status: String
             let isActive: Bool
             switch tool.terminalStatus {
@@ -283,6 +284,9 @@ final class ChatStore {
                 status: status,
                 detail: tool.terminalStatus == .succeeded ? nil : tool.detail,
                 mcpServerName: tool.mcpServerName,
+                mcpReceiptRole: tool.mcpReceiptRole,
+                qualifiedToolName: tool.qualifiedToolName,
+                discoveredQualifiedToolNames: tool.discoveredQualifiedToolNames,
                 isActive: isActive
             )
         }
@@ -343,6 +347,9 @@ final class ChatStore {
         let diagnosticDetail: String?
         let target: String?
         let mcpServerName: String?
+        let mcpReceiptRole: MCPToolReceiptRole?
+        let qualifiedToolName: String?
+        let discoveredQualifiedToolNames: [String]
         let retryOfToolCallID: String?
         let recoveredByToolCallID: String?
 
@@ -356,6 +363,9 @@ final class ChatStore {
             diagnosticDetail: String?,
             target: String?,
             mcpServerName: String? = nil,
+            mcpReceiptRole: MCPToolReceiptRole? = nil,
+            qualifiedToolName: String? = nil,
+            discoveredQualifiedToolNames: [String] = [],
             retryOfToolCallID: String?,
             recoveredByToolCallID: String?
         ) {
@@ -368,6 +378,9 @@ final class ChatStore {
             self.diagnosticDetail = diagnosticDetail
             self.target = target
             self.mcpServerName = mcpServerName
+            self.mcpReceiptRole = mcpReceiptRole
+            self.qualifiedToolName = qualifiedToolName
+            self.discoveredQualifiedToolNames = discoveredQualifiedToolNames
             self.retryOfToolCallID = retryOfToolCallID
             self.recoveredByToolCallID = recoveredByToolCallID
         }
@@ -404,6 +417,9 @@ final class ChatStore {
                 diagnosticDetail: diagnosticDetail,
                 target: target,
                 mcpServerName: mcpServerName,
+                mcpReceiptRole: mcpReceiptRole,
+                qualifiedToolName: qualifiedToolName,
+                discoveredQualifiedToolNames: discoveredQualifiedToolNames,
                 retryOfToolCallID: retryOfToolCallID,
                 recoveredByToolCallID: recoveryID
             )
@@ -431,6 +447,9 @@ final class ChatStore {
     /// selection is in-memory per tab and is consumed only after a turn starts.
     private(set) var promptMCPOptions: [PromptMCPOption] = PromptMCPInventoryCatalog.cached()
     private(set) var selectedPromptMCPNames: Set<String> = []
+    /// Exact prompt attachment intent captured before the composer clears.
+    /// This is per-turn request evidence only; it never implies catalog or use.
+    private(set) var currentTurnRequestedMCPNames: [String] = []
     private(set) var promptMCPInventoryIsLoading = false
     private(set) var promptMCPInventoryUnavailable = false
     private var configuredPromptMCPOptions: [PromptMCPOption] = PromptMCPInventoryCatalog.cached()
@@ -1461,6 +1480,7 @@ final class ChatStore {
         pendingExitPlan = nil
         pendingQuestions.removeAll()
         fileAttachments.removeAll()
+        currentTurnRequestedMCPNames.removeAll()
         goalState = nil
         clearWorkflowRunState()
         clearBackgroundTaskState()
@@ -2452,7 +2472,8 @@ final class ChatStore {
         startStallWatchdog()
 
         var attachmentBlocks: [String] = []
-        if let mcpBlock = PromptMCPAttachmentPromptBuilder.build(from: selectedPromptMCPNames) {
+        currentTurnRequestedMCPNames = selectedPromptMCPNames.sorted()
+        if let mcpBlock = PromptMCPAttachmentPromptBuilder.build(from: currentTurnRequestedMCPNames) {
             attachmentBlocks.append(mcpBlock)
         }
         if let fileBlock = AttachmentPromptBuilder.build(from: fileAttachments) {
@@ -2854,7 +2875,11 @@ final class ChatStore {
                         }
                         let transport = server.transport.trimmingCharacters(in: .whitespacesAndNewlines)
                         let detail = transport.isEmpty ? source : "\(source) · \(transport.uppercased())"
-                        return PromptMCPOption(name: server.name, detail: detail, isReady: true)
+                        return PromptMCPOption(
+                            name: server.name,
+                            detail: "\(detail) · Configured; process readiness not checked",
+                            isReady: false
+                        )
                     }
                 PromptMCPInventoryCatalog.record(configuredPromptMCPOptions)
                 loadedPromptMCPWorkspaceID = workspaceID
@@ -3465,6 +3490,7 @@ final class ChatStore {
             // barrier have already crossed ChatStore. Any worker still active here
             // is explicitly unresolved, never successful by implication from the
             // parent answer.
+            reconcileCurrentTurnChildToolReceipts()
             backgroundTaskTracker.markUnsettledSubagents(only: currentTurnWorkerActivityIDs)
             backgroundActivities = backgroundTaskTracker.activities
             settleToolCallsAtTurnBarrier()
@@ -3556,6 +3582,24 @@ final class ChatStore {
         }
     }
 
+    private func reconcileCurrentTurnChildToolReceipts() {
+        let candidates = backgroundTaskTracker.activities.filter { activity in
+            guard activity.kind == .subagent,
+                  currentTurnWorkerActivityIDs.contains(activity.id),
+                  let childID = activity.childID,
+                  !childID.isEmpty else { return false }
+            return activity.childToolReceipts?.count != (activity.toolCallCount ?? 0)
+        }
+        for activity in candidates {
+            guard let childID = activity.childID else { continue }
+            backgroundTaskTracker.reconcileChildToolReceipts(
+                childID: childID,
+                receipts: process.loadChildToolReceipts(childID: childID)
+            )
+        }
+        backgroundActivities = backgroundTaskTracker.activities
+    }
+
     private func ownsActiveLifecycleEvent(_ identity: ACPEventIdentity) -> Bool {
         SubagentLifecycleEventPolicy.ownsActiveSession(
             identity,
@@ -3611,6 +3655,9 @@ final class ChatStore {
             diagnosticDetail: toolCall.diagnosticDetail,
             target: toolCall.target,
             mcpServerName: mcpServerName(from: toolCall),
+            mcpReceiptRole: toolCall.mcpReceiptRole,
+            qualifiedToolName: toolCall.qualifiedToolName,
+            discoveredQualifiedToolNames: toolCall.discoveredQualifiedToolNames,
             retryOfToolCallID: toolCall.retryOfToolCallID,
             recoveredByToolCallID: nil
         )
@@ -3718,22 +3765,29 @@ final class ChatStore {
                 durationMilliseconds: $0.durationMilliseconds,
                 toolCallCount: $0.toolCallCount,
                 redactedError: $0.redactedError,
+                childToolReceipts: $0.childToolReceipts,
                 routedModel: SubagentRouting.routedModel(
                     forWorkerTitle: $0.title,
                     rolesByName: subagentRoleModelsByName
                 )
             )
         }
+        let parentTools = parentLiveToolCalls()
         let toolSummary = RunEvidenceSnapshot.ToolSummary(
-            succeeded: liveToolCalls.filter { $0.terminalStatus == .succeeded }.count,
-            failed: liveToolCalls.filter { $0.terminalStatus == .failed }.count,
-            cancelled: liveToolCalls.filter { $0.terminalStatus == .cancelled }.count,
-            unknown: liveToolCalls.filter { $0.terminalStatus == .unknown || $0.terminalStatus == nil }.count
+            succeeded: parentTools.filter { $0.terminalStatus == .succeeded }.count,
+            failed: parentTools.filter { $0.terminalStatus == .failed }.count,
+            cancelled: parentTools.filter { $0.terminalStatus == .cancelled }.count,
+            unknown: parentTools.filter { $0.terminalStatus == .unknown || $0.terminalStatus == nil }.count
         )
-        let unresolvedErrors = liveToolCalls.compactMap { tool -> String? in
+        let unresolvedErrors = parentTools.compactMap { tool -> String? in
             guard tool.terminalStatus == .failed, !tool.isRecovered else { return nil }
             return TranscriptTextPresentation.singleLine(tool.detail ?? tool.title, maxLength: 180)
-        } + workers.compactMap { $0.redactedError }
+        } + workers.compactMap { $0.redactedError } + workers.flatMap { worker in
+            (worker.childToolReceipts ?? []).compactMap { receipt -> String? in
+                guard receipt.status != .succeeded else { return nil }
+                return "Child tool \(receipt.qualifiedToolName ?? receipt.title) ended \(receipt.status.rawValue)."
+            }
+        }
         let provenance: String = switch continuityStatus {
         case .localOnly: "Local only"
         case .backendBound: "Fresh backend bound"
@@ -3845,6 +3899,11 @@ final class ChatStore {
             diagnosticDetail: update.diagnosticDetail ?? existing.diagnosticDetail,
             target: update.target ?? existing.target,
             mcpServerName: mcpServerName(from: update) ?? existing.mcpServerName,
+            mcpReceiptRole: update.mcpReceiptRole ?? existing.mcpReceiptRole,
+            qualifiedToolName: update.qualifiedToolName ?? existing.qualifiedToolName,
+            discoveredQualifiedToolNames: Array(Set(
+                existing.discoveredQualifiedToolNames + update.discoveredQualifiedToolNames
+            )).sorted(),
             retryOfToolCallID: update.retryOfToolCallID ?? existing.retryOfToolCallID,
             recoveredByToolCallID: nil
         )
@@ -3867,14 +3926,17 @@ final class ChatStore {
         let duration = thinkingDuration ?? thinkingStartedAt.map {
             max(0, Date().timeIntervalSince($0))
         }
-        let tools = liveToolCalls.map { tool in
+        let tools = parentLiveToolCalls().map { tool in
             AssistantTurnTrace.Tool(
                 id: tool.id,
                 title: TranscriptTextPresentation.singleLine(tool.title, maxLength: 160),
                 status: tool.terminalStatus.map { String(describing: $0).capitalized }
                     ?? tool.status.map(ActivitySidebarPresentation.activityStatus)
                     ?? "Status not settled",
-                mcpServerName: tool.mcpServerName
+                mcpServerName: tool.mcpServerName,
+                mcpReceiptRole: tool.mcpReceiptRole,
+                qualifiedToolName: tool.qualifiedToolName,
+                discoveredQualifiedToolNames: tool.discoveredQualifiedToolNames
             )
         }
         // Stamp the turn's model identity only from the confirmed execution
@@ -3894,6 +3956,27 @@ final class ChatStore {
         }
     }
 
+    /// ACP may mirror a child's tool updates on the parent's live transport even
+    /// though those calls are absent from the authoritative parent ledger. Once
+    /// exact typed child receipts arrive, keep their IDs inside the worker and out
+    /// of the parent's Tools, Sources, and transcript trace.
+    private func parentLiveToolCalls() -> [LiveToolCall] {
+        let childReceipts = backgroundActivities.compactMap(\.childToolReceipts).flatMap { $0 }
+        let parentIDs = Set(Self.parentToolCallIDs(
+            observedIDs: liveToolCalls.map(\.id),
+            childReceipts: childReceipts
+        ))
+        return liveToolCalls.filter { parentIDs.contains($0.id) }
+    }
+
+    nonisolated static func parentToolCallIDs(
+        observedIDs: [String],
+        childReceipts: [ChildToolReceipt]
+    ) -> [String] {
+        let childIDs = Set(childReceipts.map(\.id))
+        return observedIDs.filter { !childIDs.contains($0) }
+    }
+
     private func displayTitle(for toolCall: ToolCall) -> String {
         if !isPlaceholderTitle(toolCall.title) {
             return toolCall.title
@@ -3909,6 +3992,7 @@ final class ChatStore {
     }
 
     private func mcpServerName(from toolCall: ToolCall) -> String? {
+        guard toolCall.mcpReceiptRole != .discovery else { return nil }
         let explicitName = toolCall.rawInput?["serverName"] as? String
             ?? toolCall.rawInput?["server_name"] as? String
         let toolName = toolCall.rawInput?["toolName"] as? String
@@ -3925,6 +4009,8 @@ final class ChatStore {
     }
 
     private func displayKind(for toolCall: ToolCall) -> String {
+        if toolCall.mcpReceiptRole == .discovery { return "discovery" }
+        if toolCall.mcpReceiptRole == .invocation { return "MCP tool" }
         if !isPlaceholderKind(toolCall.kind) {
             return toolCall.kind
         }

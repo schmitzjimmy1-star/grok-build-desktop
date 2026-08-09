@@ -517,7 +517,10 @@ struct ChatView: View {
             status: tool.terminalStatus.map { String(describing: $0).capitalized }
                 ?? tool.status.map(ActivitySidebarPresentation.activityStatus)
                 ?? "Running",
-            mcpServerName: tool.mcpServerName
+            mcpServerName: tool.mcpServerName,
+            mcpReceiptRole: tool.mcpReceiptRole,
+            qualifiedToolName: tool.qualifiedToolName,
+            discoveredQualifiedToolNames: tool.discoveredQualifiedToolNames
         )
     }
 
@@ -1848,12 +1851,53 @@ struct ChatView: View {
     /// Requested attachments never enter this list (Slice 11 evidence rule).
     private var evidencedMCPServers: [String] {
         if let live = store.liveRunEvidenceProjection {
-            return live.tools.compactMap(\.mcpServerName)
+            return live.tools.compactMap {
+                $0.mcpReceiptRole == .discovery ? nil : $0.mcpServerName
+            }
         }
         if let trace = store.messages.last(where: { $0.role == .assistant })?.assistantTrace {
-            return trace.tools.compactMap(\.mcpServerName)
+            return trace.tools.compactMap {
+                $0.mcpReceiptRole == .discovery ? nil : $0.mcpServerName
+            }
         }
         return []
+    }
+
+    private var currentMCPToolReceipts: [ContextInspectorProjection.MCPToolReceipt] {
+        if let live = store.liveRunEvidenceProjection {
+            return live.tools.map {
+                .init(
+                    id: $0.id,
+                    role: $0.mcpReceiptRole,
+                    qualifiedToolName: $0.qualifiedToolName,
+                    serverName: $0.mcpServerName,
+                    discoveredQualifiedToolNames: $0.discoveredQualifiedToolNames,
+                    statusLabel: $0.status,
+                    isSettled: !$0.isActive
+                )
+            }
+        }
+        guard let trace = store.messages.last(where: { $0.role == .assistant })?.assistantTrace else {
+            return []
+        }
+        return trace.tools.map {
+            .init(
+                id: $0.id,
+                role: $0.mcpReceiptRole,
+                qualifiedToolName: $0.qualifiedToolName,
+                serverName: $0.mcpServerName,
+                discoveredQualifiedToolNames: $0.discoveredQualifiedToolNames,
+                statusLabel: $0.status,
+                isSettled: true
+            )
+        }
+    }
+
+    private var activityRequestedMCPNames: [String] {
+        if store.liveRunEvidenceProjection != nil || store.runEvidenceSnapshot != nil {
+            return store.currentTurnRequestedMCPNames
+        }
+        return store.selectedPromptMCPOptions.map(\.name)
     }
 
     /// Codex parity Slice 5: the compact inspector's presentation model, built
@@ -1865,10 +1909,16 @@ struct ChatView: View {
             live: store.liveRunEvidenceProjection,
             snapshot: store.runEvidenceSnapshot,
             attachmentNames: store.fileAttachments.map(\.relativePath),
-            requestedMCPNames: store.selectedPromptMCPOptions.map(\.name),
+            requestedMCPNames: activityRequestedMCPNames,
             evidencedMCPServers: evidencedMCPServers,
             computerUseConfigured: computerUseEnabled,
-            computerUseStateLabel: computerUseState
+            computerUseStateLabel: computerUseState,
+            configuredMCPNames: store.promptMCPOptions.map(\.name),
+            mcpProcessStatuses: store.mcpServerStatuses,
+            requestedQualifiedToolNames: MCPQualifiedToolIdentity.names(
+                in: store.messages.last(where: { $0.role == .user })?.content
+            ),
+            mcpToolReceipts: currentMCPToolReceipts
         )
     }
 

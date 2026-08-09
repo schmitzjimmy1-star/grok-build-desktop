@@ -26,7 +26,7 @@ below so truth and lifecycle contracts land before presentation and optimization
 | Slice | Objective | Risk | Provider spend | Status |
 |---|---|---:|---:|---|
 | 0 | Freeze the audit baseline and remove the four audit-only threads | Low | None; control slice creates no product behavior | Merged and accepted |
-| 1 | Stop Activity from claiming task success from transport completion | High | 4 prompts; up to 220K tokens | Open |
+| 1 | Stop Activity from claiming task success from transport completion | High | 4 prompts; up to 220K tokens | Merged and accepted |
 | 2 | Separate browser process readiness, catalog capability, requested use, and proven use | High | 5 prompts; up to 320K tokens | Open |
 | 3 | Replace Browser Settings false-negative startup flicker with an unresolved/checking state | Medium | 3 prompts; up to 180K tokens | Open |
 | 4 | Replace raw Computer Use self-test JSON with a compact parsed receipt | Medium | 4 prompts; up to 240K tokens | Open |
@@ -540,8 +540,9 @@ pass Gates F–H.
   to the agent.
 - Starting main SHA/tree: `7a9566fdfc7790853326292c9e06279fac601545` /
   `46198928e2e490344e48bc1417ccb0b1105e49a2`.
-- Branch and content commit SHA: `codex/grokbuild-audit-s1-activity-truth` / retained
-  by the immutable Slice 1 PR and final task receipt after this pre-merge snapshot.
+- Branch and content commit SHA: `codex/grokbuild-audit-s1-activity-truth` /
+  `480deb727410ee0d494bf76f9d4025c839b0e847` (tree
+  `a845a7be605b0e8ca666b340f43863e02d381e1e`).
 - Intended files: `ARCHITECTURE.md`, `GrokBuild/Models/RunEvidenceSnapshot.swift`,
   `GrokBuild/Services/ChatStore.swift`, `GrokBuild/Views/ActivitySidebar.swift`,
   `Tests/GrokBuildTests/ACPClientContractTests.swift`,
@@ -584,26 +585,47 @@ pass Gates F–H.
     `019fe416-b9c8-7eb2-9955-cc41d1e06a49`;
   - `GB-S1-WORKER-R2-20260809T013826Z` / `5D49AF7F-8B48-472C-83DD-6504EE754F7E` /
     `019fe42c-a960-7120-b4f1-144e92e9dda6`.
-- Test thread deletion proof: pending exact Gate F cleanup after merge; no non-test
-  session is authorized for deletion.
+- Test thread deletion proof: all five exact candidate tabs/backends were closed and
+  permanently deleted; their transcript files and exact prompt-history rows are absent,
+  and every marker search returned zero. No non-test session was changed.
 - Candidate process-zero proof: exact-name checks returned zero for `GrokBuild`,
   `grok`, `GrokBuildComputerUseMCP`, `agent-desktop`, and GrokBuild-owned browser MCP.
-- PR URL/number and reviewed head SHA: retained in the immutable Slice 1 PR and final
-  task receipt after publication.
-- Merge commit SHA: retained in the Slice 1 PR and final task receipt after merge.
-- Post-merge `main` installed stamp/hash/signing: pending Gate E.
-- Post-merge visible acceptance: pending the required S1-B/S1-C merged-main smoke.
-- Final test thread deletion proof: pending Gate F.
-- Final process-zero proof: pending Gate G.
+- PR URL/number and reviewed head SHA: PR
+  `https://github.com/schmitzjimmy1-star/grok-build-desktop/pull/23`, ready and merged
+  after its exact head/tree matched the reviewed local commit.
+- Merge commit SHA: `f59b7a80a090424c5f94c29a714e409d46c3dcf7`.
+- Post-merge `main` installed stamp/hash/signing: `personal` / `main` / `f59b7a80`,
+  `dirty=false`, version `0.1.20`; installed/dist executable SHA-256
+  `419862609ff9e06b4e0dcb01d4dc25dec1a9e9cc5f37383d56ea5652c8eb30d1`;
+  Team `DD2GCQJVB4`, deep/strict valid, no quarantine.
+- Post-merge visible acceptance: S1-B-MAIN (`gpt-5.6-terra`, direct, Medium)
+  preserved exit 1, 1 failed tool, 1 unresolved error, and review-next-action after
+  parent completion: marker `GB-S1-FAILURE-MAIN-20260809T014934Z`, local tab
+  `5AD39E5C-6B5F-44AF-AAC3-690B44C531B7`, backend
+  `019fe437-349a-79d3-9c44-f96715e701dc`, 2 calls / 23,633 tokens. S1-C-MAIN
+  (pinned `deepseek/deepseek-v4-flash-0731`, OpenRouter, Medium) performed one
+  discovery and no invocation/navigation/substitution, rendered neutral lifecycle
+  completion and attributed next-action copy: marker
+  `GB-S1-UNAVAILABLE-MAIN-20260809T014935Z`, local tab
+  `C6407175-412C-4403-8384-BB0F7E009315`, backend
+  `019fe439-e8aa-7d23-bcce-0675b9371ba9`, 2 calls / 30,474 tokens,
+  approximately $0.0027-$0.0055.
+- Final test thread deletion proof: both exact merged-main smoke tabs/backends,
+  transcript files, and exact prompt-history rows are absent; both marker searches
+  returned zero.
+- Final process-zero proof: normal Command-Q followed by exact-name/process-tree
+  checks returned zero owned processes.
 - CLI version and Settings -> App agreement: CLI `1.0.0
-  (3cd0d0cbcebe) [stable]`; visible merged-main agreement pending Gate H.
-- Worktree/personal-main parity: pending normal PR merge and `main` resync.
+  (3cd0d0cbcebe) [stable]`; Settings -> App visibly reported version `0.1.20`,
+  `Personal • main @ f59b7a80`, and the personal repository.
+- Worktree/personal-main parity: clean `main` and `personal/main` both
+  `f59b7a80a090424c5f94c29a714e409d46c3dcf7` before Slice 2 began.
 - Known residual risk: ACP currently reports a child's terminal lifecycle and tool
   count but not typed per-child tool outcomes to the parent; completed workers that
   invoked tools therefore remain explicitly outcome-unresolved instead of being
   promoted from final child prose.
-- Exact next slice: Slice 2 - browser readiness and capability truth. Do not begin it
-  until Slice 1 merges and Gates E-H pass.
+- Exact next slice: Slice 2 - browser readiness and capability truth. Slice 1's merge
+  and Gates E-H are complete.
 
 ---
 
@@ -656,6 +678,27 @@ Additional requirements:
 - `README.md`
 - this ledger
 
+Directly necessary typed-contract files for this slice:
+
+- `GrokBuild/Models/ContextInspectorProjection.swift` — carries configured,
+  process-ready, discovered, exercised, and unavailable facts without deriving one
+  from another.
+- `GrokBuild/Models/Message.swift` and
+  `GrokBuild/Models/RunEvidenceLiveProjection.swift` — preserve qualified current-turn
+  tool evidence across live and restored transcript presentation.
+- `Tests/GrokBuildTests/ContextInspectorProjectionTests.swift` — verifies the added
+  projection boundary directly.
+- `GrokBuild/Services/BackgroundTaskStore.swift` and
+  `GrokBuild/Models/RunEvidenceSnapshot.swift` — keep typed child discovery/use
+  receipts bound to the exact worker and reconcile them without promoting them into
+  parent tools or Sources.
+- `Tests/GrokBuildTests/RunEvidenceSnapshotTests.swift` — verifies complete,
+  partial, and failed child receipt truth directly.
+- `GrokBuild/Services/GrokSessionTranscriptImporter.swift` and
+  `Tests/GrokBuildTests/GrokSessionTranscriptImporterTests.swift` — encode the exact
+  UTF-8 session path (including spaces and percent signs) before reading child ledgers
+  from the canonical workspace.
+
 ### Required tests
 
 - Configured but not started is not ready/discovered/used.
@@ -691,6 +734,86 @@ Delete the thread and any managed-browser test page/profile artifact owned by th
 slice, without touching the user's normal Chrome profile. Quit, process-zero, merge,
 rebuild merged `main`, repeat S2-A, S2-C, and S2-D as the merged-main smoke, remove all
 new threads/artifacts, and pass Gates F–H.
+
+### Frozen final-candidate matrix — `20260809T025338Z`
+
+The user explicitly raised this campaign's provider ceiling to 2M tokens after the
+first S2-E candidate exposed missing typed child-tool outcomes. The original 320K
+ceiling remains part of the audit history; this frozen rerun is authorized by that
+newer explicit ceiling. Every lane uses a fresh disposable local tab, Medium effort,
+the deterministic unauthenticated page `http://127.0.0.1:38192/`, title marker
+`GB-S2-PROOF-20260809T021928Z`, and body marker
+`GB-S2-PAGE-20260809T021928Z`. Markers are lookup handles only.
+
+| Lane | Exact route and marker | Frozen prompt/tool boundary | Expected receipt and hard stop |
+|---|---|---|---|
+| S2-A | Native Grok 4.5; `GB-S2-REQUESTED-FINAL2-20260809T025338Z` | Attach `chrome-devtools`; answer `17 + 25`; zero tools, retries, workers, navigation, or substitution. | Requested/configured only; no discovery, exercise, or Source. Stop on any tool receipt or route mismatch. |
+| S2-B | Direct `gpt-5.6-terra`; `GB-S2-DISCOVERY-FINAL2-20260809T025338Z` | Attach `chrome-devtools`; call `search_tool` exactly once for `chrome-devtools__list_pages`; zero `use_tool`, navigation, retries, workers, or substitution. | One discovery receipt; no exercised/source claim. Stop on fallback, extra call, or invocation. |
+| S2-C | OpenRouter pinned `deepseek/deepseek-v4-flash-0731`; `GB-S2-MULTI-FINAL2-20260809T025338Z` | Attach `chrome-devtools`; one exact search for `chrome-devtools__list_pages`, then exactly three invocations in order: `list_pages`, `new_page` to the frozen URL, `take_snapshot`; no retry/substitution/worker. | One discovery plus three successful exact qualified invocations, `chrome-devtools` Source, and exact body marker. Stop on fallback, route drift, extra/reordered call, or missing marker. |
+| S2-D | Same pinned OpenRouter route; `GB-S2-ABSENT-FINAL2-20260809T025338Z` | Attach `chrome-devtools`; search exactly once for deliberately absent `chrome-devtools__read_browser_history`; zero use/navigation/retry/substitution/worker. | Exact capability unavailable; no exercised/source/success claim. Stop on any invocation or fallback. |
+| S2-E | Native Grok 4.5; `GB-S2-WORKER-FINAL2-20260809T025338Z` | Attach `chrome-devtools`; parent spawns exactly one general-purpose child, then only waits/collects it. Child searches exactly once for `grokbuild-browser__browser_open_url`, invokes it exactly once with the frozen URL, reports exact title marker; no other tool/retry/substitution. | Exact child identity and terminal 2-tool lifecycle; typed child discovery/invocation attributed inside worker to `grokbuild-browser`, 2/2 succeeded, zero invented parent browser tool/Source, exact title marker. Stop on missing/partial child ledger, extra call, or unresolved worker. |
+
+S2-A hard-stopped: native Grok ignored the zero-tool boundary and invoked one terminal
+`echo` before answering. Marker `GB-S2-REQUESTED-FINAL2-20260809T025338Z`, local tab
+`450E5DC0-51B3-432E-904B-CB33E9B9A181`, backend
+`019fe472-1907-7052-9b1d-7bc16647f240`. This receipt is rejected, preserved for the
+ledger, and authorized only for exact cleanup. Frozen replacement S2-A-R1 at
+`20260809T025610Z`: native Grok 4.5, Medium, attach `chrome-devtools`; return exactly
+`42` followed by `GB-S2-REQUESTED-R1-20260809T025610Z`, with zero tools of any kind
+(explicitly including terminal, echo, search, files, MCP, and workers), zero retry,
+navigation, or substitution. Stop on any tool receipt or route mismatch.
+
+S2-C hard-stopped after the frozen first query returned only `list_pages`: the pinned
+DeepSeek route made a second discovery for `new_page` and `take_snapshot`, then invoked
+`list_pages` before the user Stop settled the run truthfully. Marker
+`GB-S2-MULTI-FINAL2-20260809T025338Z`, local tab
+`00A8C135-EB73-47CA-A12A-9AE63BD37C24`, backend
+`019fe476-7f95-7452-8996-bdea30d0006d`. Rejected and authorized only for exact
+cleanup. Frozen replacement S2-C-R1 at `20260809T030204Z`: same pinned route, Medium,
+and attachment; one `search_tool` query containing all three exact names
+`chrome-devtools__list_pages chrome-devtools__new_page chrome-devtools__take_snapshot`,
+then exactly three `use_tool` calls in that order (new-page URL remains
+`http://127.0.0.1:38192/`), exact body-marker report, and marker
+`GB-S2-MULTI-R1-20260809T030204Z`. No retry, substitution, worker, or other tool; stop
+on fallback, an extra/reordered call, or a missing body marker.
+
+S2-E hard-stopped after the installed Activity receipt kept the terminal child
+unresolved even though its exact backend ledger contained two successful terminal
+tool receipts. The lookup encoded `/` but not the spaces in the canonical workspace,
+so the `/tmp` unit fixture missed the production-path defect. Marker
+`GB-S2-WORKER-FINAL2-20260809T025338Z`, child backend
+`019fe47c-109e-78e3-a502-0fb1ee4dbcdb`; rejected and authorized only for exact
+cleanup. Frozen replacement S2-E-R1 at `20260809T031300Z`: native Grok 4.5, Medium,
+attach `chrome-devtools`; parent spawns exactly one general-purpose child and then
+only waits/collects it. The child calls `search_tool` exactly once for
+`grokbuild-browser__browser_open_url`, calls that exact tool exactly once with
+`http://127.0.0.1:38192/`, reports title marker
+`GB-S2-PROOF-20260809T021928Z`, and makes no other tool call, retry, substitution, or
+worker. Parent emits `GB-S2-WORKER-R1-20260809T031300Z`. Stop on route drift, any
+extra call, incomplete child ledger, unresolved worker, invented parent browser
+receipt, or parent Source attribution.
+
+S2-E-R1 was also rejected: the candidate bundle had been replaced on disk, but the
+pre-fix app process remained live, so the rerun exercised the old executable. Marker
+`GB-S2-WORKER-R1-20260809T031300Z`, parent backend
+`019fe483-2582-7b43-94b4-03693513094f`, child backend
+`019fe483-726a-76b2-9316-ff0a2584ff7b`; authorized only for exact cleanup. After a
+normal quit, verified process-zero, and fresh launch of the installed candidate,
+S2-E-R2 is frozen at `20260809T031800Z` with the identical route, attachment, URL,
+child tool boundary, expected child receipts, and stop conditions as S2-E-R1. Its
+only new final marker is `GB-S2-WORKER-R2-20260809T031800Z`.
+
+S2-E-R2 proved the child ledger repair in the freshly launched candidate (`2/2`
+succeeded, no unresolved worker, no parent Source) but hard-stopped because the parent
+Tools total still counted one ACP-mirrored child invocation (`3` instead of the
+authoritative parent ledger's spawn + collect only). Marker
+`GB-S2-WORKER-R2-20260809T031800Z`, parent backend
+`019fe487-239e-7ad2-9200-6ab5d4edca6f`, child backend
+`019fe487-7016-7e01-ae1c-d7339beb8dec`; authorized only for exact cleanup. S2-E-R3 is
+frozen at `20260809T032400Z` with the identical route, attachment, URL, child tool
+boundary, expected receipts, and stop conditions. Its final marker is
+`GB-S2-WORKER-R3-20260809T032400Z`; parent Tools must be exactly `2 succeeded`, while
+both child receipts remain visible only inside the worker.
 
 ---
 

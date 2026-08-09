@@ -11,7 +11,7 @@ enum MCPServerLifecycle: String, Sendable, Equatable {
     var displayName: String {
         switch self {
         case .connecting: return "Connecting"
-        case .ready: return "Ready"
+        case .ready: return "Process ready"
         case .degraded: return "Degraded"
         case .failed: return "Failed"
         case .disabled: return "Disabled"
@@ -21,8 +21,9 @@ enum MCPServerLifecycle: String, Sendable, Equatable {
 }
 
 /// Secret-free, generation-local evidence for one configured MCP server.
-/// `ready` means ACP accepted the session and the bounded MCP settle window
-/// elapsed; it does not invent a tool count when the CLI does not expose one.
+/// `ready` means ACP accepted the session and the bounded MCP startup barrier
+/// elapsed. It proves process lifecycle only: no tool inventory, capability
+/// discovery, or current-turn use is implied.
 struct MCPServerStatus: Identifiable, Sendable, Equatable {
     let name: String
     let state: MCPServerLifecycle
@@ -48,8 +49,8 @@ enum MCPReadinessPolicy {
     /// Leave a little headroom without making sessions feel hung.
     static let settleMilliseconds = 1_500
 
-    static let connectingEvidence = "Launch requested; waiting for ACP session and MCP discovery to settle."
-    static let readyEvidence = "ACP session established; bounded MCP settle window elapsed."
+    static let connectingEvidence = "Launch requested; waiting for the ACP session and bounded MCP startup barrier."
+    static let readyEvidence = "ACP session established; bounded MCP startup barrier elapsed. Tool inventory and use remain unproven."
     static let stoppedEvidence = "The owning Grok process is stopped."
 
     static func connectingStatuses(for servers: [MCPServerConfig]) -> [MCPServerStatus] {
