@@ -3,6 +3,11 @@ import Observation
 import SwiftUI
 import AppKit
 
+enum BuiltInToolConnection: String, CaseIterable, Sendable {
+    case browser = "grokbuild-browser"
+    case computerUse = "grokbuild-computer-use"
+}
+
 struct PendingSubmitIntent: Equatable, Sendable {
     let id: UUID
     let draft: String
@@ -476,6 +481,9 @@ final class ChatStore {
     /// selection is in-memory per tab and is consumed only after a turn starts.
     private(set) var promptMCPOptions: [PromptMCPOption] = PromptMCPInventoryCatalog.cached()
     private(set) var selectedPromptMCPNames: Set<String> = []
+    /// Explicit per-thread helper toggles. They are intentionally in-memory and
+    /// default off for every new/restored tab, regardless of global availability.
+    private(set) var enabledBuiltInToolNames: Set<String> = []
     /// Exact prompt attachment intent captured before the composer clears.
     /// This is per-turn request evidence only; it never implies catalog or use.
     private(set) var currentTurnRequestedMCPNames: [String] = []
@@ -1842,10 +1850,15 @@ final class ChatStore {
         settingsApplyContinuations.removeValue(forKey: request.id)?.resume(returning: receipt)
     }
 
-    func startNewSession() async {
+    func startNewSession(resetThreadTools: Bool = false) async {
         let predecessorBackendID = durableGrokSessionID
         let localMessagesAtFork = messages
         messages.removeAll()
+        if resetThreadTools {
+            selectedPromptMCPNames.removeAll()
+            enabledBuiltInToolNames.removeAll()
+            currentTurnRequestedMCPNames.removeAll()
+        }
         streamingMessageID = nil
         pendingPermissions.removeAll()
         pendingExitPlan = nil
@@ -1971,8 +1984,12 @@ final class ChatStore {
         let expectedEffectiveModelForLaunch = customModelsByID[modelForLaunch]?.model
             .trimmingCharacters(in: .whitespacesAndNewlines)
         let reasoningEffortForLaunch = modelSupportsReasoningEffort(modelForLaunch) ? workspaceReasoningEffort : ""
-        let browserSettings = BrowserSettingsStore.loadApplied()
-        let computerUseSettings = ComputerUseSettingsStore.loadApplied()
+        var browserSettings = BrowserSettingsStore.loadApplied()
+        var computerUseSettings = ComputerUseSettingsStore.loadApplied()
+        browserSettings.enabled = browserSettings.enabled
+            && enabledBuiltInToolNames.contains(BuiltInToolConnection.browser.rawValue)
+        computerUseSettings.enabled = computerUseSettings.enabled
+            && enabledBuiltInToolNames.contains(BuiltInToolConnection.computerUse.rawValue)
         if browserSettings.enabled {
             do {
                 try BrowserSkillInstaller.installIfNeeded(settings: browserSettings)
@@ -2588,7 +2605,9 @@ final class ChatStore {
         startStallWatchdog()
 
         var attachmentBlocks: [String] = []
-        currentTurnRequestedMCPNames = selectedPromptMCPNames.sorted()
+        currentTurnRequestedMCPNames = selectedPromptMCPNames
+            .union(enabledBuiltInToolNames)
+            .sorted()
         if let mcpBlock = PromptMCPAttachmentPromptBuilder.build(from: currentTurnRequestedMCPNames) {
             attachmentBlocks.append(mcpBlock)
         }
@@ -2979,6 +2998,27 @@ final class ChatStore {
         promptMCPOptions.filter { selectedPromptMCPNames.contains($0.name) }
     }
 
+    var attachablePromptMCPOptions: [PromptMCPOption] {
+        promptMCPOptions.filter { BuiltInToolConnection(rawValue: $0.name) == nil }
+    }
+
+    func isBuiltInToolEnabled(_ connection: BuiltInToolConnection) -> Bool {
+        enabledBuiltInToolNames.contains(connection.rawValue)
+    }
+
+    /// Returns whether the explicit toggle must reconnect this tab to change the
+    /// immutable MCP set supplied at ACP `session/new`.
+    @discardableResult
+    func toggleBuiltInTool(_ connection: BuiltInToolConnection) -> Bool {
+        if enabledBuiltInToolNames.contains(connection.rawValue) {
+            enabledBuiltInToolNames.remove(connection.rawValue)
+        } else {
+            enabledBuiltInToolNames.insert(connection.rawValue)
+        }
+        selectedPromptMCPNames.remove(connection.rawValue)
+        return connectionState != .idle
+    }
+
     func refreshPromptMCPOptions(force: Bool = false) async {
         let workspaceID = currentWorkspace?.id
         if force || loadedPromptMCPWorkspaceID != workspaceID {
@@ -3031,6 +3071,10 @@ final class ChatStore {
 
     func togglePromptMCPAttachment(named name: String) {
         guard promptMCPOptions.contains(where: { $0.name == name }) else { return }
+        if let builtIn = BuiltInToolConnection(rawValue: name) {
+            _ = toggleBuiltInTool(builtIn)
+            return
+        }
         if selectedPromptMCPNames.contains(name) {
             selectedPromptMCPNames.remove(name)
         } else {
