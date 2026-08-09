@@ -2,6 +2,18 @@ import XCTest
 @testable import GrokBuild
 
 final class SessionPersistenceTests: XCTestCase {
+    func testSessionCloseCleanupRequiresOneExactBackendIdentity() {
+        XCTAssertEqual(SessionCloseBackendCleanupPlan.resolve([nil, "", "  "]), .none)
+        XCTAssertEqual(
+            SessionCloseBackendCleanupPlan.resolve(["backend-1", "backend-1", nil]),
+            .exact("backend-1")
+        )
+        XCTAssertEqual(
+            SessionCloseBackendCleanupPlan.resolve(["backend-2", "backend-1"]),
+            .conflict(["backend-1", "backend-2"])
+        )
+    }
+
     private struct StaticIntegrityKeyProvider: SessionLifecycleIntegrityKeyProviding {
         let key = Data(repeating: 0xA5, count: 32)
         func existingKey() -> Data? { key }

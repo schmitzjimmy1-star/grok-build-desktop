@@ -1539,6 +1539,24 @@ struct ChatView: View {
             }
 
             VStack(alignment: .leading, spacing: 10) {
+                if let stage = store.pendingSubmitStageText {
+                    HStack(spacing: 8) {
+                        ProgressView()
+                            .controlSize(.small)
+                        Text("Preparing task…")
+                            .font(.callout.weight(.medium))
+                        Text(stage)
+                            .font(.callout)
+                            .foregroundStyle(.secondary)
+                        Spacer(minLength: 8)
+                        Text("Esc to cancel")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                    .accessibilityElement(children: .contain)
+                    .accessibilityIdentifier("grok-pending-submit-status")
+                }
+
                 VStack(alignment: .leading, spacing: 6) {
                     if showSlashPopover {
                         SlashAutocompleteView(
@@ -1570,11 +1588,12 @@ struct ChatView: View {
                     .accessibilityValue(input.isEmpty ? "Empty" : "\(input.count) characters")
                     .accessibilityHint("Enter a question, build request, or review request. Return sends; Shift-Return adds a line.")
                     .accessibilityIdentifier("grok-message-composer")
+                    .disabled(store.isPreparingSubmit)
                     .onSubmit {
                         if showSlashPopover {
                             activateSlashEntry(at: slashActiveIndex)
                         } else {
-                            Task { await submit() }
+                            submit()
                         }
                     }
                     .onChange(of: input) { _, _ in
@@ -1591,7 +1610,7 @@ struct ChatView: View {
                             if showSlashPopover {
                                 activateSlashEntry(at: slashActiveIndex)
                             } else {
-                                Task { await submit() }
+                                submit()
                             }
                             return .handled
                         }
@@ -2448,7 +2467,22 @@ struct ChatView: View {
 
     @ViewBuilder
     private var sessionActionButton: some View {
-        if store.isStreaming {
+        if store.isPreparingSubmit {
+            Button {
+                store.cancelPendingSubmit()
+            } label: {
+                Image(systemName: "xmark.circle.fill")
+                    .font(.title2)
+                    .frame(width: ComposerControlMetrics.minimumHitTarget, height: ComposerControlMetrics.minimumHitTarget)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .help("Cancel before dispatch")
+            .accessibilityLabel("Cancel pending task")
+            .accessibilityHint("Returns the exact draft to editing without sending it.")
+            .accessibilityIdentifier("grok-cancel-pending-submit")
+            .keyboardShortcut(.cancelAction)
+        } else if store.isStreaming {
             Button {
                 store.requestStop()
             } label: {
@@ -2469,7 +2503,7 @@ struct ChatView: View {
             .keyboardShortcut(".", modifiers: .command)
         } else {
             Button {
-                Task { await submit() }
+                submit()
             } label: {
                 Image(systemName: "arrow.up.circle.fill")
                     .font(.title2)
@@ -2484,7 +2518,6 @@ struct ChatView: View {
             .disabled(input.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && !store.hasVisibleFileAttachments ||
                       store.currentWorkspace == nil ||
                       store.authRequiredMessage != nil ||
-                      store.connectionState == .starting ||
                       isSessionRestoreInProgress)
             .keyboardShortcut(.return, modifiers: .command)
         }
@@ -2710,20 +2743,24 @@ struct ChatView: View {
         }
     }
 
-    private func submit() async {
+    private func submit() {
         // Launch restore keeps the composer typeable for draft capture, but a send
         // must wait until the restored session is actually selected and bound.
         guard !isSessionRestoreInProgress else { return }
         let submittedDraft = input
         let text = submittedDraft.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty else { return }
-        let accepted = await store.send(text)
-        input = ComposerSubmissionPolicy.draftAfterSubmission(
-            currentDraft: input,
-            submittedDraft: submittedDraft,
-            accepted: accepted
-        )
-        inputFocused = true
+        let preparation = store.prepareSubmit(text)
+        guard preparation != .rejected else { return }
+        Task {
+            let accepted = await store.send(text, preparedIntentID: preparation.intentID)
+            input = ComposerSubmissionPolicy.draftAfterSubmission(
+                currentDraft: input,
+                submittedDraft: submittedDraft,
+                accepted: accepted
+            )
+            inputFocused = true
+        }
     }
 
     private func handleFileDrop(_ providers: [NSItemProvider]) -> Bool {

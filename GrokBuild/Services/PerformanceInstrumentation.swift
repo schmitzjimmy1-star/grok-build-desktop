@@ -48,6 +48,23 @@ enum GrokBuildPerformanceLane: String, CaseIterable, Sendable {
     }
 }
 
+enum GrokBuildPerformanceStage: String, CaseIterable, Sendable {
+    case appLaunch
+    case firstWindow
+    case layoutLoaded
+    case restoreCompleted
+    case transcriptLoaded
+    case processSpawned
+    case acpReady
+    case sessionReady
+    case modelConfirmed
+    case selectedMCPReady
+    case submitIntent
+    case dispatch
+    case firstChunk
+    case settled
+}
+
 final class GrokBuildPerformanceInterval: @unchecked Sendable {
     fileprivate let lane: GrokBuildPerformanceLane
     fileprivate let state: OSSignpostIntervalState
@@ -83,6 +100,18 @@ enum GrokBuildPerformance {
         )
     }
 
+    /// Optional, repository-driven JSONL receipt. It is enabled only when the
+    /// performance command supplies a destination path. Rows contain a stage,
+    /// monotonic offset, wall time, and PID—never prompt text, model credentials,
+    /// environment contents, URLs, or file arguments.
+    static func mark(_ stage: GrokBuildPerformanceStage) {
+        PerformanceStageLedger.shared.mark(stage)
+    }
+
+    static func markOnce(_ stage: GrokBuildPerformanceStage) {
+        PerformanceStageLedger.shared.markOnce(stage)
+    }
+
     static func measure<Value>(
         _ lane: GrokBuildPerformanceLane,
         operation: () throws -> Value
@@ -99,5 +128,60 @@ enum GrokBuildPerformance {
         let interval = begin(lane)
         defer { interval.end() }
         return try await operation()
+    }
+}
+
+private final class PerformanceStageLedger: @unchecked Sendable {
+    static let shared = PerformanceStageLedger()
+
+    private let lock = NSLock()
+    private let started = ContinuousClock.now
+    private let destination: URL?
+    private var uniqueStages: Set<GrokBuildPerformanceStage> = []
+
+    private init() {
+        guard let path = ProcessInfo.processInfo.environment["GROKBUILD_PERFORMANCE_LEDGER"],
+              path.hasPrefix("/") else {
+            destination = nil
+            return
+        }
+        destination = URL(fileURLWithPath: path)
+    }
+
+    func mark(_ stage: GrokBuildPerformanceStage) {
+        guard let destination else { return }
+        let elapsed = started.duration(to: .now)
+        let milliseconds = Double(elapsed.components.seconds) * 1_000
+            + Double(elapsed.components.attoseconds) / 1_000_000_000_000_000
+        let row: [String: Any] = [
+            "stage": stage.rawValue,
+            "elapsed_ms": milliseconds,
+            "timestamp": ISO8601DateFormatter().string(from: Date()),
+            "pid": ProcessInfo.processInfo.processIdentifier,
+        ]
+        guard let data = try? JSONSerialization.data(withJSONObject: row, options: [.sortedKeys]),
+              var line = String(data: data, encoding: .utf8) else { return }
+        line.append("\n")
+        lock.lock()
+        defer { lock.unlock() }
+        if !FileManager.default.fileExists(atPath: destination.path) {
+            FileManager.default.createFile(atPath: destination.path, contents: nil)
+        }
+        guard let handle = try? FileHandle(forWritingTo: destination) else { return }
+        defer { try? handle.close() }
+        do {
+            try handle.seekToEnd()
+            try handle.write(contentsOf: Data(line.utf8))
+        } catch {
+            return
+        }
+    }
+
+    func markOnce(_ stage: GrokBuildPerformanceStage) {
+        lock.lock()
+        let inserted = uniqueStages.insert(stage).inserted
+        lock.unlock()
+        guard inserted else { return }
+        mark(stage)
     }
 }

@@ -4,6 +4,16 @@ Command-line helpers for building, signing, releasing, and bundling GrokBuild. P
 
 ## Local development & packaging
 
+`performance-ledger.sh` starts the signed installed app with an opt-in, redacted
+JSONL stage ledger and reports stage-to-stage timings. Cold samples refuse to start
+unless GrokBuild is process-zero. Rows contain only stage, time, and PID; prompt
+bodies, tool arguments, credentials, URLs, and environment contents are excluded.
+
+```bash
+scripts/performance-ledger.sh start cold /tmp/grokbuild-s7-cold-1.jsonl
+scripts/performance-ledger.sh report /tmp/grokbuild-s7-cold-1.jsonl
+```
+
 | Script | Purpose |
 |--------|---------|
 | [`build-dev-app.sh`](build-dev-app.sh) | Assemble a lightweight **dev** app bundle at `.build/GrokBuild.app` from an existing SPM binary. Bundles skills, brand assets, browser MCP, install helper, and `agent-desktop`. Uses `com.grokbuild.app` so Accessibility settings match packaged builds. |

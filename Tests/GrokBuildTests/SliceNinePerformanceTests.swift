@@ -2,6 +2,18 @@ import XCTest
 @testable import GrokBuild
 
 final class SliceNinePerformanceTests: XCTestCase {
+    func testSliceSevenLedgerCoversEveryStartupAndDispatchBoundary() {
+        XCTAssertEqual(
+            Set(GrokBuildPerformanceStage.allCases),
+            Set([
+                .appLaunch, .firstWindow, .layoutLoaded, .restoreCompleted,
+                .transcriptLoaded, .processSpawned, .acpReady, .sessionReady,
+                .modelConfirmed, .selectedMCPReady, .submitIntent, .dispatch,
+                .firstChunk, .settled,
+            ])
+        )
+    }
+
     override func setUp() {
         super.setUp()
         RichContentCache.resetForTests()

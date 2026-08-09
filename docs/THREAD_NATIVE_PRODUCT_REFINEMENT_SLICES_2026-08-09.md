@@ -176,6 +176,17 @@ Every slice must preserve these rules:
 8. **Bounded spend.** Each acceptance plan names prompts, routes, retry ceilings,
    token ceilings, exact cleanup targets, and a zero-owned-process exit gate.
 
+### Execution authorization — 2026-08-09
+
+Jimmy authorized execution through Slice 12 in strict order. Each slice has a hard
+ceiling of **1,000,000 total acceptance tokens** and must include at least one
+settled native Grok prompt and one settled OpenRouter prompt. These requirements
+replace the smaller prompt/token ceilings written in the original plan; retries
+still require a preserved failed receipt. Every slice closes its exact local tabs
+and backends, checks marker/process cleanliness, commits only its scope, pushes to
+`personal`, opens a ready PR, merges normally, reinstalls merged `main`, and repeats
+the close gates before the next slice begins.
+
 ## Slice 7 — One-submit startup and performance ledger
 
 ### Objective
@@ -217,7 +228,8 @@ submission tests.
   the signed installed app.
 - One bounded native Grok terminal prompt proving a single Return causes exactly
   one billable dispatch and exactly one terminal call.
-- Maximum: 2 acceptance prompts, 120,000 total tokens, no automatic provider retry.
+- Campaign override: 1,000,000 total tokens; at least one native Grok and one
+  OpenRouter acceptance prompt; retry only after preserving the failed receipt.
 - Exact thread/backend cleanup, marker search zero, normal quit, owned-process zero.
 
 ### Exit decision
@@ -263,8 +275,8 @@ models, `GrokProcess`, Activity projection, and tool-family policy tests.
 - Installed Computer Use lane: one harmless exact app-inspection action with the
   same attribution contract.
 - Relaunch and selected-tool failure lanes remain honest and recoverable.
-- Maximum: 4 prompts, 280,000 total tokens, one authorized retry per non-terminal
-  tool family only after preserving the failed receipt.
+- Campaign override: 1,000,000 total tokens; at least one native Grok and one
+  OpenRouter acceptance prompt; retry only after preserving the failed receipt.
 
 ## Slice 9 — Thread-native run spine
 
@@ -293,8 +305,8 @@ Make the thread itself a navigable record of long agentic work.
 - One installed multi-step terminal/files/Git task and one two-worker task.
 - Scroll-away, narrow/wide, reduced-motion, light/dark, keyboard, and VoiceOver
   checks on the affected thread surface.
-- Maximum: 3 prompts, 360,000 total tokens, one retry only for a preserved failed
-  worker receipt.
+- Campaign override: 1,000,000 total tokens; at least one native Grok and one
+  OpenRouter acceptance prompt; retry only after preserving the failed receipt.
 
 ## Slice 10 — Durable task controls and resume
 
@@ -322,8 +334,8 @@ contract or making the user reverse-engineer backend state.
   successful resume where supported, and explicit continue-as-new where not.
 - Exact process and session identity receipts before and after relaunch.
 - Keyboard and VoiceOver parity for every task/session action.
-- Maximum: 4 prompts, 500,000 total tokens, one retry after preserving the original
-  continuity receipt.
+- Campaign override: 1,000,000 total tokens; at least one native Grok and one
+  OpenRouter acceptance prompt; retry only after preserving the failed receipt.
 
 ## Slice 11 — Artifact, review, and Git usefulness in the thread
 
@@ -353,7 +365,8 @@ leaving the thread.
   publication.
 - Safe-revert acceptance uses only disposable fixture paths and proves unrelated
   changes survive.
-- Maximum: 3 prompts, 300,000 total tokens, no provider retry required.
+- Campaign override: 1,000,000 total tokens; at least one native Grok and one
+  OpenRouter acceptance prompt; retry only after preserving the failed receipt.
 
 ## Slice 12 — Product polish, context cost, and campaign closeout
 
@@ -390,8 +403,8 @@ signed installed-app proof of sustained thread-native work.
   failure, cancellation, cleanup, and process-zero gates.
 - Full test suite, clean marker searches, signed installed/dist parity, normal PR
   merge, merged-main reinstall, and Gates A–H ledger closeout.
-- Maximum: 5 prompts, 650,000 total tokens, one preserved-receipt retry per failing
-  tool/provider lane.
+- Campaign override: 1,000,000 total tokens; at least one native Grok and one
+  OpenRouter acceptance prompt; retry only after preserving the failed receipt.
 
 ## Slice order and hard stops
 
@@ -409,9 +422,9 @@ acceptance, exact receipt ledger, commit, push, ready PR, normal merge, merged-m
 verification, and owned-process zero. A failed gate stops the campaign at that
 slice. Do not borrow work from a later slice to make an earlier receipt look green.
 
-## Next authorization boundary
+## Current authorization boundary
 
-The next permissible implementation authorization is **Slice 7 only: one-submit
-startup and performance ledger**. This planning artifact does not authorize a
-branch, code change, build, install, provider prompt, commit, push, pull request, or
-merge for any proposed slice.
+Slices **7 → 12** are authorized in strict order, including scoped implementation,
+build/install, bounded billable acceptance, exact cleanup, commit, push, ready PR,
+normal merge, merged-main reinstall, and final gate verification. A slice may not
+begin until the preceding slice is merged and clean.

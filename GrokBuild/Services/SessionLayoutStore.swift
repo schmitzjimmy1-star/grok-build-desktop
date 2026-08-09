@@ -602,7 +602,7 @@ enum SessionLayoutStore {
         defaults: UserDefaults = .standard,
         keyProvider: any SessionLifecycleIntegrityKeyProviding = KeychainSessionLifecycleIntegrityKeyProvider()
     ) -> SessionLayoutLoadResult {
-        GrokBuildPerformance.measure(.layoutLoad) {
+        let result = GrokBuildPerformance.measure(.layoutLoad) {
             let candidate = defaults.data(forKey: sessionV3CandidateKey)
             let markerData = defaults.data(forKey: sessionV3CommitMarkerKey)
             if candidate != nil || markerData != nil {
@@ -637,6 +637,8 @@ enum SessionLayoutStore {
                 failure: save.failure
             )
         }
+        GrokBuildPerformance.mark(.layoutLoaded)
+        return result
     }
 
     @discardableResult

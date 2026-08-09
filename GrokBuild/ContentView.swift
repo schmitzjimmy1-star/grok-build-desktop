@@ -1,6 +1,23 @@
 import SwiftUI
 import AppKit
 
+enum SessionCloseBackendCleanupPlan: Equatable {
+    case none
+    case exact(String)
+    case conflict([String])
+
+    static func resolve(_ candidates: [String?]) -> Self {
+        let ids = Set(candidates.compactMap { candidate -> String? in
+            guard let candidate else { return nil }
+            let trimmed = candidate.trimmingCharacters(in: .whitespacesAndNewlines)
+            return trimmed.isEmpty ? nil : trimmed
+        })
+        if ids.isEmpty { return .none }
+        if ids.count == 1 { return .exact(ids.first!) }
+        return .conflict(ids.sorted())
+    }
+}
+
 struct ContentView: View {
     // Route ownership (Codex parity Slice 2) — one owner per workspace surface:
     // - `route` owns the canvas: the session workspace or Settings.
@@ -52,6 +69,7 @@ struct ContentView: View {
     @State private var showPreview = false
     @State private var gitCheckoutRequest: GitCheckoutRequest?
     @State private var gitError: String?
+    @State private var sessionCleanupError: String?
     @State private var projectChangedDiffs: [ChatStore.DetectedDiff] = []
     /// Review pane scope (OUTSTANDING D-1). Presentation-only: the header chip
     /// and inline-card attribution always read the full working tree.
@@ -107,6 +125,15 @@ struct ContentView: View {
             get: { gitError != nil },
             set: { isPresented in
                 if !isPresented { gitError = nil }
+            }
+        )
+    }
+
+    private var sessionCleanupErrorPresented: Binding<Bool> {
+        Binding(
+            get: { sessionCleanupError != nil },
+            set: { isPresented in
+                if !isPresented { sessionCleanupError = nil }
             }
         )
     }
@@ -407,6 +434,13 @@ struct ContentView: View {
         } message: {
             if let gitError {
                 Text(gitError)
+            }
+        }
+        .alert("Session cleanup failed", isPresented: sessionCleanupErrorPresented) {
+            Button("OK", role: .cancel) { sessionCleanupError = nil }
+        } message: {
+            if let sessionCleanupError {
+                Text(sessionCleanupError)
             }
         }
         .modifier(ContentViewNotificationHandlers(
@@ -735,10 +769,23 @@ struct ContentView: View {
         persistSessionLayout()
     }
 
-    private func closeSession(id: UUID, persist: Bool = true) {
+    private func closeSession(
+        id: UUID,
+        persist: Bool = true,
+        deleteBackend: Bool = true
+    ) {
         guard let index = liveSessions.firstIndex(where: { $0.id == id }) else { return }
         let closing = liveSessions[index]
         let store = closing.store
+        let cleanupPlan = SessionCloseBackendCleanupPlan.resolve([
+            store.grokSessionId,
+            store.durableGrokSessionID,
+            closing.grokSessionID,
+        ])
+        if deleteBackend, case .conflict(let ids) = cleanupPlan {
+            sessionCleanupError = "Close stopped because this tab names conflicting Grok backends: \(ids.joined(separator: ", "))."
+            return
+        }
         liveSessions.remove(at: index)
 
         if selectedSessionID == id {
@@ -757,6 +804,15 @@ struct ContentView: View {
         SessionMessageStore.remove(for: id)
         Task {
             await store.shutdownPermanently()
+            guard deleteBackend, case .exact(let backendID) = cleanupPlan else { return }
+            do {
+                try await GrokCLIService().deleteSession(id: backendID, cwd: closing.workspace.path)
+                SessionNameStore.removeName(for: backendID)
+            } catch {
+                await MainActor.run {
+                    sessionCleanupError = "Local tab closed, but Grok backend \(backendID) remains: \(error.localizedDescription)"
+                }
+            }
         }
     }
 
@@ -1282,6 +1338,7 @@ struct ContentView: View {
             )
         )
         restoreInterval.end()
+        GrokBuildPerformance.mark(.restoreCompleted)
         if let selected = decision.selectedSessionID {
             selectSession(
                 selected,
@@ -1315,7 +1372,7 @@ struct ContentView: View {
 
     private func removeWorkspace(_ workspace: Workspace) {
         for sessionID in liveSessions.filter({ $0.workspace.id == workspace.id }).map(\.id) {
-            closeSession(id: sessionID)
+            closeSession(id: sessionID, deleteBackend: false)
         }
 
         if selectedWorkspaceID == workspace.id {
