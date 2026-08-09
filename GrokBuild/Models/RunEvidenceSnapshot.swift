@@ -29,6 +29,10 @@ struct RunEvidenceSnapshot: Equatable, Sendable {
         let id: String
         let title: String
         let status: String
+        /// The plan step that was current when this worker first crossed the
+        /// generation-bound lifecycle stream. `nil` means no owning step was
+        /// authoritative at that boundary.
+        let owningPlanStepID: String?
         let childID: String?
         let durationMilliseconds: Int?
         let toolCallCount: Int?
@@ -38,6 +42,30 @@ struct RunEvidenceSnapshot: Equatable, Sendable {
         /// title matches a role exactly. Declared routing from config — displayed as
         /// "(configured)", never as a runtime billing claim.
         var routedModel: String? = nil
+
+        init(
+            id: String,
+            title: String,
+            status: String,
+            owningPlanStepID: String? = nil,
+            childID: String?,
+            durationMilliseconds: Int?,
+            toolCallCount: Int?,
+            redactedError: String?,
+            childToolReceipts: [ChildToolReceipt]? = nil,
+            routedModel: String? = nil
+        ) {
+            self.id = id
+            self.title = title
+            self.status = status
+            self.owningPlanStepID = owningPlanStepID
+            self.childID = childID
+            self.durationMilliseconds = durationMilliseconds
+            self.toolCallCount = toolCallCount
+            self.redactedError = redactedError
+            self.childToolReceipts = childToolReceipts
+            self.routedModel = routedModel
+        }
 
         var isActive: Bool { BackgroundActivityStatusPolicy.isActive(status) }
         var isCompleted: Bool {

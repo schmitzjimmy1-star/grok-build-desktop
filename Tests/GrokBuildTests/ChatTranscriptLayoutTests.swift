@@ -135,9 +135,10 @@ final class ChatTranscriptLayoutTests: XCTestCase {
                 traceExpanded: false,
                 containsThinking: true,
                 containsToolActivity: true,
-                containsLiveProgress: true
+                containsLiveProgress: true,
+                containsSettledRunSpine: true
             ),
-            [.agentHeader, .liveProgress, .answer]
+            [.agentHeader, .liveProgress, .answer, .settledRunSpine]
         )
         XCTAssertEqual(
             ChatTranscriptLayout.messageBlockOrder(
@@ -179,10 +180,9 @@ final class ChatTranscriptLayoutTests: XCTestCase {
         )
     }
 
-    /// Workbench W-5 — the spine renders only for the streaming assistant turn
-    /// with a non-empty live plan, and vanishes at settlement (the snapshot
-    /// keeps the authoritative copy in the inspector).
-    func testPlanSpineIsGatedOnTheLiveProjectionAndStreamingTurn() throws {
+    /// Slice 9 — a no-plan run still gets truthful phase/tool state, and the
+    /// authoritative snapshot remains answer-adjacent after settlement.
+    func testRunSpineUsesLiveProjectionThenSettledSnapshot() throws {
         let repositoryRoot = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent()
             .deletingLastPathComponent()
@@ -196,8 +196,12 @@ final class ChatTranscriptLayoutTests: XCTestCase {
             "the spine belongs to the assistant turn"
         )
         XCTAssertTrue(
-            chatSource.contains("&& store.liveRunEvidenceProjection?.plan.isEmpty == false"),
-            "the spine requires a non-empty live plan — no fabricated steps"
+            chatSource.contains("&& store.liveRunEvidenceProjection != nil"),
+            "a no-plan run still has authoritative phase and receipt state"
+        )
+        XCTAssertTrue(
+            chatSource.contains("containsSettledRunSpine: msg.role == .assistant"),
+            "the settled spine remains next to the final answer"
         )
         let spineSource = try String(
             contentsOf: repositoryRoot.appendingPathComponent("GrokBuild/Views/LivePlanSpine.swift"),
@@ -206,6 +210,8 @@ final class ChatTranscriptLayoutTests: XCTestCase {
         XCTAssertTrue(spineSource.contains("grok-plan-spine"),
                       "the spine carries a stable accessibility identifier")
         XCTAssertTrue(spineSource.contains("accessibilityLabel(\"Run plan\")"))
+        XCTAssertTrue(spineSource.contains("grok-run-spine-live"))
+        XCTAssertTrue(spineSource.contains("grok-run-spine-settled"))
     }
 
     func testPromptMCPAttachmentIsTruthfulSanitizedAndDeterministic() throws {

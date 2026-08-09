@@ -277,6 +277,7 @@ final class ChatStore {
                 id: $0.id,
                 title: $0.title,
                 status: $0.status,
+                owningPlanStepID: currentTurnWorkerPlanStepIDs[$0.id],
                 childID: $0.childID,
                 durationMilliseconds: $0.durationMilliseconds,
                 toolCallCount: $0.toolCallCount,
@@ -677,6 +678,9 @@ final class ChatStore {
     /// but run evidence may include only worker rows created or changed during
     /// the active parent turn.
     private var currentTurnWorkerActivityIDs: Set<String> = []
+    /// Captured once when an owned worker first changes. This preserves the
+    /// current authoritative plan-step relationship without parsing worker prose.
+    private var currentTurnWorkerPlanStepIDs: [String: String] = [:]
 
     // MARK: - Prompt queue (send while streaming)
     private(set) var promptQueue: [String] = []
@@ -2786,6 +2790,7 @@ final class ChatStore {
         runEvidenceSnapshot = nil
         currentRunPlan = []
         currentTurnWorkerActivityIDs = []
+        currentTurnWorkerPlanStepIDs = [:]
         pendingArtifactPathsByToolCallID = [:]
     }
 
@@ -3779,6 +3784,10 @@ final class ChatStore {
         for activity in backgroundTaskTracker.activities where activity.kind == .subagent {
             if previousByID[activity.id] != activity {
                 currentTurnWorkerActivityIDs.insert(activity.id)
+                if currentTurnWorkerPlanStepIDs[activity.id] == nil,
+                   let stepID = currentRunPlan.first(where: \.isCurrent)?.id {
+                    currentTurnWorkerPlanStepIDs[activity.id] = stepID
+                }
             }
         }
     }
@@ -3926,6 +3935,7 @@ final class ChatStore {
                 id: $0.id,
                 title: $0.title,
                 status: $0.status,
+                owningPlanStepID: currentTurnWorkerPlanStepIDs[$0.id],
                 childID: $0.childID,
                 durationMilliseconds: $0.durationMilliseconds,
                 toolCallCount: $0.toolCallCount,
@@ -4095,6 +4105,7 @@ final class ChatStore {
             AssistantTurnTrace.Tool(
                 id: tool.id,
                 title: TranscriptTextPresentation.singleLine(tool.title, maxLength: 160),
+                kind: TranscriptTextPresentation.singleLine(tool.kind, maxLength: 80),
                 status: tool.terminalStatus.map { String(describing: $0).capitalized }
                     ?? tool.status.map(ActivitySidebarPresentation.activityStatus)
                     ?? "Status not settled",

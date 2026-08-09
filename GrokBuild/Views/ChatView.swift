@@ -112,6 +112,7 @@ enum ChatTranscriptLayout {
         case planSpine
         case liveProgress
         case answer
+        case settledRunSpine
     }
 
     /// One turn has one stable semantic order. Thinking and tool receipts may
@@ -126,7 +127,8 @@ enum ChatTranscriptLayout {
         containsThinking: Bool,
         containsToolActivity: Bool,
         containsLiveProgress: Bool = false,
-        containsPlanSpine: Bool = false
+        containsPlanSpine: Bool = false,
+        containsSettledRunSpine: Bool = false
     ) -> [MessageBlock] {
         var blocks: [MessageBlock] = []
         if containsAgentHeader { blocks.append(.agentHeader) }
@@ -135,6 +137,7 @@ enum ChatTranscriptLayout {
         if containsPlanSpine { blocks.append(.planSpine) }
         if containsLiveProgress { blocks.append(.liveProgress) }
         blocks.append(.answer)
+        if containsSettledRunSpine { blocks.append(.settledRunSpine) }
         return blocks
     }
 
@@ -515,6 +518,7 @@ struct ChatView: View {
         AssistantTurnTrace.Tool(
             id: tool.id,
             title: tool.title,
+            kind: tool.kind,
             status: tool.terminalStatus.map { String(describing: $0).capitalized }
                 ?? tool.status.map(ActivitySidebarPresentation.activityStatus)
                 ?? "Running",
@@ -695,10 +699,17 @@ struct ChatView: View {
                                     containsToolActivity: hasLiveTools || hasPersistedTools,
                                     containsLiveProgress: msg.role == .assistant
                                         && msg.id == store.streamingMessageID
-                                        && (store.liveRunEvidenceProjection != nil || store.isGrokking),
+                                        && store.liveRunEvidenceProjection == nil
+                                        && store.isGrokking,
                                     containsPlanSpine: msg.role == .assistant
                                         && msg.id == store.streamingMessageID
-                                        && store.liveRunEvidenceProjection?.plan.isEmpty == false
+                                        && store.liveRunEvidenceProjection != nil,
+                                    containsSettledRunSpine: msg.role == .assistant
+                                        && msg.id == ChatTranscriptLayout.activeAssistantMessageID(
+                                            messages: store.messages,
+                                            streamingMessageID: store.streamingMessageID
+                                        )
+                                        && store.runEvidenceSnapshot != nil
                                 ),
                                 id: \.self
                             ) { block in
@@ -719,12 +730,16 @@ struct ChatView: View {
                                 case .toolActivity:
                                     assistantToolDetails(message: msg, useLiveTrace: hasLiveTools)
                                 case .planSpine:
-                                    // Workbench W-5: the live plan renders in the
-                                    // transcript flow while the run is active; it
-                                    // vanishes at settlement (the snapshot keeps
-                                    // the authoritative copy in the inspector).
-                                    if let plan = store.liveRunEvidenceProjection?.plan, !plan.isEmpty {
-                                        LivePlanSpineView(plan: plan)
+                                    if let live = store.liveRunEvidenceProjection {
+                                        ThreadRunSpineView(
+                                            live: live,
+                                            snapshot: nil,
+                                            settledTools: [],
+                                            workspace: store.currentWorkspace?.path,
+                                            onOpenActivity: { showActivitySidebar = true },
+                                            onOpenReview: {},
+                                            onRevealArtifact: onRevealArtifact
+                                        )
                                     }
                                 case .liveProgress:
                                     liveProgressControl
@@ -737,6 +752,21 @@ struct ChatView: View {
                                             : nil
                                     )
                                     .id(msg.id)
+                                case .settledRunSpine:
+                                    if let snapshot = store.runEvidenceSnapshot {
+                                        ThreadRunSpineView(
+                                            live: nil,
+                                            snapshot: snapshot,
+                                            settledTools: msg.assistantTrace?.tools ?? [],
+                                            workspace: store.currentWorkspace?.path,
+                                            onOpenActivity: { showActivitySidebar = true },
+                                            onOpenReview: {
+                                                onOpenTurnReview()
+                                                if !isReviewVisible { onToggleReview() }
+                                            },
+                                            onRevealArtifact: onRevealArtifact
+                                        )
+                                    }
                                 }
                             }
                         }
