@@ -267,6 +267,96 @@ final class BrowserIntegrationTests: XCTestCase {
         XCTAssertEqual(applied.enabled, settings.enabled)
     }
 
+    func testBrowserProbeStartsUnresolvedWithoutSetupControls() {
+        let state = BrowserBackendProbeState()
+
+        XCTAssertTrue(state.isUnresolved)
+        XCTAssertFalse(state.isChecking)
+        XCTAssertNil(state.settledStatus)
+        XCTAssertFalse(state.canShowSetupControls)
+        XCTAssertNil(state.errorMessage)
+    }
+
+    func testBrowserProbeResolvesReadyExactlyOnce() {
+        var state = BrowserBackendProbeState()
+        let request = state.begin(configurationGeneration: 4)
+        let ready = browserStatus(installed: true, ready: true)
+
+        XCTAssertTrue(state.resolve(ready, request: request, currentConfigurationGeneration: 4))
+        XCTAssertEqual(state.settledStatus, ready)
+        XCTAssertFalse(state.isChecking)
+        XCTAssertTrue(state.canShowSetupControls)
+        XCTAssertFalse(state.resolve(.unavailable, request: request, currentConfigurationGeneration: 4))
+        XCTAssertEqual(state.settledStatus, ready)
+    }
+
+    func testBrowserProbeResolvesMissingRuntimeToUnavailable() {
+        var state = BrowserBackendProbeState()
+        let request = state.begin(configurationGeneration: 0)
+
+        XCTAssertTrue(state.resolve(.unavailable, request: request, currentConfigurationGeneration: 0))
+        XCTAssertEqual(state.settledStatus, .unavailable)
+        XCTAssertTrue(state.canShowSetupControls)
+    }
+
+    func testStaleBrowserProbeCannotOverwriteNewerResult() {
+        var state = BrowserBackendProbeState()
+        let stale = state.begin(configurationGeneration: 7)
+        let current = state.begin(configurationGeneration: 7)
+        let ready = browserStatus(installed: true, ready: true)
+
+        XCTAssertTrue(state.resolve(ready, request: current, currentConfigurationGeneration: 7))
+        XCTAssertFalse(state.resolve(.unavailable, request: stale, currentConfigurationGeneration: 7))
+        XCTAssertEqual(state.settledStatus, ready)
+    }
+
+    func testBrowserManualRefreshPreservesSettledStatusWhileCheckingAndOnFailure() {
+        struct ProbeError: LocalizedError {
+            var errorDescription: String? { String(repeating: "diagnostic failure ", count: 30) }
+        }
+
+        var state = BrowserBackendProbeState()
+        let initial = state.begin(configurationGeneration: 2)
+        let ready = browserStatus(installed: true, ready: true)
+        XCTAssertTrue(state.resolve(ready, request: initial, currentConfigurationGeneration: 2))
+
+        let refresh = state.begin(configurationGeneration: 2)
+        XCTAssertTrue(state.isChecking)
+        XCTAssertEqual(state.settledStatus, ready)
+        XCTAssertTrue(state.canShowSetupControls)
+
+        XCTAssertTrue(state.fail(ProbeError(), request: refresh, currentConfigurationGeneration: 2))
+        XCTAssertEqual(state.settledStatus, ready)
+        XCTAssertFalse(state.isChecking)
+        XCTAssertEqual(state.errorMessage?.count, 240)
+    }
+
+    func testBrowserProbeCancellationAndGenerationChangeRejectLateResults() {
+        var state = BrowserBackendProbeState()
+        let hiddenPaneRequest = state.begin(configurationGeneration: 10)
+        state.cancel()
+        XCTAssertFalse(state.isChecking)
+        XCTAssertFalse(
+            state.resolve(.unavailable, request: hiddenPaneRequest, currentConfigurationGeneration: 10)
+        )
+
+        let oldGeneration = state.begin(configurationGeneration: 10)
+        XCTAssertFalse(
+            state.resolve(.unavailable, request: oldGeneration, currentConfigurationGeneration: 11)
+        )
+        XCTAssertNil(state.settledStatus)
+    }
+
+    private func browserStatus(installed: Bool, ready: Bool) -> BrowserBackendStatus {
+        BrowserBackendStatus(
+            isInstalled: installed,
+            isReady: ready,
+            executablePath: installed ? "/usr/local/bin/agent-browser" : nil,
+            version: installed ? "1.2.3" : nil,
+            diagnostic: ready ? "Ready" : "Not ready"
+        )
+    }
+
     private func restore(_ value: Any?, forKey key: String) {
         if let value {
             UserDefaults.standard.set(value, forKey: key)

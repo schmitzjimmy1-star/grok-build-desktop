@@ -531,14 +531,16 @@ The continuity gate remains authoritative in `ChatStore`. Removing the top conti
 
 | Piece | Location |
 |-------|----------|
-| Settings | `SettingsView` → `.browser` tab; keys in `BrowserSettings.swift` |
-| Service | `AgentBrowserService.swift` — agent-browser CLI, CDP, external browser launch |
+| Settings | `SettingsView` → `.browser` tab; keys in `BrowserSettings.swift`; first-load and refresh presentation owned by `BrowserBackendProbeState` |
+| Service | `AgentBrowserService.swift` — agent-browser CLI, CDP, external browser launch, and the generation-bound browser support probe reducer |
 | MCP | Name: `grokbuild-browser`; config from `browserMCPConfig` |
 | Skill | `Resources/Skills/grokbuild-browser-control/` + `grokbuild-grok-web/` → `BrowserSkillInstaller` (installs both when browser tools enabled) |
 | Presets | `BrowserPreset` (e.g. `.grokCom`) — one-click runtime/session-name setup in `BrowserSettings.swift`, applied from the Browser pane |
 | Chat UI | Icon-only menu indicator in `ChatView` (composer chrome). Menu offers on/off toggle, **runtime choice** (managed ↔ existing Chromium), and Open Browser Settings; detailed lifecycle receipt is in `ActivitySidebar` |
 
 **Backend:** the bundled `agent-browser` CLI exposed to grok as an stdio MCP server (`grokbuild-browser`). Managed Chromium vs external browser (Chrome/Brave/Edge/Arc) via CDP URL.
+
+Browser Settings starts with no assumed backend verdict. A cold pane shows **Checking browser support…** until its first probe settles, suppressing setup/install/destructive runtime controls meanwhile. Manual diagnostics retain the last settled status with a small checking indicator; request sequence plus applied-settings generation rejects stale completions, and unmounting the pane cancels its view-owned task. Probe failures retain any still-applicable settled status, show a bounded error with Retry, and never mutate draft, persisted, applied, or live settings.
 
 **agent-browser tools (via MCP):** `browser_open_url`, `browser_snapshot`, `browser_click_ref`, etc.
 

@@ -11,9 +11,9 @@ struct BrowserSettingsPane: View {
     let configurationStatusMessage: String?
     let onApply: (SettingsApplyRequest) async -> SettingsApplyReceipt
 
-    @State private var status = BrowserBackendStatus.unavailable
+    @State private var probeState = BrowserBackendProbeState()
     @State private var externalStatus = ExternalBrowserStatus.unavailable(endpoint: "http://127.0.0.1:9222")
-    @State private var isChecking = false
+    @State private var statusProbeTask: Task<Void, Never>?
     @State private var isInstallingRuntime = false
     @State private var isStartingExternalBrowser = false
     @State private var installOutput: String?
@@ -41,7 +41,11 @@ struct BrowserSettingsPane: View {
         .task {
             await loadPersistedState()
             normalizeExternalBrowserSelection()
-            await refreshStatus()
+            guard !Task.isCancelled else { return }
+            startStatusRefresh()
+        }
+        .onChange(of: valueState.configurationGeneration) { _, _ in
+            startStatusRefresh()
         }
         .onChange(of: liveReceipt) { _, receipt in
             let liveEnabled = receipt?.freshness == .live ? receipt?.browserEnabled : nil
@@ -51,6 +55,11 @@ struct BrowserSettingsPane: View {
                 return settings
             }
             valueState.refreshLive(liveSettings)
+        }
+        .onDisappear {
+            statusProbeTask?.cancel()
+            statusProbeTask = nil
+            probeState.cancel()
         }
         .alert("Uninstall Managed Browser Runtime?", isPresented: $showRuntimeUninstallConfirmation) {
             Button("Cancel", role: .cancel) {}
@@ -86,28 +95,33 @@ struct BrowserSettingsPane: View {
     }
 
     private var statusCard: some View {
-        settingsCard(title: "Browser Support", systemImage: status.isReady ? "checkmark.circle" : "arrow.down.circle") {
+        settingsCard(title: "Browser Support", systemImage: status?.isReady == true ? "checkmark.circle" : "arrow.down.circle") {
             VStack(alignment: .leading, spacing: 12) {
                 HStack(spacing: 10) {
                     Label(browserStatusTitle, systemImage: browserStatusIcon)
                         .foregroundStyle(browserStatusColor)
                         .font(.headline)
                     Spacer()
-                    Button(isChecking ? "Checking..." : "Run Diagnostics") {
-                        Task { await refreshStatus() }
+                    if probeState.isChecking {
+                        ProgressView()
+                            .controlSize(.small)
+                            .accessibilityLabel("Checking browser support")
                     }
-                    .disabled(isChecking)
+                    Button(probeState.isChecking ? "Checking..." : "Run Diagnostics") {
+                        startStatusRefresh()
+                    }
+                    .disabled(probeState.isChecking)
                 }
 
-                if status.isReady {
+                if let status, status.isReady {
                     Text("Browser support is ready. Choose a managed browser or connect an existing Chromium app below.")
                         .foregroundStyle(.secondary)
 
-                } else if status.isInstalled {
+                } else if let status, status.isInstalled {
                     Text("Browser support is installed. Add the managed runtime below for the recommended setup.")
                         .foregroundStyle(.secondary)
 
-                } else {
+                } else if status != nil {
                     Text("Install browser support before enabling this feature.")
                         .foregroundStyle(.secondary)
 
@@ -115,10 +129,32 @@ struct BrowserSettingsPane: View {
                         installCommandRow(title: "Homebrew", command: "brew install agent-browser")
                         installCommandRow(title: "npm", command: "npm install -g agent-browser")
                     }
-
+                } else if let errorMessage = probeState.errorMessage {
+                    Text(errorMessage)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(3)
+                    Button("Retry") {
+                        startStatusRefresh()
+                    }
+                } else {
+                    Text("Checking browser support…")
+                        .foregroundStyle(.secondary)
                 }
 
-                if let installOutput, !installOutput.isEmpty {
+                if status != nil, let errorMessage = probeState.errorMessage {
+                    HStack(alignment: .firstTextBaseline, spacing: 10) {
+                        Text(errorMessage)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(3)
+                        Spacer()
+                        Button("Retry") {
+                            startStatusRefresh()
+                        }
+                    }
+                }
+
+                if probeState.canShowSetupControls,
+                   let installOutput, !installOutput.isEmpty {
                     Text(installOutput)
                         .font(.system(.caption, design: .monospaced))
                         .textSelection(.enabled)
@@ -128,15 +164,16 @@ struct BrowserSettingsPane: View {
                         .foregroundStyle(.secondary)
                 }
 
-                if let path = status.executablePath {
+                if let path = status?.executablePath {
                     infoLine("Path", path)
                 }
-                if let version = status.version, !version.isEmpty {
+                if let version = status?.version, !version.isEmpty {
                     infoLine("Version", version)
                 }
 
-                DisclosureGroup(isExpanded: $showDiagnosticsLog) {
-                    Text(status.diagnostic.isEmpty ? "No diagnostics yet." : status.diagnostic)
+                if let status {
+                    DisclosureGroup(isExpanded: $showDiagnosticsLog) {
+                        Text(status.diagnostic.isEmpty ? "No diagnostics yet." : status.diagnostic)
                         .font(.system(.caption, design: .monospaced))
                         .textSelection(.enabled)
                         .frame(maxWidth: .infinity, alignment: .leading)
@@ -144,9 +181,10 @@ struct BrowserSettingsPane: View {
                         .background(RoundedRectangle(cornerRadius: AppTheme.Radius.large).fill(Color(nsColor: .textBackgroundColor)))
                         .foregroundStyle(.secondary)
                         .padding(.top, 8)
-                } label: {
-                    Label(showDiagnosticsLog ? "Hide diagnostics log" : "Show diagnostics log", systemImage: "doc.text.magnifyingglass")
-                        .font(.callout.weight(.medium))
+                    } label: {
+                        Label(showDiagnosticsLog ? "Hide diagnostics log" : "Show diagnostics log", systemImage: "doc.text.magnifyingglass")
+                            .font(.callout.weight(.medium))
+                    }
                 }
 
                 Button {
@@ -224,7 +262,7 @@ struct BrowserSettingsPane: View {
                     isSelected: selectedRuntimeMode == .managed
                 ) {
                     VStack(alignment: .leading, spacing: 10) {
-                        Label(managedRuntimeStatusText, systemImage: status.isReady ? "checkmark.circle.fill" : "circle.dashed")
+                        Label(managedRuntimeStatusText, systemImage: status?.isReady == true ? "checkmark.circle.fill" : "circle.dashed")
                             .font(.callout.weight(.medium))
                             .foregroundStyle(.secondary)
 
@@ -240,7 +278,7 @@ struct BrowserSettingsPane: View {
                             }
                             .disabled(selectedRuntimeMode == .managed)
 
-                            if status.isReady {
+                            if let status, status.isReady {
                                 Button(isInstallingRuntime ? "Repairing..." : "Reinstall / Repair Runtime") {
                                     Task { await installBrowserRuntime() }
                                 }
@@ -250,19 +288,21 @@ struct BrowserSettingsPane: View {
                                     showRuntimeUninstallConfirmation = true
                                 }
                                 .disabled(!AgentBrowserService.hasManagedRuntimeDirectory())
-                            } else {
+                            } else if let status {
                                 Button(isInstallingRuntime ? "Installing..." : "Install Managed Runtime") {
                                     Task { await installBrowserRuntime() }
                                 }
                                 .disabled(!status.isInstalled || isInstallingRuntime)
                             }
 
-                            Button("Copy Install Command") {
-                                copyToPasteboard("agent-browser install")
+                            if probeState.canShowSetupControls {
+                                Button("Copy Install Command") {
+                                    copyToPasteboard("agent-browser install")
+                                }
                             }
                         }
 
-                        if !status.isInstalled {
+                        if let status, !status.isInstalled {
                             Text("Install browser support before adding the managed runtime.")
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
@@ -360,9 +400,9 @@ struct BrowserSettingsPane: View {
                             )
 
                             Button("Check Status") {
-                                Task { await refreshExternalBrowserStatus() }
+                                startStatusRefresh()
                             }
-                            .disabled(isChecking)
+                            .disabled(probeState.isChecking)
 
                             Button {
                                 copyToPasteboard(externalBrowserLaunchCommand)
@@ -421,15 +461,38 @@ struct BrowserSettingsPane: View {
 
     @MainActor
     private func refreshStatus() async {
-        isChecking = true
-        defer { isChecking = false }
+        let configurationGeneration = valueState.configurationGeneration
+        let request = probeState.begin(configurationGeneration: configurationGeneration)
         async let browserStatus = AgentBrowserService.status()
         async let browserExternalStatus = AgentBrowserService.externalBrowserStatus(settings: appliedSettings)
-        let resolvedStatus = await browserStatus
-        let resolvedExternalStatus = await browserExternalStatus
-        guard !Task.isCancelled else { return }
-        status = resolvedStatus
-        externalStatus = resolvedExternalStatus
+        do {
+            let resolvedStatus = try await browserStatus
+            let resolvedExternalStatus = await browserExternalStatus
+            try Task.checkCancellation()
+            if probeState.resolve(
+                resolvedStatus,
+                request: request,
+                currentConfigurationGeneration: valueState.configurationGeneration
+            ) {
+                externalStatus = resolvedExternalStatus
+            }
+        } catch is CancellationError {
+            return
+        } catch {
+            _ = probeState.fail(
+                error,
+                request: request,
+                currentConfigurationGeneration: valueState.configurationGeneration
+            )
+        }
+    }
+
+    @MainActor
+    private func startStatusRefresh() {
+        statusProbeTask?.cancel()
+        statusProbeTask = Task { @MainActor in
+            await refreshStatus()
+        }
     }
 
     @MainActor
@@ -471,13 +534,6 @@ struct BrowserSettingsPane: View {
         }
     }
 
-    @MainActor
-    private func refreshExternalBrowserStatus() async {
-        isChecking = true
-        defer { isChecking = false }
-        externalStatus = await AgentBrowserService.externalBrowserStatus(settings: appliedSettings)
-    }
-
     private func chooseExternalBrowserApp() {
         let panel = NSOpenPanel()
         panel.title = "Choose Chromium Browser"
@@ -496,7 +552,16 @@ struct BrowserSettingsPane: View {
     }
 
     private var statusBadge: some View {
-        let text = appliedSettings.enabled ? (status.isReady ? "Ready" : "Setup needed") : "Disabled"
+        let text: String
+        if !appliedSettings.enabled {
+            text = "Disabled"
+        } else if let status {
+            text = status.isReady ? "Ready" : "Setup needed"
+        } else if probeState.errorMessage != nil {
+            text = "Check failed"
+        } else {
+            text = "Checking"
+        }
 
         return Text(text)
             .font(.caption.weight(.semibold))
@@ -546,6 +611,7 @@ struct BrowserSettingsPane: View {
     }
 
     private var managedRuntimeStatusText: String {
+        guard let status else { return "Checking browser support…" }
         if status.isReady {
             return "Managed runtime installed and ready"
         }
@@ -557,6 +623,7 @@ struct BrowserSettingsPane: View {
 
     private var currentSettings: BrowserSettings { valueState.draft }
     private var appliedSettings: BrowserSettings { valueState.applied }
+    private var status: BrowserBackendStatus? { probeState.settledStatus }
 
     private func mutateDraft(_ body: (inout BrowserSettings) -> Void) {
         var draft = valueState.draft
@@ -649,12 +716,18 @@ struct BrowserSettingsPane: View {
     }
 
     private var browserStatusTitle: String {
+        guard let status else {
+            return probeState.errorMessage == nil ? "Checking browser support…" : "Browser support check failed"
+        }
         if status.isReady { return "agent-browser ready" }
         if status.isInstalled { return "agent-browser setup needed" }
         return "agent-browser not installed"
     }
 
     private var browserStatusIcon: String {
+        guard let status else {
+            return probeState.errorMessage == nil ? "hourglass" : "exclamationmark.triangle"
+        }
         if status.isReady { return "checkmark.circle.fill" }
         if status.isInstalled { return "exclamationmark.triangle.fill" }
         return "xmark.circle.fill"
@@ -780,4 +853,3 @@ struct BrowserSettingsPane: View {
         .background(RoundedRectangle(cornerRadius: AppTheme.Radius.large).fill(Color(nsColor: .textBackgroundColor)))
     }
 }
-

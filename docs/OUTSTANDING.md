@@ -27,8 +27,8 @@ below so truth and lifecycle contracts land before presentation and optimization
 |---|---|---:|---:|---|
 | 0 | Freeze the audit baseline and remove the four audit-only threads | Low | None; control slice creates no product behavior | Merged and accepted |
 | 1 | Stop Activity from claiming task success from transport completion | High | 4 prompts; up to 220K tokens | Merged and accepted |
-| 2 | Separate browser process readiness, catalog capability, requested use, and proven use | High | 5 prompts; up to 320K tokens | Open |
-| 3 | Replace Browser Settings false-negative startup flicker with an unresolved/checking state | Medium | 3 prompts; up to 180K tokens | Open |
+| 2 | Separate browser process readiness, catalog capability, requested use, and proven use | High | 5 prompts; up to 320K tokens | Merged and accepted |
+| 3 | Replace Browser Settings false-negative startup flicker with an unresolved/checking state | Medium | 3 prompts; up to 5,000,000 tokens | Open |
 | 4 | Replace raw Computer Use self-test JSON with a compact parsed receipt | Medium | 4 prompts; up to 240K tokens | Open |
 | 5 | Repair navigation-rail accessibility selection semantics | Medium | 3 prompts; up to 200K tokens | Open |
 | 6 | Reduce tiny-turn context cost and guarantee zero owned processes at slice close | High | 6 prompts; up to 480K tokens | Open |
@@ -198,8 +198,11 @@ For every matrix:
 10. Record every unexpected retry, extra model call, worker, tool, token jump, provider
     mismatch, or lingering process as a failure or explicit variance. Do not average it
     into a green conclusion.
-11. Stop the matrix when its slice token ceiling is reached. Preserve the partial
-    receipt and report the budget stop; do not silently exceed the ceiling.
+11. Charge the slice budget only from actual terminal `totalTokens` receipts for the
+    frozen matrix turns. Do not project one model or route's context cost onto another,
+    and do not stop merely because a future prompt might be expensive. Stop before the
+    next prompt only when accumulated actual usage is already at or above the slice
+    ceiling; preserve the partial receipt and report the budget stop.
 12. Delete every exact matrix thread under Gate F and finish at process zero under
     Gate G. A matrix that leaves test history or owned processes behind is failed.
 
@@ -276,17 +279,24 @@ Before deletion, record:
 Cleanup order:
 
 1. Switch away from the test session.
-2. Close its GrokBuild tab so it is neither open nor active.
+2. Use that exact tab's **Close Session** action. Verify its local tab UUID is absent
+   from the live layout and its exact file is absent from GrokBuild `Transcripts/`
+   before continuing; merely navigating to a project or another tab is not closure.
 3. Open **Sessions**, search the exact marker, and verify the returned backend ID
    matches the ledger.
 4. Delete that one session through GrokBuild's Sessions UI, accepting its permanent
    deletion confirmation. Alternatively use
    `grok sessions delete <exact-ledgered-id>` from the canonical workspace.
 5. Search the exact marker again; it must return zero sessions.
-6. Verify the closed local tab does not reappear after a quit/relaunch round trip.
-7. Search GrokBuild transcript storage and `~/.grok/sessions` for the exact marker.
-   Expected result: no retained slice-test transcript. If exact-marker residue remains,
-   stop and classify it; do not manually `rm` history around it.
+6. Verify the closed local tab does not reappear after a quit/relaunch round trip and
+   its exact transcript UUID remains absent.
+7. Search GrokBuild transcript storage and backend session directories for the exact
+   marker, explicitly excluding workspace `prompt_history.jsonl`. Expected result: no
+   retained local transcript or backend session. `prompt_history.jsonl` is the Grok
+   CLI's global composer-recall history, not a session or thread; an exact prompt there
+   is expected non-session residue and must neither fail Gate F nor be manually edited.
+   Any marker in a transcript UUID file or backend session directory still fails the
+   gate and must be classified without broad or manual history deletion.
 
 Never use **Clear Empty** as slice cleanup. Never delete by age, summary resemblance,
 model, or a broad glob. If the exact ID cannot be proven, preserve the thread and stop.
@@ -938,7 +948,8 @@ status discovery. A healthy install visibly flashes a false failure.
 ### Installed acceptance
 
 First open Settings → Browser from a cold pane creation and capture the initial and
-settled frames. Then run all three frozen prompts; token ceiling **180K total**:
+settled frames. Then run all three frozen prompts; token ceiling **5,000,000 actual
+receipt tokens total**:
 
 | Prompt | Route | Frozen work | Required skeptical evidence |
 |---|---|---|---|
@@ -951,6 +962,191 @@ suppressed until the probe resolves, and Settings navigation does not change app
 configuration. Delete all three threads, quit, process-zero, merge, rebuild merged
 `main`, repeat S3-A and the cold-pane check, delete the smoke thread, and pass Gates
 F–H.
+
+### Frozen Slice 3 candidate matrix — `20260809T002000Z`
+
+All lanes use Medium effort, fresh disposable tabs, the unauthenticated page
+`http://127.0.0.1:38203/`, title `GB-S3-PROOF-20260809T001700Z`, and body
+`GB-S3-PAGE-20260809T001700Z`. `chrome-devtools` is the only attached MCP; no
+configuration, credential, provider, browser-profile, or normal Chrome state may be
+changed. Every lane hard-stops on route drift, fallback, retry, extra tool/model call,
+missing marker, process-generation change, or false Setup needed presentation.
+
+- **S3-A — native Grok 4.5, marker `GB-S3-ROUNDTRIP-20260809T002000Z`:** Turn 1
+  searches once for `chrome-devtools__new_page` and
+  `chrome-devtools__take_snapshot` in one query, invokes each exactly once in that
+  order against the frozen URL, and reports the exact body marker plus `GB-S3-A1`.
+  With the backend idle, open and close Browser Settings without applying anything.
+  Turn 2 searches once for `chrome-devtools__take_snapshot`, invokes it once on the
+  same page, and reports the same body marker plus `GB-S3-A2`. No terminal, file,
+  worker, navigation substitution, or other tool is allowed.
+- **S3-B — pinned OpenRouter `deepseek/deepseek-v4-flash-0731`, marker
+  `GB-S3-MULTI-20260809T002000Z`:** while the turn is live, manually run Browser
+  Settings diagnostics. The model runs exactly one terminal `pwd`, searches once for
+  `chrome-devtools__take_snapshot`, invokes that browser tool once on the frozen page,
+  then emits the exact body marker and `GB-S3-MULTI`. No worker, retry, file write,
+  extra browser action, or substitution is allowed.
+- **S3-B-R — user-authorized remediation retry, marker
+  `GB-S3-MULTI-RETRY-20260809T161732Z`:** the original S3-B lane settled on
+  `about:blank` because the fresh `chrome-devtools` process did not inherit S3-A's
+  selected page. In one fresh pinned OpenRouter
+  `deepseek/deepseek-v4-flash-0731` session, run exactly one terminal `pwd`, search
+  exactly once with one query containing `chrome-devtools__new_page` and
+  `chrome-devtools__take_snapshot`, invoke `new_page` exactly once for the frozen URL,
+  then invoke `take_snapshot` exactly once. While that turn is live, manually run one
+  Browser Settings diagnostics refresh. Report the exact path, frozen body marker,
+  and `GB-S3-MULTI-RETRY`; no worker, further retry, file write, substitution, or
+  other tool is allowed. This single retry was explicitly authorized by Jimmy after
+  the preserved S3-B failure receipt; it does not erase or replace that receipt.
+- **S3-B-R2 — clean-process remediation retry, marker
+  `GB-S3-MULTI-RETRY2-20260809T162109Z`:** S3-B-R proved that the still-open
+  original S3-B tab owned the shared `chrome-devtools` profile lock. After recording
+  both failed receipts, close their exact local tabs, delete only backend IDs
+  `019fe74d-fdc0-7b63-a2f0-2aa3431dfe9d` and
+  `019fe751-a569-7832-9ce4-3cdc21d158ed`, quit GrokBuild, and prove process-zero.
+  From that clean state, repeat the S3-B-R tool order in one fresh pinned DeepSeek
+  session: one `pwd`, one combined discovery, one `new_page` for the frozen URL, and
+  one `take_snapshot`, while one manual Browser Settings diagnostics refresh runs.
+  Report the exact path, body marker, and `GB-S3-MULTI-RETRY2`; no worker, further
+  in-turn retry, file write, substitution, or other tool is allowed. Jimmy's explicit
+  instruction to retry when needed authorizes this environment-clean retry without
+  invalidating either preserved failure.
+- **S3-C — direct `gpt-5.6-terra`, marker
+  `GB-S3-WORKER-20260809T002000Z`:** after closing and recreating Browser Settings,
+  the parent spawns exactly one `general-purpose` child and only waits/collects it.
+  The child searches once for `chrome-devtools__take_snapshot`, invokes it once on the
+  frozen page, reports the exact body marker, and makes no other tool call. The parent
+  emits `GB-S3-WORKER`; no retry, second child, substitution, or extra helper is
+  allowed.
+- **S3-C-R — environment-safe child lane, marker
+  `GB-S3-WORKER-RETRY-20260809T162818Z`:** the preserved S3-B receipts prove a
+  fresh `chrome-devtools` process starts on `about:blank` and cannot inherit another
+  tab's selected page without also inheriting its locked profile. After the Browser
+  pane recreation and successful S3-B tab closure, use one fresh direct
+  `gpt-5.6-terra` session. The parent spawns exactly one `general-purpose` child and
+  only waits/collects it. The child searches exactly once with one query containing
+  `chrome-devtools__new_page` and `chrome-devtools__take_snapshot`, invokes
+  `new_page` exactly once for the frozen URL, invokes `take_snapshot` exactly once,
+  and reports the exact body marker. The parent emits `GB-S3-WORKER-RETRY`; no second
+  child, in-turn retry, substitution, file write, or other tool is allowed. Jimmy's
+  instruction to retry when needed authorizes this bounded setup action before the
+  lane is sent instead of deliberately reproducing the known `about:blank` failure.
+
+### Slice 3 interrupted candidate receipt — amended `20260809T002000Z`
+
+- Candidate source remained the uncommitted branch
+  `codex/grokbuild-audit-s3-browser-checking` based on
+  `7c53e655d77932f8ece9e4fe66322f257f7759f8`; no commit, push, PR, or merge was
+  attempted because the complete matrix did not pass.
+- Intended files remained exactly the seven Slice 3 paths named by the candidate
+  diff. Focused `BrowserIntegrationTests` passed 18/18, focused
+  `SettingsTabTests` passed 17/17, and `make test` plus candidate `make ship`
+  each passed 687 tests with zero failures.
+- Candidate `/Applications/GrokBuild.app` reported version `0.1.20`, source commit
+  `7c53e655d77932f8ece9e4fe66322f257f7759f8`, branch
+  `codex/grokbuild-audit-s3-browser-checking`, and `dirty=true`. Installed and
+  `dist` executable SHA-256 both equaled
+  `d4d7af045fa063441dd64aaa62506840b942d34b76acf28fb8bb096634b29d6a`;
+  deep/strict signing passed under Team `DD2GCQJVB4`, and quarantine was absent.
+- Cold Browser Settings settled to **Browser Control Ready** for
+  `agent-browser 0.33.0` at `/opt/homebrew/bin/agent-browser`; no false Setup
+  needed presentation or applied-settings mutation was observed. The initial
+  checking frame settled faster than the Computer Use capture interval, so its
+  installed-frame screenshot was not claimed; the initial-state behavior remains
+  covered by the focused behavioral tests.
+- S3-A marker `GB-S3-ROUNDTRIP-20260809T002000Z`; local tab UUID
+  `120F6DCA-4DD3-4BF0-A508-05FC8704B6BF`; backend ID
+  `019fe4c0-d07b-7920-948e-448fc46b0dfa`; native Grok 4.5 at Medium; process
+  generation 1, PID 58891. Turn 1 used 69,217 tokens across four model calls and
+  exactly one discovery, one `chrome-devtools__new_page`, and one
+  `chrome-devtools__take_snapshot`; it returned the frozen page marker plus
+  `GB-S3-A1`. After an idle Browser Settings round trip, Turn 2 used 55,102 tokens
+  across three model calls and exactly one discovery plus one
+  `chrome-devtools__take_snapshot`; it returned the same page marker plus
+  `GB-S3-A2`. Both tools succeeded in the required order and the backend/model
+  remained continuous.
+- S3-A consumed 124,319 actual receipt tokens, leaving 4,875,681 under the revised
+  5,000,000-token Slice 3 ceiling. The earlier stop projected Grok 4.5 context cost
+  onto unsent routes; the amended Gate C rule forbids that projection. S3-B and S3-C
+  remain unsent and authorized within the revised ceiling.
+- Cleanup deleted exact backend ID
+  `019fe4c0-d07b-7920-948e-448fc46b0dfa`; the Sessions UI exact-marker search then
+  returned **No Sessions**. The marker in workspace `prompt_history.jsonl` is now
+  correctly classified as expected global composer-recall history and is not Gate F
+  thread residue. Gate F remains incomplete only because local transcript
+  `120F6DCA-4DD3-4BF0-A508-05FC8704B6BF.json` remains and the tab reappeared after
+  relaunch, proving the prior coordinate action navigated away instead of completing
+  the explicit **Close Session** action. Before any new billable prompt, close that
+  exact local tab through its named action and prove its UUID/file stays absent.
+- The disposable proof server was stopped and its exact fixture was moved to Trash.
+  Normal Command-Q left exact GrokBuild PID 59787 at PPID 1 with 0.0% CPU; after
+  recording PID/PPID/elapsed/CPU/command, TERM to only that proven orphan succeeded.
+  Final checks found zero `GrokBuild`, `grok`, `GrokBuildComputerUseMCP`,
+  `agent-desktop`, or GrokBuild-owned browser processes.
+- Slice 3 remains open. Resume with the exact local-tab cleanup proof, then S3-B and
+  S3-C under the frozen packet and revised 5,000,000-token ceiling. Gate D publication,
+  Gate E merged-main acceptance, and Slice 4 remain forbidden until the full matrix
+  and Gates F–H pass.
+
+### Slice 3 resumed candidate receipt — child-cleanup hard stop `20260809T162818Z`
+
+- The residual S3-A local tab was closed through its named **Close Session** action.
+  Transcript UUID `120F6DCA-4DD3-4BF0-A508-05FC8704B6BF` stayed absent across a
+  quit/relaunch round trip, and the exact marker returned no local-transcript or
+  backend-session match when global `prompt_history.jsonl` was correctly excluded.
+- Original S3-B used local UUID `6139C553-E428-4FD4-8C05-2892A994CE6B` and backend
+  ID `019fe74d-fdc0-7b63-a2f0-2aa3431dfe9d`. Pinned DeepSeek ran one `pwd`, one
+  discovery, and one snapshot in order; the snapshot succeeded technically but
+  returned `about:blank`, so the required page marker was absent. The lane stopped
+  without retry or substitution after 61,700 tokens and four model calls.
+- User-authorized S3-B-R used local UUID
+  `37631F2F-9FF3-434B-92E4-7F9A9840FF4A` and backend ID
+  `019fe751-a569-7832-9ce4-3cdc21d158ed`. Its one `new_page` and one snapshot were
+  rejected because the still-open original lane owned the shared
+  `chrome-devtools` profile lock. It stopped after 66,798 tokens and four model calls.
+  Both failed local tabs and exact backend IDs were then deleted, a quit reached
+  process-zero, and their markers returned no session/transcript matches.
+- Clean-process S3-B-R2 used local UUID
+  `505481DA-AB6E-445B-BA12-2CB993062F14` and backend ID
+  `019fe754-fd0f-7af3-b211-5e029a2217af`. Pinned DeepSeek at Medium ran exactly one
+  `pwd`, one combined discovery, one `new_page`, and one snapshot; all four tools
+  succeeded in order, the frozen title/body markers matched, Browser diagnostics
+  remained Ready during the live turn, and no setting changed. Usage was 66,326
+  tokens and four model calls.
+- The Browser pane was unmounted through Agents and recreated before S3-C; it settled
+  Ready with no false Setup needed presentation. Environment-safe S3-C-R used local
+  UUID `02C00970-2810-4C4B-9E64-C176AEAABB63`, parent backend
+  `019fe75a-fb26-7493-b07e-7577f6cca5d7`, direct `gpt-5.6-terra` at Medium, and
+  exactly one `general-purpose` child
+  `019fe75b-41c2-7562-a354-3f20c214b682`. The child completed in 7.2 seconds with
+  3/3 receipts succeeded: one combined discovery, one `new_page`, and one snapshot.
+  It returned the exact body marker; the parent collected the exact child identity and
+  emitted `GB-S3-WORKER-RETRY`. Parent usage was 74,856 tokens and seven model calls.
+- Total actual Slice 3 receipt usage is 393,999 tokens: original S3-A 124,319 plus
+  269,680 across the resumed S3-B/S3-C lanes, under the 5,000,000-token ceiling.
+- Cleanup removed all four resumed local transcript UUIDs and deleted exact parent
+  backend IDs `019fe74d-fdc0-7b63-a2f0-2aa3431dfe9d`,
+  `019fe751-a569-7832-9ce4-3cdc21d158ed`,
+  `019fe754-fd0f-7af3-b211-5e029a2217af`, and
+  `019fe75a-fb26-7493-b07e-7577f6cca5d7`. Exact marker searches for S3-B, S3-B-R,
+  and S3-B-R2 returned zero session/transcript matches. GrokBuild, Grok CLI,
+  Computer Use, `agent-desktop`, `chrome-devtools-mcp`, and owned browser processes
+  all reached zero after normal quit.
+- Gate F is blocked only by unindexed child directory
+  `~/.grok/sessions/%2FUsers%2Fjimmyschmitz%2FDesktop%2FProjects%2FMCP%20Servers%2FGrok%20Build%2Fgrok-build-desktop/019fe75b-41c2-7562-a354-3f20c214b682`.
+  `grok sessions search` returns zero and `grok sessions delete
+  019fe75b-41c2-7562-a354-3f20c214b682` returns **No session found**, but its
+  `chat_history.jsonl` and `updates.jsonl` retain the exact S3-C marker after parent
+  deletion and quit. The directory was preserved under Gate F; no manual history
+  deletion, commit, push, PR, merge, or Slice 4 work occurred.
+- Jimmy then explicitly authorized manual removal of that exact unindexed child.
+  Permanent `rm` was rejected by the execution environment, so the validated,
+  non-symlink directory was moved intact to recoverable Trash entry
+  `~/.Trash/GrokBuild-S3-child-019fe75b-41c2-7562-a354-3f20c214b682` instead.
+  Active GrokBuild transcript storage and `~/.grok/sessions` then returned zero Slice 3
+  marker matches (excluding global composer history), and the exact process gate
+  remained zero. Gate F therefore passes for active session/thread storage; the Trash
+  entry remains an explicit recoverable rollback receipt until separately emptied.
 
 ---
 

@@ -254,6 +254,18 @@ final class SettingsTabTests: XCTestCase {
             .contains("guard !Task.isCancelled else { return }"))
     }
 
+    func testBrowserPaneUsesUnresolvedGenerationBoundProbePresentation() throws {
+        let browser = try paneSource(named: "BrowserSettingsPane")
+
+        XCTAssertTrue(browser.contains("@State private var probeState = BrowserBackendProbeState()"))
+        XCTAssertFalse(browser.contains("@State private var status = BrowserBackendStatus.unavailable"))
+        XCTAssertTrue(browser.contains("Checking browser support…"))
+        XCTAssertTrue(browser.contains("probeState.canShowSetupControls"))
+        XCTAssertTrue(browser.contains("statusProbeTask?.cancel()"))
+        XCTAssertTrue(browser.contains(".onChange(of: valueState.configurationGeneration)"))
+        XCTAssertTrue(browser.contains("currentConfigurationGeneration: valueState.configurationGeneration"))
+    }
+
     func testPermissionDraftPersistsOnlyAtExplicitBoundary() {
         let suite = "SettingsTabTests.\(UUID().uuidString)"
         guard let defaults = UserDefaults(suiteName: suite) else {

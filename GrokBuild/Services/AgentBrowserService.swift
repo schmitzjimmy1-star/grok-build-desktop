@@ -16,6 +16,83 @@ struct BrowserBackendStatus: Sendable, Equatable {
     )
 }
 
+struct BrowserBackendProbeRequest: Sendable, Equatable {
+    let sequence: UInt64
+    let configurationGeneration: UInt64
+}
+
+/// Generation-bound presentation state for Browser Settings diagnostics. A fresh
+/// pane starts unresolved instead of borrowing `.unavailable`, while refreshes retain
+/// the last proven status until a matching newer probe settles.
+struct BrowserBackendProbeState: Sendable, Equatable {
+    private(set) var settledStatus: BrowserBackendStatus?
+    private(set) var isChecking = false
+    private(set) var errorMessage: String?
+    private var sequence: UInt64 = 0
+
+    var isUnresolved: Bool {
+        settledStatus == nil && errorMessage == nil
+    }
+
+    var canShowSetupControls: Bool {
+        settledStatus != nil
+    }
+
+    mutating func begin(configurationGeneration: UInt64) -> BrowserBackendProbeRequest {
+        sequence &+= 1
+        isChecking = true
+        errorMessage = nil
+        return BrowserBackendProbeRequest(
+            sequence: sequence,
+            configurationGeneration: configurationGeneration
+        )
+    }
+
+    @discardableResult
+    mutating func resolve(
+        _ status: BrowserBackendStatus,
+        request: BrowserBackendProbeRequest,
+        currentConfigurationGeneration: UInt64
+    ) -> Bool {
+        guard request.sequence == sequence,
+              request.configurationGeneration == currentConfigurationGeneration else {
+            return false
+        }
+        sequence &+= 1
+        settledStatus = status
+        isChecking = false
+        errorMessage = nil
+        return true
+    }
+
+    @discardableResult
+    mutating func fail(
+        _ error: Error,
+        request: BrowserBackendProbeRequest,
+        currentConfigurationGeneration: UInt64
+    ) -> Bool {
+        guard request.sequence == sequence,
+              request.configurationGeneration == currentConfigurationGeneration else {
+            return false
+        }
+        sequence &+= 1
+        isChecking = false
+        errorMessage = Self.boundedMessage(error.localizedDescription)
+        return true
+    }
+
+    mutating func cancel() {
+        sequence &+= 1
+        isChecking = false
+    }
+
+    private static func boundedMessage(_ message: String) -> String {
+        let normalized = message.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !normalized.isEmpty else { return "Browser support check failed." }
+        return String(normalized.prefix(240))
+    }
+}
+
 struct ExternalBrowserStatus: Sendable, Equatable {
     var isReachable: Bool
     var endpoint: String
@@ -289,18 +366,19 @@ enum AgentBrowserService {
         }
     }
 
-    static func status() async -> BrowserBackendStatus {
+    static func status() async throws -> BrowserBackendStatus {
         guard let executable = executableURL() else { return .unavailable }
-        let versionResult = try? await run([executable.path, "--version"])
-        let doctorResult = try? await runResult([executable.path, "doctor"], allowFailure: true)
+        async let versionResult = run([executable.path, "--version"])
+        async let doctorResult = runResult([executable.path, "doctor"], allowFailure: true)
+        let resolvedVersion = try await versionResult
+        let resolvedDoctor = try await doctorResult
 
         return BrowserBackendStatus(
             isInstalled: true,
-            isReady: doctorResult?.exitCode == 0,
+            isReady: resolvedDoctor.exitCode == 0,
             executablePath: executable.path,
-            version: versionResult?.trimmingCharacters(in: .whitespacesAndNewlines),
-            diagnostic: doctorResult?.output.trimmingCharacters(in: .whitespacesAndNewlines)
-                ?? "agent-browser found at \(executable.path)."
+            version: resolvedVersion.trimmingCharacters(in: .whitespacesAndNewlines),
+            diagnostic: resolvedDoctor.output.trimmingCharacters(in: .whitespacesAndNewlines)
         )
     }
 
@@ -412,4 +490,3 @@ enum AgentBrowserService {
         )
     }
 }
-
