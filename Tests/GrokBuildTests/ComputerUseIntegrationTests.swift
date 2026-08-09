@@ -620,6 +620,223 @@ final class ComputerUseIntegrationTests: XCTestCase {
         XCTAssertEqual(content.first?["text"] as? String, "fake-apps")
     }
 
+    func testEndToEndListAppsBecomesCompactTypedReceipt() throws {
+        let raw = #"{"version":"2.1","ok":true,"command":"list-apps","data":{"apps":[{"name":"GrokBuild","pid":123,"process_instance":"secret-a"},{"name":"Finder","pid":456,"process_instance":"secret-b"}]}}"#
+        let result = ComputerUseService.parseEndToEndResponses(
+            endToEndResponses(text: raw),
+            finalID: 2,
+            durationMilliseconds: 123_456
+        )
+
+        XCTAssertTrue(result.success)
+        XCTAssertNil(result.failure)
+        XCTAssertEqual(result.protocolVersion, "2024-11-05")
+        XCTAssertEqual(result.helperVersion, "0.1.1")
+        XCTAssertEqual(result.command, "computer_list_apps")
+        XCTAssertEqual(result.appCount, 2)
+        XCTAssertEqual(result.durationMilliseconds, 99_999)
+        XCTAssertTrue(result.accessibilityRequired)
+        XCTAssertTrue(result.accessibilityProven)
+        XCTAssertFalse(result.screenshotsRequired)
+        XCTAssertFalse(result.compactDetail.contains("pid"))
+        XCTAssertFalse(result.compactDetail.contains("process_instance"))
+        XCTAssertFalse(result.compactDetail.contains("GrokBuild"))
+        XCTAssertFalse(result.compactDetail.contains("Finder"))
+        XCTAssertFalse(result.compactDetail.contains("{"))
+    }
+
+    func testEndToEndDiagnosticsAreBoundedAndRedactAppInventory() {
+        let apps = (0..<100).map { index in
+            ["name": "Sensitive App \(index)", "pid": index, "process_instance": "secret-\(index)"] as [String: Any]
+        }
+        let object: [String: Any] = [
+            "version": "2.1",
+            "ok": true,
+            "command": "list-apps",
+            "data": ["apps": apps],
+        ]
+        let data = try! JSONSerialization.data(withJSONObject: object)
+        let raw = String(data: data, encoding: .utf8)!
+        let diagnostic = ComputerUseService.redactedListAppsDiagnostic(raw, limit: 180)
+
+        XCTAssertLessThanOrEqual(diagnostic.count, 181)
+        XCTAssertTrue(diagnostic.contains("redacted 100 app records"))
+        XCTAssertFalse(diagnostic.contains("Sensitive App"))
+        XCTAssertFalse(diagnostic.contains("secret-"))
+        XCTAssertFalse(diagnostic.contains("\"pid\""))
+    }
+
+    func testEndToEndEmptyContentAndMalformedJSONFailClosed() {
+        let empty = ComputerUseService.parseEndToEndResponses(
+            endToEndResponses(text: ""),
+            finalID: 2,
+            durationMilliseconds: 1
+        )
+        XCTAssertFalse(empty.success)
+        XCTAssertEqual(empty.failure, .emptyContent)
+
+        let malformed = ComputerUseService.parseEndToEndResponses(
+            endToEndResponses(text: #"{"version":"2.1","ok":true"#),
+            finalID: 2,
+            durationMilliseconds: 1
+        )
+        XCTAssertFalse(malformed.success)
+        XCTAssertEqual(malformed.failure, .malformedJSON)
+        XCTAssertFalse(malformed.diagnostic.contains("process_instance"))
+    }
+
+    func testEndToEndJSONRPCErrorAndWrongFinalIDRemainDistinct() {
+        var rpcError = endToEndResponses(text: "unused")
+        rpcError[2] = ["jsonrpc": "2.0", "id": 2, "error": ["code": -32_000, "message": "Frozen failure"]]
+        let failed = ComputerUseService.parseEndToEndResponses(
+            rpcError,
+            finalID: 2,
+            durationMilliseconds: 1
+        )
+        XCTAssertEqual(failed.failure, .jsonRPCError)
+        XCTAssertEqual(failed.summary, "Tool call failed")
+
+        var toolError = endToEndResponses(text: "sensitive raw failure")
+        toolError[2] = [
+            "jsonrpc": "2.0",
+            "id": 2,
+            "result": ["isError": true, "content": [["type": "text", "text": "sensitive raw failure"]]],
+        ]
+        let toolFailed = ComputerUseService.parseEndToEndResponses(
+            toolError,
+            finalID: 2,
+            durationMilliseconds: 1
+        )
+        XCTAssertEqual(toolFailed.failure, .jsonRPCError)
+        XCTAssertFalse(toolFailed.diagnostic.contains("sensitive raw failure"))
+
+        let wrongID = ComputerUseService.parseEndToEndResponses(
+            [1: endToEndResponses(text: "unused")[1]!],
+            finalID: 2,
+            durationMilliseconds: 1
+        )
+        XCTAssertEqual(wrongID.failure, .wrongFinalRequestID)
+        XCTAssertEqual(wrongID.summary, "Wrong response ID")
+    }
+
+    func testRunHelperRPCReportsWrongIDAndNonzeroExitSeparately() async throws {
+        let directory = temporaryInstallRootURL()
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+
+        let wrongIDHelper = directory.appendingPathComponent("wrong-id-helper")
+        try makeScript(
+            at: wrongIDHelper,
+            body: "read line\nprintf '%s\\n' '{\"jsonrpc\":\"2.0\",\"id\":99,\"result\":{}}'"
+        )
+        do {
+            _ = try await ComputerUseService.runHelperRPC(
+                helper: wrongIDHelper,
+                environment: ProcessInfo.processInfo.environment,
+                requests: [#"{"jsonrpc":"2.0","id":2}"#],
+                finalID: 2,
+                timeout: 2
+            )
+            XCTFail("Expected wrong final request ID")
+        } catch let error as ComputerUseService.HelperRPCError {
+            guard case let .wrongFinalRequestID(expected, observed) = error else {
+                return XCTFail("Unexpected error: \(error)")
+            }
+            XCTAssertEqual(expected, 2)
+            XCTAssertEqual(observed, [99])
+        }
+
+        let failingHelper = directory.appendingPathComponent("failing-helper")
+        try makeScript(at: failingHelper, body: "exit 7")
+        do {
+            _ = try await ComputerUseService.runHelperRPC(
+                helper: failingHelper,
+                environment: ProcessInfo.processInfo.environment,
+                requests: [#"{"jsonrpc":"2.0","id":2}"#],
+                finalID: 2,
+                timeout: 2
+            )
+            XCTFail("Expected helper exit failure")
+        } catch let error as ComputerUseService.HelperRPCError {
+            XCTAssertEqual(error, .nonzeroExit(code: 7))
+        }
+    }
+
+    func testRunHelperRPCReportsTimeoutMalformedAndEmptySeparately() async throws {
+        let directory = temporaryInstallRootURL()
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+
+        let timeoutHelper = directory.appendingPathComponent("timeout-helper")
+        try makeScript(at: timeoutHelper, body: "read line\nsleep 5")
+        do {
+            _ = try await ComputerUseService.runHelperRPC(
+                helper: timeoutHelper,
+                environment: ProcessInfo.processInfo.environment,
+                requests: [#"{"jsonrpc":"2.0","id":2}"#],
+                finalID: 2,
+                timeout: 0.1
+            )
+            XCTFail("Expected timeout")
+        } catch let error as ComputerUseService.HelperRPCError {
+            XCTAssertEqual(error, .timedOut(seconds: 1))
+        }
+
+        let malformedHelper = directory.appendingPathComponent("malformed-helper")
+        try makeScript(at: malformedHelper, body: "read line\nprintf '%s\\n' 'not-json'")
+        do {
+            _ = try await ComputerUseService.runHelperRPC(
+                helper: malformedHelper,
+                environment: ProcessInfo.processInfo.environment,
+                requests: [#"{"jsonrpc":"2.0","id":2}"#],
+                finalID: 2,
+                timeout: 2
+            )
+            XCTFail("Expected malformed response")
+        } catch let error as ComputerUseService.HelperRPCError {
+            XCTAssertEqual(error, .malformedResponse)
+        }
+
+        let emptyHelper = directory.appendingPathComponent("empty-helper")
+        try makeScript(at: emptyHelper, body: "read line\nexit 0")
+        do {
+            _ = try await ComputerUseService.runHelperRPC(
+                helper: emptyHelper,
+                environment: ProcessInfo.processInfo.environment,
+                requests: [#"{"jsonrpc":"2.0","id":2}"#],
+                finalID: 2,
+                timeout: 2
+            )
+            XCTFail("Expected empty response")
+        } catch let error as ComputerUseService.HelperRPCError {
+            XCTAssertEqual(error, .emptyResponse)
+        }
+    }
+
+    func testRepeatedHelperRPCTestsLeaveNoHelperProcess() async throws {
+        let directory = temporaryInstallRootURL()
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let helper = directory.appendingPathComponent("repeat-helper")
+        try makeScript(
+            at: helper,
+            body: "read line\nprintf '%s\\n' '{\"jsonrpc\":\"2.0\",\"id\":2,\"result\":{}}'"
+        )
+
+        for _ in 0..<3 {
+            _ = try await ComputerUseService.runHelperRPC(
+                helper: helper,
+                environment: ProcessInfo.processInfo.environment,
+                requests: [#"{"jsonrpc":"2.0","id":2}"#],
+                finalID: 2,
+                timeout: 2
+            )
+        }
+        try await Task.sleep(nanoseconds: 100_000_000)
+        let check = try await ComputerUseService.runResult(["/usr/bin/pgrep", "-f", helper.path], timeout: 2)
+        XCTAssertEqual(check.exitCode, 1, "Scripted helper remained alive: \(check.output)")
+    }
+
     func testRealHelperAnchorsSnapshotAndMapsExplicitCloseAppForce() async throws {
         let repositoryRoot = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent()
@@ -697,6 +914,30 @@ final class ComputerUseIntegrationTests: XCTestCase {
         FileManager.default.temporaryDirectory
             .appendingPathComponent("GrokBuildTests")
             .appendingPathComponent(UUID().uuidString)
+    }
+
+    private func endToEndResponses(text: String) -> [Int: [String: Any]] {
+        [
+            1: [
+                "jsonrpc": "2.0",
+                "id": 1,
+                "result": [
+                    "protocolVersion": "2024-11-05",
+                    "serverInfo": ["name": "grokbuild-computer-use", "version": "0.1.1"],
+                ],
+            ],
+            2: [
+                "jsonrpc": "2.0",
+                "id": 2,
+                "result": ["content": [["type": "text", "text": text]]],
+            ],
+        ]
+    }
+
+    private func makeScript(at url: URL, body: String) throws {
+        let script = "#!/bin/sh\n\(body)\n"
+        try script.write(to: url, atomically: true, encoding: .utf8)
+        try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: url.path)
     }
 
     @discardableResult

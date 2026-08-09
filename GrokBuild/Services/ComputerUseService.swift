@@ -581,10 +581,100 @@ enum ComputerUseService {
 
     // MARK: - End-to-end self test
 
+    enum EndToEndTestFailure: String, Sendable, Equatable {
+        case helperMissing
+        case agentDesktopMissing
+        case malformedJSON
+        case jsonRPCError
+        case wrongFinalRequestID
+        case timeout
+        case emptyContent
+        case helperExitFailure
+        case commandMismatch
+    }
+
     struct EndToEndTestResult: Sendable, Equatable {
         var success: Bool
         var summary: String
-        var detail: String
+        var failure: EndToEndTestFailure?
+        var protocolVersion: String?
+        var helperVersion: String?
+        var command: String
+        var appCount: Int?
+        var durationMilliseconds: Int
+        var accessibilityRequired: Bool
+        var accessibilityProven: Bool
+        var screenshotsRequired: Bool
+        var screenshotsProven: Bool
+        var diagnostic: String
+
+        var compactDetail: String {
+            guard success else { return diagnostic }
+            let protocolText = protocolVersion ?? "unknown"
+            let helperText = helperVersion ?? "unknown"
+            let countText = appCount.map { "\($0) apps" } ?? "unknown app count"
+            return "Protocol \(protocolText) · Helper \(helperText)\n\(command) · \(countText) · \(durationMilliseconds) ms\nAccessibility: \(accessibilityProven ? "proven" : "not proven") · Screenshots: \(screenshotsRequired ? (screenshotsProven ? "proven" : "not proven") : "not required")"
+        }
+
+        static func failure(
+            _ failure: EndToEndTestFailure,
+            summary: String,
+            diagnostic: String,
+            command: String = "computer_list_apps",
+            durationMilliseconds: Int = 0
+        ) -> EndToEndTestResult {
+            EndToEndTestResult(
+                success: false,
+                summary: summary,
+                failure: failure,
+                protocolVersion: nil,
+                helperVersion: nil,
+                command: command,
+                appCount: nil,
+                durationMilliseconds: boundedDuration(durationMilliseconds),
+                accessibilityRequired: true,
+                accessibilityProven: false,
+                screenshotsRequired: false,
+                screenshotsProven: false,
+                diagnostic: diagnostic
+            )
+        }
+    }
+
+    enum HelperRPCError: Error, Sendable, Equatable, LocalizedError {
+        case timedOut(seconds: Int)
+        case nonzeroExit(code: Int32)
+        case wrongFinalRequestID(expected: Int, observed: [Int])
+        case malformedResponse
+        case emptyResponse
+
+        var errorDescription: String? {
+            switch self {
+            case let .timedOut(seconds):
+                return "Computer Use test timed out after \(seconds)s."
+            case let .nonzeroExit(code):
+                return "Computer Use helper exited with status \(code)."
+            case let .wrongFinalRequestID(expected, observed):
+                let ids = observed.sorted().map(String.init).joined(separator: ", ")
+                return "Computer Use helper returned request ID(s) [\(ids)] instead of final ID \(expected)."
+            case .malformedResponse:
+                return "Computer Use helper returned malformed JSON-RPC output."
+            case .emptyResponse:
+                return "Computer Use helper exited without a JSON-RPC response."
+            }
+        }
+    }
+
+    private struct AgentDesktopListAppsResponse: Decodable {
+        struct Payload: Decodable {
+            struct App: Decodable {}
+            var apps: [App]
+        }
+
+        var version: String
+        var ok: Bool
+        var command: String
+        var data: Payload
     }
 
     /// Proves the whole chain the way grok uses it: spawn the helper over
@@ -593,17 +683,17 @@ enum ComputerUseService {
     /// pane is inference; this is evidence.
     static func runEndToEndTest(settings: ComputerUseSettings = ComputerUseSettingsStore.load()) async -> EndToEndTestResult {
         guard let helper = helperURL() else {
-            return EndToEndTestResult(
-                success: false,
+            return .failure(
+                .helperMissing,
                 summary: "Helper missing",
-                detail: "GrokBuildComputerUseMCP was not found next to the app executable. Rebuild the app (make run)."
+                diagnostic: "GrokBuildComputerUseMCP was not found next to the app executable. Rebuild the app (make run)."
             )
         }
         guard let agentDesktop = executableURL(settings: settings) else {
-            return EndToEndTestResult(
-                success: false,
+            return .failure(
+                .agentDesktopMissing,
                 summary: "agent-desktop missing",
-                detail: "Install it with `npm install -g agent-desktop`, then rebuild so packaging bundles it."
+                diagnostic: "Install it with `npm install -g agent-desktop`, then rebuild so packaging bundles it."
             )
         }
 
@@ -613,6 +703,7 @@ enum ComputerUseService {
         env[ComputerUseHelperEnvironment.timeout] = String(settings.commandTimeoutSeconds)
         env[ComputerUseHelperEnvironment.screenshots] = settings.includeScreenshots ? "true" : "false"
 
+        let startedAt = Date()
         do {
             let responses = try await runHelperRPC(
                 helper: helper,
@@ -624,31 +715,162 @@ enum ComputerUseService {
                 finalID: 2,
                 timeout: 20
             )
-            guard let final = responses[2] else {
-                return EndToEndTestResult(
-                    success: false,
-                    summary: "No response",
-                    detail: "The helper started but never answered computer_list_apps."
-                )
-            }
-            if let error = final["error"] as? [String: Any] {
-                return EndToEndTestResult(
-                    success: false,
-                    summary: "Tool call failed",
-                    detail: error["message"] as? String ?? "Unknown helper error."
-                )
-            }
-            let text = (((final["result"] as? [String: Any])?["content"] as? [[String: Any]])?
-                .first?["text"] as? String) ?? ""
-            let trimmed = text.count > 700 ? String(text.prefix(700)) + "…" : text
-            return EndToEndTestResult(
-                success: true,
-                summary: "Computer Use responded end to end",
-                detail: trimmed.isEmpty ? "computer_list_apps returned no text." : trimmed
+            return parseEndToEndResponses(
+                responses,
+                finalID: 2,
+                durationMilliseconds: elapsedMilliseconds(since: startedAt)
             )
+        } catch let error as HelperRPCError {
+            let duration = elapsedMilliseconds(since: startedAt)
+            switch error {
+            case .timedOut:
+                return .failure(.timeout, summary: "Test timed out", diagnostic: error.localizedDescription, durationMilliseconds: duration)
+            case .nonzeroExit:
+                return .failure(.helperExitFailure, summary: "Helper exited", diagnostic: error.localizedDescription, durationMilliseconds: duration)
+            case .wrongFinalRequestID:
+                return .failure(.wrongFinalRequestID, summary: "Wrong response ID", diagnostic: error.localizedDescription, durationMilliseconds: duration)
+            case .malformedResponse:
+                return .failure(.malformedJSON, summary: "Malformed helper response", diagnostic: error.localizedDescription, durationMilliseconds: duration)
+            case .emptyResponse:
+                return .failure(.emptyContent, summary: "No response", diagnostic: error.localizedDescription, durationMilliseconds: duration)
+            }
         } catch {
-            return EndToEndTestResult(success: false, summary: "Test failed", detail: error.localizedDescription)
+            return .failure(
+                .helperExitFailure,
+                summary: "Test failed",
+                diagnostic: error.localizedDescription,
+                durationMilliseconds: elapsedMilliseconds(since: startedAt)
+            )
         }
+    }
+
+    static func parseEndToEndResponses(
+        _ responses: [Int: [String: Any]],
+        finalID: Int,
+        durationMilliseconds: Int
+    ) -> EndToEndTestResult {
+        guard let initialize = responses[1],
+              let initializeResult = initialize["result"] as? [String: Any],
+              let protocolVersion = initializeResult["protocolVersion"] as? String,
+              let serverInfo = initializeResult["serverInfo"] as? [String: Any],
+              let helperVersion = serverInfo["version"] as? String else {
+            return .failure(
+                .malformedJSON,
+                summary: "Malformed initialize response",
+                diagnostic: "The helper initialize receipt did not contain protocol and helper versions.",
+                durationMilliseconds: durationMilliseconds
+            )
+        }
+
+        guard let final = responses[finalID] else {
+            return .failure(
+                .wrongFinalRequestID,
+                summary: "Wrong response ID",
+                diagnostic: "The helper did not return final request ID \(finalID).",
+                durationMilliseconds: durationMilliseconds
+            )
+        }
+        if let error = final["error"] as? [String: Any] {
+            return .failure(
+                .jsonRPCError,
+                summary: "Tool call failed",
+                diagnostic: boundedDiagnostic(error["message"] as? String ?? "Unknown JSON-RPC error."),
+                durationMilliseconds: durationMilliseconds
+            )
+        }
+        guard let result = final["result"] as? [String: Any] else {
+            return .failure(
+                .malformedJSON,
+                summary: "Malformed tool response",
+                diagnostic: "The final JSON-RPC response did not contain a result object.",
+                durationMilliseconds: durationMilliseconds
+            )
+        }
+        if result["isError"] as? Bool == true {
+            return .failure(
+                .jsonRPCError,
+                summary: "Tool call failed",
+                diagnostic: "The helper marked computer_list_apps as failed; raw tool output was withheld.",
+                durationMilliseconds: durationMilliseconds
+            )
+        }
+        guard let content = result["content"] as? [[String: Any]],
+              let text = content.first(where: { $0["type"] as? String == "text" })?["text"] as? String,
+              !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            return .failure(
+                .emptyContent,
+                summary: "Empty tool response",
+                diagnostic: "computer_list_apps returned no usable text content.",
+                durationMilliseconds: durationMilliseconds
+            )
+        }
+
+        guard let data = text.data(using: .utf8),
+              let payload = try? JSONDecoder().decode(AgentDesktopListAppsResponse.self, from: data) else {
+            return .failure(
+                .malformedJSON,
+                summary: "Malformed list-apps response",
+                diagnostic: "agent-desktop returned malformed list-apps JSON (\(text.utf8.count) bytes).",
+                durationMilliseconds: durationMilliseconds
+            )
+        }
+        guard payload.ok, payload.command == "list-apps" else {
+            return .failure(
+                .commandMismatch,
+                summary: "Unexpected command response",
+                diagnostic: "Expected successful list-apps output; received command \(boundedDiagnostic(payload.command)).",
+                durationMilliseconds: durationMilliseconds
+            )
+        }
+
+        return EndToEndTestResult(
+            success: true,
+            summary: "Computer Use passed end to end",
+            failure: nil,
+            protocolVersion: protocolVersion,
+            helperVersion: helperVersion,
+            command: "computer_list_apps",
+            appCount: payload.data.apps.count,
+            durationMilliseconds: boundedDuration(durationMilliseconds),
+            accessibilityRequired: true,
+            accessibilityProven: true,
+            screenshotsRequired: false,
+            screenshotsProven: false,
+            diagnostic: redactedListAppsDiagnostic(text)
+        )
+    }
+
+    static func redactedListAppsDiagnostic(_ text: String, limit: Int = 1_200) -> String {
+        guard let data = text.data(using: .utf8),
+              let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+            return "Malformed list-apps JSON (\(text.utf8.count) bytes); raw output withheld."
+        }
+        var redacted = object
+        if let payload = object["data"] as? [String: Any],
+           let apps = payload["apps"] as? [Any] {
+            var safePayload = payload
+            safePayload["apps"] = ["<redacted \(apps.count) app records>"]
+            redacted["data"] = safePayload
+        }
+        guard let safeData = try? JSONSerialization.data(withJSONObject: redacted, options: [.sortedKeys]),
+              let safeText = String(data: safeData, encoding: .utf8) else {
+            return "Valid list-apps response; redacted diagnostics unavailable."
+        }
+        return boundedDiagnostic(safeText, limit: limit)
+    }
+
+    static func boundedDiagnostic(_ text: String, limit: Int = 1_200) -> String {
+        let normalized = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard normalized.count > limit else { return normalized }
+        return String(normalized.prefix(limit)) + "…"
+    }
+
+    private static func elapsedMilliseconds(since date: Date) -> Int {
+        boundedDuration(Int(Date().timeIntervalSince(date) * 1_000))
+    }
+
+    private static func boundedDuration(_ milliseconds: Int) -> Int {
+        min(max(milliseconds, 0), 99_999)
     }
 
     /// Internal (not private) so the RPC plumbing stays under test against a
@@ -676,6 +898,7 @@ enum ComputerUseService {
                 let lock = NSLock()
                 var buffer = Data()
                 var responses: [Int: [String: Any]] = [:]
+                var sawMalformedLine = false
                 var didResume = false
             }
             let box = RPCBox()
@@ -708,13 +931,37 @@ enum ComputerUseService {
                 for line in lines {
                     guard let data = line.data(using: .utf8),
                           let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-                          let id = json["id"] as? Int else { continue }
+                          let id = json["id"] as? Int else {
+                        box.sawMalformedLine = true
+                        continue
+                    }
                     box.responses[id] = json
                 }
                 let snapshot = box.responses
                 box.lock.unlock()
                 if snapshot[finalID] != nil {
                     finish(.success(snapshot))
+                }
+            }
+
+            process.terminationHandler = { terminated in
+                box.lock.lock()
+                let responses = box.responses
+                let malformed = box.sawMalformedLine
+                box.lock.unlock()
+                if responses[finalID] != nil {
+                    finish(.success(responses))
+                } else if terminated.terminationStatus != 0 {
+                    finish(.failure(HelperRPCError.nonzeroExit(code: terminated.terminationStatus)))
+                } else if malformed {
+                    finish(.failure(HelperRPCError.malformedResponse))
+                } else if !responses.isEmpty {
+                    finish(.failure(HelperRPCError.wrongFinalRequestID(
+                        expected: finalID,
+                        observed: Array(responses.keys)
+                    )))
+                } else {
+                    finish(.failure(HelperRPCError.emptyResponse))
                 }
             }
 
@@ -727,14 +974,11 @@ enum ComputerUseService {
 
             let payload = requests.map { $0 + "\n" }.joined()
             stdinPipe.fileHandleForWriting.write(Data(payload.utf8))
+            try? stdinPipe.fileHandleForWriting.close()
 
             Task {
                 try? await Task.sleep(nanoseconds: UInt64(timeout * 1_000_000_000))
-                finish(.failure(NSError(
-                    domain: "ComputerUseService",
-                    code: 4,
-                    userInfo: [NSLocalizedDescriptionKey: "Computer Use test timed out after \(Int(timeout))s."]
-                )))
+                finish(.failure(HelperRPCError.timedOut(seconds: max(1, Int(ceil(timeout))))))
                 try? await Task.sleep(nanoseconds: 2_000_000_000)
                 if process.isRunning {
                     kill(process.processIdentifier, SIGKILL)
@@ -1003,14 +1247,16 @@ enum ComputerUseService {
             Task {
                 try? await Task.sleep(nanoseconds: UInt64(timeout * 1_000_000_000))
                 guard process.isRunning else { return }
-                process.terminate()
                 // Resume the caller with the timeout right away; the
                 // dedupe box makes the (later) terminationHandler a no-op.
+                // Publish the timeout before sending SIGTERM so a fast
+                // termination handler cannot win the race with a success.
                 finish(.failure(NSError(
                     domain: "ComputerUseService",
                     code: 3,
                     userInfo: [NSLocalizedDescriptionKey: "agent-desktop command timed out."]
                 )))
+                process.terminate()
                 try? await Task.sleep(nanoseconds: 2_000_000_000)
                 if process.isRunning {
                     kill(process.processIdentifier, SIGKILL)

@@ -127,12 +127,10 @@ struct ComputerUseSettingsPane: View {
                         Label(endToEndResult.summary, systemImage: endToEndResult.success ? "checkmark.seal.fill" : "xmark.seal.fill")
                             .font(.callout.weight(.semibold))
                             .foregroundStyle(endToEndResult.success ? .green : .red)
-                        Text(endToEndResult.detail)
-                            .font(.system(.caption, design: .monospaced))
+                        Text(endToEndResult.compactDetail)
+                            .font(.caption)
                             .textSelection(.enabled)
                             .frame(maxWidth: .infinity, alignment: .leading)
-                            .padding(10)
-                            .background(RoundedRectangle(cornerRadius: AppTheme.Radius.large).fill(Color(nsColor: .textBackgroundColor)))
                             .foregroundStyle(.secondary)
                     }
                 }
@@ -145,6 +143,18 @@ struct ComputerUseSettingsPane: View {
                         if let version = backendStatus.version, !version.isEmpty {
                             infoLine("Version", version)
                         }
+                        if let endToEndResult, !endToEndResult.diagnostic.isEmpty {
+                            Text("Self-test receipt")
+                                .font(.caption.weight(.semibold))
+                                .foregroundStyle(.secondary)
+                            Text(endToEndResult.diagnostic)
+                                .font(.system(.caption, design: .monospaced))
+                                .textSelection(.enabled)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .padding(10)
+                                .background(RoundedRectangle(cornerRadius: AppTheme.Radius.large).fill(Color(nsColor: .textBackgroundColor)))
+                                .foregroundStyle(.secondary)
+                        }
                         Text(backendStatus.diagnostic.isEmpty ? "No diagnostics yet." : backendStatus.diagnostic)
                             .font(.system(.caption, design: .monospaced))
                             .textSelection(.enabled)
@@ -155,7 +165,7 @@ struct ComputerUseSettingsPane: View {
                     }
                     .padding(.top, 8)
                 } label: {
-                    Label(showDiagnosticsLog ? "Hide diagnostics log" : "Show diagnostics log", systemImage: "doc.text.magnifyingglass")
+                    Label(showDiagnosticsLog ? "Hide diagnostics" : "Show diagnostics", systemImage: "doc.text.magnifyingglass")
                         .font(.callout.weight(.medium))
                 }
 
@@ -747,4 +757,3 @@ struct ComputerUseSettingsPane: View {
         )
     }
 }
-
