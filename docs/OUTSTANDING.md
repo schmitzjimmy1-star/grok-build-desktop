@@ -815,6 +815,84 @@ boundary, expected receipts, and stop conditions. Its final marker is
 `GB-S2-WORKER-R3-20260809T032400Z`; parent Tools must be exactly `2 succeeded`, while
 both child receipts remain visible only inside the worker.
 
+### Slice 2 completion receipt — 2026-08-08/09
+
+- Objective: preserve configured, process-ready, discovered, exercised, unavailable,
+  parent, and child browser facts as distinct typed evidence; never promote discovery,
+  prompt attachment, final prose, or a child receipt into invented browser use.
+- Starting main SHA/tree: `f59b7a80a090424c5f94c29a714e409d46c3dcf7` /
+  `a845a7be605b0e8ca666b340f43863e02d381e1e`.
+- Branch and implementation commit SHA: `codex/grokbuild-audit-s2-browser-capability` /
+  `8a19b814b6c17c078e70ba1ef8959dc823cda520` (tree
+  `9a64934e514dc930ddfbc81e75ef79fe039caf2c`).
+- Intended files: the Slice 2 primary and directly necessary files enumerated above;
+  23 paths total. Unexpected files: none.
+- Focused verification: 106 tests, 0 failures. Full candidate `make ship`: 680 tests,
+  0 failures in 23.027 seconds, followed by a matching signed install.
+- `git diff --check`: clean.
+- Candidate installed stamp/hash/signing: `personal` /
+  `codex/grokbuild-audit-s2-browser-capability` / `f59b7a80`, `dirty=true`, version
+  `0.1.20`; installed/dist executable SHA-256
+  `33f62f154956bfaacabcb7fecf6dfe64d22033440680ed9fd4d40509fe0f8c39`;
+  Apple Development Team `DD2GCQJVB4`, deep/strict valid, no quarantine. CLI:
+  `1.0.0 (3cd0d0cbcebe) [stable]`.
+- Disposable proof page: local unauthenticated `127.0.0.1:38192` only; exact title
+  `GB-S2-PROOF-20260809T021928Z` and body `GB-S2-PAGE-20260809T021928Z`. Its exact
+  process and `/tmp/grokbuild-s2-proof.UFm9AP` artifact remain only until merged-main
+  S2-C smoke, then must be stopped and removed without touching a normal Chrome
+  profile.
+- Accepted candidate lanes:
+  - S2-A-R1: marker `GB-S2-REQUESTED-R1-20260809T025610Z`, local tab
+    `BADED3F2-6B39-41D0-AC96-72A1BCF7CD45`, backend
+    `019fe473-e48d-7943-9340-9292a2b5cc0d`; native Grok 4.5, Medium; 1 call /
+    16,161 tokens / `228420000` cost ticks; requested/configured only and zero tools.
+  - S2-B: marker `GB-S2-DISCOVERY-FINAL2-20260809T025338Z`, local tab
+    `19CB3F3A-D12B-4E3F-8122-82599048D4B7`, backend
+    `019fe475-5ae0-7ea0-bcc7-369b479a4512`; direct `gpt-5.6-terra`, Medium; 2 calls /
+    24,278 tokens; one discovery and zero exercise/Source.
+  - S2-C-R1: marker `GB-S2-MULTI-R1-20260809T030204Z`, local tab
+    `04728E9E-DE80-45B3-A0B0-A24E160BDD50`, backend
+    `019fe479-1a40-7f12-818c-15622b09a136`; pinned OpenRouter
+    `deepseek/deepseek-v4-flash-0731`, Medium; 5 calls / 81,670 tokens; one discovery
+    followed by exact successful `list_pages`, `new_page`, and `take_snapshot`
+    receipts, authoritative `chrome-devtools` Source, and exact body marker.
+  - S2-D: marker `GB-S2-ABSENT-FINAL2-20260809T025338Z`, local tab
+    `2E94C4A2-100D-42BC-A170-CAFF1AAE07EB`, backend
+    `019fe47a-6ba8-7620-8810-560aad261744`; same pinned OpenRouter route, Medium;
+    2 calls / 31,036 tokens; one discovery, exact absent capability, zero exercise or
+    Source.
+  - S2-E-R3: marker `GB-S2-WORKER-R3-20260809T032400Z`, local tab
+    `3956D76D-5B36-4BD4-8004-D85355019A57`, parent backend
+    `019fe48f-2bfe-76c1-b877-5f36b3694cb2`, child backend
+    `019fe48f-7d35-7f72-bc90-a1fb31c5965f`; native Grok 4.5, Medium; 6 calls /
+    89,274 tokens / `1126416000` cost ticks. The child has exactly one discovery and
+    one successful use attributed to `grokbuild-browser`; parent Tools remain exactly
+    2 succeeded and parent Sources remain empty.
+- Accepted total: 16 model calls / 242,419 tokens, below the original 320K ceiling;
+  exposed native cost `1354836000` ticks. Direct/OpenRouter receipts exposed no exact
+  cost; no fallback or route substitution occurred.
+- Rejected variance: 14 rejected parent candidates plus the five accepted parents
+  (19 exact candidate parents total) captured zero-tool disobedience, incomplete
+  discovery, user Stop, pre-fix child-ledger lookup, stale installed process, and one
+  mirrored child receipt in the parent count. All are ledgered above or in the final
+  task receipt and were used only to correct the bounded Slice 2 contract.
+- Candidate cleanup: all 19 exact parent backends were deleted; all 19 local tabs and
+  transcript caches were closed through GrokBuild; exactly 19 matching prompt-history
+  rows were removed. Five unindexed child ledger directories could not be addressed by
+  the backend CLI and were moved by exact validated ID to recoverable Trash paths.
+  Active GrokBuild support and backend-session marker searches both returned zero; no
+  non-test session or normal browser profile was changed.
+- Candidate process-zero proof: normal app quit followed by exact-name checks returned
+  zero for `GrokBuild`, `grok`, `GrokBuildComputerUseMCP`, `agent-desktop`, and any
+  GrokBuild-owned managed browser process. The separately ledgered local proof server
+  remains solely for the required post-merge smoke.
+- PR, merge SHA, post-merge install/parity, S2-A/S2-C/S2-D visible smoke, final exact
+  smoke cleanup, proof-page cleanup, Settings -> App agreement, and final process-zero
+  are mandatory post-merge Gates E-H. Their immutable values belong in the PR and
+  final task receipt because they do not exist in this pre-merge source snapshot.
+- Exact next slice after those gates: Slice 3 — Browser Settings unresolved/checking
+  state. Do not begin Slice 3 in this task.
+
 ---
 
 ## Slice 3 — Browser Settings unresolved/checking state
