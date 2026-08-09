@@ -27,6 +27,64 @@ enum SessionSidebarMetadata {
     }
 }
 
+enum SidebarRailAction: CaseIterable {
+    case newChat
+    case sessions
+    case plugins
+    case security
+}
+
+enum SidebarPersistentSelection: Hashable {
+    case workspace(Workspace.ID)
+    case session(UUID)
+}
+
+/// Selection belongs only to the persistent conversation route. The compact rail
+/// launches actions or transient destinations; focus, hover, and the last click do
+/// not turn those buttons into navigation selection.
+enum SidebarSelectionSemantics {
+    static func railActionIsSelected(_ action: SidebarRailAction) -> Bool {
+        false
+    }
+
+    static func workspaceIsSelected(
+        _ workspaceID: Workspace.ID,
+        selectedWorkspaceID: Workspace.ID?,
+        selectedSessionID: UUID?,
+        isConversationRouteActive: Bool
+    ) -> Bool {
+        persistentSelection(
+            selectedWorkspaceID: selectedWorkspaceID,
+            selectedSessionID: selectedSessionID,
+            isConversationRouteActive: isConversationRouteActive
+        ) == .workspace(workspaceID)
+    }
+
+    static func sessionIsSelected(
+        _ sessionID: UUID,
+        selectedSessionID: UUID?,
+        isConversationRouteActive: Bool
+    ) -> Bool {
+        persistentSelection(
+            selectedWorkspaceID: nil,
+            selectedSessionID: selectedSessionID,
+            isConversationRouteActive: isConversationRouteActive
+        ) == .session(sessionID)
+    }
+
+    static func persistentSelection(
+        selectedWorkspaceID: Workspace.ID?,
+        selectedSessionID: UUID?,
+        isConversationRouteActive: Bool
+    ) -> SidebarPersistentSelection? {
+        guard isConversationRouteActive else { return nil }
+        if let selectedSessionID {
+            return .session(selectedSessionID)
+        }
+        return selectedWorkspaceID.map(SidebarPersistentSelection.workspace)
+    }
+}
+
 struct SidebarView: View {
     @Binding var workspaces: [Workspace]
     var orderedWorkspaces: [Workspace]
@@ -35,6 +93,7 @@ struct SidebarView: View {
     var sessions: [SidebarSession] = []
     var hiddenSessionCounts: [Workspace.ID: Int] = [:]
     var selectedSessionID: UUID?
+    var isConversationRouteActive = true
     @Binding var expandedSessionWorkspaceIDs: Set<Workspace.ID>
     @Binding var hiddenSessionWorkspaceIDs: Set<Workspace.ID>
 
@@ -72,6 +131,41 @@ struct SidebarView: View {
             $0.displayName.localizedCaseInsensitiveContains(filter)
         }
         return base
+    }
+
+    private var persistentSelection: Binding<SidebarPersistentSelection?> {
+        Binding(
+            get: {
+                SidebarSelectionSemantics.persistentSelection(
+                    selectedWorkspaceID: selectedWorkspaceID,
+                    selectedSessionID: visibleSelectedSessionID,
+                    isConversationRouteActive: isConversationRouteActive
+                )
+            },
+            set: { _ in
+                // Project/session buttons remain the only mutation owners. The
+                // List binding projects their state into native row selection.
+            }
+        )
+    }
+
+    /// A session can own native sidebar selection only when its row exists in
+    /// this projection. Restored/placeholder identity must not hide the selected
+    /// project behind a row the user cannot see or reach.
+    private var visibleSelectedSessionID: UUID? {
+        guard let selectedSessionID,
+              let selectedWorkspaceID,
+              !hiddenSessionWorkspaceIDs.contains(selectedWorkspaceID) else {
+            return nil
+        }
+        let projectSessions = sessions(for: selectedWorkspaceID)
+        let renderedSessions = isSessionsExpanded(for: selectedWorkspaceID)
+            ? projectSessions
+            : collapsedSessions(from: projectSessions)
+        guard renderedSessions.contains(where: { $0.id == selectedSessionID }) else {
+            return nil
+        }
+        return selectedSessionID
     }
 
     private func sessions(for workspaceID: Workspace.ID) -> [SidebarSession] {
@@ -129,10 +223,10 @@ struct SidebarView: View {
             // Navigation-only rail (Codex parity Slice 1): Activity moved to the
             // header bell; Workflows lives in Settings and the composer command menu.
             VStack(spacing: 2) {
-                CodexRailButton(title: "New chat", systemImage: "square.and.pencil", action: onNewChat)
-                CodexRailButton(title: "Sessions", systemImage: "clock.arrow.circlepath", action: onBrowseSessions)
-                CodexRailButton(title: "Plugins", systemImage: "shippingbox", action: onOpenPlugins)
-                CodexRailButton(title: "Security", systemImage: "checkmark.shield", action: onOpenSecurity)
+                CodexRailButton(title: "New chat", systemImage: "square.and.pencil", railAction: .newChat, action: onNewChat)
+                CodexRailButton(title: "Sessions", systemImage: "clock.arrow.circlepath", railAction: .sessions, action: onBrowseSessions)
+                CodexRailButton(title: "Plugins", systemImage: "shippingbox", railAction: .plugins, action: onOpenPlugins)
+                CodexRailButton(title: "Security", systemImage: "checkmark.shield", railAction: .security, action: onOpenSecurity)
             }
             .padding(.horizontal, 8)
             .padding(.bottom, 8)
@@ -155,7 +249,7 @@ struct SidebarView: View {
                     .transition(.move(edge: .top).combined(with: .opacity))
             }
 
-            List {
+            List(selection: persistentSelection) {
                 Section {
                     ForEach(filtered) { ws in
                         Button {
@@ -165,7 +259,12 @@ struct SidebarView: View {
                             WorkspaceRow(
                                 workspace: ws,
                                 isPinned: pinnedWorkspaceIDs.contains(ws.id),
-                                isSelected: selectedWorkspaceID == ws.id,
+                                isSelected: SidebarSelectionSemantics.workspaceIsSelected(
+                                    ws.id,
+                                    selectedWorkspaceID: selectedWorkspaceID,
+                                    selectedSessionID: visibleSelectedSessionID,
+                                    isConversationRouteActive: isConversationRouteActive
+                                ),
                                 hasSessions: !projectSessions.isEmpty,
                                 areSessionsHidden: hiddenSessionWorkspaceIDs.contains(ws.id),
                                 onToggleSessions: {
@@ -174,6 +273,23 @@ struct SidebarView: View {
                             )
                         }
                         .buttonStyle(.plain)
+                        .tag(SidebarPersistentSelection.workspace(ws.id))
+                        .accessibilityAddTraits(
+                            SidebarSelectionSemantics.workspaceIsSelected(
+                                ws.id,
+                                selectedWorkspaceID: selectedWorkspaceID,
+                                selectedSessionID: visibleSelectedSessionID,
+                                isConversationRouteActive: isConversationRouteActive
+                            ) ? .isSelected : []
+                        )
+                        .accessibilityRemoveTraits(
+                            SidebarSelectionSemantics.workspaceIsSelected(
+                                ws.id,
+                                selectedWorkspaceID: selectedWorkspaceID,
+                                selectedSessionID: visibleSelectedSessionID,
+                                isConversationRouteActive: isConversationRouteActive
+                            ) ? [] : .isSelected
+                        )
                         .listRowInsets(EdgeInsets(top: 2, leading: 8, bottom: 2, trailing: 8))
                         .listRowBackground(Color.clear)
                         .contextMenu {
@@ -322,7 +438,11 @@ struct SidebarView: View {
     private func sessionRow(_ session: SidebarSession) -> some View {
         SessionSidebarRow(
             session: session,
-            isSelected: selectedSessionID == session.id,
+            isSelected: SidebarSelectionSemantics.sessionIsSelected(
+                session.id,
+                selectedSessionID: selectedSessionID,
+                isConversationRouteActive: isConversationRouteActive
+            ),
             onSelect: { onSelectSession(session.id) },
             onRename: {
                 renamingSessionID = session.id
@@ -330,6 +450,7 @@ struct SidebarView: View {
             },
             onClose: { onCloseSession(session.id) }
         )
+        .tag(SidebarPersistentSelection.session(session.id))
         .listRowInsets(EdgeInsets(top: 2, leading: 18, bottom: 2, trailing: 10))
         .listRowBackground(Color.clear)
         .contextMenu {
@@ -379,6 +500,7 @@ struct SidebarView: View {
 private struct CodexRailButton: View {
     let title: String
     let systemImage: String
+    let railAction: SidebarRailAction
     let action: () -> Void
     @State private var isHovered = false
 
@@ -395,12 +517,16 @@ private struct CodexRailButton: View {
             // Workbench W-1 (2026-08-08): denser rail, matching the target
             // photographs' compact navigation rows.
             .frame(height: 28)
-            .accessibilityIdentifier("grok-rail-\(title.lowercased().replacingOccurrences(of: " ", with: "-"))")
             .background(isHovered ? AppTheme.Palette.surfaceHover : Color.clear,
                         in: RoundedRectangle(cornerRadius: AppTheme.Radius.medium))
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        .accessibilityLabel(title)
+        .accessibilityIdentifier("grok-rail-\(title.lowercased().replacingOccurrences(of: " ", with: "-"))")
+        .accessibilityRemoveTraits(
+            SidebarSelectionSemantics.railActionIsSelected(railAction) ? [] : .isSelected
+        )
         .onHover { isHovered = $0 }
     }
 }
@@ -442,6 +568,8 @@ private struct SessionSidebarRow: View {
             .buttonStyle(.plain)
             .accessibilityLabel(SessionSidebarMetadata.accessibilityLabel(for: session))
             .accessibilityIdentifier("grok-sidebar-session-row")
+            .accessibilityAddTraits(isSelected ? .isSelected : [])
+            .accessibilityRemoveTraits(isSelected ? [] : .isSelected)
 
             Menu {
                 Button("Rename…", action: onRename)
@@ -457,6 +585,8 @@ private struct SessionSidebarRow: View {
             .opacity(isHovered || isSelected ? 1 : 0)
         }
         .onHover { isHovered = $0 }
+        .accessibilityAddTraits(isSelected ? .isSelected : [])
+        .accessibilityRemoveTraits(isSelected ? [] : .isSelected)
         .help(SessionSidebarMetadata.helpText(for: session))
     }
 }
@@ -507,5 +637,7 @@ private struct WorkspaceRow: View {
             isSelected ? AppTheme.Palette.accentSoft : Color.clear,
             in: RoundedRectangle(cornerRadius: AppTheme.Radius.small)
         )
+        .accessibilityAddTraits(isSelected ? .isSelected : [])
+        .accessibilityRemoveTraits(isSelected ? [] : .isSelected)
     }
 }

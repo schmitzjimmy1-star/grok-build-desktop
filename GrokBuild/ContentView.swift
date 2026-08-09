@@ -192,6 +192,7 @@ struct ContentView: View {
                 sessions: sidebarSessions,
                 hiddenSessionCounts: hiddenSessionCounts,
                 selectedSessionID: selectedSessionID,
+                isConversationRouteActive: route == .session,
                 expandedSessionWorkspaceIDs: $sessionLayout.expandedSessionWorkspaceIDs,
                 hiddenSessionWorkspaceIDs: $sessionLayout.hiddenSessionWorkspaceIDs,
                 onAddWorkspace: { showPicker = true },
@@ -1480,6 +1481,10 @@ struct ContentView: View {
         if let active = activeSession, active.workspace.id == workspace.id {
             return
         }
+        // Project navigation owns persistent selection immediately. Clear a
+        // session from the previous project before resuming or creating the new
+        // project's preferred session so AX never points at a hidden stale row.
+        selectedSessionID = nil
         if let preferred = preferredSessionID(for: workspace) {
             selectSession(preferred)
         } else {

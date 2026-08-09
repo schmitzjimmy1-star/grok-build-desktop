@@ -119,6 +119,19 @@ final class CodexShellParityTests: XCTestCase {
             )
         }
 
+        XCTAssertTrue(sidebar.contains("SidebarSelectionSemantics.railActionIsSelected"),
+                      "rail actions must explicitly reject persistent selection")
+        XCTAssertTrue(sidebar.contains(".accessibilityRemoveTraits("),
+                      "unselected rail/workspace/session controls must remove stale selected traits")
+        XCTAssertTrue(sidebar.contains("SidebarSelectionSemantics.workspaceIsSelected"),
+                      "workspace highlight and AX state must derive from one route-aware selection")
+        XCTAssertTrue(sidebar.contains("SidebarSelectionSemantics.sessionIsSelected"),
+                      "session highlight and AX state must derive from one route-aware selection")
+        XCTAssertTrue(sidebar.contains("List(selection: persistentSelection)"),
+                      "native List selection must expose the one real persistent destination")
+        XCTAssertTrue(sidebar.contains("visibleSelectedSessionID"),
+                      "a hidden or unavailable session row must fall back to project selection")
+
         let contentView = try source("GrokBuild/ContentView.swift")
         for wiring in [
             "activityLane:",
@@ -130,6 +143,10 @@ final class CodexShellParityTests: XCTestCase {
                 "Slice 1 contract: ContentView must not feed operational lanes into the sidebar via `\(wiring)`"
             )
         }
+        XCTAssertTrue(contentView.contains("isConversationRouteActive: route == .session"),
+                      "ContentView must bind sidebar selection to the real AppRoute")
+        XCTAssertTrue(contentView.contains("selectedSessionID = nil"),
+                      "project switches must clear a hidden stale session selection")
     }
 
     /// Slice 5 presentation contract (replaced the Slice 0 red-baseline
