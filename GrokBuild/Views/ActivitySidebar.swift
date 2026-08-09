@@ -4,6 +4,25 @@ import SwiftUI
 /// drawer and the compact task pill. These helpers format existing receipts;
 /// they do not decide lifecycle state.
 enum ActivitySidebarPresentation {
+    static func summaryDetail(_ snapshot: RunEvidenceSnapshot) -> String {
+        if snapshot.outcome == .completionReceiptMissing {
+            return "The reply arrived, but the backend never confirmed the turn finished."
+        }
+        if snapshot.outcome == .userStopped {
+            return "You stopped this run before it finished."
+        }
+        if snapshot.activeWorkerCount > 0 {
+            return "Turn completed; \(snapshot.activeWorkerCount) \(snapshot.activeWorkerCount == 1 ? "worker is" : "workers are") still active."
+        }
+        if snapshot.unresolvedWorkerCount > 0 {
+            return "Turn completed; \(snapshot.unresolvedWorkerCount) worker \(snapshot.unresolvedWorkerCount == 1 ? "receipt remains" : "receipts remain") unresolved."
+        }
+        if !snapshot.unresolvedErrors.isEmpty {
+            return "Turn completed with \(snapshot.unresolvedErrors.count) unresolved \(snapshot.unresolvedErrors.count == 1 ? "error" : "errors")."
+        }
+        return "Turn completed; no tool or worker failures were reported."
+    }
+
     static func uniqueFilePaths(_ paths: [String]) -> [String] {
         var seen = Set<String>()
         return paths.compactMap { rawPath in
@@ -96,6 +115,9 @@ enum ActivitySidebarPresentation {
         }
         if let redactedError {
             parts.append("Error: \(TranscriptTextPresentation.singleLine(redactedError, maxLength: 120))")
+        } else if BackgroundActivityStatusPolicy.canonicalWorkerTerminalStatus(status) == "completed",
+                  (toolCallCount ?? 0) > 0 {
+            parts.append("Child tool outcomes were not reported to the parent receipt")
         }
         return parts.joined(separator: " • ")
     }
@@ -589,7 +611,7 @@ struct ActivitySidebar: View {
                 VStack(alignment: .leading, spacing: 3) {
                     Text(snapshot.outcome.displayName)
                         .font(AppTheme.Typography.captionStrong)
-                    Text(summaryDetail(snapshot))
+                    Text(ActivitySidebarPresentation.summaryDetail(snapshot))
                         .font(AppTheme.Typography.caption)
                         .foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
@@ -624,7 +646,9 @@ struct ActivitySidebar: View {
         .padding(12)
         .grokGlassSurface(cornerRadius: AppTheme.Radius.large, emphasized: true)
         .accessibilityElement(children: .combine)
-        .accessibilityLabel("Run outcome: \(snapshot.outcome.displayName). \(summaryDetail(snapshot))")
+        .accessibilityLabel(
+            "Run outcome: \(snapshot.outcome.displayName). \(ActivitySidebarPresentation.summaryDetail(snapshot))"
+        )
     }
 
     private func metric(_ label: String, value: String) -> some View {
@@ -772,32 +796,20 @@ struct ActivitySidebar: View {
         return total.formatted()
     }
 
-    private func summaryDetail(_ snapshot: RunEvidenceSnapshot) -> String {
-        if snapshot.outcome == .completionReceiptMissing {
-            return "The reply arrived, but the backend never confirmed the turn finished."
-        }
-        if snapshot.outcome == .userStopped {
-            return "You stopped this run before it finished."
-        }
-        if snapshot.activeWorkerCount > 0 {
-            return "\(snapshot.activeWorkerCount) \(snapshot.activeWorkerCount == 1 ? "worker" : "workers") still running."
-        }
-        if !snapshot.unresolvedErrors.isEmpty {
-            return "Finished with \(snapshot.unresolvedErrors.count) unresolved \(snapshot.unresolvedErrors.count == 1 ? "error" : "errors")."
-        }
-        return "Everything finished and checked out."
-    }
-
     private func summarySymbol(_ snapshot: RunEvidenceSnapshot) -> String {
         if snapshot.outcome == .completionReceiptMissing { return "exclamationmark.triangle" }
         if snapshot.outcome == .userStopped { return "stop.circle" }
         if snapshot.activeWorkerCount > 0 { return "bolt.circle" }
-        if !snapshot.unresolvedErrors.isEmpty { return "checkmark.circle.badge.exclamationmark" }
+        if snapshot.unresolvedWorkerCount > 0 || !snapshot.unresolvedErrors.isEmpty {
+            return "checkmark.circle.badge.exclamationmark"
+        }
         return "checkmark.circle"
     }
 
     private func summaryColor(_ snapshot: RunEvidenceSnapshot) -> Color {
-        if snapshot.outcome == .completionReceiptMissing || !snapshot.unresolvedErrors.isEmpty {
+        if snapshot.outcome == .completionReceiptMissing
+            || snapshot.unresolvedWorkerCount > 0
+            || !snapshot.unresolvedErrors.isEmpty {
             return .orange
         }
         if snapshot.outcome == .userStopped { return .secondary }

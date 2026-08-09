@@ -251,7 +251,7 @@ final class ActivitySidebarTests: XCTestCase {
         )
         XCTAssertEqual(
             ActivitySidebarPresentation.workerReceiptDetail(completed),
-            "1.2 sec • 7 tools"
+            "1.2 sec • 7 tools • Child tool outcomes were not reported to the parent receipt"
         )
         XCTAssertEqual(
             ActivitySidebarPresentation.activityStatus("unknown"),
@@ -260,6 +260,109 @@ final class ActivitySidebarTests: XCTestCase {
         XCTAssertEqual(
             ActivitySidebarPresentation.activityStatus("orphaned"),
             "No final report (orphaned)"
+        )
+    }
+
+    func testCompletedDiscoveryWithAdmittedUnmetRequestUsesLifecycleOnlyCopy() {
+        let snapshot = makeSnapshot(
+            goalSummary: "Use a browser capability that is unavailable",
+            tools: .init(succeeded: 1, failed: 0, cancelled: 0, unknown: 0)
+        )
+
+        let summary = ActivitySidebarPresentation.summaryDetail(snapshot)
+
+        XCTAssertEqual(summary, "Turn completed; no tool or worker failures were reported.")
+        XCTAssertFalse(summary.localizedCaseInsensitiveContains("checked out"))
+        XCTAssertFalse(summary.localizedCaseInsensitiveContains("request succeeded"))
+        XCTAssertFalse(summary.localizedCaseInsensitiveContains("goal"))
+    }
+
+    func testTerminalFailureStaysUnresolvedAfterParentCompletion() {
+        let snapshot = makeSnapshot(
+            tools: .init(succeeded: 0, failed: 1, cancelled: 0, unknown: 0),
+            unresolvedErrors: ["Terminal exited with status 1"],
+            nextAction: "Review unresolved tool or worker errors."
+        )
+
+        XCTAssertEqual(
+            ActivitySidebarPresentation.summaryDetail(snapshot),
+            "Turn completed with 1 unresolved error."
+        )
+        XCTAssertEqual(snapshot.tools.failed, 1)
+        XCTAssertEqual(snapshot.unresolvedErrors, ["Terminal exited with status 1"])
+        XCTAssertEqual(snapshot.nextAction, "Review unresolved tool or worker errors.")
+    }
+
+    func testMissingReceiptAndUserStopRemainDistinctFromCompletion() {
+        let missing = makeSnapshot(outcome: .completionReceiptMissing)
+        let stopped = makeSnapshot(outcome: .userStopped)
+
+        XCTAssertEqual(
+            ActivitySidebarPresentation.summaryDetail(missing),
+            "The reply arrived, but the backend never confirmed the turn finished."
+        )
+        XCTAssertEqual(
+            ActivitySidebarPresentation.summaryDetail(stopped),
+            "You stopped this run before it finished."
+        )
+        XCTAssertFalse(missing.binding.isSettled)
+        XCTAssertFalse(stopped.binding.isSettled)
+    }
+
+    func testActiveUnknownAndOrphanedWorkersCannotRenderCleanCompletion() {
+        let active = makeSnapshot(workers: [makeWorker(status: "running")])
+        let unknown = makeSnapshot(
+            workers: [makeWorker(status: "unknown")],
+            nextAction: "Review unresolved worker receipts."
+        )
+        let orphaned = makeSnapshot(
+            workers: [makeWorker(status: "orphaned")],
+            nextAction: "Review unresolved worker receipts."
+        )
+
+        XCTAssertEqual(
+            ActivitySidebarPresentation.summaryDetail(active),
+            "Turn completed; 1 worker is still active."
+        )
+        XCTAssertEqual(
+            ActivitySidebarPresentation.summaryDetail(unknown),
+            "Turn completed; 1 worker receipt remains unresolved."
+        )
+        XCTAssertEqual(
+            ActivitySidebarPresentation.summaryDetail(orphaned),
+            "Turn completed; 1 worker receipt remains unresolved."
+        )
+        XCTAssertEqual(unknown.unresolvedWorkerCount, 1)
+        XCTAssertEqual(orphaned.unresolvedWorkerCount, 1)
+    }
+
+    func testCompletedWorkerWithChildToolsKeepsOutcomeUnresolved() {
+        let worker = RunEvidenceSnapshot.Worker(
+            id: "worker-1",
+            title: "Run false",
+            status: "completed",
+            childID: "child-1",
+            durationMilliseconds: 100,
+            toolCallCount: 1,
+            redactedError: nil
+        )
+        let snapshot = makeSnapshot(workers: [worker])
+
+        XCTAssertTrue(worker.isCompleted)
+        XCTAssertTrue(worker.hasUnresolvedChildToolOutcome)
+        XCTAssertTrue(worker.isUnresolved)
+        XCTAssertEqual(snapshot.unresolvedWorkerCount, 1)
+        XCTAssertEqual(
+            ActivitySidebarPresentation.summaryDetail(snapshot),
+            "Turn completed; 1 worker receipt remains unresolved."
+        )
+        XCTAssertTrue(
+            ActivitySidebarPresentation.workerReceiptDetail(
+                status: worker.status,
+                durationMilliseconds: worker.durationMilliseconds,
+                toolCallCount: worker.toolCallCount,
+                redactedError: worker.redactedError
+            ).contains("Child tool outcomes were not reported to the parent receipt")
         )
     }
 
@@ -302,6 +405,60 @@ final class ActivitySidebarTests: XCTestCase {
         XCTAssertTrue(chat.contains("Activity opened with the preserved run evidence"))
         XCTAssertTrue(chat.contains("Turn finished. \\(outcome)."))
         XCTAssertEqual(chat.components(separatedBy: "Turn finished").count - 1, 1)
+    }
+
+    private func makeSnapshot(
+        outcome: ChatStore.TurnOutcome = .completed,
+        goalSummary: String? = nil,
+        workers: [RunEvidenceSnapshot.Worker] = [],
+        tools: RunEvidenceSnapshot.ToolSummary = .init(
+            succeeded: 0,
+            failed: 0,
+            cancelled: 0,
+            unknown: 0
+        ),
+        unresolvedErrors: [String] = [],
+        nextAction: String = "The agent reported no next action."
+    ) -> RunEvidenceSnapshot {
+        RunEvidenceSnapshot(
+            binding: .init(
+                localTabID: UUID(),
+                workspaceID: UUID(),
+                backendSessionID: "backend",
+                processGeneration: 1,
+                requestID: "prompt",
+                isSettled: outcome == .completed
+            ),
+            goalSummary: goalSummary,
+            plan: [],
+            workers: workers,
+            tools: tools,
+            artifacts: [],
+            gitReviewFiles: [],
+            process: .init(state: "Settled", model: "grok-4.5", mcps: []),
+            continuity: .init(
+                status: "backendBound",
+                reason: "freshBackendBound",
+                provenance: "Fresh backend bound",
+                requiresRecoveryAction: false
+            ),
+            usage: .init(totalTokens: 100, modelCalls: 1, turnCount: 1),
+            outcome: outcome,
+            unresolvedErrors: unresolvedErrors,
+            nextAction: nextAction
+        )
+    }
+
+    private func makeWorker(status: String) -> RunEvidenceSnapshot.Worker {
+        .init(
+            id: "worker-\(status)",
+            title: "Worker",
+            status: status,
+            childID: status == "orphaned" ? "child-1" : nil,
+            durationMilliseconds: nil,
+            toolCallCount: nil,
+            redactedError: nil
+        )
     }
 
     @MainActor

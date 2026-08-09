@@ -2,6 +2,22 @@ import XCTest
 @testable import GrokBuild
 
 final class RunEvidenceSnapshotTests: XCTestCase {
+    func testCompletedWorkerLifecycleDoesNotProveChildToolSuccess() {
+        let worker = RunEvidenceSnapshot.Worker(
+            id: "worker",
+            title: "Child command",
+            status: "completed",
+            childID: "child",
+            durationMilliseconds: 10,
+            toolCallCount: 1,
+            redactedError: nil
+        )
+
+        XCTAssertTrue(worker.isCompleted)
+        XCTAssertTrue(worker.isUnresolved)
+        XCTAssertFalse(worker.isActive)
+    }
+
     func testSnapshotUpdatesOnlyGitReviewFilesWithoutChangingItsRunBinding() {
         let binding = RunEvidenceSnapshot.Binding(
             localTabID: UUID(),
@@ -29,7 +45,7 @@ final class RunEvidenceSnapshotTests: XCTestCase {
             usage: .init(totalTokens: 1_276_441, modelCalls: 15, turnCount: 8),
             outcome: .completed,
             unresolvedErrors: [],
-            nextAction: "No further action reported."
+            nextAction: "The agent reported no next action."
         )
 
         let updated = snapshot.replacingGitReviewFiles(["Sources/App.swift"])
@@ -37,6 +53,7 @@ final class RunEvidenceSnapshotTests: XCTestCase {
         XCTAssertEqual(updated.binding, binding)
         XCTAssertEqual(updated.usage.totalTokens, 1_276_441)
         XCTAssertEqual(updated.gitReviewFiles, ["Sources/App.swift"])
+        XCTAssertEqual(updated.nextAction, "The agent reported no next action.")
     }
 
     @MainActor

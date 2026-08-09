@@ -3760,10 +3760,12 @@ final class ChatStore {
             nextAction = "Reconnect before sending another turn."
         } else if workers.contains(where: \.isActive) {
             nextAction = "Waiting for worker receipts."
+        } else if workers.contains(where: \.isUnresolved) {
+            nextAction = "Review unresolved worker receipts."
         } else if !unresolvedErrors.isEmpty {
             nextAction = "Review unresolved tool or worker errors."
         } else {
-            nextAction = "No further action reported."
+            nextAction = "The agent reported no next action."
         }
         let latestUserMessage = messages.last(where: { $0.role == .user })?.content
         return RunEvidenceSnapshot(
