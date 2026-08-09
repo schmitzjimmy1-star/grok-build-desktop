@@ -29,7 +29,7 @@ below so truth and lifecycle contracts land before presentation and optimization
 | 1 | Stop Activity from claiming task success from transport completion | High | 4 prompts; up to 220K tokens | Merged and accepted |
 | 2 | Separate browser process readiness, catalog capability, requested use, and proven use | High | 5 prompts; up to 320K tokens | Merged and accepted |
 | 3 | Replace Browser Settings false-negative startup flicker with an unresolved/checking state | Medium | 3 prompts; up to 5,000,000 tokens | Merged and accepted |
-| 4 | Replace raw Computer Use self-test JSON with a compact parsed receipt | Medium | 4 prompts; up to 240K tokens | Open |
+| 4 | Replace raw Computer Use self-test JSON with a compact parsed receipt | Medium | 4 prompts; up to 240K tokens | Merged and accepted |
 | 5 | Repair navigation-rail accessibility selection semantics | Medium | 3 prompts; up to 200K tokens | Open |
 | 6 | Reduce tiny-turn context cost and guarantee zero owned processes at slice close | High | 6 prompts; up to 480K tokens | Open |
 
@@ -1325,6 +1325,56 @@ tool/worker, missing terminal receipt, or accumulated actual usage already at/ab
   self-test repeated the compact receipt with protocol `2024-11-05`, helper `0.1.1`,
   31 apps, 191 ms, Accessibility proven, screenshots not required, and opt-in-only
   `<redacted 31 app records>` diagnostics; final normal quit left zero owned processes.
+
+### Slice 4 completion receipt — 2026-08-09
+
+- Content commit `990e4c80257b433e99c62f2c7384680519d9ea0c` (tree
+  `c6735df7e7a7837f5003423d33a9f6fcc87b05e9`) was pushed by ordinary non-force push
+  to `personal/codex/grokbuild-audit-s4-computer-use-receipt`. PR
+  [#26](https://github.com/schmitzjimmy1-star/grok-build-desktop/pull/26) was ready,
+  matched that exact reviewed head and seven-path scope, reported no required checks,
+  and merged normally as `1205c60f4dec0b2ee97aba586133fae267a82e1c`.
+- Clean merged `main` matched `personal/main` at that merge commit. `make ship` passed
+  all 695 tests and installed version `0.1.20` with `dirty=false`. Installed/dist
+  executable SHA-256 was
+  `65827a1cb2e42d99c99100bc812c000afad88142198e9668930d6ac3aa1f55aa` with byte
+  parity; Team `DD2GCQJVB4` signing passed deep/strict validation and the app had no
+  quarantine attribute.
+- Merged-main Settings -> Computer Use repeated the compact self-test: protocol
+  `2024-11-05`, helper `0.1.1`, command `computer_list_apps`, 32 apps, 190 ms,
+  Accessibility proven, screenshots not required, and no default raw inventory.
+- Merged S4-C used pinned OpenRouter `deepseek/deepseek-v4-flash-0731`, searched once,
+  invoked the frozen nonexistent bundle once, preserved `APP_NOT_FOUND` as one failed
+  tool separately from parent completion, and did not retry: marker
+  `GB-S4-FAIL-MAIN-20260809T172106Z`, local tab
+  `C5B71366-5B33-4881-A056-21ABE1B8839F`, backend
+  `019fe78c-2ba5-78b1-8bc9-0d816156e870`, 3 calls / 45,575 tokens.
+- Merged S4-D used native Grok 4.5 and exactly one `general-purpose` child
+  `019fe78d-f7be-7c20-87c8-8805f9618f7c`. The child searched once, invoked
+  `computer_list_apps` once, returned 35 apps, and settled 2/2 child receipts
+  successfully; the parent only spawned, waited, collected, and emitted the marker.
+  Receipt: `GB-S4-WORKER-MAIN-20260809T172106Z`, local tab
+  `E9F55E2E-27ED-4E7E-AA10-8EBB7DEE8352`, parent backend
+  `019fe78d-9ad5-79f3-b980-fcc27739d162`, 6 calls / 88,659 tokens.
+- Final cleanup closed those two exact tabs and deleted those two exact parent
+  backends. Parent deletion cascaded the child from the backend registry but left its
+  exact local child directory; that single validated directory was moved to
+  `~/.Trash/GrokBuild-S4-main-child-019fe78d-f7be-7c20-87c8-8805f9618f7c` for
+  recoverability. Both markers then returned zero in live GrokBuild transcripts and
+  `.grok/sessions`; no unrelated session or state changed. A quit/relaunch showed no
+  Slice 4 smoke tab, and the final normal quit left zero GrokBuild-owned processes.
+- CLI identity remained `grok 1.0.0 (3cd0d0cbcebe) [stable]`. Gate H is repeated on
+  the clean final ledger merge below; the closing ledger-only commit changes no app
+  source or acceptance behavior and therefore does not justify another billable
+  provider prompt.
+- Known residual risk: backend deletion can cascade a child from the registry without
+  removing that child's local session directory. Slice 4 handled both observed cases
+  by exact-ID, recoverable moves to Trash; broad cleanup remains forbidden. The typed
+  receipt deliberately proves the list-apps command contract only; Accessibility and
+  screenshot truth stays prerequisite metadata, not proof that a screenshot path ran.
+- Exact next slice: Slice 5 — navigation-rail accessibility selection. Slice 5 remains
+  forbidden until this closing ledger receipt is merged, final `main` is re-shipped,
+  Settings -> App agrees with the final commit, and Gates F-H are green.
 
 ---
 
