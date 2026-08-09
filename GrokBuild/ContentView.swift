@@ -671,18 +671,15 @@ struct ContentView: View {
     }
 
     private func toggleBrowserToolsFromChat() {
-        var settings = BrowserSettingsStore.load()
-        guard AgentBrowserService.browserToolsConfigurationIssue(settings: settings) == nil else {
+        let settings = BrowserSettingsStore.loadApplied()
+        guard settings.enabled,
+              AgentBrowserService.browserToolsConfigurationIssue(settings: settings) == nil else {
             openSettings(tab: .browser)
             return
         }
-
-        settings.enabled.toggle()
-        BrowserSettingsStore.save(settings)
-        BrowserSettingsStore.saveApplied(settings)
-
-        Task {
-            await activeStore.reloadConfiguration()
+        let needsReconnect = activeStore.toggleBuiltInTool(.browser)
+        if needsReconnect {
+            Task { await activeStore.reloadConfiguration() }
         }
     }
 
@@ -697,21 +694,22 @@ struct ContentView: View {
         BrowserSettingsStore.save(settings)
         BrowserSettingsStore.saveApplied(settings)
 
-        guard settings.enabled else { return }
+        guard settings.enabled, activeStore.isBuiltInToolEnabled(.browser) else { return }
         Task {
             await activeStore.reloadConfiguration()
         }
     }
 
     private func toggleComputerUseFromChat() {
-        let settings = ComputerUseSettingsStore.load()
-        Task {
-            let result = await ComputerUseService.applyEnabled(!settings.enabled) {
-                await activeStore.reloadConfiguration()
-            }
-            if case .needsSetup = result {
-                openSettings(tab: .computerUse)
-            }
+        let settings = ComputerUseSettingsStore.loadApplied()
+        guard settings.enabled,
+              ComputerUseService.configurationIssue(settings: settings) == nil else {
+            openSettings(tab: .computerUse)
+            return
+        }
+        let needsReconnect = activeStore.toggleBuiltInTool(.computerUse)
+        if needsReconnect {
+            Task { await activeStore.reloadConfiguration() }
         }
     }
 

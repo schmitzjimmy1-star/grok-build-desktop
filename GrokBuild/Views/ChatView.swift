@@ -314,9 +314,10 @@ struct ChatView: View {
     @State private var toolPillStatus = ToolPillStatus()
     @FocusState private var inputFocused: Bool
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @AppStorage(BrowserSettingsKeys.appliedEnabled) private var browserToolsEnabled = BrowserSettings.defaults.enabled
-    @AppStorage(ComputerUseSettingsKeys.appliedEnabled) private var computerUseEnabled = ComputerUseSettings.defaults.enabled
     @AppStorage(GrokSettingsKeys.memoryEnabled) private var memoryEnabled = GrokPermissionSettings.defaults.memoryEnabled
+
+    private var browserToolsEnabled: Bool { store.isBuiltInToolEnabled(.browser) }
+    private var computerUseEnabled: Bool { store.isBuiltInToolEnabled(.computerUse) }
 
     @State private var cachedCustomSubagentNames: [String] = []
     @State private var showSavedWorkflows = false
@@ -651,7 +652,7 @@ struct ChatView: View {
                     onStartNewSession: {
                         store.modelSwitchError = nil
                         store.modelSwitchNeedsNewSession = false
-                        Task { await store.startNewSession() }
+                        Task { await store.startNewSession(resetThreadTools: true) }
                     },
                     onDismiss: {
                         store.modelSwitchError = nil
@@ -1700,12 +1701,12 @@ struct ChatView: View {
             }
 
             Section("MCP connections") {
-                if store.promptMCPInventoryIsLoading && store.promptMCPOptions.isEmpty {
+                if store.promptMCPInventoryIsLoading && store.attachablePromptMCPOptions.isEmpty {
                     Text("Checking connections…")
-                } else if store.promptMCPOptions.isEmpty {
+                } else if store.attachablePromptMCPOptions.isEmpty {
                     Text(store.promptMCPInventoryUnavailable ? "MCP connections unavailable" : "No connected MCPs")
                 } else {
-                    ForEach(store.promptMCPOptions) { option in
+                    ForEach(store.attachablePromptMCPOptions) { option in
                         Button {
                             store.togglePromptMCPAttachment(named: option.name)
                         } label: {
@@ -1916,7 +1917,10 @@ struct ChatView: View {
         if store.liveRunEvidenceProjection != nil || store.runEvidenceSnapshot != nil {
             return store.currentTurnRequestedMCPNames
         }
-        return store.selectedPromptMCPOptions.map(\.name)
+        return Array(
+            Set(store.selectedPromptMCPOptions.map(\.name))
+                .union(store.enabledBuiltInToolNames)
+        ).sorted()
     }
 
     /// Codex parity Slice 5: the compact inspector's presentation model, built
@@ -1930,7 +1934,7 @@ struct ChatView: View {
             attachmentNames: store.fileAttachments.map(\.relativePath),
             requestedMCPNames: activityRequestedMCPNames,
             evidencedMCPServers: evidencedMCPServers,
-            computerUseConfigured: computerUseEnabled,
+            computerUseConfigured: toolPillStatus.computerUseAvailable,
             computerUseStateLabel: computerUseState,
             configuredMCPNames: store.promptMCPOptions.map(\.name),
             mcpProcessStatuses: store.mcpServerStatuses,
@@ -2255,22 +2259,27 @@ struct ChatView: View {
     /// Apply, which restarts the connection and re-triggers the refresh task).
     struct ToolPillStatus {
         var browserIssue: String?
+        var browserAvailable = false
         var browserRuntimeMode: BrowserRuntimeMode = .managed
         var canChooseRuntime = false
         var computerUseIssue: String?
+        var computerUseAvailable = false
     }
 
     nonisolated static func computeToolPillStatus() -> ToolPillStatus {
-        let browserSettings = BrowserSettingsStore.load()
+        let browserSettings = BrowserSettingsStore.loadApplied()
+        let computerUseSettings = ComputerUseSettingsStore.loadApplied()
         let browserBaseReady = AgentBrowserService.bridgeScriptURL() != nil
             && AgentBrowserService.executableURL() != nil
         let managedReady = AgentBrowserService.browserRuntimeConfigurationIssue(settings: browserSettings, mode: .managed) == nil
         let externalReady = AgentBrowserService.browserRuntimeConfigurationIssue(settings: browserSettings, mode: .external) == nil
         return ToolPillStatus(
             browserIssue: AgentBrowserService.browserToolsConfigurationIssue(settings: browserSettings),
+            browserAvailable: browserSettings.enabled,
             browserRuntimeMode: browserSettings.runtimeMode,
             canChooseRuntime: browserBaseReady && (managedReady || externalReady),
-            computerUseIssue: ComputerUseService.configurationIssue(settings: ComputerUseSettingsStore.load())
+            computerUseIssue: ComputerUseService.configurationIssue(settings: computerUseSettings),
+            computerUseAvailable: computerUseSettings.enabled
         )
     }
 
@@ -2286,15 +2295,16 @@ struct ChatView: View {
         let canChooseRuntime = toolPillStatus.canChooseRuntime
         let runtimeMode = toolPillStatus.browserRuntimeMode
         let lifecycle = store.mcpServerStatus(named: "grokbuild-browser")
-        let isConfigured = configurationIssue == nil
+        let isConfigured = toolPillStatus.browserAvailable && configurationIssue == nil
         let needsSetup = browserToolsEnabled && !isConfigured
         let title = needsSetup ? "Browser Setup Needed" : "Browser Tools"
         let icon = browserToolsEnabled && isConfigured ? "globe.badge.chevron.backward" : "globe"
         return Menu {
             if browserToolsEnabled || isConfigured {
-                Button(browserToolsEnabled ? "Turn Browser Tools Off" : "Turn Browser Tools On") {
+                Button(browserToolsEnabled ? "Turn Browser Off for This Thread" : "Turn Browser On for This Thread") {
                     onToggleBrowserTools()
                 }
+                .disabled(store.isStreaming || store.isPreparingSubmit)
             }
 
             if let lifecycle {
@@ -2355,27 +2365,28 @@ struct ChatView: View {
         if let lifecycle {
             return "\(lifecycle.accessibilitySummary). " + (
                 browserToolsEnabled
-                    ? "Disable browser MCP tools and restart the Grok connection."
-                    : "Enable browser MCP tools and restart the Grok connection."
+                    ? "Turn Browser off for this thread; GrokBuild will reconnect this tab."
+                    : "Turn Browser on for this thread; GrokBuild will reconnect this tab."
             )
         }
         return browserToolsEnabled
-            ? "Disable browser MCP tools and restart the Grok connection."
-            : "Enable browser MCP tools and restart the Grok connection."
+            ? "Turn Browser off for this thread."
+            : "Turn Browser on for this thread. It starts off in every new thread."
     }
 
     private var computerUseStatusIndicator: some View {
         let configurationIssue = toolPillStatus.computerUseIssue
         let lifecycle = store.mcpServerStatus(named: "grokbuild-computer-use")
-        let isConfigured = configurationIssue == nil
+        let isConfigured = toolPillStatus.computerUseAvailable && configurationIssue == nil
         let needsSetup = computerUseEnabled && !isConfigured
         let title = needsSetup ? "Computer Use Setup Needed" : "Computer Use"
         let icon = computerUseEnabled && isConfigured ? "desktopcomputer.badge.checkmark" : "desktopcomputer"
         return Menu {
             if computerUseEnabled || isConfigured {
-                Button(computerUseEnabled ? "Turn Computer Use Off" : "Turn Computer Use On") {
+                Button(computerUseEnabled ? "Turn Computer Use Off for This Thread" : "Turn Computer Use On for This Thread") {
                     onToggleComputerUse()
                 }
+                .disabled(store.isStreaming || store.isPreparingSubmit)
             }
 
             if let lifecycle {
@@ -2388,7 +2399,7 @@ struct ChatView: View {
                 Button(configurationIssue) {}
                     .disabled(true)
             } else if !computerUseEnabled {
-                Button("Requires Accessibility permission") {}
+                Button("Starts only when turned on for this thread") {}
                     .disabled(true)
             }
 
@@ -2423,13 +2434,13 @@ struct ChatView: View {
         if let lifecycle {
             return "\(lifecycle.accessibilitySummary). " + (
                 computerUseEnabled
-                    ? "Disable Computer Use MCP tools and restart the Grok connection."
-                    : "Enable Computer Use MCP tools if Accessibility permission is ready."
+                    ? "Turn Computer Use off for this thread; GrokBuild will reconnect this tab."
+                    : "Turn Computer Use on for this thread; GrokBuild will reconnect this tab."
             )
         }
         return computerUseEnabled
-            ? "Disable Computer Use MCP tools and restart the Grok connection."
-            : "Enable Computer Use MCP tools if Accessibility permission is ready."
+            ? "Turn Computer Use off for this thread."
+            : "Turn Computer Use on for this thread. It starts off in every new thread."
     }
 
     // Send-button copy has three states: a genuine continuity block that needs

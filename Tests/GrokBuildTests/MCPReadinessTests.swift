@@ -84,6 +84,48 @@ final class MCPReadinessPolicyTests: XCTestCase {
 }
 
 @MainActor
+final class DemandDrivenBuiltInToolTests: XCTestCase {
+    func testBuiltInToolsDefaultOffAndToggleIndependentlyPerThread() async {
+        let first = ChatStore()
+        let second = ChatStore()
+
+        XCTAssertTrue(first.enabledBuiltInToolNames.isEmpty)
+        XCTAssertTrue(second.enabledBuiltInToolNames.isEmpty)
+        XCTAssertFalse(first.toggleBuiltInTool(.browser), "an idle tab does not need a reconnect")
+        XCTAssertTrue(first.isBuiltInToolEnabled(.browser))
+        XCTAssertFalse(first.isBuiltInToolEnabled(.computerUse))
+        XCTAssertFalse(second.isBuiltInToolEnabled(.browser))
+
+        await first.shutdownPermanently()
+        await second.shutdownPermanently()
+    }
+
+    func testBackendWarmStartPreservesRequestedBuiltInTools() async {
+        let store = ChatStore()
+        _ = store.toggleBuiltInTool(.browser)
+        _ = store.toggleBuiltInTool(.computerUse)
+
+        await store.startNewSession()
+
+        XCTAssertTrue(store.isBuiltInToolEnabled(.browser))
+        XCTAssertTrue(store.isBuiltInToolEnabled(.computerUse))
+        await store.shutdownPermanently()
+    }
+
+    func testExplicitNewSessionResetsBuiltInToolsToOff() async {
+        let store = ChatStore()
+        _ = store.toggleBuiltInTool(.browser)
+        _ = store.toggleBuiltInTool(.computerUse)
+
+        await store.startNewSession(resetThreadTools: true)
+
+        XCTAssertTrue(store.enabledBuiltInToolNames.isEmpty)
+        XCTAssertTrue(store.currentTurnRequestedMCPNames.isEmpty)
+        await store.shutdownPermanently()
+    }
+}
+
+@MainActor
 final class MCPReadinessLaunchTests: XCTestCase {
     func testACPProcessDoesNotBecomeReadyUntilMCPBarrierSettles() async throws {
         let fixtureRoot = FileManager.default.temporaryDirectory

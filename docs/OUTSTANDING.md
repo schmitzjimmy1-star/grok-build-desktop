@@ -1858,6 +1858,89 @@ smoke threads, and pass Gates F–H.
   changes no app behavior and needs no additional provider turn. Slice 8 remains next
   and has not begun.
 
+### Slice 8 completion receipt — 2026-08-09
+
+- Objective: remove Browser and Computer Use from the startup and readiness path of
+  ordinary terminal/files/Git work while preserving exact requested, configured,
+  process-ready, and exercised truth for explicitly selected helpers.
+- Starting main SHA/tree: `fc3eff60d31e3df6ba33a7c0bf5b0d2aa6065e8f` /
+  `91b4bcb4d5668b9984bd8900c6011bfc54a5331b`.
+- Branch and implementation commit/tree:
+  `codex/grokbuild-s8-demand-driven-tools` /
+  `74f1d3f` / `c971c31b4a57d3ace72327da1b333b5fad3a23d1`.
+- Intended files: `GrokBuild/ContentView.swift`,
+  `GrokBuild/Services/ChatStore.swift`, `GrokBuild/Views/ChatView.swift`,
+  `README.md`, `Tests/GrokBuildTests/MCPReadinessTests.swift`, and this required
+  campaign ledger/status closeout. Unexpected files: none.
+- Implementation: global Browser and Computer Use settings now mean available, while
+  exact per-thread toggles default off in memory. Only selected built-ins enter the
+  immutable ACP launch set and readiness barrier. First-intent warm start preserves
+  the selection; an explicit fresh-session boundary resets it. Built-ins no longer
+  appear as generic attachable MCP rows, and Activity derives requested evidence from
+  the exact thread selection without claiming configured or used state.
+- Focused tests: demand-driven built-in default-off/independence, warm-start
+  preservation, and explicit fresh-session reset passed; MCP readiness `5/5`, composer
+  presentation `3/3`, Settings `18/18`, Browser `19/19`, and Computer Use `36/36`
+  passed.
+- Full verification: final candidate `make ship` passed `714/714` tests with zero
+  failures; `git diff --check` is clean.
+- Candidate installed receipt: version `0.1.20`, `personal` /
+  `codex/grokbuild-s8-demand-driven-tools` / `fc3eff60`, `dirty=true`; installed and
+  dist executable SHA-256
+  `f7dbe8e42cf0da5f89129260c9c181c6a491a3310662692adae9ef60a3362ac2`;
+  Team `DD2GCQJVB4`, deep/strict valid, no quarantine; Grok CLI
+  `1.0.0 (3cd0d0cbcebe) [stable]`.
+- Final installed terminal-only lane:
+  `GB-S8-ACCEPT-NATIVE-TERMINAL-20260809T183000Z`, local tab
+  `97C65A5C-F28E-4419-8D62-4A0338AC9782`, backend
+  `019fe89b-64da-7801-95af-6f078a2b61a5`; Grok 4.5 executed exactly one
+  `/usr/bin/git rev-parse --short HEAD`, returned `fc3eff6`, used `31,031` tokens /
+  `2` model calls, and showed no Browser/Computer Use process or readiness evidence.
+- Final installed Browser lane:
+  `GB-S8-ACCEPT-OPENROUTER-BROWSER-20260809T183500Z`, local tab
+  `31E77AE2-3C3D-480F-AB85-01DE40F9D4AD`, backend
+  `019fe89f-38a2-7c71-9c13-ca164c88ef1f`; pinned
+  `openai/gpt-4.1-mini` executed exactly one
+  `grokbuild-browser__browser_open_url(https://example.com)`, used `22,748` tokens /
+  `2` model calls, and Activity proved requested -> configured -> process ready ->
+  exercised with `1` succeeded and `0` failed tools.
+- Final installed Computer Use lane:
+  `GB-S8-ACCEPT-NATIVE-COMPUTER-20260809T184000Z`, local tab
+  `C6F5541F-32A3-43EF-AC5F-41AF90A545F4`, backend
+  `019fe8a0-9bea-7af0-a99a-75f60c8c6bae`; Grok 4.5 executed exactly one
+  `grokbuild-computer-use__computer_list_apps`, returned bounded `app_count=35`,
+  used `32,997` tokens / `2` model calls, and proved the same four-state attribution
+  with `1` succeeded and `0` failed tools.
+- Relaunch acceptance: normal Command-Q reached process-zero; the signed candidate
+  relaunched to the prior settled transcript without fabricating readiness, and a
+  fresh thread visibly offered `Turn Browser On` and `Turn Computer Use On`, proving
+  both helpers reset off.
+- Preserved retry receipts: initial native terminal `FCF4E93B-...` /
+  `019fe88b-...` used `31,001` tokens; the first Browser attempt and same-thread
+  corrected retry `B345E41B-...` / `019fe88c-...` used `49,393` and `27,205` tokens;
+  the initial Computer Use targeting failure `63E92D4C-...` / `019fe891-...` used
+  `31,553` tokens; pre-fix terminal `CEBCD462-...` / `019fe895-...` used `31,042`
+  tokens; and the pre-fix Browser lane `96B570EB-...` / `019fe896-...` used `34,776`
+  tokens and exposed the first-intent selection reset. No receipt was discarded.
+- Honest acceptance spend: `291,746` tokens across preserved attempts and final
+  lanes, below the `1,000,000` ceiling, with both native Grok and OpenRouter settled.
+- Exact cleanup: the Sessions browser removed all eight exact Grok backend histories;
+  exact sidebar `Close Session` then removed all eight local tabs/transcript pairs.
+  This distinction is preserved because backend deletion alone does not close an
+  already-open local tab. All eight local IDs, eight backend IDs, and every `GB-S8-`
+  marker are absent outside the excluded global `prompt_history.jsonl`.
+- Candidate process-zero proof: normal quit left zero exact processes named
+  `GrokBuild`, `grok`, `GrokBuildComputerUseMCP`, or `agent-desktop`, and zero
+  GrokBuild-owned Browser profile processes.
+- PR URL/number, reviewed head, merge commit, post-merge install, visible Settings ->
+  App acceptance, final parity, and final process-zero: pending the authorized normal
+  publication and merged-main closeout; no later slice may begin first.
+- Known residual risk: helper selection is intentionally per-thread and in-memory;
+  global Settings must make a helper available before its thread toggle can select
+  it. The app does not infer Browser or Computer Use from speculative prompt parsing.
+- Exact next slice: Slice 9, Thread-native run spine, only after this receipt is
+  completed on clean merged `main` and the installed merged app passes Gates A-H.
+
 ---
 
 ## Slice receipt template
