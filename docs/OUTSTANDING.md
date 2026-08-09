@@ -31,11 +31,14 @@ below so truth and lifecycle contracts land before presentation and optimization
 | 3 | Replace Browser Settings false-negative startup flicker with an unresolved/checking state | Medium | 3 prompts; up to 5,000,000 tokens | Merged and accepted |
 | 4 | Replace raw Computer Use self-test JSON with a compact parsed receipt | Medium | 4 prompts; up to 240K tokens | Merged and accepted |
 | 5 | Repair navigation-rail accessibility selection semantics | Medium | 3 prompts; up to 200K tokens | Merged and accepted |
-| 6 | Reduce tiny-turn context cost and guarantee zero owned processes at slice close | High | 6 prompts; up to 480K tokens | Open |
+| 6 | Reduce tiny-turn context cost and guarantee zero owned processes at slice close | High | 6 prompts; up to 480K tokens | Merged and accepted |
 
 No slice may begin until the preceding slice is merged, local `main` matches
 `personal/main`, the installed app is stamped to that merged commit, slice-created
 threads are gone, and the process-zero gate is green.
+
+All seven audit slices are merged and accepted. The campaign is closed; there is no
+authorized later slice.
 
 ---
 
@@ -1665,7 +1668,7 @@ smoke threads, and pass Gates F–H.
 
 ---
 
-### Slice 6 candidate receipt — 2026-08-09
+### Slice 6 completion receipt — 2026-08-09
 
 - Objective: deterministically reduce fresh tiny-turn non-user context without losing
   required contracts, and terminate each exact tab/backend generation's Grok and MCP
@@ -1723,8 +1726,48 @@ smoke threads, and pass Gates F–H.
   recoverable Trash paths prefixed `GrokBuild-S6-child-` or
   `GrokBuild-S6-repair-child-`, marker searches returned zero, the disposable page and
   listener were removed, and normal app quit left zero owned processes.
-- PR/merge, merged-main signed install, S6-A/S6-D/S6-F smoke and cleanup, and final
-  Gates F-H remain mandatory. No later slice may begin.
+- Implementation commit/tree: `c486c5a3572f704cbf27e9130f946d4ca518ca38` /
+  `8ef9a445eeb743ed3799d34735fef7c534098626`. Ready PR
+  `https://github.com/schmitzjimmy1-star/grok-build-desktop/pull/30` reviewed that
+  exact head and the same 11 intended paths; no required checks were configured. It
+  merged normally as `5650ab215deba767d21d6857d6fc301631d91c2c`.
+- Post-merge `make ship`: `706/706`, zero failures; installed version `0.1.20`,
+  `personal` / `main` / `5650ab21`, `dirty=false`; installed/dist SHA-256
+  `69945b8472627acf1d07454bc5f5a1e761da6e2b6ea23d19806420de9dd2fa9d`; Team
+  `DD2GCQJVB4`, deep/strict valid, no quarantine. Settings -> App visibly agreed with
+  `Personal • main @ 5650ab21` and showed no active process receipt.
+- Merged-main smoke, frozen `20260809T153200Z`:
+  - S6-A marker `GB-S6-MERGED-A-20260809T153200Z`, local tab
+    `29F9BBCD-E04D-4F51-93FA-D62E3887B686`, backend
+    `019fe801-cdec-76f3-9ee8-8bacb15c09db`; native Grok 4.5 Medium, exact one
+    `/bin/pwd`, `2` calls / `30,936` tokens.
+  - S6-D marker `GB-S6-MERGED-D-20260809T153200Z`, local tab
+    `5718D1BC-BBD3-44FE-ABD0-D87EA87D5DAB`, backend
+    `019fe804-84af-7cc1-8e58-368ae45cba9b`; pinned GPT-4.1 Mini Medium with no
+    fallback, exact ordered `/bin/pwd` then `grokbuild-browser__browser_open_url`,
+    `2` calls / `22,931` tokens and the exact proof-page marker.
+  - S6-F marker `GB-S6-MERGED-F-20260809T153200Z`, local tab
+    `08639B6A-02C7-4D4A-9CB5-80968F7CE5FD`, parent
+    `019fe806-c3d1-7541-ae64-0e2931d11bfd`, children
+    `019fe807-4126-7e73-91d0-5d06c2cb81df` and
+    `019fe807-4127-7b02-9390-63bb77839e8a`; native Grok 4.5 Medium, exact two
+    parallel children, one `wait_all`, terminal/browser receipts, `7` calls /
+    `97,768` tokens.
+- Smoke total: `11` model calls / `151,635` tokens. No retries, fallback, discovery,
+  substitution, extra tools, extra workers, or route drift occurred.
+- Final cleanup: all three exact local tabs closed in GrokBuild; all three exact parent
+  backends deleted; the two unindexed child ledgers moved by validated ID to
+  recoverable Trash paths prefixed `GrokBuild-S6-merged-child-`; live transcript and
+  backend marker searches returned zero; the local page/listener was removed; exact
+  managed-browser status reported `No active sessions` after both S6-D and S6-F close.
+- Gates F-H: clean local `main` and `personal/main` both
+  `5650ab215deba767d21d6857d6fc301631d91c2c`; signed installed/dist identity and hash
+  matched; final normal app quit left zero GrokBuild, Grok, Computer Use, MCP,
+  `agent-desktop`, managed-browser, or proof-server processes.
+- This ledger-only closeout changes no app behavior and requires no additional
+  billable provider prompt. After its normal merge, final `main` must be re-shipped,
+  Settings -> App must agree with the closeout commit, and Gates F-H must remain green.
+  The seven-slice campaign then remains closed; do not begin any later slice.
 
 ---
 
