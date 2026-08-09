@@ -30,7 +30,7 @@ below so truth and lifecycle contracts land before presentation and optimization
 | 2 | Separate browser process readiness, catalog capability, requested use, and proven use | High | 5 prompts; up to 320K tokens | Merged and accepted |
 | 3 | Replace Browser Settings false-negative startup flicker with an unresolved/checking state | Medium | 3 prompts; up to 5,000,000 tokens | Merged and accepted |
 | 4 | Replace raw Computer Use self-test JSON with a compact parsed receipt | Medium | 4 prompts; up to 240K tokens | Merged and accepted |
-| 5 | Repair navigation-rail accessibility selection semantics | Medium | 3 prompts; up to 200K tokens | Candidate accepted; merge pending |
+| 5 | Repair navigation-rail accessibility selection semantics | Medium | 3 prompts; up to 200K tokens | Merged and accepted |
 | 6 | Reduce tiny-turn context cost and guarantee zero owned processes at slice close | High | 6 prompts; up to 480K tokens | Open |
 
 No slice may begin until the preceding slice is merged, local `main` matches
@@ -1511,6 +1511,46 @@ at/above the 200,000-token ceiling before the next prompt.
   exact-ID cleanup authorization. All three markers then returned zero in live
   transcripts and `.grok/sessions` excluding immutable prompt history; final normal
   quit left zero GrokBuild-owned processes.
+
+### Slice 5 completion receipt — 2026-08-09
+
+- Content commit `751fe903ef3e6162af5e4a4132585412d8e1a600` (tree
+  `84c6b938e7c790f0fe6e24b4df7a6e342407a570`) was pushed by ordinary non-force
+  push to `personal/codex/grokbuild-audit-s5-navigation-selection`. Ready PR
+  [#28](https://github.com/schmitzjimmy1-star/grok-build-desktop/pull/28) matched
+  that exact reviewed head and eight-path scope, reported no required checks, and
+  merged normally as `78b09b27e75ab79f53df5c4bb795eb622a5f315c`.
+- Clean merged `main` matched `personal/main` at that merge commit. `make ship`
+  passed all 700 tests and installed version `0.1.20` with `dirty=false`.
+  Installed/dist executable SHA-256 was
+  `031da8e07d2c20601d43a2e05b84772f95a63ada4d441a28bbf5c7f0da95d594` with byte
+  parity; Team `DD2GCQJVB4` signing passed deep/strict validation and the app had
+  no quarantine attribute.
+- The complete merged-main AX round trip repeated New chat, Sessions open/close,
+  Plugins open/close, Security -> Permissions open/close, hidden-session project
+  selection, visible-session selection, a protected session switch, and Tab /
+  Shift-Tab focus movement. Rail actions never reported selected; Plugins and
+  Permissions were each the sole selected Settings pane; exactly one rendered
+  project/session destination remained selected before and after focus movement.
+- Merged S5-B used direct `gpt-5.6-terra` and exactly one `general-purpose` child
+  `019fe7cc-0728-7561-bd62-d47e746522be`. The child invoked only
+  `/bin/sleep 5; /bin/pwd`; the parent only spawned, waited, and collected, while
+  Security -> Permissions round-tripped during the live turn. Receipt:
+  `GB-S5-WORKER-MAIN-20260809T182900Z`, local tab
+  `55729E5E-F380-4A6A-B91A-3F963C0601B0`, parent backend
+  `019fe7cb-a7d7-7432-a0a4-9d4ea1a4c67a`, 5 calls / 48,066 tokens.
+- Final cleanup closed that exact tab and deleted that exact parent backend.
+  Parent deletion cascaded the child from the backend registry but left its exact
+  local directory; only that validated directory was moved recoverably to
+  `~/.Trash/GrokBuild-S5-main-child-019fe7cc-0728-7561-bd62-d47e746522be`.
+  The merged marker then returned zero in live transcripts and `.grok/sessions`
+  excluding immutable prompt history; no unrelated session changed. Final normal
+  quit left zero GrokBuild-owned processes.
+- CLI identity remained `grok 1.0.0 (3cd0d0cbcebe) [stable]`. This closing
+  ledger-only change modifies no app source or acceptance behavior and therefore
+  does not justify another billable provider prompt. Slice 6 remains forbidden
+  until this closeout merges normally, final `main` is re-shipped, Settings -> App
+  agrees with the closeout commit, and Gates F-H are green.
 
 ---
 
