@@ -110,6 +110,18 @@ The AppKit pair `main.swift` + `AppDelegate` is the only entry point (the legacy
 
 ## App lifecycle & shell
 
+### Sidebar selection semantics
+
+The compact New chat, Sessions, Plugins, and Security rail entries are action buttons,
+not persistent navigation destinations. They explicitly remove the accessibility
+selected trait, so keyboard focus, hover, or the last clicked action cannot masquerade
+as route state. Persistent selection belongs to the real conversation route: the
+matching session row receives the same selected state visually and in accessibility,
+or the matching project row does when no session is selected. Parent project and child
+session never claim selection simultaneously. Settings owns its own selected pane;
+returning to chat restores the unchanged project/session identity and the one
+applicable selection.
+
 ### Entry point
 
 `main.swift` → `AppDelegate.applicationDidFinishLaunching`:

@@ -30,7 +30,7 @@ below so truth and lifecycle contracts land before presentation and optimization
 | 2 | Separate browser process readiness, catalog capability, requested use, and proven use | High | 5 prompts; up to 320K tokens | Merged and accepted |
 | 3 | Replace Browser Settings false-negative startup flicker with an unresolved/checking state | Medium | 3 prompts; up to 5,000,000 tokens | Merged and accepted |
 | 4 | Replace raw Computer Use self-test JSON with a compact parsed receipt | Medium | 4 prompts; up to 240K tokens | Merged and accepted |
-| 5 | Repair navigation-rail accessibility selection semantics | Medium | 3 prompts; up to 200K tokens | Open |
+| 5 | Repair navigation-rail accessibility selection semantics | Medium | 3 prompts; up to 200K tokens | Candidate accepted; merge pending |
 | 6 | Reduce tiny-turn context cost and guarantee zero owned processes at slice close | High | 6 prompts; up to 480K tokens | Open |
 
 No slice may begin until the preceding slice is merged, local `main` matches
@@ -1434,6 +1434,83 @@ For every navigation stop, compare visual highlight, AX selected state, keyboard
 selected project, selected session, and route. Delete all threads, quit, process-zero,
 merge, rebuild merged `main`, repeat S5-B plus the full AX round trip, delete the smoke
 thread, and pass Gates F–H.
+
+### Frozen Slice 5 candidate matrix — `20260809T174753Z`
+
+Every lane uses one fresh disposable tab, Medium effort, the named route, and one
+parent turn. The rail remains action-only throughout; the selected workspace/session
+must stay bound to the real conversation route, and Settings must expose only its
+actual selected pane. Stop on route drift, fallback, retry, an extra tool/worker,
+lost tab/backend identity, a false rail selection, or accumulated actual usage already
+at/above the 200,000-token ceiling before the next prompt.
+
+- **S5-A — native Grok 4.5, marker `GB-S5-LIVE-20260809T174753Z`:** invoke the
+  terminal exactly once with `/bin/sleep 5; /bin/echo GB-S5-LIVE-20260809T174753Z`,
+  then return only that marker. While the command is live, open and close Sessions and
+  return to the same conversation. No discovery, MCP, file, browser, worker, retry, or
+  other tool is allowed.
+- **S5-B — direct `gpt-5.6-terra`, marker
+  `GB-S5-WORKER-20260809T174753Z`:** spawn exactly one `general-purpose` child, then
+  only wait/collect it. The child invokes terminal exactly once with
+  `/bin/sleep 5; /bin/pwd`, reports the exact path, and uses no other tool. While the
+  child is active, open Security -> Permissions and return to the same conversation.
+  The parent emits the marker; no second child, retry, MCP, browser, file mutation, or
+  substitution is allowed.
+- **S5-C — pinned OpenRouter `deepseek/deepseek-v4-flash-0731`, marker
+  `GB-S5-MULTI-20260809T174753Z`:** invoke terminal exactly once with `/bin/pwd`,
+  search exactly once for `grokbuild-computer-use__computer_snapshot`, then invoke
+  that exact tool once against GrokBuild with semantic accessibility only and no
+  screenshot. After settlement, open/close Plugins, switch to another existing
+  protected session, then return to the exact test session. Emit the marker after the
+  ordered receipts; no action, mutation, retry, worker, browser tool, or substitution
+  is allowed.
+
+### Slice 5 candidate receipt — 2026-08-09
+
+- Gate A started from clean canonical `main` and `personal/main` at
+  `24759a6275203da1be5fccc8bbb051ca2811826a` (tree
+  `d5eafa4762a77779da922f5f8fd65bcd352ba58d`). The final signed candidate kept
+  that HEAD stamp with `dirty=true`, passed all 700 tests, and installed version
+  `0.1.20`; installed/dist executable SHA-256 was
+  `2a0cd98992b2750fc91f58f525206b7a125fb4524baea154404400dd284aa46a`, Team
+  `DD2GCQJVB4`, deep/strict valid, and unquarantined.
+- Fresh AX trees proved the compact rail is action-only: New chat, Sessions,
+  Plugins, and Security never retained selected state. Exactly one rendered
+  persistent destination was selected: the active session when its row was
+  visible, otherwise its project when the session row was hidden or unavailable.
+  Sessions open/close, Plugins, Permissions, project switches, session switches,
+  and keyboard-focus movement preserved that invariant; Settings exposed only its
+  actual selected pane. Stable rail identifiers are
+  `grok-rail-new-chat`, `grok-rail-sessions`, `grok-rail-plugins`, and
+  `grok-rail-security`.
+- S5-A used native Grok 4.5 and exactly one terminal call
+  `/bin/sleep 5; /bin/echo GB-S5-LIVE-20260809T174753Z`; Sessions opened and closed
+  during the live Stop state, the same session remained selected, and the command
+  settled once successfully. Receipt: local tab
+  `BD45C746-E8BA-4B27-8E60-935640F951E1`, backend
+  `019fe7bb-a892-70e3-9df5-60b17f8a7e4b`, 2 calls / 32,055 tokens.
+- S5-B used direct `gpt-5.6-terra` and exactly one `general-purpose` child
+  `019fe7bd-d413-7b51-a4fa-289bc169a2e2`. The child invoked only
+  `/bin/sleep 5; /bin/pwd`; the parent only spawned, waited, and collected. While
+  live, Security -> Permissions was the sole selected Settings pane; returning
+  restored the same selected session. Receipt: local tab
+  `DED1031B-19EA-43A4-9A03-F6781B52F9A3`, parent backend
+  `019fe7bd-649f-75c0-bd9c-439cb03a74dc`, 5 calls / 48,153 tokens.
+- S5-C used pinned OpenRouter `deepseek/deepseek-v4-flash-0731` and exactly three
+  ordered tools: terminal `/bin/pwd`, one discovery for
+  `grokbuild-computer-use__computer_snapshot`, and one successful semantic-only
+  snapshot of GrokBuild. It used no screenshot, action, retry, worker, browser, or
+  substitute. After settlement, Plugins selected only its Settings pane and a
+  protected-session switch returned to the exact test session. Receipt: local tab
+  `4AEA8FFB-F511-4687-91ED-A8290FC5CBF1`, backend
+  `019fe7bf-9646-79b0-bcb6-0a11fa6d39fb`, 3 calls / 52,775 tokens.
+- Candidate total was 132,983 tokens, below the 200,000-token ceiling before every
+  next prompt. All three exact tabs were closed and parent backends deleted. Parent
+  deletion left only S5-B's validated child directory, which was moved recoverably
+  to `~/.Trash/GrokBuild-S5-child-019fe7bd-d413-7b51-a4fa-289bc169a2e2` under the
+  exact-ID cleanup authorization. All three markers then returned zero in live
+  transcripts and `.grok/sessions` excluding immutable prompt history; final normal
+  quit left zero GrokBuild-owned processes.
 
 ---
 

@@ -109,6 +109,12 @@ final class SidebarActivityTests: XCTestCase {
                        "Workflows is not a primary rail row; Settings and the composer command menu own it")
         XCTAssertTrue(sidebarSource.contains("Button(action: onOpenActivity) {"),
                       "the header bell remains and opens the activity surface")
+        XCTAssertTrue(sidebarSource.contains("accessibilityRemoveTraits"),
+                      "action rail and inactive persistent rows must remove false selection")
+        XCTAssertTrue(sidebarSource.contains("accessibilityAddTraits(isSelected ? .isSelected : [])"),
+                      "the real selected session row must expose its visual selection in AX")
+        XCTAssertTrue(sidebarSource.contains("List(selection: persistentSelection)"),
+                      "native sidebar rows must receive the route-aware persistent selection")
 
         let contentSource = try String(
             contentsOf: repositoryRoot.appendingPathComponent("GrokBuild/ContentView.swift"),
@@ -120,5 +126,7 @@ final class SidebarActivityTests: XCTestCase {
                        "ContentView no longer feeds agent hub entries into the sidebar")
         XCTAssertFalse(contentSource.contains("connections: activeStore.promptMCPOptions"),
                        "ContentView no longer feeds MCP connections into the sidebar")
+        XCTAssertTrue(contentSource.contains("isConversationRouteActive: route == .session"),
+                      "sidebar selection must follow the actual session/settings route")
     }
 }
