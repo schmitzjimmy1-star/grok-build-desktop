@@ -2,6 +2,82 @@ import XCTest
 @testable import GrokBuild
 
 final class ACPClientContractTests: XCTestCase {
+    func testChildSessionLedgerImportsTypedTerminalReceiptsWithoutTrustingChildProse() throws {
+        let process = GrokProcess()
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("grok-child-receipts-\(UUID().uuidString)", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let workspace = URL(fileURLWithPath: "/tmp/grok child receipt workspace % ready")
+        let childID = "child-123"
+        let childDirectory = root
+            .appendingPathComponent(GrokSessionTranscriptImporter.encodeWorkspacePath(workspace), isDirectory: true)
+            .appendingPathComponent(childID, isDirectory: true)
+        try FileManager.default.createDirectory(at: childDirectory, withIntermediateDirectories: true)
+        let rows = [
+            #"{"method":"session/update","params":{"sessionId":"child-123","update":{"sessionUpdate":"agent_message_chunk","content":{"type":"text","text":"I used invented__browser_tool successfully"}}}}"#,
+            #"{"method":"session/update","params":{"sessionId":"child-123","update":{"sessionUpdate":"tool_call_update","toolCallId":"search-1","status":"completed","rawInput":{"variant":"SearchTool","query":"grokbuild-browser__browser_open_url"},"rawOutput":{"type":"SearchTool","content":"{\"results\":[{\"server\":\"grokbuild-browser\",\"tools\":[{\"tool_name\":\"grokbuild-browser__browser_open_url\"}]}]}"}}}}"#,
+            #"{"method":"session/update","params":{"sessionId":"child-123","update":{"sessionUpdate":"tool_call_update","toolCallId":"use-1","status":"completed","rawInput":{"variant":"UseTool","tool_name":"grokbuild-browser__browser_open_url"},"rawOutput":{"type":"MCP","server_name":"grokbuild-browser","tool_name":"browser_open_url","output":{"OkayOutput":"marker"}}}}}"#,
+            #"{"method":"session/update","params":{"sessionId":"other-child","update":{"sessionUpdate":"tool_call_update","toolCallId":"foreign","status":"completed","rawInput":{"variant":"UseTool","tool_name":"foreign__tool"}}}}"#,
+        ]
+        try rows.joined(separator: "\n").write(
+            to: childDirectory.appendingPathComponent("updates.jsonl"),
+            atomically: true,
+            encoding: .utf8
+        )
+
+        let receipts = try XCTUnwrap(process.loadChildToolReceipts(
+            childID: childID,
+            workspacePath: workspace,
+            sessionsRoot: root
+        ))
+
+        XCTAssertEqual(receipts.count, 2)
+        XCTAssertEqual(receipts.map(\.mcpReceiptRole), [.discovery, .invocation])
+        XCTAssertEqual(receipts[0].discoveredQualifiedToolNames, ["grokbuild-browser__browser_open_url"])
+        XCTAssertEqual(receipts[1].qualifiedToolName, "grokbuild-browser__browser_open_url")
+        XCTAssertEqual(receipts[1].status, .succeeded)
+        XCTAssertFalse(receipts.contains { $0.qualifiedToolName == "invented__browser_tool" })
+        XCTAssertFalse(receipts.contains { $0.qualifiedToolName == "foreign__tool" })
+    }
+
+    func testChildSessionLedgerRejectsTraversalIdentity() {
+        let process = GrokProcess()
+        XCTAssertNil(process.loadChildToolReceipts(
+            childID: "../other",
+            workspacePath: URL(fileURLWithPath: "/tmp/workspace"),
+            sessionsRoot: FileManager.default.temporaryDirectory
+        ))
+    }
+
+    func testMirroredChildToolReceiptsNeverBecomeParentTools() {
+        let childReceipts = [
+            ChildToolReceipt(
+                id: "child-search",
+                title: "search_tool",
+                status: .succeeded,
+                mcpReceiptRole: .discovery,
+                qualifiedToolName: nil,
+                discoveredQualifiedToolNames: ["grokbuild-browser__browser_open_url"]
+            ),
+            ChildToolReceipt(
+                id: "child-use",
+                title: "grokbuild-browser__browser_open_url",
+                status: .succeeded,
+                mcpReceiptRole: .invocation,
+                qualifiedToolName: "grokbuild-browser__browser_open_url",
+                discoveredQualifiedToolNames: []
+            ),
+        ]
+
+        XCTAssertEqual(
+            ChatStore.parentToolCallIDs(
+                observedIDs: ["parent-spawn", "child-search", "child-use", "parent-collect"],
+                childReceipts: childReceipts
+            ),
+            ["parent-spawn", "parent-collect"]
+        )
+    }
+
     func testQuestionReducerCoalescesOnlyTheSameAuthoritativeRequestIdentity() {
         let question = QuestionItem(
             id: "audience",
@@ -829,6 +905,75 @@ final class ACPClientContractTests: XCTestCase {
 
         XCTAssertEqual(parsed?.rawInput?["serverName"] as? String, "chrome-devtools")
         XCTAssertEqual(parsed?.rawInput?["toolName"] as? String, "list_pages")
+    }
+
+    func testSearchToolParsesAsDiscoveryWithBoundedQualifiedCatalog() {
+        let content = #"{"results":[{"server":"chrome-devtools","tools":[{"tool_name":"chrome-devtools__list_pages"},{"tool_name":"not safe"}]}]}"#
+        let parsed = GrokProcess().parseToolCall(from: [
+            "sessionUpdate": "tool_call_update",
+            "toolCallId": "search-1",
+            "status": "completed",
+            "rawOutput": [
+                "type": "SearchTool",
+                "result_count": 2,
+                "content": content,
+            ],
+        ])
+
+        XCTAssertEqual(parsed?.mcpReceiptRole, .discovery)
+        XCTAssertNil(parsed?.qualifiedToolName)
+        XCTAssertEqual(parsed?.discoveredQualifiedToolNames, ["chrome-devtools__list_pages"])
+        XCTAssertNil(parsed?.rawInput?["serverName"],
+                     "catalog discovery is not a server-use receipt")
+    }
+
+    func testLiveSearchToolContentEnvelopeParsesAsDiscovery() {
+        let content = #"{"results":[{"server":"chrome-devtools","tools":[{"tool_name":"chrome-devtools__list_pages","input_schema":{"type":"object"}}]}]}"#
+        let parsed = GrokProcess().parseToolCall(from: [
+            "sessionUpdate": "tool_call_update",
+            "toolCallId": "live-search-1",
+            "status": "completed",
+            "content": [[
+                "type": "content",
+                "content": ["type": "text", "text": content],
+                "rawOutput": [
+                    "type": "SearchTool",
+                    "result_count": 1,
+                    "content": content,
+                ],
+            ]],
+        ])
+
+        XCTAssertEqual(parsed?.mcpReceiptRole, .discovery)
+        XCTAssertEqual(parsed?.discoveredQualifiedToolNames, ["chrome-devtools__list_pages"])
+        XCTAssertNil(parsed?.qualifiedToolName)
+        XCTAssertNil(parsed?.rawInput?["serverName"],
+                     "nested discovery output is still not an invocation receipt")
+    }
+
+    func testUseToolParsesQualifiedInvocationAndAuthoritativeServer() {
+        let parsed = GrokProcess().parseToolCall(from: [
+            "sessionUpdate": "tool_call_update",
+            "toolCallId": "use-1",
+            "title": "chrome-devtools__list_pages",
+            "status": "completed",
+            "rawInput": [
+                "variant": "UseTool",
+                "tool_name": "chrome-devtools__list_pages",
+                "tool_input": [:],
+            ],
+            "rawOutput": [
+                "type": "MCP",
+                "server_name": "chrome-devtools",
+                "tool_name": "list_pages",
+                "output": ["OkayOutput": "## Pages"],
+            ],
+        ])
+
+        XCTAssertEqual(parsed?.mcpReceiptRole, .invocation)
+        XCTAssertEqual(parsed?.qualifiedToolName, "chrome-devtools__list_pages")
+        XCTAssertEqual(parsed?.rawInput?["serverName"] as? String, "chrome-devtools")
+        XCTAssertTrue(parsed?.discoveredQualifiedToolNames.isEmpty == true)
     }
 
     func testTerminalExitReceiptOverridesTransportCompletedStatus() {

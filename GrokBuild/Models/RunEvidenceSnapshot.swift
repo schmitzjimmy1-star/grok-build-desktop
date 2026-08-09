@@ -33,6 +33,7 @@ struct RunEvidenceSnapshot: Equatable, Sendable {
         let durationMilliseconds: Int?
         let toolCallCount: Int?
         let redactedError: String?
+        var childToolReceipts: [ChildToolReceipt]? = nil
         /// Configured `[subagents.roles.*]` model for this worker's role name, when the
         /// title matches a role exactly. Declared routing from config — displayed as
         /// "(configured)", never as a runtime billing claim.
@@ -45,8 +46,14 @@ struct RunEvidenceSnapshot: Equatable, Sendable {
         /// A completed child lifecycle does not report whether the child's
         /// individual tool calls succeeded. Keep that outcome unresolved until
         /// ACP supplies typed child-tool results; child prose is not authority.
+        var hasReconciledChildToolReceipts: Bool {
+            guard let childToolReceipts else { return (toolCallCount ?? 0) == 0 }
+            return childToolReceipts.count == (toolCallCount ?? 0)
+        }
         var hasUnresolvedChildToolOutcome: Bool {
-            isCompleted && (toolCallCount ?? 0) > 0
+            guard isCompleted, (toolCallCount ?? 0) > 0 else { return false }
+            return !hasReconciledChildToolReceipts
+                || (childToolReceipts ?? []).contains { $0.status != .succeeded }
         }
         var isUnresolved: Bool {
             let normalized = status.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()

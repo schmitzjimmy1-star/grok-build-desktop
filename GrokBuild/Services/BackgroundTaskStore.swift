@@ -28,6 +28,9 @@ struct BackgroundActivity: Identifiable, Equatable, Sendable {
     var toolCallCount: Int?
     var tokenCount: Int?
     var redactedError: String?
+    /// Typed terminal receipts read from this exact child's backend ledger.
+    /// They remain child evidence and are never merged into the parent tool list.
+    var childToolReceipts: [ChildToolReceipt]?
     /// Wait/collection calls attach a receipt to an existing activity rather than
     /// creating a second worker row.
     var collectionStatus: String?
@@ -49,6 +52,7 @@ struct BackgroundActivity: Identifiable, Equatable, Sendable {
         toolCallCount: Int? = nil,
         tokenCount: Int? = nil,
         redactedError: String? = nil,
+        childToolReceipts: [ChildToolReceipt]? = nil,
         collectionStatus: String? = nil,
         collectionReceiptCount: Int = 0
     ) {
@@ -64,6 +68,7 @@ struct BackgroundActivity: Identifiable, Equatable, Sendable {
         self.toolCallCount = toolCallCount
         self.tokenCount = tokenCount
         self.redactedError = redactedError
+        self.childToolReceipts = childToolReceipts
         self.collectionStatus = collectionStatus
         self.collectionReceiptCount = collectionReceiptCount
         self.scheduledTask = scheduledTask
@@ -344,7 +349,19 @@ struct BackgroundTaskTracker {
         activity.toolCallCount = event.toolCallCount
         activity.tokenCount = event.tokenCount
         activity.redactedError = event.redactedError
+        activity.childToolReceipts = event.childToolReceipts
         activities[index] = activity
+    }
+
+    /// Rechecks an already-bound child ledger at the parent completion barrier.
+    /// This closes the small flush-order window between `subagent_finished` and
+    /// the child's final JSONL write without weakening identity or count checks.
+    mutating func reconcileChildToolReceipts(
+        childID: String,
+        receipts: [ChildToolReceipt]?
+    ) {
+        guard let index = workerIndex(childID: childID), let receipts else { return }
+        activities[index].childToolReceipts = receipts
     }
 
     /// Parent turn completion is a protocol ordering barrier. Any worker still

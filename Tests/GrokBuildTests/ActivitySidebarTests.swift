@@ -95,6 +95,18 @@ final class ActivitySidebarTests: XCTestCase {
         XCTAssertEqual(presentation.compactText, "Using chrome-devtools · List pages")
     }
 
+    func testDiscoveryMetadataNeverClaimsBrowserExecution() {
+        let metadata = ActivitySidebarPresentation.liveToolMetadata(
+            kind: "discovery",
+            status: "Succeeded",
+            mcpServerName: nil
+        )
+
+        XCTAssertEqual(metadata, "discovery • Succeeded")
+        XCTAssertFalse(metadata.localizedCaseInsensitiveContains("using"))
+        XCTAssertFalse(metadata.localizedCaseInsensitiveContains("browser"))
+    }
+
     func testLiveProgressPhaseTracksWritingAndWorkerCoordination() {
         let binding = RunEvidenceLiveProjection.Binding(
             localTabID: UUID(),
@@ -366,6 +378,51 @@ final class ActivitySidebarTests: XCTestCase {
         )
     }
 
+    func testReconciledChildBrowserReceiptStaysAttributedInsideWorker() {
+        let receipts = [
+            ChildToolReceipt(
+                id: "search",
+                title: "search_tool",
+                status: .succeeded,
+                mcpReceiptRole: .discovery,
+                qualifiedToolName: nil,
+                discoveredQualifiedToolNames: ["grokbuild-browser__browser_open_url"]
+            ),
+            ChildToolReceipt(
+                id: "use",
+                title: "grokbuild-browser__browser_open_url",
+                status: .succeeded,
+                mcpReceiptRole: .invocation,
+                qualifiedToolName: "grokbuild-browser__browser_open_url",
+                discoveredQualifiedToolNames: []
+            ),
+        ]
+        let worker = RunEvidenceSnapshot.Worker(
+            id: "worker",
+            title: "Inspect proof page",
+            status: "completed",
+            childID: "child",
+            durationMilliseconds: 100,
+            toolCallCount: 2,
+            redactedError: nil,
+            childToolReceipts: receipts
+        )
+        let snapshot = makeSnapshot(workers: [worker])
+        let detail = ActivitySidebarPresentation.workerReceiptDetail(
+            status: worker.status,
+            durationMilliseconds: worker.durationMilliseconds,
+            toolCallCount: worker.toolCallCount,
+            redactedError: worker.redactedError,
+            childToolReceipts: worker.childToolReceipts
+        )
+
+        XCTAssertEqual(snapshot.tools.total, 0, "child receipts must not become parent tools")
+        XCTAssertEqual(snapshot.unresolvedWorkerCount, 0)
+        XCTAssertTrue(detail.contains("Child receipts: 2/2 succeeded"))
+        XCTAssertTrue(detail.contains("grokbuild-browser__browser_open_url succeeded via grokbuild-browser"))
+        XCTAssertFalse(detail.contains("not reported"))
+    }
+
     func testActivityWorkbenchUsesOutcomeFirstNativeEvidenceChrome() throws {
         let repositoryRoot = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent()
@@ -394,6 +451,9 @@ final class ActivitySidebarTests: XCTestCase {
         // disclosure in the compact inspector.
         XCTAssertTrue(sidebar.contains("Label(\"Run details\", systemImage: \"list.bullet.rectangle\")"))
         XCTAssertTrue(sidebar.contains("workerAccessibilityLabel"))
+        XCTAssertTrue(sidebar.contains("MCP evidence"))
+        XCTAssertTrue(sidebar.contains("Unavailable for this turn") == false,
+                      "the unavailable copy is owned by the typed projection, not hard-coded outcome prose")
         XCTAssertTrue(sidebar.contains(".accessibilityElement(children: .ignore)"))
         XCTAssertFalse(sidebar.contains(".regularMaterial"))
         XCTAssertTrue(chat.contains("Text(\"Activity\")"))

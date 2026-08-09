@@ -311,7 +311,8 @@ enum GrokSessionTranscriptImporter {
 
     // MARK: - Path encoding
 
-    /// grok stores sessions under `~/.grok/sessions/%2FUsers%2F…%2Fproject` (no trailing `%2F`).
+    /// Grok percent-encodes the complete UTF-8 workspace path for its session
+    /// directory name (including `/` and spaces), with no trailing `%2F`.
     static func encodeWorkspacePath(_ workspacePath: URL) -> String {
         encodeWorkspacePath(workspacePath.path)
     }
@@ -343,8 +344,13 @@ enum GrokSessionTranscriptImporter {
         while path.hasSuffix("/"), path.count > 1 {
             path.removeLast()
         }
-        let body = String(path.dropFirst()).replacingOccurrences(of: "/", with: "%2F")
-        return "%2F" + body
+        let unreserved = Set("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._~".utf8)
+        return path.utf8.map { byte -> String in
+            if unreserved.contains(byte) {
+                return String(UnicodeScalar(byte))
+            }
+            return String(format: "%%%02X", byte)
+        }.joined()
     }
 
     // MARK: - JSONL parsing

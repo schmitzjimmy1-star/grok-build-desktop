@@ -15,8 +15,9 @@ final class MCPReadinessPolicyTests: XCTestCase {
 
         let ready = MCPReadinessPolicy.readyStatuses(for: servers)
         XCTAssertEqual(ready.map(\.state), [.ready, .ready])
-        XCTAssertTrue(ready.allSatisfy { $0.evidence.contains("settle window") })
-        XCTAssertTrue(ready[0].accessibilitySummary.contains("grokbuild-browser: Ready"))
+        XCTAssertTrue(ready.allSatisfy { $0.evidence.contains("startup barrier") })
+        XCTAssertTrue(ready.allSatisfy { $0.evidence.contains("inventory and use remain unproven") })
+        XCTAssertTrue(ready[0].accessibilitySummary.contains("grokbuild-browser: Process ready"))
     }
 
     func testFailedAndStoppedReceiptsNameOnlyTheConfiguredServers() {

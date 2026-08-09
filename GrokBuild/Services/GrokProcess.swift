@@ -188,6 +188,13 @@ struct ToolCall: @unchecked Sendable, Identifiable, Hashable {
     let detail: String?
     let diagnosticDetail: String?
     let target: String?
+    /// Typed ACP evidence for catalog discovery versus an actual MCP call.
+    let mcpReceiptRole: MCPToolReceiptRole?
+    /// Exact provider-qualified capability, e.g. `chrome-devtools__list_pages`.
+    let qualifiedToolName: String?
+    /// Qualified names returned by this discovery receipt. Schemas and secrets
+    /// are deliberately discarded at the transport boundary.
+    let discoveredQualifiedToolNames: [String]
     /// Only backend-supplied metadata may link one invocation to the call it retried.
     let retryOfToolCallID: String?
 
@@ -200,6 +207,9 @@ struct ToolCall: @unchecked Sendable, Identifiable, Hashable {
         detail: String? = nil,
         diagnosticDetail: String? = nil,
         target: String? = nil,
+        mcpReceiptRole: MCPToolReceiptRole? = nil,
+        qualifiedToolName: String? = nil,
+        discoveredQualifiedToolNames: [String] = [],
         retryOfToolCallID: String? = nil
     ) {
         self.id = id
@@ -210,6 +220,9 @@ struct ToolCall: @unchecked Sendable, Identifiable, Hashable {
         self.detail = detail
         self.diagnosticDetail = diagnosticDetail
         self.target = target
+        self.mcpReceiptRole = mcpReceiptRole
+        self.qualifiedToolName = qualifiedToolName
+        self.discoveredQualifiedToolNames = discoveredQualifiedToolNames
         self.retryOfToolCallID = retryOfToolCallID
     }
 
@@ -355,10 +368,23 @@ struct SubagentFinishedEvent: Sendable, Hashable {
     let toolCallCount: Int?
     let tokenCount: Int?
     let redactedError: String?
+    /// Terminal tool receipts imported from this exact child's backend session.
+    /// `nil` means the child ledger could not be read; an empty array means the
+    /// ledger was read and contained no terminal tool calls.
+    var childToolReceipts: [ChildToolReceipt]? = nil
 
     var deduplicationKey: String {
         "finish|\(identity.backendSessionID)|\(identity.processGeneration)|\(childID)"
     }
+}
+
+struct ChildToolReceipt: Sendable, Hashable {
+    let id: String
+    let title: String
+    let status: ToolCallTerminalStatus
+    let mcpReceiptRole: MCPToolReceiptRole?
+    let qualifiedToolName: String?
+    let discoveredQualifiedToolNames: [String]
 }
 
 enum SubagentLifecycleEventPolicy {
@@ -569,11 +595,23 @@ final class GrokProcess: @unchecked Sendable {
         if let serverName = tool["serverName"] as? String ?? tool["server_name"] as? String {
             raw["serverName"] = serverName
         }
-        if raw["toolName"] == nil,
-           let metadata = tool["_meta"] as? [String: Any],
-           let toolMetadata = metadata["x.ai/tool"] as? [String: Any],
-           let metadataName = toolMetadata["name"] as? String {
+        let metadataName = ((tool["_meta"] as? [String: Any])?["x.ai/tool"] as? [String: Any])?["name"] as? String
+        if raw["toolName"] == nil, let metadataName {
             raw["toolName"] = metadataName
+        }
+
+        // Grok emits terminal tool updates in two equivalent wire shapes. The
+        // initial fixture shape keeps `rawOutput` at the update root, while live
+        // provider routes place it beside a nested content block in the update's
+        // `content` array. Normalize both before deriving typed MCP evidence.
+        let rawOutput = Self.rawOutput(from: tool)
+        if let output = rawOutput as? [String: Any],
+           let server = output["server_name"] as? String,
+           let toolName = output["tool_name"] as? String {
+            raw["serverName"] = raw["serverName"] ?? server
+            if raw["tool_name"] == nil, raw["toolName"] == nil {
+                raw["toolName"] = toolName.contains("__") ? toolName : "\(server)__\(toolName)"
+            }
         }
 
         let rawToolName = raw["toolName"] as? String
@@ -597,7 +635,13 @@ final class GrokProcess: @unchecked Sendable {
         if let cmd = tool["command"] as? String { raw["command"] = cmd }
         if let newText = tool["newText"] as? String { raw["newText"] = newText }
 
-        let rawOutput = tool["rawOutput"] ?? tool["raw_output"]
+        let mcpReceiptRole = Self.mcpReceiptRole(
+            metadataName: metadataName,
+            rawInput: raw,
+            rawOutput: rawOutput
+        )
+        let qualifiedToolName = Self.qualifiedToolName(rawInput: raw, rawOutput: rawOutput, title: title)
+        let discoveredQualifiedToolNames = Self.discoveredQualifiedToolNames(rawOutput)
         let status = Self.authoritativeToolStatus(
             backendStatus: tool["status"] as? String,
             rawOutput: rawOutput
@@ -615,8 +659,79 @@ final class GrokProcess: @unchecked Sendable {
             detail: Self.redactedToolText(terminalFailure ?? rawOutputDetail ?? contentDetail, limit: 280),
             diagnosticDetail: Self.toolDiagnosticText(rawOutput),
             target: Self.toolTarget(from: raw),
+            mcpReceiptRole: mcpReceiptRole,
+            qualifiedToolName: qualifiedToolName,
+            discoveredQualifiedToolNames: discoveredQualifiedToolNames,
             retryOfToolCallID: Self.retryOfToolCallID(from: tool, rawInput: raw)
         )
+    }
+
+    private static func mcpReceiptRole(
+        metadataName: String?,
+        rawInput: [String: Any],
+        rawOutput: Any?
+    ) -> MCPToolReceiptRole? {
+        let variant = (rawInput["variant"] as? String)?.lowercased()
+        let outputType = ((rawOutput as? [String: Any])?["type"] as? String)?.lowercased()
+        let operation = metadataName?.lowercased()
+            ?? (rawInput["toolName"] as? String)?.lowercased()
+            ?? (rawInput["tool_name"] as? String)?.lowercased()
+        if operation == "search_tool" || variant == "searchtool" || outputType == "searchtool" {
+            return .discovery
+        }
+        if operation == "use_tool" || variant == "usetool" || outputType == "mcp" {
+            return .invocation
+        }
+        return nil
+    }
+
+    private static func rawOutput(from tool: [String: Any]) -> Any? {
+        if let direct = tool["rawOutput"] ?? tool["raw_output"] {
+            return direct
+        }
+        guard let entries = tool["content"] as? [Any] else { return nil }
+        for entry in entries {
+            guard let item = entry as? [String: Any] else { continue }
+            if let nested = item["rawOutput"] ?? item["raw_output"] {
+                return nested
+            }
+        }
+        return nil
+    }
+
+    private static func qualifiedToolName(
+        rawInput: [String: Any],
+        rawOutput: Any?,
+        title: String
+    ) -> String? {
+        let candidates = [
+            rawInput["tool_name"] as? String,
+            rawInput["toolName"] as? String,
+            rawInput["name"] as? String,
+            title
+        ]
+        if let qualified = candidates.compactMap(MCPQualifiedToolIdentity.normalized).first {
+            return qualified
+        }
+        guard let output = rawOutput as? [String: Any],
+              let server = output["server_name"] as? String,
+              let tool = output["tool_name"] as? String else { return nil }
+        return MCPQualifiedToolIdentity.normalized(tool.contains("__") ? tool : "\(server)__\(tool)")
+    }
+
+    private static func discoveredQualifiedToolNames(_ rawOutput: Any?) -> [String] {
+        guard let output = rawOutput as? [String: Any],
+              (output["type"] as? String)?.lowercased() == "searchtool",
+              let content = output["content"] as? String,
+              let data = content.data(using: .utf8),
+              let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let resultGroups = object["results"] as? [[String: Any]] else { return [] }
+        var seen = Set<String>()
+        return resultGroups.flatMap { ($0["tools"] as? [[String: Any]]) ?? [] }
+            .compactMap { MCPQualifiedToolIdentity.normalized($0["tool_name"] as? String) }
+            .filter { seen.insert($0).inserted }
+            .prefix(64)
+            .map { $0 }
     }
 
     private static func authoritativeToolStatus(
@@ -2020,8 +2135,52 @@ final class GrokProcess: @unchecked Sendable {
             turns: Self.integer(update["turns"]),
             toolCallCount: Self.integer(update["tool_calls"]),
             tokenCount: Self.integer(update["tokens_used"]),
-            redactedError: Self.lifecycleError(from: update)
+            redactedError: Self.lifecycleError(from: update),
+            childToolReceipts: loadChildToolReceipts(childID: childID)
         )
+    }
+
+    /// Imports only typed terminal tool receipts from the exact child session
+    /// named by `subagent_finished`. Child prose and the parent's collected
+    /// output are deliberately excluded. Count reconciliation remains the
+    /// caller's responsibility because a partially flushed ledger is not proof.
+    func loadChildToolReceipts(
+        childID: String,
+        workspacePath: URL? = nil,
+        sessionsRoot: URL? = nil
+    ) -> [ChildToolReceipt]? {
+        guard childID.range(of: #"^[A-Za-z0-9-]+$"#, options: .regularExpression) != nil,
+              let workspacePath = workspacePath ?? currentWorkspace?.path else { return nil }
+        let root = sessionsRoot ?? FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent(".grok/sessions", isDirectory: true)
+        let updatesURL = root
+            .appendingPathComponent(GrokSessionTranscriptImporter.encodeWorkspacePath(workspacePath), isDirectory: true)
+            .appendingPathComponent(childID, isDirectory: true)
+            .appendingPathComponent("updates.jsonl")
+        guard let text = try? String(contentsOf: updatesURL, encoding: .utf8) else { return nil }
+
+        var order: [String] = []
+        var receipts: [String: ChildToolReceipt] = [:]
+        for line in text.split(whereSeparator: \.isNewline) {
+            guard let data = String(line).data(using: .utf8),
+                  let row = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                  let params = row["params"] as? [String: Any],
+                  (params["sessionId"] as? String ?? params["session_id"] as? String) == childID,
+                  let update = params["update"] as? [String: Any],
+                  update["sessionUpdate"] as? String == "tool_call_update",
+                  let tool = parseToolCall(from: update),
+                  let status = tool.terminalStatus else { continue }
+            if receipts[tool.id] == nil { order.append(tool.id) }
+            receipts[tool.id] = ChildToolReceipt(
+                id: tool.id,
+                title: tool.title,
+                status: status,
+                mcpReceiptRole: tool.mcpReceiptRole,
+                qualifiedToolName: tool.qualifiedToolName,
+                discoveredQualifiedToolNames: tool.discoveredQualifiedToolNames
+            )
+        }
+        return order.compactMap { receipts[$0] }
     }
 
     private static func childID(from update: [String: Any]) -> String? {
