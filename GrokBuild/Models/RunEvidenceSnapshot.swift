@@ -42,6 +42,17 @@ struct RunEvidenceSnapshot: Equatable, Sendable {
         var isCompleted: Bool {
             status.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() == "completed"
         }
+        /// A completed child lifecycle does not report whether the child's
+        /// individual tool calls succeeded. Keep that outcome unresolved until
+        /// ACP supplies typed child-tool results; child prose is not authority.
+        var hasUnresolvedChildToolOutcome: Bool {
+            isCompleted && (toolCallCount ?? 0) > 0
+        }
+        var isUnresolved: Bool {
+            let normalized = status.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+            return hasUnresolvedChildToolOutcome
+                || ["unknown", "orphaned", "not_settled", "status_not_settled"].contains(normalized)
+        }
     }
 
     struct ToolSummary: Equatable, Sendable {
@@ -99,6 +110,7 @@ struct RunEvidenceSnapshot: Equatable, Sendable {
 
     var activeWorkerCount: Int { workers.filter(\.isActive).count }
     var completedWorkerCount: Int { workers.filter(\.isCompleted).count }
+    var unresolvedWorkerCount: Int { workers.filter(\.isUnresolved).count }
     var currentPlanStep: PlanStep? { plan.first(where: \.isCurrent) }
 
     func replacingGitReviewFiles(_ paths: [String]) -> RunEvidenceSnapshot {

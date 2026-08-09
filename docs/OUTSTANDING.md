@@ -533,6 +533,78 @@ Delete the exact test thread, quit, prove process-zero, merge, rebuild merged `m
 repeat S1-B and S1-C as the minimum merged-main smoke, delete those new threads, then
 pass Gates F–H.
 
+### Slice 1 completion receipt — 2026-08-08
+
+- Objective: keep parent `turn_completed` lifecycle truth separate from requested-task,
+  terminal-tool, and child-tool outcome truth; attribute an empty next-action receipt
+  to the agent.
+- Starting main SHA/tree: `7a9566fdfc7790853326292c9e06279fac601545` /
+  `46198928e2e490344e48bc1417ccb0b1105e49a2`.
+- Branch and content commit SHA: `codex/grokbuild-audit-s1-activity-truth` / retained
+  by the immutable Slice 1 PR and final task receipt after this pre-merge snapshot.
+- Intended files: `ARCHITECTURE.md`, `GrokBuild/Models/RunEvidenceSnapshot.swift`,
+  `GrokBuild/Services/ChatStore.swift`, `GrokBuild/Views/ActivitySidebar.swift`,
+  `Tests/GrokBuildTests/ACPClientContractTests.swift`,
+  `Tests/GrokBuildTests/ActivitySidebarTests.swift`,
+  `Tests/GrokBuildTests/RunEvidenceSnapshotTests.swift`, and this ledger.
+- Unexpected files: none.
+- Focused tests: 17 Activity sidebar tests and 3 snapshot tests passed; the ACP
+  completion/failure source contract passed in the full ACP suite.
+- Full `make test`: 662 tests, 0 failures in 24.195 seconds; candidate `make ship`
+  repeated 662 tests, 0 failures in 23.467 seconds.
+- `git diff --check`: clean.
+- Candidate installed stamp/hash/signing: `personal` /
+  `codex/grokbuild-audit-s1-activity-truth` / `7a9566fd`, `dirty=true`, version
+  `0.1.20`; installed/dist executable SHA-256
+  `7fa72bdcf993ddceb1a167133286a0e355c8eec518c14ad6d93f3e35cd0c5cbc`;
+  Apple Development Team `DD2GCQJVB4`, deep/strict valid, no quarantine.
+- Computer Use acceptance: S1-A rendered neutral lifecycle completion and attributed
+  next action; S1-B retained exit 1, one failed tool, one unresolved error, and review
+  action after parent completion; S1-C admitted the missing capability without
+  claiming navigation/browser use or task success; the first S1-D exposed that a
+  completed child lifecycle hid its internal exit 1, and corrective S1-D-R2 visibly
+  rendered `1 worker receipt remains unresolved`, retained the completed lifecycle,
+  and stated that child tool outcomes were not reported to the parent receipt.
+- Provider prompts/models/routes: S1-A native Grok 4.5; S1-B direct
+  `gpt-5.6-terra`; S1-C pinned `deepseek/deepseek-v4-flash-0731` through OpenRouter;
+  S1-D and S1-D-R2 native Grok 4.5. All were Medium, one parent turn, no retry, and
+  live receipts confirmed the requested model/route with no GrokBuild fallback.
+- Calls/tokens/cost: S1-A 2 calls / 31,913 tokens; S1-B 2 / 23,791; S1-C 2 / 30,689
+  (OpenRouter estimated $0.0028-$0.0055); S1-D 5 / 73,379; corrective S1-D-R2 5 /
+  73,276. Total: 16 model calls / 233,048 tokens; cost unavailable where the route
+  receipt did not expose pricing.
+- Test thread markers/local tab IDs/backend IDs:
+  - `GB-S1-SUCCESS-20260808T210645` / `76A87109-A2AA-4367-873C-B99E2D6D508C` /
+    `019fe410-3fb5-7e00-b09a-dca2b006eefc`;
+  - `GB-S1-FAILURE-20260808T210646` / `0B35A187-51D3-4C30-9360-7BEC054E8FF4` /
+    `019fe411-b540-7141-aa9c-906054c71286`;
+  - `GB-S1-UNAVAILABLE-20260808T210647` / `4B1C3693-3ADF-4718-81B8-35B4C4B2951F` /
+    `019fe412-eb36-7362-a26a-b46c005e9857`;
+  - `GB-S1-WORKER-20260808T210648` / `275BC577-64C7-4E5F-B7EC-1D1FBCB058C8` /
+    `019fe416-b9c8-7eb2-9955-cc41d1e06a49`;
+  - `GB-S1-WORKER-R2-20260809T013826Z` / `5D49AF7F-8B48-472C-83DD-6504EE754F7E` /
+    `019fe42c-a960-7120-b4f1-144e92e9dda6`.
+- Test thread deletion proof: pending exact Gate F cleanup after merge; no non-test
+  session is authorized for deletion.
+- Candidate process-zero proof: exact-name checks returned zero for `GrokBuild`,
+  `grok`, `GrokBuildComputerUseMCP`, `agent-desktop`, and GrokBuild-owned browser MCP.
+- PR URL/number and reviewed head SHA: retained in the immutable Slice 1 PR and final
+  task receipt after publication.
+- Merge commit SHA: retained in the Slice 1 PR and final task receipt after merge.
+- Post-merge `main` installed stamp/hash/signing: pending Gate E.
+- Post-merge visible acceptance: pending the required S1-B/S1-C merged-main smoke.
+- Final test thread deletion proof: pending Gate F.
+- Final process-zero proof: pending Gate G.
+- CLI version and Settings -> App agreement: CLI `1.0.0
+  (3cd0d0cbcebe) [stable]`; visible merged-main agreement pending Gate H.
+- Worktree/personal-main parity: pending normal PR merge and `main` resync.
+- Known residual risk: ACP currently reports a child's terminal lifecycle and tool
+  count but not typed per-child tool outcomes to the parent; completed workers that
+  invoked tools therefore remain explicitly outcome-unresolved instead of being
+  promoted from final child prose.
+- Exact next slice: Slice 2 - browser readiness and capability truth. Do not begin it
+  until Slice 1 merges and Gates E-H pass.
+
 ---
 
 ## Slice 2 — browser readiness and capability truth

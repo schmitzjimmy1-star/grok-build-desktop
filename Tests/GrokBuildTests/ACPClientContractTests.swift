@@ -930,6 +930,9 @@ final class ACPClientContractTests: XCTestCase {
         XCTAssertTrue(chrome.contains("turnOutcome.displayName"))
         XCTAssertTrue(store.contains("settleToolCallsAtTurnBarrier()"))
         XCTAssertTrue(store.contains("latestTurnOutcome = .completed"))
+        XCTAssertTrue(store.contains("The agent reported no next action."))
+        XCTAssertTrue(store.contains("Review unresolved worker receipts."))
+        XCTAssertFalse(store.contains("No further action reported."))
     }
 
     func testFreshModelCatalogFallbackIsCurrentGrok() {
