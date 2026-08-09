@@ -25,7 +25,7 @@ below so truth and lifecycle contracts land before presentation and optimization
 
 | Slice | Objective | Risk | Provider spend | Status |
 |---|---|---:|---:|---|
-| 0 | Freeze the audit baseline and remove the four audit-only threads | Low | None; control slice creates no product behavior | Open |
+| 0 | Freeze the audit baseline and remove the four audit-only threads | Low | None; control slice creates no product behavior | Merged and accepted |
 | 1 | Stop Activity from claiming task success from transport completion | High | 4 prompts; up to 220K tokens | Open |
 | 2 | Separate browser process readiness, catalog capability, requested use, and proven use | High | 5 prompts; up to 320K tokens | Open |
 | 3 | Replace Browser Settings false-negative startup flicker with an unresolved/checking state | Medium | 3 prompts; up to 180K tokens | Open |
@@ -403,6 +403,68 @@ ID, prove all four searches return zero, quit GrokBuild, and pass process-zero.
 Branch `codex/grokbuild-audit-s0-canonical-ledger`; commit, push, PR, normal merge
 commit, resync `main`, and pass Gates E–H. Slice 1 cannot start until this plan itself
 is merged and the four audit threads are gone.
+
+### Slice 0 completion receipt — 2026-08-08
+
+- Objective: establish this canonical seven-slice ledger and remove only the four
+  audit-only sessions named above.
+- Starting main SHA/tree: `6404a186a7bb28a348325aa16074e07d0e3fb8c6` /
+  `2d47d224f206d810839655419389d30500b66d53`.
+- Branch and content commit SHA:
+  `codex/grokbuild-audit-s0-canonical-ledger` /
+  `4aeea652a4094908f4e4ffb5d239f80512a5d2aa`.
+- Intended files: `docs/OUTSTANDING.md` only.
+- Unexpected files: none.
+- Focused tests: documentation link/command review; all named paths and commands
+  remained repository-relative or canonical absolute paths.
+- Full `make test`: 656 tests, 0 failures in 23.950 seconds.
+- `git diff --check`: clean.
+- Candidate installed stamp/hash/signing: unchanged clean starting `personal/main`
+  bundle at `6404a186a7bb28a348325aa16074e07d0e3fb8c6`, version `0.1.20`;
+  installed/dist executable SHA-256
+  `360777b69de63b3fd72e4b021f4d376cc3697c5927f75c9195e193096699e68b`;
+  deep/strict Team `DD2GCQJVB4` baseline retained.
+- Computer Use acceptance: installed app exposed all four exact audit tabs; each was
+  closed through its own **Close Session** action before backend deletion, then the
+  app selected an unrelated protected historical session which was left untouched.
+- Provider prompts/models/routes: none; Slice 0 is the sole no-prompt control slice.
+- Calls/tokens/cost: zero new calls, zero new tokens, zero new provider spend.
+- Test thread markers/local tab IDs/backend IDs:
+  - `GROK45_TERM_OK` / `62AEB90D-6D3A-4622-A39B-FCEE13D45467` /
+    `019fe3de-4ba5-7823-9dc5-dd72ffc499be`;
+  - `TERRA_FINAL_OK` / `64BBD584-6083-421A-B01B-0034FED1C460` /
+    `019fe3df-2485-7d41-b93d-63797825201e`;
+  - `DEEPSEEK_FAILURE_SEEN` / `E105C8A4-37EE-4015-B46E-88DA643DCF44` /
+    `019fe3df-e903-7151-aeb6-8d294bf7b4c0`;
+  - `BROWSER_LIST_OK` / `46E69CCD-59AF-4A0C-B88E-7FD3525DB26B` /
+    `019fe3e2-d040-7a22-ac79-dd7f2a08d7fc`.
+- Test thread deletion proof: each exact `grok sessions delete` returned success;
+  every exact marker search returned `Total: 0`; all four backend directories and all
+  eight local transcript/metadata paths were absent.
+- Candidate process-zero proof: exact-name checks returned zero for `GrokBuild`,
+  `grok`, `GrokBuildComputerUseMCP`, and `agent-desktop`; no GrokBuild-owned managed
+  browser process remained.
+- PR URL/number: `https://github.com/schmitzjimmy1-star/grok-build-desktop/pull/22`.
+  The immutable PR and final task receipt retain the final reviewed head, merge SHA,
+  and post-merge Gates E–H values because those values do not exist until after this
+  pre-merge source snapshot is created.
+- Merge commit SHA: retained in PR #22 and the final task receipt after merge.
+- Post-merge `main` installed stamp/hash/signing: retained in PR #22 and the final
+  task receipt after Gate E.
+- Post-merge visible acceptance: Settings → App receipt and quit/relaunch persistence
+  retained in PR #22 and the final task receipt after Gate H.
+- Final test thread deletion proof: the four exact marker searches remained zero
+  before publication; repeated after merged-main relaunch under Gate F.
+- Final process-zero proof: repeated after merged-main Settings → App acceptance under
+  Gate G and retained in the final task receipt.
+- CLI version and Settings → App agreement: CLI `1.0.0
+  (3cd0d0cbcebe) [stable]`; visible agreement rechecked on merged `main` under Gate H.
+- Worktree/personal-main parity: required after PR #22 merge and recorded in the final
+  task receipt.
+- Known residual risk: none within Slice 0; Slices 1–6 remain deliberately open and
+  unstarted.
+- Exact next slice: Slice 1 — truthful completion and next-action language. Do not
+  begin it in this task.
 
 ---
 
