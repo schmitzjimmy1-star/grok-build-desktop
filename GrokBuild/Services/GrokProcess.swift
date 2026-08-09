@@ -2047,6 +2047,9 @@ final class GrokProcess: @unchecked Sendable {
                 } else {
                     acpEventContinuation?.yield(.toolCall(ToolCall(id: UUID().uuidString, kind: "unknown", title: "Tool call", rawInput: nil)))
                 }
+                if Self.isPlanToolUpdate(u) {
+                    acpEventContinuation?.yield(.plan(payload: u))
+                }
             }
             if SchedulerToolParsing.schedulerName(inUpdate: u) != nil {
                 acpEventContinuation?.yield(.schedulerActivity(payload: u))
@@ -2060,6 +2063,9 @@ final class GrokProcess: @unchecked Sendable {
         case "tool_call_update":
             if belongsToCurrentSession, let tc = parseToolCall(from: u) {
                 acpEventContinuation?.yield(.toolCallUpdate(tc))
+            }
+            if belongsToCurrentSession, Self.isPlanToolUpdate(u) {
+                acpEventContinuation?.yield(.plan(payload: u))
             }
             if SchedulerToolParsing.schedulerName(inUpdate: u) != nil {
                 acpEventContinuation?.yield(.schedulerActivity(payload: u))
@@ -2108,6 +2114,12 @@ final class GrokProcess: @unchecked Sendable {
                 acpEventContinuation?.yield(.workflowActivity(payload: u))
             }
         }
+    }
+
+    nonisolated static func isPlanToolUpdate(_ update: [String: Any]) -> Bool {
+        let metadataName = ((update["_meta"] as? [String: Any])?["x.ai/tool"] as? [String: Any])?["name"] as? String
+        let variant = (update["rawInput"] as? [String: Any])?["variant"] as? String
+        return metadataName == "todo_write" || variant?.lowercased() == "todowrite"
     }
 
     private static func backendEventID(from params: [String: Any]) -> String? {

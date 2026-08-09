@@ -112,6 +112,49 @@ final class ThreadRunSpineTests: XCTestCase {
         XCTAssertNil(legacy.kind)
     }
 
+    func testTypedTodoPlanCreatesStableStepsAndMergesStatusOnlyUpdates() {
+        let initial: [String: Any] = [
+            "rawInput": [
+                "merge": false,
+                "todos": [
+                    ["id": "Spawn", "content": "Spawn sibling workers", "status": "in_progress"],
+                    ["id": "Collect", "content": "Collect both", "status": "pending"],
+                    ["id": "Report", "content": "Report", "status": "pending"],
+                ],
+            ],
+        ]
+        let partial: [String: Any] = [
+            "rawInput": [
+                "merge": true,
+                "todos": [
+                    ["id": "Spawn", "status": "completed"],
+                    ["id": "Collect", "status": "in_progress"],
+                ],
+            ],
+        ]
+
+        let created = ChatStore.applyingPlanUpdate(initial, to: [])
+        let merged = ChatStore.applyingPlanUpdate(partial, to: created)
+
+        XCTAssertEqual(created.map(\.id), ["Spawn", "Collect", "Report"])
+        XCTAssertEqual(merged.map(\.title), ["Spawn sibling workers", "Collect both", "Report"])
+        XCTAssertEqual(merged.map(\.status), ["completed", "in_progress", "pending"])
+    }
+
+    func testOnlyTypedTodoWriteReceiptsEnterThePlanProjection() {
+        XCTAssertTrue(GrokProcess.isPlanToolUpdate([
+            "_meta": ["x.ai/tool": ["name": "todo_write"]],
+            "rawInput": ["todos": []],
+        ]))
+        XCTAssertTrue(GrokProcess.isPlanToolUpdate([
+            "rawInput": ["variant": "TodoWrite", "todos": []],
+        ]))
+        XCTAssertFalse(GrokProcess.isPlanToolUpdate([
+            "_meta": ["x.ai/tool": ["name": "execute"]],
+            "rawInput": ["command": "true"],
+        ]))
+    }
+
     private func live(
         plan: [RunEvidenceSnapshot.PlanStep] = [],
         workers: [RunEvidenceSnapshot.Worker] = [],
