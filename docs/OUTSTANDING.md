@@ -37,8 +37,11 @@ No slice may begin until the preceding slice is merged, local `main` matches
 `personal/main`, the installed app is stamped to that merged commit, slice-created
 threads are gone, and the process-zero gate is green.
 
-All seven audit slices are merged and accepted. The campaign is closed; there is no
-authorized later slice.
+All seven audit slices in that campaign are merged and accepted. A separate
+thread-native product-refinement campaign is now authorized for Slices 7 through
+12 in strict order; its current authority, token ceilings, provider requirements,
+and close gates are owned by
+`docs/THREAD_NATIVE_PRODUCT_REFINEMENT_SLICES_2026-08-09.md`.
 
 ---
 
@@ -1768,6 +1771,79 @@ smoke threads, and pass Gates F–H.
   billable provider prompt. After its normal merge, final `main` must be re-shipped,
   Settings -> App must agree with the closeout commit, and Gates F-H must remain green.
   The seven-slice campaign then remains closed; do not begin any later slice.
+
+---
+
+## Thread-native Slice 7 candidate receipt — 2026-08-09
+
+- Objective: make first submission exactly once while process/model startup is still
+  pending, expose real startup stages, and delete one exact Grok backend when its
+  local tab is explicitly closed without deleting history on ordinary app quit.
+- Starting main SHA: `c4f3e2b7180c22f177fd6fe8111956f2daf1b0f8`; branch
+  `codex/grokbuild-audit-s7-one-submit-startup`.
+- Implementation: a synchronous pending-submit latch owns the immutable prompt and
+  generation before async startup, immediate Cancel restores the exact draft before
+  dispatch, duplicate Return/click events cannot create a second request, and the UI
+  projects only observed preparing stages. The JSONL ledger stores stage, elapsed
+  milliseconds, and PID only; it never stores prompts or secrets.
+- Close cleanup: live, durable, and saved backend identities resolve to zero, one, or
+  conflict. Zero performs local-only cleanup, one shuts down its process then calls
+  exact `grok sessions delete`, and conflict stops the close. Failed deletion preserves
+  and reports the exact backend ID. Normal quit and workspace removal never delete
+  Grok history.
+- Focused and full verification: submission/cancel/restore/performance/close policy
+  coverage passed; final `make ship` ran `711/711` tests with zero failures.
+  `git diff --check` is clean.
+- Candidate install: version `0.1.20`, `personal` /
+  `codex/grokbuild-audit-s7-one-submit-startup` / `c4f3e2b`, `dirty=true`;
+  installed/dist executable SHA-256
+  `4ff6dd21f7ea2f0f2751222b0da13113b0dd7ca9a447b48caee23b9cbfb42d3f`;
+  Team `DD2GCQJVB4`, deep/strict valid, no quarantine; CLI
+  `1.0.0 (3cd0d0cbcebe) [stable]`.
+- Cold samples (three process-zero launches): first window median `384.1 ms`, range
+  `266.6–494.8`; restore completed `4,528.2 ms`, `4,266.5–4,835.1`; first transcript
+  `5,757.3 ms`, `5,063.9–8,090.8`; dispatch `27,908.7 ms`,
+  `26,324.9–31,020.6`; first chunk `32,766.5 ms`, `31,215.5–35,195.1`; settled
+  `35,414.9 ms`, `33,711.0–36,294.2`. One deliberately preserved outlier with a
+  `180,975.6 ms` operator pause is excluded from the three-sample median, not hidden.
+- Warm fresh-thread samples (three in one installed process): submit-to-ACP-ready
+  median `619.6 ms`, range `590.8–628.6`; submit-to-session-ready `1,569.2 ms`,
+  `1,568.2–1,660.4`; submit-to-selected-MCP-ready `3,166.5 ms`,
+  `3,164.8–3,172.0`; submit-to-dispatch `3,275.2 ms`, `3,250.3–3,284.5`;
+  submit-to-first-chunk `4,932.6 ms`, `4,922.4–5,146.8`; submit-to-settled
+  `5,189.2 ms`, `5,166.6–5,238.7`. Backend/MCP readiness, not the native window,
+  dominates measured startup; Slice 8 owns that demand-driven repair.
+- Native exactly-once acceptance: marker `GB-S7-ONE-SUBMIT-20260809T164000Z`, local
+  tab `B03D154E-BBC3-408D-8419-CDE561090D9C`, backend
+  `019fe83b-d06f-79e2-ba63-f3eb8ba99c97`; Grok 4.5 Medium executed exactly one
+  `/usr/bin/git rev-parse --short HEAD` and returned the exact marker plus `c4f3e2b`,
+  `31,214` tokens.
+- OpenRouter acceptance and automatic cleanup: marker
+  `GB-S7-OPENROUTER-CLOSE-20260809T165500Z`, local tab
+  `3CBBF86E-2E23-4ED0-92B1-EFCEB3170617`, backend
+  `019fe84e-6573-7022-9872-33cf8fb351ab`; pinned
+  `openai/gpt-4.1-mini` executed the same one terminal call and returned the exact
+  marker plus `c4f3e2b`, `22,966` tokens / `2` model calls. Closing the tab through
+  the installed UI removed its backend directory, transcript, layout identities, and
+  local marker without a cleanup command.
+- Warm markers `GB-S7-WARM-[1-3]-20260809T170000Z` used local tabs
+  `B394BDAB-FF59-43C4-A31D-7FA71883C897`,
+  `5F0E1F25-246F-494E-9C3F-2D161E53EBA5`, and
+  `189B6103-19DF-496F-83BE-8053F675A503`; exact backends
+  `019fe875-3d91-7c43-b712-acddf56c72e1`,
+  `019fe875-c4fc-7502-b33c-e3218bcf56e3`, and
+  `019fe876-4a28-74e1-820b-08b3b53ac0e1`; totals `15,484`, `15,485`, and
+  `15,483` tokens. UI Close automatically removed all six identities and all three
+  markers.
+- Honest acceptance spend: `181,520` tokens, below the `1,000,000` ceiling. Earlier
+  cancellation-race receipts are preserved in the campaign record and led to the
+  synchronous latch; the final immediate Return→Escape path restored the exact draft
+  with no dispatch, first chunk, settlement, transcript row, or billable backend turn.
+- Candidate close gate: every exact Slice 7 tab/backend is gone, local marker searches
+  are zero, normal Command-Q completed, and exact-name checks are zero for
+  `GrokBuild`, `grok`, `GrokBuildComputerUseMCP`, and `agent-desktop`.
+- Publication, normal merge, merged-main reinstall, visible Settings identity, and
+  final Gates A–H remain pending; Slice 8 has not begun.
 
 ---
 

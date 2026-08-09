@@ -205,12 +205,17 @@ flowchart TB
 ### Request path (send a message)
 
 1. User types in `ChatView` → `ChatStore.send(_:)`.
-2. `ChatStore` ensures workspace selected and `GrokProcess` is `.ready` (restarts if needed).
-3. Appends user `Message`, creates empty assistant `Message`, sets `isStreaming`.
-4. `GrokProcess.send(prompt)` → ACP `session/prompt` JSON-RPC on stdin.
-5. `GrokProcess` reader parses stdout → `AcpEvent` stream.
-6. `ChatStore.consumeOutput()` maps events → message text, tool activity, authoritative interaction cards, and thinking blocks. Question, permission, and plan cards require the exact live backend-session/request identity; tool-call rows never acquire response authority.
-7. On completion → `isStreaming = false`, posts `.liveSessionMessagesChanged` (also on user send).
+2. If first-intent startup is still incomplete, `ChatStore` latches one exact
+   `PendingSubmitIntent`. The composer becomes read-only, shows real preparation
+   stage copy, and offers pre-dispatch Cancel. Duplicate Return/click events and a
+   different draft cannot create another request. Cancellation restores editing and
+   sends nothing; startup failure preserves the exact draft for retry/start-new.
+3. `ChatStore` ensures workspace selected and `GrokProcess` is `.ready` (restarts if needed).
+4. Appends user `Message`, creates empty assistant `Message`, sets `isStreaming`.
+5. `GrokProcess.send(prompt)` → ACP `session/prompt` JSON-RPC on stdin.
+6. `GrokProcess` reader parses stdout → `AcpEvent` stream.
+7. `ChatStore.consumeOutput()` maps events → message text, tool activity, authoritative interaction cards, and thinking blocks. Question, permission, and plan cards require the exact live backend-session/request identity; tool-call rows never acquire response authority.
+8. On completion → `isStreaming = false`, posts `.liveSessionMessagesChanged` (also on user send).
 
 ### CLI discovery (shared)
 
@@ -449,7 +454,7 @@ accepted send / completed turn / recovery boundary / controlled quit
 
 `SessionLayoutStore.saveSessions` writes a v3 candidate, verifies its complete decode plus schema/IDs/count/generations and keyed integrity tag, then writes and re-verifies a separate commit marker. `GrokBuild.sessionLayout.v2` is rollback input and is never overwritten. A missing/tampered marker or candidate falls back to the preserved v2 presentation in read-only mode instead of opening an empty workspace. Controlled quit records `GrokBuild.sessionLifecycle.lastFlush.v1` only after the layout commit and transcript write have both completed.
 
-**Controlled quit (2026-08-07):** `applicationShouldTerminate` returns `.terminateLater`, posts `.grokBuildPrepareForShutdown`, and replies within a 3 s deadline. A quit arriving while one is already pending keeps waiting on the same reply (the old path answered `.terminateNow` and silently skipped the teardown gate), and the pending flag resets after the reply. `handlePrepareForShutdown` persists the layout, then tears sessions down in a `TaskGroup` so the per-process grace sleeps interleave instead of summing, and posts `.grokBuildShutdownComplete` from the main actor (a background-thread post raced AppDelegate's poll and could burn the full deadline after a clean teardown). `GrokProcess.shutdown()` skips the courtesy `session/cancel` — a blocking pipe write with no timeout that could hold teardown hostage; stdin close is the exit signal — and escalates SIGTERM → 300 ms → SIGKILL, because grok's MCP helper children (browser, computer use) exit only when their stdin pipes close, which happens exactly when grok dies. `closeSession(id:persist:)` lets `purgeEmptySessions` batch one layout save for a whole purge instead of O(n) encode/verify cycles.
+**Controlled quit and explicit close (2026-08-09):** `applicationShouldTerminate` returns `.terminateLater`, posts `.grokBuildPrepareForShutdown`, and replies within a 3 s deadline. A quit arriving while one is already pending keeps waiting on the same reply (the old path answered `.terminateNow` and silently skipped the teardown gate), and the pending flag resets after the reply. `handlePrepareForShutdown` persists the layout, then tears sessions down in a `TaskGroup` so the per-process grace sleeps interleave instead of summing, and posts `.grokBuildShutdownComplete` from the main actor (a background-thread post raced AppDelegate's poll and could burn the full deadline after a clean teardown). `GrokProcess.shutdown()` skips the courtesy `session/cancel` — a blocking pipe write with no timeout that could hold teardown hostage; stdin close is the exit signal — and escalates SIGTERM → 300 ms → SIGKILL, because grok's MCP helper children (browser, computer use) exit only when their stdin pipes close, which happens exactly when grok dies. Explicit tab close resolves the live, durable, and saved backend identities before removing local state: zero identities means local-only cleanup, one exact ID is deleted with `grok sessions delete` after process shutdown, and conflicting IDs stop the close. A backend deletion failure stays visible with the exact preserved ID. Ordinary app quit never deletes Grok history, and removing a workspace is local-only. `closeSession(id:persist:deleteBackend:)` lets `purgeEmptySessions` batch one layout save for a whole purge instead of O(n) encode/verify cycles.
 
 Sidebar shows max `SessionLayoutStore.maxSidebarSessions` (10) per project; older sessions in **Browse Sessions**.
 
@@ -1054,6 +1059,12 @@ See `BUILDING.md` for signing, notarization, CI workflow.
 | **Recovery candidate review / Continue as New / Relink** | `GrokSessionTranscriptImporter.importTranscriptBounded`, `SessionTranscriptRecovery.recoveryCandidates`, `ChatStore.reviewRecoveryCandidates` / `continueAsNew` / `relink`, `RecoveryCandidateReviewSheet` |
 | **Lifecycle migration/integrity** | `SessionLayoutStore`, `SessionLifecycleIntegrity`, `SessionLifecycleV3Tests` |
 | **Performance signposts** | `PerformanceInstrumentation`, plus call sites in app/session/process/settings/render services |
+
+Slice 7 adds an opt-in redacted JSONL stage ledger driven by
+`scripts/performance-ledger.sh`. It records launch/window/layout/restore/transcript,
+spawn/ACP/session/model/MCP readiness, submit/dispatch/first-chunk/settled boundaries
+using only stage, time, and PID. It never records prompts, response bodies, tool
+arguments, credentials, URLs, or environment contents.
 | **Add/remove project** | `WorkspaceStore`, `WorkspacePicker` |
 | **Browser tools** | `AgentBrowserService`, `BrowserSettingsStore`, settings `.browser` (agent-browser CLI over MCP) |
 | **Session agent** | `GrokAgentProfiles`, `GrokCLIService.listAgents`, settings `.agents` |

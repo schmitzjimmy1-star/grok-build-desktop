@@ -523,6 +523,57 @@ final class ChatTranscriptLayoutTests: XCTestCase {
         )
     }
 
+    @MainActor
+    func testPendingSubmitCancelPreservesExactDraftAndSpendsNothing() {
+        let store = ChatStore()
+        store.composerDraft = "  exact first task  "
+        let intent = PendingSubmitIntent(id: UUID(), draft: "exact first task")
+
+        XCTAssertEqual(intent.draft, "exact first task")
+        XCTAssertFalse(store.isPreparingSubmit)
+        store.cancelPendingSubmit()
+        XCTAssertEqual(store.composerDraft, "  exact first task  ")
+        XCTAssertFalse(store.isPreparingSubmit)
+    }
+
+    func testPendingSubmitIntentHasStableIdentityForExactlyOnceDispatch() {
+        let id = UUID()
+        let first = PendingSubmitIntent(id: id, draft: "run one command")
+        let duplicate = PendingSubmitIntent(id: id, draft: "run one command")
+        let different = PendingSubmitIntent(id: UUID(), draft: "run one command")
+
+        XCTAssertEqual(first, duplicate)
+        XCTAssertNotEqual(first, different)
+        XCTAssertEqual(
+            PendingSubmitIntentPolicy.latchDecision(existing: nil, draft: first.draft),
+            .latch
+        )
+        XCTAssertEqual(
+            PendingSubmitIntentPolicy.latchDecision(existing: first, draft: first.draft),
+            .duplicate
+        )
+        XCTAssertEqual(
+            PendingSubmitIntentPolicy.latchDecision(existing: first, draft: "mutated"),
+            .conflictingDraft
+        )
+    }
+
+    func testNativeSubmitLatchesBeforeLaunchingAsyncDelivery() throws {
+        let repositoryRoot = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        let source = try String(
+            contentsOf: repositoryRoot.appendingPathComponent("GrokBuild/Views/ChatView.swift"),
+            encoding: .utf8
+        )
+
+        let preparation = try XCTUnwrap(source.range(of: "let preparation = store.prepareSubmit(text)"))
+        let delivery = try XCTUnwrap(source.range(of: "Task {\n            let accepted = await store.send"))
+        XCTAssertLessThan(preparation.lowerBound, delivery.lowerBound)
+        XCTAssertTrue(source.contains("else {\n                            submit()\n                        }"))
+    }
+
     func testConnectionStatusNamesLazyResumeExplicitly() {
         XCTAssertEqual(
             ConnectionStatusPresentation.subtitle(

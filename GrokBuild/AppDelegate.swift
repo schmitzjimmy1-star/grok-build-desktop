@@ -11,6 +11,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMenuDele
     private var lockFd: Int32 = -1   // fd that holds the flock for the lifetime of the process
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        GrokBuildPerformance.mark(.appLaunch)
         let launchInterval = GrokBuildPerformance.begin(.appLaunchToWindow)
         defer { launchInterval.end() }
         // Enforce single instance with flock (advisory lock held by open fd).
@@ -96,6 +97,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMenuDele
 
         // Open a main window on launch
         openMainWindow()
+        GrokBuildPerformance.mark(.firstWindow)
     }
 
     private var sessionTeardownComplete = false

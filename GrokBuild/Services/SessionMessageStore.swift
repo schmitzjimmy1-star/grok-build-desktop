@@ -47,7 +47,7 @@ enum SessionMessageStore {
     }
 
     static func messages(for sessionID: UUID, rootURL: URL = defaultRootURL()) -> [Message] {
-        GrokBuildPerformance.measure(.selectedTranscriptLoad) {
+        let messages = GrokBuildPerformance.measure(.selectedTranscriptLoad) {
             storageQueue.sync {
                 if let envelope = readEnvelope(for: sessionID, rootURL: rootURL) {
                     return envelope.messages
@@ -57,6 +57,8 @@ enum SessionMessageStore {
                 return legacyMessages(for: sessionID)
             }
         }
+        GrokBuildPerformance.markOnce(.transcriptLoaded)
+        return messages
     }
 
     static func metadata(for sessionID: UUID, rootURL: URL = defaultRootURL()) -> Metadata? {

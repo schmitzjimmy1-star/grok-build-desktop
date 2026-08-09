@@ -1004,6 +1004,7 @@ final class GrokProcess: @unchecked Sendable {
             state = .failed("Failed to launch: \(error.localizedDescription)")
             return
         }
+        GrokBuildPerformance.mark(.processSpawned)
 
         launchReceipt = GrokLaunchReceipt(
             options: options,
@@ -1029,6 +1030,7 @@ final class GrokProcess: @unchecked Sendable {
 
         do {
             try await initializeACP()
+            GrokBuildPerformance.mark(.acpReady)
             guard activeProcessGeneration == launchGeneration else { return }
             let launchOutcome: GrokLaunchOutcome
             if let resumeSessionID = options.resumeSessionID, !resumeSessionID.isEmpty {
@@ -1050,6 +1052,7 @@ final class GrokProcess: @unchecked Sendable {
                 try await createSession(workspace: workspace, mcpServers: options.mcpServers)
                 launchOutcome = .new
             }
+            GrokBuildPerformance.mark(.sessionReady)
             ownedProcessLedger.rebindBackend(sessionId)
             guard activeProcessGeneration == launchGeneration else { return }
             try await confirmRequestedLaunchModel(
@@ -1057,12 +1060,14 @@ final class GrokProcess: @unchecked Sendable {
                 expectedEffectiveModelID: options.expectedEffectiveModelID,
                 processGeneration: launchGeneration
             )
+            GrokBuildPerformance.mark(.modelConfirmed)
             guard activeProcessGeneration == launchGeneration else { return }
             // `session/new` can resolve before Grok's stdio MCP children finish
             // their initialize/tools-list handshake. Keep the process non-ready
             // until the bounded barrier has elapsed so the first billable turn
             // cannot race tool discovery.
             try await MCPReadinessPolicy.waitForInitialMCPSet(options.mcpServers)
+            GrokBuildPerformance.mark(.selectedMCPReady)
             guard activeProcessGeneration == launchGeneration else { return }
             mcpServerStatuses = MCPReadinessPolicy.readyStatuses(for: options.mcpServers)
             settleLaunchModelReceipt(identity: launchIdentity)

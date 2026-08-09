@@ -3,6 +3,35 @@ import Observation
 import SwiftUI
 import AppKit
 
+struct PendingSubmitIntent: Equatable, Sendable {
+    let id: UUID
+    let draft: String
+}
+
+enum SubmitPreparation: Equatable, Sendable {
+    case dispatchNow
+    case latched(UUID)
+    case rejected
+
+    var intentID: UUID? {
+        guard case .latched(let id) = self else { return nil }
+        return id
+    }
+}
+
+enum PendingSubmitIntentPolicy {
+    enum LatchDecision: Equatable {
+        case latch
+        case duplicate
+        case conflictingDraft
+    }
+
+    static func latchDecision(existing: PendingSubmitIntent?, draft: String) -> LatchDecision {
+        guard let existing else { return .latch }
+        return existing.draft == draft ? .duplicate : .conflictingDraft
+    }
+}
+
 struct TurnSettlementCoordinator {
     struct Decision: Equatable {
         let assistantID: UUID
@@ -656,6 +685,48 @@ final class ChatStore {
         didSet { warmStartOnFirstIntentIfNeeded(previousDraft: oldValue) }
     }
     private var firstIntentWarmStartTask: Task<Void, Never>?
+    private(set) var pendingSubmitIntent: PendingSubmitIntent?
+
+    var isPreparingSubmit: Bool { pendingSubmitIntent != nil }
+
+    var pendingSubmitStageText: String? {
+        guard pendingSubmitIntent != nil else { return nil }
+        if process.sessionId == nil { return "Starting agent…" }
+        if process.modelExecutionState.isPending { return "Confirming model…" }
+        if mcpServerStatuses.contains(where: { $0.state == .connecting }) {
+            return "Preparing selected connections…"
+        }
+        return connectionState == .ready ? "Dispatching task…" : "Preparing task…"
+    }
+
+    /// Cancels only the not-yet-dispatched intent. Backend preparation may finish and
+    /// remain ready, but no provider request is sent and the exact composer draft stays
+    /// editable in ChatView.
+    func cancelPendingSubmit() {
+        pendingSubmitIntent = nil
+    }
+
+    /// Runs synchronously from the native Return/click handler so a following Escape
+    /// can always address the exact pending intent before the async send task runs.
+    func prepareSubmit(_ text: String) -> SubmitPreparation {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty || fileAttachments.contains(where: { !$0.isHidden }) else {
+            return .rejected
+        }
+        guard connectionState != .ready,
+              firstIntentWarmStartTask != nil || connectionState == .starting else {
+            return .dispatchNow
+        }
+        switch PendingSubmitIntentPolicy.latchDecision(existing: pendingSubmitIntent, draft: trimmed) {
+        case .duplicate, .conflictingDraft:
+            return .rejected
+        case .latch:
+            let intent = PendingSubmitIntent(id: UUID(), draft: trimmed)
+            pendingSubmitIntent = intent
+            GrokBuildPerformance.mark(.submitIntent)
+            return .latched(intent.id)
+        }
+    }
 
     /// Launch the backend for a brand-new tab on first typing. Deliberately narrow:
     /// only a truly fresh local-only tab qualifies — restored tabs, tabs with any
@@ -2159,8 +2230,8 @@ final class ChatStore {
     // MARK: Messaging
 
     @discardableResult
-    func send(_ text: String) async -> Bool {
-        await deliverPrompt(text, waitForCompletion: false)
+    func send(_ text: String, preparedIntentID: UUID? = nil) async -> Bool {
+        await deliverPrompt(text, waitForCompletion: false, preparedIntentID: preparedIntentID)
     }
 
     @discardableResult
@@ -2405,12 +2476,20 @@ final class ChatStore {
         }
     }
 
-    private func deliverPrompt(_ text: String, waitForCompletion: Bool, fromQueue: Bool = false) async -> Bool {
+    private func deliverPrompt(
+        _ text: String,
+        waitForCompletion: Bool,
+        fromQueue: Bool = false,
+        preparedIntentID: UUID? = nil
+    ) async -> Bool {
         var trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty || fileAttachments.contains(where: { !$0.isHidden }) else { return false }
         guard currentWorkspace != nil else {
             lastError = "Select a project first."
             return false
+        }
+        if preparedIntentID == nil, pendingSubmitIntent == nil, !isStreaming {
+            GrokBuildPerformance.mark(.submitIntent)
         }
         if continuityRequiresRecovery {
             // Never a dead end: the saved backend can't be safely resumed, so fork to a
@@ -2430,6 +2509,43 @@ final class ChatStore {
             }
             lastError = "Wait for the current response to finish."
             return false
+        }
+        if preparedIntentID != nil || (connectionState != .ready &&
+            (firstIntentWarmStartTask != nil || connectionState == .starting)) {
+            let intent: PendingSubmitIntent
+            if let preparedIntentID {
+                guard let pendingSubmitIntent, pendingSubmitIntent.id == preparedIntentID else {
+                    return false
+                }
+                intent = pendingSubmitIntent
+            } else {
+                switch PendingSubmitIntentPolicy.latchDecision(existing: pendingSubmitIntent, draft: trimmed) {
+                case .duplicate, .conflictingDraft:
+                    // A repeated Return/click while the first intent is latched is never a
+                    // second queue entry or billable request.
+                    return false
+                case .latch:
+                    break
+                }
+                intent = PendingSubmitIntent(id: UUID(), draft: trimmed)
+                pendingSubmitIntent = intent
+            }
+            if let warmStart = firstIntentWarmStartTask {
+                await warmStart.value
+            } else {
+                while connectionState == .starting, pendingSubmitIntent?.id == intent.id {
+                    try? await Task.sleep(for: .milliseconds(50))
+                }
+            }
+            guard pendingSubmitIntent?.id == intent.id else { return false }
+            guard connectionState == .ready else {
+                pendingSubmitIntent = nil
+                if lastError == nil {
+                    lastError = connectionState.errorMessage ?? "Grok could not prepare this task. Retry or start a new session."
+                }
+                return false
+            }
+            pendingSubmitIntent = nil
         }
         if connectionState != .ready {
             if process.sessionId == nil && connectionState != .starting {
@@ -2512,6 +2628,7 @@ final class ChatStore {
         connectionState = .busy
 
         let payload = trimmed
+        GrokBuildPerformance.mark(.dispatch)
 
         if waitForCompletion {
             let ok = await process.send(payload)
@@ -2546,6 +2663,7 @@ final class ChatStore {
         // turn before a late/stuck JSON-RPC prompt response arrives; the second call
         // must not re-run capture or flip state that already settled.
         guard isStreaming || isGrokking else { return }
+        GrokBuildPerformance.mark(.settled)
         firstChunkInterval?.end()
         firstChunkInterval = nil
         let settledAssistantID = authoritativeTailAssistantID ?? assistantID
@@ -2661,6 +2779,7 @@ final class ChatStore {
     }
 
     func stop() async {
+        pendingSubmitIntent = nil
         let wasActiveTurn = isStreaming || isGrokking
         let stoppedAssistantID = streamingMessageID
         let stoppedBackendID = process.sessionId ?? savedGrokSessionID
@@ -2724,6 +2843,7 @@ final class ChatStore {
     }
 
     func shutdown() async {
+        pendingSubmitIntent = nil
         firstChunkInterval?.end()
         firstChunkInterval = nil
         cancelStreamingTextFlush()
@@ -2759,6 +2879,7 @@ final class ChatStore {
     /// process's ACP event stream, which terminates `consumeOutput()` and lets the
     /// store/process pair deallocate. A store must not reconnect after this.
     func shutdownPermanently() async {
+        pendingSubmitIntent = nil
         firstChunkInterval?.end()
         firstChunkInterval = nil
         cancelStreamingTextFlush()
@@ -4071,6 +4192,9 @@ final class ChatStore {
            !clean.contains("diff") { return }
 
         if !clean.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || !messages[idx].content.isEmpty {
+            if firstChunkInterval != nil {
+                GrokBuildPerformance.mark(.firstChunk)
+            }
             firstChunkInterval?.end()
             firstChunkInterval = nil
             streamingTextBuffer.append(clean)
