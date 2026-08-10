@@ -6,15 +6,17 @@ struct PreviewPane: View {
     /// Review scope (OUTSTANDING D-1). Owned by ContentView so switching scopes
     /// re-runs the fetch; the pane only presents it.
     @Binding var scope: GitService.ReviewScope
+    let scopeTruthNote: String?
     var onClose: () -> Void = {}
     /// Gated per-file revert (OUTSTANDING D-2). The pane confirms; the parent
     /// executes and refreshes — `diffs` is a `let`, the pane cannot self-invalidate.
-    var onRevertFile: (String) async -> Void = { _ in }
+    var onRevertFile: (String) async -> GitService.RevertReceipt? = { _ in nil }
 
     @State private var pendingRevertPath: String?
 
     @State private var selectedID: UUID?
     @State private var branchName = "No branch"
+    @State private var headCommit = "no HEAD"
     @State private var baseBranch = "main"
     @State private var showCommitPopover = false
     @State private var showPRPopover = false
@@ -72,14 +74,18 @@ struct PreviewPane: View {
             ),
             titleVisibility: .visible
         ) {
-            Button("Discard changes to this file", role: .destructive) {
+            Button("Save recovery stash and revert this file", role: .destructive) {
                 guard let path = pendingRevertPath else { return }
                 pendingRevertPath = nil
-                Task { await onRevertFile(path) }
+                Task {
+                    if let receipt = await onRevertFile(path) {
+                        gitOperationStatus = receipt.summary
+                    }
+                }
             }
             Button("Cancel", role: .cancel) { pendingRevertPath = nil }
         } message: {
-            Text("Tracked changes are restored from HEAD; an untracked file is deleted. This cannot be undone.")
+            Text("Git will preflight this exact path, save it in a recovery stash, revert only that path, and then prove unrelated changes survived.")
         }
     }
 
@@ -145,7 +151,20 @@ struct PreviewPane: View {
 
     private func environmentPanel(defaultListHeight: CGFloat) -> some View {
         VStack(alignment: .leading, spacing: 8) {
-            environmentStaticRow(title: branchName, systemImage: "point.topleft.down.curvedto.point.bottomright.up", showsChevron: false)
+            environmentStaticRow(title: "\(branchName) @ \(headCommit)", systemImage: "point.topleft.down.curvedto.point.bottomright.up", showsChevron: false)
+
+            if let scopeTruthNote {
+                Text(scopeTruthNote)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .accessibilityIdentifier("grok-review-scope-truth")
+            }
+
+            Label(reviewReadiness, systemImage: "checklist")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .accessibilityIdentifier("grok-review-readiness")
 
             Button {
                 // O-5: the two popovers are mutually exclusive so exactly one
@@ -521,6 +540,11 @@ struct PreviewPane: View {
                     .lineLimit(1)
                     .truncationMode(.middle)
                 Spacer(minLength: 8)
+                if let status = diff.gitStatus {
+                    Text(status)
+                        .font(.caption2.monospaced())
+                        .foregroundStyle(.secondary)
+                }
                 if stats.added > 0 || stats.removed > 0 {
                     Text("+\(stats.added) -\(stats.removed)")
                         .font(.caption2.monospacedDigit())
@@ -535,7 +559,10 @@ struct PreviewPane: View {
                 // working-tree scope (history scopes have nothing to discard),
                 // always behind the confirmation dialog, disabled while any
                 // git operation runs.
-                if scope == .workingTree, let path = diff.filePath {
+                if scope == .workingTree,
+                   let path = diff.filePath,
+                   diff.gitStatus?.hasPrefix("R") != true,
+                   diff.gitStatus?.hasPrefix("C") != true {
                     Button {
                         pendingRevertPath = path
                     } label: {
@@ -548,7 +575,7 @@ struct PreviewPane: View {
                     .disabled(isRunningGitOperation)
                     .help("Discard changes to this file…")
                     .accessibilityLabel("Revert \((path as NSString).lastPathComponent)")
-                    .accessibilityHint("Asks for confirmation, then discards this file's working-tree changes.")
+                    .accessibilityHint("Asks for confirmation, saves an exact Git recovery stash, then reverts only this file and verifies unrelated changes.")
                 }
             }
             .padding(.horizontal, 8)
@@ -589,7 +616,8 @@ struct PreviewPane: View {
     /// from Git — never from assistant output — in every scope.
     private var emptyTitle: String {
         switch scope {
-        case .workingTree: return "No code changes"
+        case .workingTree: return "No repository changes"
+        case .unstaged: return "No unstaged changes"
         case .staged: return "No staged changes"
         case .lastCommit: return "No changes in the last commit"
         case .branch: return "No branch changes"
@@ -600,7 +628,9 @@ struct PreviewPane: View {
     private var emptyDetail: String {
         switch scope {
         case .workingTree:
-            return "This panel reflects a fresh Git working-tree snapshot."
+            return "This panel reflects a fresh Git snapshot of staged, unstaged, and untracked changes."
+        case .unstaged:
+            return "No tracked working-tree edits or untracked files are present."
         case .staged:
             return "Stage files with git add to review them here."
         case .lastCommit:
@@ -633,6 +663,8 @@ struct PreviewPane: View {
     private func refreshGitContext() async {
         guard let workspace else { return }
         branchName = GitService.currentBranch(in: workspace.path) ?? "No branch"
+        headCommit = ((try? await GitService.run(["rev-parse", "--short", "HEAD"], in: workspace.path))
+            ?? "no HEAD").trimmingCharacters(in: .whitespacesAndNewlines)
         baseBranch = await GitService.defaultBaseBranch(in: workspace.path)
         async let hasLocalChanges = GitService.hasLocalChanges(in: workspace.path)
         async let hasUnpushedCommits = GitService.hasUnpushedCommits(in: workspace.path, baseBranch: baseBranch)
@@ -647,6 +679,16 @@ struct PreviewPane: View {
         if gitTitle.isEmpty {
             gitTitle = defaultGitTitle
         }
+    }
+
+    private var reviewReadiness: String {
+        if canCreatePullRequest {
+            return "Ready for explicit commit/push or PR review; nothing will publish automatically."
+        }
+        if canCommitOrPush {
+            return "Changes are reviewable; commit and push remain explicit user actions."
+        }
+        return "Review only; no commit or PR action is currently ready."
     }
 
     @MainActor

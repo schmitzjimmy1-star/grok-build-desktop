@@ -1016,13 +1016,31 @@ Defined in `ContentView.swift` (`extension Notification.Name`).
 
 **File:** `Services/GitService.swift`
 
-Used from sidebar status row and `GitCheckoutSheet`:
+Used from the sidebar status row, `GitCheckoutSheet`, and the thread Review pane:
 
 - List branches, checkout, create branch
 - Worktree add/open
 - Shown in `ContentView` via `gitCheckoutRequest` sheet
+- Fresh selected-worktree scopes: all changes, unstaged (including untracked),
+  staged, last commit, branch, and evidence-filtered last turn
+- Status-aware changed-file rows retain rename provenance and never derive Git truth
+  from assistant prose
+- `Last turn` intersects successful workspace write/edit receipts with fresh Git;
+  if that evidence is missing, the UI explicitly falls back to repository truth
+- Per-file revert validates one repository-relative path, refuses rename/copy pairs,
+  saves the exact change through `git stash push --include-untracked -- <path>`, and
+  proves both selected-path settlement and unrelated-status parity afterward
+- Commit/push/PR readiness is presented separately from the explicit actions that can
+  mutate or publish; no review refresh authorizes an action
 
-Not a full git UI — thin wrapper over `git` CLI in workspace path.
+Settled `ThreadRunSpineView` groups parent command/test receipts and successful
+artifact links beneath the typed plan step that was current when the ACP receipt
+first arrived. The association is a generation-bound observation, not a new
+planner. Artifacts retain exact local path, parent tool ID, optional worker ID, and
+open through the existing explicit reveal action. Unowned evidence stays labeled
+ungrouped; unresolved receipts never acquire a guessed producing step.
+
+Not a full git UI — thin wrapper over `git` CLI in the selected workspace path.
 
 ---
 

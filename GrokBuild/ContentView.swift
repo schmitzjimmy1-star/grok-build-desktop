@@ -74,6 +74,7 @@ struct ContentView: View {
     /// Review pane scope (OUTSTANDING D-1). Presentation-only: the header chip
     /// and inline-card attribution always read the full working tree.
     @State private var reviewScope: GitService.ReviewScope = .workingTree
+    @State private var reviewScopeTruthNote: String?
     @State private var boundedGitRefreshTask: Task<Void, Never>?
     @State private var didBootstrap = false
     @State private var isRestoringSessions = false
@@ -325,6 +326,7 @@ struct ContentView: View {
                             diffs: activeReviewDiffs,
                             workspace: currentWorkspace,
                             scope: $reviewScope,
+                            scopeTruthNote: reviewScopeTruthNote,
                             onClose: { showPreview = false },
                             onRevertFile: { path in await revertReviewFile(path) }
                         )
@@ -1406,6 +1408,7 @@ struct ContentView: View {
             // The inline card's attribution gate and the header chip count keep
             // reading the full working-tree truth via recordGitReviewFiles.
             let workingTreeFiles = try await GitService.changedFiles(in: workspace.path)
+            reviewScopeTruthNote = nil
             var files: [GitChangedFile]
             switch reviewScope {
             case .workingTree:
@@ -1416,18 +1419,30 @@ struct ContentView: View {
                         snapshot: snapshot,
                         workspace: workspace.path
                     )
-                    files = workingTreeFiles.filter { attributed.contains($0.path) }
+                    if attributed.isEmpty {
+                        files = workingTreeFiles
+                        reviewScopeTruthNote = "Exact last-turn attribution is unavailable; showing fresh repository truth without guessing."
+                    } else {
+                        files = workingTreeFiles.filter { attributed.contains($0.path) }
+                        reviewScopeTruthNote = "Exact last-turn scope from successful write/edit receipts intersected with fresh Git truth."
+                    }
                 } else {
-                    files = []
+                    files = workingTreeFiles
+                    reviewScopeTruthNote = "No settled last-turn receipt is available; showing fresh repository truth without guessing."
                 }
-            case .staged, .lastCommit, .branch:
+            case .unstaged, .staged, .lastCommit, .branch:
                 files = try await GitService.changedFiles(scope: reviewScope, in: workspace.path)
             }
             var diffs: [ChatStore.DetectedDiff] = []
             for file in files {
                 let diff = try await GitService.diffForChangedFile(
                     file, scope: reviewScope, in: workspace.path)
-                diffs.append(ChatStore.DetectedDiff(raw: diff, filePath: file.path))
+                diffs.append(ChatStore.DetectedDiff(
+                    raw: diff,
+                    filePath: file.path,
+                    gitStatus: file.status,
+                    originalFilePath: file.originalPath
+                ))
             }
             guard currentWorkspace?.id == workspace.id else { return }
             projectChangedDiffs = diffs
@@ -1447,14 +1462,17 @@ struct ContentView: View {
     /// OUTSTANDING D-2: the gated per-file revert. The confirmation lives in
     /// the Review pane; errors surface through the existing Git-action alert.
     @MainActor
-    private func revertReviewFile(_ path: String) async {
-        guard let workspace = currentWorkspace else { return }
+    private func revertReviewFile(_ path: String) async -> GitService.RevertReceipt? {
+        guard let workspace = currentWorkspace else { return nil }
         do {
-            try await GitService.revertPath(path, in: workspace.path)
+            let receipt = try await GitService.revertPath(path, in: workspace.path)
+            await refreshProjectChangedFiles()
+            return receipt
         } catch {
             gitError = error.localizedDescription
         }
         await refreshProjectChangedFiles()
+        return nil
     }
 
     @MainActor

@@ -88,6 +88,8 @@ enum ThreadRunSpinePresentation {
         let duration: String
         let worker: String
         let outputBoundary: String
+        let resultDetail: String?
+        let owningPlanStepID: String?
     }
 
     static func progressLabel(_ plan: [RunEvidenceSnapshot.PlanStep]) -> String {
@@ -131,7 +133,13 @@ enum ThreadRunSpinePresentation {
                     toolID: tool.id,
                     artifacts: projection.artifacts,
                     workspace: workspace
-                )
+                ),
+                // Tool detail can change on every ACP receipt. Rendering that
+                // selectable text inside the transcript's LazyVStack created a
+                // macOS 26 layout feedback loop. The authoritative result is
+                // retained and shown after settlement instead.
+                resultDetail: nil,
+                owningPlanStepID: tool.owningPlanStepID
             )
         }
     }
@@ -149,8 +157,40 @@ enum ThreadRunSpinePresentation {
                 status: tool.status,
                 duration: "Duration not reported",
                 worker: "Parent agent",
-                outputBoundary: outputBoundary(toolID: tool.id, artifacts: artifacts, workspace: workspace)
+                outputBoundary: outputBoundary(toolID: tool.id, artifacts: artifacts, workspace: workspace),
+                resultDetail: tool.resultDetail,
+                owningPlanStepID: tool.owningPlanStepID
             )
+        }
+    }
+
+    static func tools(_ tools: [ToolRow], ownedBy step: RunEvidenceSnapshot.PlanStep) -> [ToolRow] {
+        tools.filter { $0.owningPlanStepID == step.id }
+    }
+
+    static func unownedTools(_ tools: [ToolRow], plan: [RunEvidenceSnapshot.PlanStep]) -> [ToolRow] {
+        let stepIDs = Set(plan.map(\.id))
+        return tools.filter { tool in
+            guard let stepID = tool.owningPlanStepID else { return true }
+            return !stepIDs.contains(stepID)
+        }
+    }
+
+    static func artifacts(
+        _ artifacts: [ChatStore.RunArtifact],
+        ownedBy step: RunEvidenceSnapshot.PlanStep
+    ) -> [ChatStore.RunArtifact] {
+        artifacts.filter { $0.owningPlanStepID == step.id }
+    }
+
+    static func unownedArtifacts(
+        _ artifacts: [ChatStore.RunArtifact],
+        plan: [RunEvidenceSnapshot.PlanStep]
+    ) -> [ChatStore.RunArtifact] {
+        let stepIDs = Set(plan.map(\.id))
+        return artifacts.filter { artifact in
+            guard let stepID = artifact.owningPlanStepID else { return true }
+            return !stepIDs.contains(stepID)
         }
     }
 
@@ -503,11 +543,72 @@ struct ThreadRunSpineView: View {
             workspace: workspace
         )
     }
+    private var ungroupedTools: [ThreadRunSpinePresentation.ToolRow] {
+        live == nil
+            ? ThreadRunSpinePresentation.unownedTools(tools, plan: plan)
+            : tools
+    }
+    private var ungroupedArtifacts: [ChatStore.RunArtifact] {
+        return ThreadRunSpinePresentation.unownedArtifacts(artifacts, plan: plan)
+    }
 
     var body: some View {
+        Group {
+            if let live {
+                liveSummary(live)
+            } else {
+                settledSummary
+            }
+        }
+        .padding(12)
+        .background(Color.primary.opacity(0.035), in: RoundedRectangle(cornerRadius: 12))
+        .overlay {
+            RoundedRectangle(cornerRadius: 12)
+                .stroke(Color.primary.opacity(0.08), lineWidth: 1)
+        }
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel(live == nil ? "Settled run spine" : "Active run spine")
+        .accessibilityValue(accessibilityValue)
+        .accessibilityIdentifier(live == nil ? "grok-run-spine-settled" : "grok-run-spine-live")
+    }
+
+    /// Keep the streaming transcript at one stable row. The phase and current
+    /// typed todo remain visible, while detailed tool/output grouping waits for
+    /// the authoritative settled checkpoint. This avoids macOS 26 repeatedly
+    /// remeasuring a changing subtree inside ChatView's LazyVStack.
+    private func liveSummary(_ projection: RunEvidenceLiveProjection) -> some View {
+        HStack(alignment: .firstTextBaseline, spacing: 8) {
+            Label("Run", systemImage: "waveform.path")
+                .font(.system(size: 13, weight: .semibold))
+            Text(ThreadRunSpinePresentation.livePhase(projection))
+                .font(AppTheme.Typography.caption)
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+            if let current = plan.first(where: \.isCurrent) {
+                Text("·")
+                    .foregroundStyle(.tertiary)
+                Text(current.title)
+                    .font(AppTheme.Typography.caption)
+                    .lineLimit(1)
+            }
+            Spacer(minLength: 8)
+            if !plan.isEmpty {
+                Text(ThreadRunSpinePresentation.progressLabel(plan))
+                    .font(AppTheme.Typography.caption)
+                    .foregroundStyle(.tertiary)
+                    .lineLimit(1)
+            }
+            Button("Activity", action: onOpenActivity)
+                .buttonStyle(.link)
+                .font(AppTheme.Typography.caption)
+        }
+        .frame(minHeight: 26)
+    }
+
+    private var settledSummary: some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack(alignment: .firstTextBaseline, spacing: 8) {
-                Label("Run", systemImage: live == nil ? "checklist.checked" : "waveform.path")
+                Label("Run", systemImage: "checklist.checked")
                     .font(.system(size: 13, weight: .semibold))
                 Text(phase)
                     .font(AppTheme.Typography.caption)
@@ -526,12 +627,6 @@ struct ThreadRunSpineView: View {
                 }
             }
 
-            if let live, let activeTool = tools.first(where: { row in
-                live.tools.first(where: { $0.id == row.id })?.isActive == true
-            }) {
-                toolRow(activeTool, isCurrent: true)
-            }
-
             ForEach(plan) { step in
                 VStack(alignment: .leading, spacing: 5) {
                     HStack(alignment: .firstTextBaseline, spacing: 7) {
@@ -546,6 +641,14 @@ struct ThreadRunSpineView: View {
                         workerRow(worker)
                             .padding(.leading, 18)
                     }
+                    ForEach(ThreadRunSpinePresentation.tools(tools, ownedBy: step)) { tool in
+                        toolRow(tool, isCurrent: false)
+                            .padding(.leading, 18)
+                    }
+                    ForEach(ThreadRunSpinePresentation.artifacts(artifacts, ownedBy: step)) { artifact in
+                        artifactRow(artifact)
+                            .padding(.leading, 18)
+                    }
                 }
                 .accessibilityElement(children: .contain)
                 .accessibilityLabel(PlanSpinePresentation.stepAccessibilityLabel(step))
@@ -555,14 +658,16 @@ struct ThreadRunSpineView: View {
                 workerRow(worker)
             }
 
-            if !tools.isEmpty {
+            if !ungroupedTools.isEmpty {
                 DisclosureGroup(isExpanded: $receiptsExpanded) {
                     VStack(alignment: .leading, spacing: 7) {
-                        ForEach(tools) { tool in toolRow(tool, isCurrent: false) }
+                        ForEach(ungroupedTools) { tool in toolRow(tool, isCurrent: false) }
                     }
                     .padding(.top, 6)
                 } label: {
-                    Text("\(tools.count) tool \(tools.count == 1 ? "receipt" : "receipts")")
+                    Text(live == nil
+                        ? "\(ungroupedTools.count) ungrouped tool \(ungroupedTools.count == 1 ? "receipt" : "receipts")"
+                        : "\(ungroupedTools.count) tool \(ungroupedTools.count == 1 ? "receipt" : "receipts")")
                         .font(AppTheme.Typography.caption)
                 }
                 .accessibilityIdentifier("grok-run-spine-tool-receipts")
@@ -580,25 +685,28 @@ struct ThreadRunSpineView: View {
                 Text(snapshot.nextAction)
                     .font(AppTheme.Typography.caption)
                     .foregroundStyle(.secondary)
+
+                if !snapshot.unresolvedErrors.isEmpty {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("Warnings and unresolved decisions")
+                            .font(AppTheme.Typography.caption.weight(.semibold))
+                        ForEach(snapshot.unresolvedErrors, id: \.self) { warning in
+                            Text(warning)
+                                .font(AppTheme.Typography.caption)
+                                .foregroundStyle(.orange)
+                        }
+                        Text("No exact producing plan step was reported for these receipts.")
+                            .font(AppTheme.Typography.caption)
+                            .foregroundStyle(.tertiary)
+                    }
+                }
             }
 
-            if !artifacts.isEmpty {
+            if !ungroupedArtifacts.isEmpty {
                 VStack(alignment: .leading, spacing: 5) {
-                    Text("Artifacts")
+                    Text("Ungrouped artifacts")
                         .font(AppTheme.Typography.caption.weight(.semibold))
-                    ForEach(artifacts) { artifact in
-                        Button {
-                            onRevealArtifact(artifact)
-                        } label: {
-                            Label(
-                                ActivitySidebarPresentation.displayPath(artifact.path, relativeTo: workspace),
-                                systemImage: "doc"
-                            )
-                            .font(AppTheme.Typography.caption)
-                            .lineLimit(1)
-                        }
-                        .buttonStyle(.plain)
-                    }
+                    ForEach(ungroupedArtifacts) { artifact in artifactRow(artifact) }
                 }
             }
 
@@ -612,16 +720,6 @@ struct ThreadRunSpineView: View {
             }
             .font(AppTheme.Typography.caption)
         }
-        .padding(12)
-        .background(Color.primary.opacity(0.035), in: RoundedRectangle(cornerRadius: 12))
-        .overlay {
-            RoundedRectangle(cornerRadius: 12)
-                .stroke(Color.primary.opacity(0.08), lineWidth: 1)
-        }
-        .accessibilityElement(children: .contain)
-        .accessibilityLabel(live == nil ? "Settled run spine" : "Active run spine")
-        .accessibilityValue(accessibilityValue)
-        .accessibilityIdentifier(live == nil ? "grok-run-spine-settled" : "grok-run-spine-live")
     }
 
     private var phase: String {
@@ -693,9 +791,42 @@ struct ThreadRunSpineView: View {
                 .font(AppTheme.Typography.caption)
                 .foregroundStyle(.tertiary)
                 .lineLimit(2)
+            if let resultDetail = tool.resultDetail, !resultDetail.isEmpty {
+                Text(resultDetail)
+                    .font(AppTheme.Typography.caption.monospaced())
+                    .foregroundStyle(.tertiary)
+                    .lineLimit(3)
+                    .textSelection(.enabled)
+            }
         }
         .accessibilityElement(children: .combine)
         .accessibilityLabel("\(tool.family) tool, \(tool.operation)")
-        .accessibilityValue("\(tool.status), \(tool.duration), \(tool.worker), \(tool.outputBoundary)")
+        .accessibilityValue("\(tool.status), \(tool.duration), \(tool.worker), \(tool.outputBoundary), \(tool.resultDetail ?? "no command output reported")")
+    }
+
+    private func artifactRow(_ artifact: ChatStore.RunArtifact) -> some View {
+        Button {
+            onRevealArtifact(artifact)
+        } label: {
+            VStack(alignment: .leading, spacing: 2) {
+                Label(
+                    ActivitySidebarPresentation.displayPath(artifact.path, relativeTo: workspace),
+                    systemImage: snapshot?.gitReviewFiles.contains(where: {
+                        artifact.path.hasSuffix("/\($0)") || artifact.path == $0
+                    }) == true ? "doc.badge.ellipsis" : "doc"
+                )
+                .font(AppTheme.Typography.caption)
+                .lineLimit(1)
+                Text("Exact path · parent tool \(artifact.toolCallID)\(artifact.workerID.map { " · worker \($0)" } ?? "")")
+                    .font(AppTheme.Typography.caption)
+                    .foregroundStyle(.tertiary)
+                    .lineLimit(2)
+                    .textSelection(.enabled)
+            }
+        }
+        .buttonStyle(.plain)
+        .help("Open exact local artifact: \(artifact.path)")
+        .accessibilityLabel("Open artifact \(artifact.path)")
+        .accessibilityValue("Produced by tool \(artifact.toolCallID)\(artifact.workerID.map { ", worker \($0)" } ?? ", parent agent")")
     }
 }

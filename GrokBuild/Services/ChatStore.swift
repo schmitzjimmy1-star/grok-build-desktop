@@ -169,6 +169,8 @@ final class ChatStore {
         let path: String
         let status: String
         let location: Location
+        var owningPlanStepID: String? = nil
+        var workerID: String? = nil
 
         var id: String { "\(toolCallID)|\(path)" }
     }
@@ -252,6 +254,7 @@ final class ChatStore {
     /// mutated to make a run look complete.
     private(set) var runEvidenceSnapshot: RunEvidenceSnapshot?
     private var currentRunPlan: [RunEvidenceSnapshot.PlanStep] = []
+    private var currentTurnToolPlanStepIDs: [String: String] = [:]
     /// A stop is not a backend completion. If its captured receipt cannot prove
     /// ownership of the stopped process, the next launch must not quietly resume
     /// that backend and instead creates a fresh, ledgered run.
@@ -317,11 +320,14 @@ final class ChatStore {
                 title: tool.title,
                 kind: tool.kind,
                 status: status,
-                detail: tool.terminalStatus == .succeeded ? nil : tool.detail,
+                detail: tool.detail.map {
+                    TranscriptTextPresentation.singleLine($0, maxLength: 280)
+                },
                 mcpServerName: tool.mcpServerName,
                 mcpReceiptRole: tool.mcpReceiptRole,
                 qualifiedToolName: tool.qualifiedToolName,
                 discoveredQualifiedToolNames: tool.discoveredQualifiedToolNames,
+                owningPlanStepID: currentTurnToolPlanStepIDs[tool.id],
                 isActive: isActive
             )
         }
@@ -2822,6 +2828,7 @@ final class ChatStore {
         runArtifacts = []
         runEvidenceSnapshot = nil
         currentRunPlan = []
+        currentTurnToolPlanStepIDs = [:]
         currentTurnWorkerActivityIDs = []
         currentTurnWorkerPlanStepIDs = [:]
         pendingArtifactPathsByToolCallID = [:]
@@ -3548,6 +3555,8 @@ final class ChatStore {
         let id = UUID()
         let raw: String
         let filePath: String?
+        var gitStatus: String? = nil
+        var originalFilePath: String? = nil
     }
 
     // MARK: Internal
@@ -3613,11 +3622,13 @@ final class ChatStore {
         case .toolCall(let tc):
             flushAllPendingAssistantText()
             isGrokking = false
+            recordCurrentTurnToolPlanStep(tc.id)
             if !liveToolCalls.contains(where: { $0.id == tc.id }) {
                 liveToolCalls.append(liveToolCall(from: tc))
             }
             observeArtifactReceipt(tc)
         case .toolCallUpdate(let tc):
+            recordCurrentTurnToolPlanStep(tc.id)
             if let idx = liveToolCalls.firstIndex(where: { $0.id == tc.id }) {
                 liveToolCalls[idx] = mergedToolCall(existing: liveToolCalls[idx], update: tc)
             } else {
@@ -3890,7 +3901,9 @@ final class ChatStore {
             toolCallID: toolCall.id,
             path: path,
             status: "Completed",
-            location: artifactLocation(for: path)
+            location: artifactLocation(for: path),
+            owningPlanStepID: currentTurnToolPlanStepIDs[toolCall.id],
+            workerID: nil
         )
         if let index = runArtifacts.firstIndex(where: { $0.path == artifact.path }) {
             runArtifacts[index] = artifact
@@ -3898,6 +3911,12 @@ final class ChatStore {
             runArtifacts.append(artifact)
         }
         requestGitRefresh()
+    }
+
+    private func recordCurrentTurnToolPlanStep(_ toolCallID: String) {
+        guard currentTurnToolPlanStepIDs[toolCallID] == nil,
+              let stepID = currentRunPlan.first(where: \.isCurrent)?.id else { return }
+        currentTurnToolPlanStepIDs[toolCallID] = stepID
     }
 
     private func normalizedArtifactPath(_ rawPath: String?) -> String? {
@@ -4176,7 +4195,12 @@ final class ChatStore {
                 mcpServerName: tool.mcpServerName,
                 mcpReceiptRole: tool.mcpReceiptRole,
                 qualifiedToolName: tool.qualifiedToolName,
-                discoveredQualifiedToolNames: tool.discoveredQualifiedToolNames
+                discoveredQualifiedToolNames: tool.discoveredQualifiedToolNames,
+                resultDetail: ToolResultPresentation.commandOutput(
+                    detail: tool.detail,
+                    kind: tool.kind
+                ),
+                owningPlanStepID: currentTurnToolPlanStepIDs[tool.id]
             )
         }
         // Stamp the turn's model identity only from the confirmed execution
