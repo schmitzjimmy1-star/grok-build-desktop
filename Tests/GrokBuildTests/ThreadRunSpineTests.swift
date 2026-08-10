@@ -155,6 +155,129 @@ final class ThreadRunSpineTests: XCTestCase {
         ]))
     }
 
+    func testTaskContractNeverClaimsExitedWorkIsStillRunning() {
+        let checkpoint = AssistantTurnCheckpoint(
+            snapshot: snapshot(outcome: .completed, recovery: false, settled: true),
+            requestedToolFamilies: []
+        )
+
+        XCTAssertEqual(
+            ThreadTaskContractPresentation.phase(
+                live: nil,
+                snapshot: nil,
+                checkpoint: checkpoint,
+                connectionState: .idle,
+                isPreparingSubmit: false,
+                canResumeSavedTask: true,
+                continuityRequiresRecovery: false
+            ),
+            "Paused locally — ready to resume"
+        )
+        XCTAssertEqual(
+            ThreadTaskContractPresentation.phase(
+                live: nil,
+                snapshot: nil,
+                checkpoint: checkpoint,
+                connectionState: .idle,
+                isPreparingSubmit: false,
+                canResumeSavedTask: false,
+                continuityRequiresRecovery: false
+            ),
+            "Saved checkpoint — no process running"
+        )
+    }
+
+    func testTaskContractKeepsRecoveryAndPreDispatchSemanticsDistinct() {
+        XCTAssertEqual(
+            ThreadTaskContractPresentation.phase(
+                live: nil,
+                snapshot: nil,
+                checkpoint: nil,
+                connectionState: .starting,
+                isPreparingSubmit: true,
+                canResumeSavedTask: false,
+                continuityRequiresRecovery: false
+            ),
+            "Preparing task — not dispatched"
+        )
+        XCTAssertEqual(
+            ThreadTaskContractPresentation.phase(
+                live: nil,
+                snapshot: nil,
+                checkpoint: nil,
+                connectionState: .idle,
+                isPreparingSubmit: false,
+                canResumeSavedTask: false,
+                continuityRequiresRecovery: true
+            ),
+            "Fresh thread required"
+        )
+    }
+
+    func testTaskContractNamesOnlyExplicitRequestedToolFamilies() {
+        let checkpoint = AssistantTurnCheckpoint(
+            snapshot: snapshot(outcome: .completed, recovery: false, settled: true),
+            requestedToolFamilies: ["grokbuild-browser", "zotero", "grokbuild-browser"]
+        )
+
+        XCTAssertEqual(
+            ThreadTaskContractPresentation.requestedToolFamilies(current: [], checkpoint: checkpoint),
+            ["Browser", "zotero"]
+        )
+        XCTAssertEqual(
+            ThreadTaskContractPresentation.requestedToolFamilies(
+                current: ["grokbuild-computer-use"],
+                checkpoint: checkpoint
+            ),
+            ["Computer Use"]
+        )
+    }
+
+    func testTaskContractRetainsExactParentChildHandoffIdentity() {
+        let child = RunEvidenceSnapshot.Worker(
+            id: "worker-row",
+            title: "Verifier",
+            status: "completed",
+            childID: "child-backend-exact",
+            durationMilliseconds: 40,
+            toolCallCount: 0,
+            redactedError: nil
+        )
+        let projection = live(workers: [child])
+        let handoff = ThreadTaskContractPresentation.workerHandoffs(
+            live: projection,
+            snapshot: nil,
+            checkpoint: nil
+        ).first
+
+        XCTAssertEqual(handoff?.parentBackendSessionID, "backend")
+        XCTAssertEqual(handoff?.childBackendSessionID, "child-backend-exact")
+        XCTAssertEqual(
+            handoff?.displayText,
+            "Parent backend → Child child-backend-exact · Completed"
+        )
+    }
+
+    func testTaskCheckpointRoundTripsInsideAssistantTrace() throws {
+        let checkpoint = AssistantTurnCheckpoint(
+            snapshot: snapshot(outcome: .completed, recovery: false, settled: true),
+            requestedToolFamilies: ["zotero"]
+        )
+        let trace = AssistantTurnTrace(
+            reasoningSummaryChunks: [],
+            thinkingDuration: nil,
+            tools: [],
+            checkpoint: checkpoint
+        )
+        let restored = try JSONDecoder().decode(
+            AssistantTurnTrace.self,
+            from: JSONEncoder().encode(trace)
+        )
+
+        XCTAssertEqual(restored.checkpoint, checkpoint)
+        XCTAssertTrue(restored.hasContent)
+    }
+
     private func live(
         plan: [RunEvidenceSnapshot.PlanStep] = [],
         workers: [RunEvidenceSnapshot.Worker] = [],

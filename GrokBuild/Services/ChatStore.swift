@@ -496,6 +496,23 @@ final class ChatStore {
 
     var grokSessionId: String? { process.sessionId }
     var durableGrokSessionID: String? { process.sessionId ?? savedGrokSessionID }
+
+    /// A saved task can be resumed only through the existing continuity gate.
+    /// User Stop may require a fresh backend; in that case the header must not
+    /// offer a control that looks like it can revive the stopped process.
+    var canResumeTaskSession: Bool {
+        currentWorkspace != nil
+            && connectionState == .idle
+            && durableGrokSessionID != nil
+            && !continuityRequiresRecovery
+            && !forcedFreshStartAfterUserStop
+    }
+
+    /// The latest durable checkpoint retained in the local transcript. This is
+    /// presentation evidence only; live lifecycle authority remains GrokProcess.
+    var latestTaskCheckpoint: AssistantTurnCheckpoint? {
+        messages.reversed().compactMap { $0.assistantTrace?.checkpoint }.first
+    }
     var persistedPendingRecoveryIntent: SessionPendingRecoveryIntent? { pendingRecoveryIntent }
     var effectiveLaunchReceipt: GrokLaunchReceipt? { process.launchReceipt }
     var effectiveSessionReceipt: EffectiveSessionReceipt? {
@@ -1894,6 +1911,22 @@ final class ChatStore {
         await restartProcess(resumeSessionID: session.id)
     }
 
+    /// Explicit header Resume action. It translates to the native ACP
+    /// `session/load` path through `restartProcess`, including the existing
+    /// transcript-continuity verification and exact model confirmation. It does
+    /// not send a provider prompt or claim work continues after the process exits.
+    @discardableResult
+    func resumeTaskSession() async -> Bool {
+        guard canResumeTaskSession, let backendID = durableGrokSessionID else {
+            lastError = continuityRequiresRecovery
+                ? "This saved task requires Continue as New or an exact relink."
+                : "No resumable saved task is available."
+            return false
+        }
+        await restartProcess(resumeSessionID: backendID)
+        return connectionState == .ready && process.sessionId == backendID
+    }
+
     /// Clears in-flight turn UI and pending prompts without wiping the saved transcript.
     private func clearTransientSessionState() {
         streamingMessageID = nil
@@ -2850,12 +2883,14 @@ final class ChatStore {
         stoppedBackendIDNeedingFreshStart = continuationDecision == .startFresh
             ? stoppedBackendID
             : nil
-        runEvidenceSnapshot = makeRunEvidenceSnapshot(
+        let stoppedSnapshot = makeRunEvidenceSnapshot(
             completion: nil,
             bindingOverride: stoppedBinding,
             processStateOverride: "Stopped by you",
             nextActionOverride: continuationDecision.nextAction
         )
+        runEvidenceSnapshot = stoppedSnapshot
+        attachTaskCheckpoint(to: stoppedAssistantID, snapshot: stoppedSnapshot)
         notifyMessagesChanged()
     }
 
@@ -3672,7 +3707,9 @@ final class ChatStore {
                 totalTokens: completion.totalTokens,
                 modelCalls: completion.modelCalls
             )
-            runEvidenceSnapshot = makeRunEvidenceSnapshot(completion: completion)
+            let settledSnapshot = makeRunEvidenceSnapshot(completion: completion)
+            runEvidenceSnapshot = settledSnapshot
+            attachTaskCheckpoint(to: streamingMessageID, snapshot: settledSnapshot)
             // turn_completed is the lifecycle authority. Observed live 2026-08-03
             // (gpt-5.6-terra): the usage receipt settled while the prompt's JSON-RPC
             // response never resolved, leaving a stuck Stop button on a finished turn.
@@ -3702,7 +3739,7 @@ final class ChatStore {
             attachCurrentTurnTrace(to: streamingMessageID)
             latestTurnOutcome = .completionReceiptMissing
             lastError = failure.reason
-            runEvidenceSnapshot = makeRunEvidenceSnapshot(completion: TurnCompletionReceipt(
+            let incompleteSnapshot = makeRunEvidenceSnapshot(completion: TurnCompletionReceipt(
                 identity: failure.identity,
                 promptID: nil,
                 stopReason: nil,
@@ -3710,6 +3747,8 @@ final class ChatStore {
                 modelCalls: nil,
                 turnCount: nil
             ))
+            runEvidenceSnapshot = incompleteSnapshot
+            attachTaskCheckpoint(to: streamingMessageID, snapshot: incompleteSnapshot)
             requestGitRefresh()
             process.acknowledgeTurnCompletionBridge(authoritative: false)
         case .permissionRequest(let req):
@@ -4150,10 +4189,38 @@ final class ChatStore {
             thinkingDuration: duration,
             tools: tools,
             modelDisplayName: confirmedModelID.map { modelDisplayName($0) },
-            agentName: currentAgent.isEmpty ? nil : currentAgent
+            agentName: currentAgent.isEmpty ? nil : currentAgent,
+            checkpoint: messages[index].assistantTrace?.checkpoint
         )
         if trace.hasContent {
             messages[index].assistantTrace = trace
+        }
+    }
+
+    private func attachTaskCheckpoint(
+        to messageID: UUID?,
+        snapshot: RunEvidenceSnapshot
+    ) {
+        guard let messageID,
+              let index = messages.firstIndex(where: { $0.id == messageID && $0.role == .assistant }) else {
+            return
+        }
+        let checkpoint = AssistantTurnCheckpoint(
+            snapshot: snapshot,
+            requestedToolFamilies: currentTurnRequestedMCPNames
+        )
+        if var trace = messages[index].assistantTrace {
+            trace.checkpoint = checkpoint
+            messages[index].assistantTrace = trace
+        } else {
+            messages[index].assistantTrace = AssistantTurnTrace(
+                reasoningSummaryChunks: [],
+                thinkingDuration: nil,
+                tools: [],
+                modelDisplayName: nil,
+                agentName: nil,
+                checkpoint: checkpoint
+            )
         }
     }
 

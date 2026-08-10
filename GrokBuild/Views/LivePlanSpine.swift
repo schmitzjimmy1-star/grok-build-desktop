@@ -199,6 +199,285 @@ enum ThreadRunSpinePresentation {
     }
 }
 
+/// Slice 10's compact header contract. Every field is passed from an existing
+/// owner (ACP/run evidence, the persisted local turn checkpoint, Git, or the
+/// saved session binding). This type formats facts; it owns no lifecycle.
+enum ThreadTaskContractPresentation {
+    struct WorkerHandoff: Identifiable, Equatable {
+        let id: String
+        let parentBackendSessionID: String
+        let childBackendSessionID: String
+        let title: String
+        let status: String
+
+        var displayText: String {
+            "Parent \(parentBackendSessionID) → Child \(childBackendSessionID) · \(status)"
+        }
+    }
+
+    static func phase(
+        live: RunEvidenceLiveProjection?,
+        snapshot: RunEvidenceSnapshot?,
+        checkpoint: AssistantTurnCheckpoint?,
+        connectionState: GrokProcessState,
+        isPreparingSubmit: Bool,
+        canResumeSavedTask: Bool,
+        continuityRequiresRecovery: Bool
+    ) -> String {
+        if isPreparingSubmit { return "Preparing task — not dispatched" }
+        if let live { return ThreadRunSpinePresentation.livePhase(live) }
+        if case .busy = connectionState { return "Working — live receipt pending" }
+        if continuityRequiresRecovery { return "Fresh thread required" }
+        if let snapshot { return ThreadRunSpinePresentation.checkpointLabel(snapshot) }
+        if canResumeSavedTask { return "Paused locally — ready to resume" }
+        switch connectionState {
+        case .ready: return "Ready"
+        case .starting: return "Resuming saved task"
+        case .failed: return "Connection failed"
+        case .idle:
+            if let checkpoint { return checkpoint.outcome == "Stopped by you" ? "Stopped" : "Saved checkpoint — no process running" }
+            return "Draft — no process running"
+        case .busy: return "Working — live receipt pending"
+        }
+    }
+
+    static func objective(
+        live: RunEvidenceLiveProjection?,
+        snapshot: RunEvidenceSnapshot?,
+        checkpoint: AssistantTurnCheckpoint?,
+        latestUserText: String?,
+        fallback: String
+    ) -> String {
+        let candidate = live?.goalSummary
+            ?? snapshot?.goalSummary
+            ?? checkpoint?.objective
+            ?? latestUserText
+            ?? fallback
+        return TranscriptTextPresentation.singleLine(candidate, maxLength: 240)
+    }
+
+    static func requestedToolFamilies(
+        current: [String],
+        checkpoint: AssistantTurnCheckpoint?
+    ) -> [String] {
+        let names = current.isEmpty ? (checkpoint?.requestedToolFamilies ?? []) : current
+        return names.map { name in
+            switch BuiltInToolConnection(rawValue: name) {
+            case .browser?: "Browser"
+            case .computerUse?: "Computer Use"
+            case nil: name
+            }
+        }.reduce(into: [String]()) { result, name in
+            guard !result.contains(where: { $0.caseInsensitiveCompare(name) == .orderedSame }) else { return }
+            result.append(name)
+        }
+    }
+
+    static func workerHandoffs(
+        live: RunEvidenceLiveProjection?,
+        snapshot: RunEvidenceSnapshot?,
+        checkpoint: AssistantTurnCheckpoint?
+    ) -> [WorkerHandoff] {
+        let parent = live?.binding.backendSessionID
+            ?? snapshot?.binding.backendSessionID
+            ?? checkpoint?.parentBackendSessionID
+        guard let parent else { return [] }
+        let workers: [(String, String, String, String?)]
+        if let live {
+            workers = live.workers.map { ($0.id, $0.title, $0.status, $0.childID) }
+        } else if let snapshot {
+            workers = snapshot.workers.map { ($0.id, $0.title, $0.status, $0.childID) }
+        } else {
+            workers = (checkpoint?.workers ?? []).map {
+                ($0.id, $0.title, $0.status, $0.childBackendSessionID)
+            }
+        }
+        return workers.compactMap { id, title, status, child -> WorkerHandoff? in
+            guard let child, !child.isEmpty else { return nil }
+            return WorkerHandoff(
+                id: id,
+                parentBackendSessionID: parent,
+                childBackendSessionID: child,
+                title: title,
+                status: ActivitySidebarPresentation.activityStatus(status)
+            )
+        }
+    }
+}
+
+struct ThreadTaskContractView: View {
+    let objective: String
+    let phase: String
+    let project: String
+    let worktree: String
+    let branch: String?
+    let modelReceipt: String
+    let requestedToolFamilies: [String]
+    let reviewState: String
+    let checkpoint: AssistantTurnCheckpoint?
+    let workerHandoffs: [ThreadTaskContractPresentation.WorkerHandoff]
+    let backgroundReceiptCount: Int
+    let scheduledTaskCount: Int
+    let canCancelPending: Bool
+    let canStopTurn: Bool
+    let canPauseGoal: Bool
+    let canResumeGoal: Bool
+    let canResumeSavedTask: Bool
+    let canContinueAsNew: Bool
+    let onCancelPending: () -> Void
+    let onStopTurn: () -> Void
+    let onPauseGoal: () -> Void
+    let onResumeGoal: () -> Void
+    let onResumeSavedTask: () -> Void
+    let onContinueAsNew: () -> Void
+    let onOpenActivity: () -> Void
+
+    @Binding var isExpanded: Bool
+
+    var body: some View {
+        Button {
+            isExpanded.toggle()
+        } label: {
+            HStack(spacing: 7) {
+                Image(systemName: isExpanded ? "chevron.down" : "chevron.right")
+                    .font(.caption2.weight(.semibold))
+                Text(objective)
+                    .fontWeight(.medium)
+                    .lineLimit(1)
+                Text("·").foregroundStyle(.tertiary)
+                Text(phase)
+                    .lineLimit(1)
+                Text("·").foregroundStyle(.tertiary)
+                Text(project)
+                if let branch {
+                    Text("·").foregroundStyle(.tertiary)
+                    Label(branch, systemImage: "arrow.triangle.branch")
+                        .labelStyle(.titleAndIcon)
+                }
+                Spacer(minLength: 6)
+                Text(modelReceipt)
+                    .foregroundStyle(.tertiary)
+            }
+            .frame(maxWidth: .infinity, minHeight: 26, alignment: .leading)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("Task contract")
+        .accessibilityValue("\(objective), \(phase), \(project), \(modelReceipt), \(reviewState)")
+        .accessibilityHint(isExpanded ? "Closes the task contract." : "Shows worktree, tools, checkpoint, identities, and task controls.")
+        .accessibilityIdentifier("grok-task-contract-toggle")
+        // Keep the transcript's geometry fixed while ACP receipts stream. An
+        // inline expansion can repeatedly rebuild AppKit's SelectionOverlay on
+        // macOS 26; a native popover avoids that framework feedback loop.
+        .popover(isPresented: $isExpanded, arrowEdge: .bottom) {
+            contractDetails
+        }
+        .font(AppTheme.Typography.caption)
+        .foregroundStyle(.secondary)
+        .padding(.horizontal, 12)
+        .background(AppTheme.Palette.canvas)
+        .overlay(alignment: .bottom) { Divider() }
+    }
+
+    private var contractDetails: some View {
+        VStack(alignment: .leading, spacing: 7) {
+            contractRow("Worktree", worktree)
+            contractRow("Review", reviewState)
+            contractRow(
+                "Requested tools",
+                requestedToolFamilies.isEmpty
+                    ? "No attached MCP or GUI tools"
+                    : requestedToolFamilies.joined(separator: ", ")
+            )
+            if let checkpoint {
+                contractRow(
+                    "Checkpoint",
+                    "\(checkpoint.outcome) · \(checkpoint.isSettled ? "settled" : "not settled") · \(checkpoint.nextAction)"
+                )
+                if let tab = checkpoint.localTabID, let backend = checkpoint.parentBackendSessionID {
+                    contractRow(
+                        "Identity",
+                        "Tab \(tab.uuidString) · backend \(backend) · generation \(checkpoint.processGeneration.map(String.init) ?? "not reported")"
+                    )
+                }
+            }
+            ForEach(workerHandoffs) { handoff in
+                contractRow("Worker · \(handoff.title)", handoff.displayText)
+            }
+            if backgroundReceiptCount > 0 || scheduledTaskCount > 0 {
+                Button {
+                    isExpanded = false
+                    onOpenActivity()
+                } label: {
+                    Label(
+                        "\(backgroundReceiptCount) background receipts · \(scheduledTaskCount) scheduled tasks in this thread",
+                        systemImage: "clock.arrow.circlepath"
+                    )
+                }
+                .buttonStyle(.link)
+                .accessibilityHint("Opens the owning thread's authoritative Activity receipts.")
+            }
+
+            HStack(spacing: 10) {
+                if canCancelPending {
+                    Button("Cancel pending", action: onCancelPending)
+                        .help("Returns the exact draft to editing before any provider dispatch.")
+                        .keyboardShortcut(.cancelAction)
+                }
+                if canStopTurn {
+                    Button("Stop turn", action: onStopTurn)
+                        .help("Stops the exact active process; this is not Pause or backend completion.")
+                        .keyboardShortcut(".", modifiers: .command)
+                }
+                if canPauseGoal {
+                    Button("Pause goal", action: onPauseGoal)
+                        .help("Sends Grok's native /goal pause command. It does not suspend an active model call.")
+                }
+                if canResumeGoal {
+                    Button("Resume goal", action: onResumeGoal)
+                        .help("Sends Grok's native /goal resume command.")
+                }
+                if canResumeSavedTask {
+                    Button("Resume saved task", action: onResumeSavedTask)
+                        .help("Loads the exact saved Grok backend after continuity verification; no prompt is sent.")
+                }
+                if canContinueAsNew {
+                    Button("Continue as New", action: onContinueAsNew)
+                        .help("Preserves the prior record and clears the unsafe backend binding for the next send.")
+                }
+                Button("Activity") {
+                    isExpanded = false
+                    onOpenActivity()
+                }
+            }
+            .buttonStyle(.bordered)
+            .controlSize(.small)
+
+            if canStopTurn {
+                Text("An active model turn can be stopped, not paused. Pause remains available only for Grok goals and workflow runs that expose it.")
+                    .font(AppTheme.Typography.caption)
+                    .foregroundStyle(.tertiary)
+            }
+        }
+        .padding(12)
+        .frame(width: 680, alignment: .leading)
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("grok-task-contract-details")
+    }
+
+    private func contractRow(_ label: String, _ value: String) -> some View {
+        HStack(alignment: .firstTextBaseline, spacing: 8) {
+            Text(label)
+                .fontWeight(.semibold)
+                .frame(width: 104, alignment: .leading)
+            Text(value)
+                .lineLimit(3)
+                .truncationMode(.middle)
+        }
+        .accessibilityElement(children: .combine)
+    }
+}
+
 struct ThreadRunSpineView: View {
     let live: RunEvidenceLiveProjection?
     let snapshot: RunEvidenceSnapshot?
@@ -213,6 +492,9 @@ struct ThreadRunSpineView: View {
     private var plan: [RunEvidenceSnapshot.PlanStep] { live?.plan ?? snapshot?.plan ?? [] }
     private var workers: [RunEvidenceSnapshot.Worker] { live?.workers ?? snapshot?.workers ?? [] }
     private var artifacts: [ChatStore.RunArtifact] { live?.artifacts ?? snapshot?.artifacts ?? [] }
+    private var parentBackendSessionID: String? {
+        live?.binding.backendSessionID ?? snapshot?.binding.backendSessionID
+    }
     private var tools: [ThreadRunSpinePresentation.ToolRow] {
         if let live { return ThreadRunSpinePresentation.liveTools(live, workspace: workspace) }
         return ThreadRunSpinePresentation.settledTools(
@@ -384,6 +666,12 @@ struct ThreadRunSpineView: View {
             ].filter { !$0.isEmpty }.joined(separator: " · "))
             .font(AppTheme.Typography.caption)
             .foregroundStyle(.tertiary)
+            if let parentBackendSessionID, let childID = worker.childID {
+                Text("Parent \(parentBackendSessionID) → Child \(childID)")
+                    .font(AppTheme.Typography.caption)
+                    .foregroundStyle(.tertiary)
+                    .textSelection(.enabled)
+            }
         }
         .accessibilityElement(children: .combine)
     }

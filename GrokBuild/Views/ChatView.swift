@@ -294,6 +294,7 @@ struct ChatView: View {
     @State private var slashSkillsExpanded = false
     @State private var slashCommandsExpanded = false
     @State private var toolActivityExpanded = false
+    @State private var taskContractExpanded = false
     /// W-4 context strip: cached branch name (reads .git/HEAD, no subprocess).
     @State private var contextBranchName: String?
     @State private var expandedAssistantTraceIDs: Set<UUID> = []
@@ -1320,34 +1321,69 @@ struct ChatView: View {
         }
     }
 
-    /// Workbench W-4 (2026-08-08): one quiet line that always says where you
-    /// are — project · branch · changed files · model receipt. Facts only; the
-    /// header chip and composer menu stay the controls.
+    /// Slice 10 expands the old one-line context strip into a compact task
+    /// contract. The collapsed row stays quiet; expansion reveals only facts
+    /// sourced from the current ACP projection, its durable local checkpoint,
+    /// the saved backend binding, and fresh selected-worktree Git state.
     private var taskContextStrip: some View {
-        HStack(spacing: 6) {
-            Text(store.currentWorkspace?.displayName ?? "")
-                .fontWeight(.medium)
-            if let branch = contextBranchName {
-                Text("·").foregroundStyle(.tertiary)
-                Label(branch, systemImage: "arrow.triangle.branch")
-                    .labelStyle(.titleAndIcon)
-            }
-            if reviewFileCount > 0 {
-                Text("·").foregroundStyle(.tertiary)
-                Text("\(reviewFileCount) changed \(reviewFileCount == 1 ? "file" : "files")")
-            }
-            Text("·").foregroundStyle(.tertiary)
-            Text(store.sessionReceiptCompactLabel)
-            Spacer(minLength: 0)
-        }
-        .font(AppTheme.Typography.caption)
-        .foregroundStyle(.secondary)
-        .lineLimit(1)
-        .padding(.horizontal, 12)
-        .frame(height: 26)
-        .background(AppTheme.Palette.canvas)
-        .overlay(alignment: .bottom) { Divider() }
-        .accessibilityElement(children: .contain)
+        ThreadTaskContractView(
+            objective: ThreadTaskContractPresentation.objective(
+                live: store.liveRunEvidenceProjection,
+                snapshot: store.runEvidenceSnapshot,
+                checkpoint: store.latestTaskCheckpoint,
+                latestUserText: store.messages.last(where: { $0.role == .user })?.content,
+                fallback: sessionTitle
+            ),
+            phase: ThreadTaskContractPresentation.phase(
+                live: store.liveRunEvidenceProjection,
+                snapshot: store.runEvidenceSnapshot,
+                checkpoint: store.latestTaskCheckpoint,
+                connectionState: store.connectionState,
+                isPreparingSubmit: store.isPreparingSubmit,
+                canResumeSavedTask: store.canResumeTaskSession,
+                continuityRequiresRecovery: store.continuityRequiresRecovery
+            ),
+            project: store.currentWorkspace?.displayName ?? "No project",
+            worktree: store.currentWorkspace?.path.path ?? "No worktree selected",
+            branch: contextBranchName,
+            modelReceipt: store.sessionReceiptCompactLabel,
+            requestedToolFamilies: ThreadTaskContractPresentation.requestedToolFamilies(
+                current: store.currentTurnRequestedMCPNames,
+                checkpoint: store.latestTaskCheckpoint
+            ),
+            reviewState: reviewFileCount == 0
+                ? "Clean at last Git refresh"
+                : "\(reviewFileCount) changed \(reviewFileCount == 1 ? "file" : "files") at last Git refresh",
+            checkpoint: store.latestTaskCheckpoint,
+            workerHandoffs: ThreadTaskContractPresentation.workerHandoffs(
+                live: store.liveRunEvidenceProjection,
+                snapshot: store.runEvidenceSnapshot,
+                checkpoint: store.latestTaskCheckpoint
+            ),
+            backgroundReceiptCount: store.backgroundActivities.count,
+            scheduledTaskCount: store.scheduledTasks.count,
+            canCancelPending: store.isPreparingSubmit,
+            canStopTurn: store.isStreaming,
+            canPauseGoal: store.goalState != nil && store.goalState?.isPaused == false && !store.isStreaming,
+            canResumeGoal: store.goalState?.isPaused == true && !store.isStreaming,
+            canResumeSavedTask: store.canResumeTaskSession,
+            canContinueAsNew: store.continuityRequiresRecovery,
+            onCancelPending: { store.cancelPendingSubmit() },
+            onStopTurn: { store.requestStop() },
+            onPauseGoal: { Task { _ = await store.pauseGoal() } },
+            onResumeGoal: { Task { _ = await store.resumeGoal() } },
+            onResumeSavedTask: {
+                // Remove the expanded contract before the ACP process changes
+                // state. On macOS 26, rebuilding selectable transcript chrome
+                // and a disappearing action button in the same transaction can
+                // trap SwiftUI's SelectionOverlay in a layout loop.
+                taskContractExpanded = false
+                Task { _ = await store.resumeTaskSession() }
+            },
+            onContinueAsNew: { Task { _ = await store.continueAsNew() } },
+            onOpenActivity: { showActivitySidebar = true },
+            isExpanded: $taskContractExpanded
+        )
         .accessibilityIdentifier("grok-task-context-strip")
         .task(id: store.currentWorkspace?.id) { refreshContextBranch() }
         .onChange(of: store.gitRefreshRevision) { _, _ in refreshContextBranch() }

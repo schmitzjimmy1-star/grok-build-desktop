@@ -729,6 +729,27 @@ final class SubprocessHygieneTests: XCTestCase {
                       "a hard-blocked send must auto-fork via continueAsNew, not dead-end")
     }
 
+    func testExplicitTaskResumeUsesNativeExactSessionLoadWithoutSending() throws {
+        let repositoryRoot = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        let source = try String(
+            contentsOf: repositoryRoot.appendingPathComponent("GrokBuild/Services/ChatStore.swift"),
+            encoding: .utf8
+        )
+        let start = try XCTUnwrap(source.range(of: "func resumeTaskSession() async -> Bool"))
+        let end = try XCTUnwrap(
+            source.range(of: "/// Clears in-flight turn UI", range: start.upperBound..<source.endIndex)
+        )
+        let method = String(source[start.lowerBound..<end.lowerBound])
+
+        XCTAssertTrue(method.contains("guard canResumeTaskSession, let backendID = durableGrokSessionID"))
+        XCTAssertTrue(method.contains("await restartProcess(resumeSessionID: backendID)"))
+        XCTAssertTrue(method.contains("process.sessionId == backendID"))
+        XCTAssertFalse(method.contains("send("), "Resume loads the exact saved backend; it must not send a provider prompt")
+    }
+
     /// Continue as new (used automatically on a hard-blocked send) flips the tab to
     /// `.recoveryForked`, which the send gate allows — so the user is never stuck, while the
     /// suspicious backend is never resumed (a fresh backend is created on the next send).
