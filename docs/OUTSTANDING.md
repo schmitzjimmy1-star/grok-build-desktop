@@ -2504,6 +2504,67 @@ smoke threads, and pass Gates F–H.
   child/session visibility and deletion gap remains unresolved; no private-store
   scrape, wrapper, daemon, broad deletion, or fabricated cleanup receipt was added.
 
+### Full model-routing refresher and persistence repair receipt — 2026-08-10
+
+- Scope: re-ran the installed-app path from default-off MCP authorization through an
+  explicitly attached MCP, native plan/parallel workers, a custom Terra route, and
+  quit/relaunch persistence. Grok CLI/ACP remained the only runtime authority; no
+  prompt edited source, changed configuration, published, or widened an MCP grant.
+- Default-off negative: local tab `89FD8A48-2EFC-40CD-AE4B-EE88AFEFDF87`, backend
+  `019fec48-d59e-7d22-96c4-1c5e237b046b`, marker
+  `GB_REFRESH_DEFAULT_OFF_0810`. With `0 MCPs attached`, an attempted
+  `chrome-devtools__list_pages` failed and the turn cancelled truthfully. The route
+  inspector separated the CLI-observed capability from the effective catch-all deny.
+- Explicit attachment positive: local tab `13101255-177A-45C3-B62D-01E9EF94CE12`,
+  backend `019fec49-def9-70e2-92c5-0985fe878675`, marker
+  `GB_REFRESH_EXPLICIT_MCP_0810`. The exact `chrome-devtools` attachment discovered
+  and exercised `chrome-devtools__list_pages`, returned
+  `GB_REFRESH_EXPLICIT_MCP_OK`, and cleared after settlement.
+- Native plan and worker proof: local tab `8C47955D-7FA8-4366-A582-CC2EB20D5D40`,
+  parent backend `019fec4a-a6a3-75b1-bd1a-04162038b62a`, child backends
+  `019fec4a-dbdc-7d91-9a09-fc807a472c1c` and
+  `019fec4a-dbde-7d13-b73f-c6873df61c09`, marker
+  `GB_REFRESH_WORKERS_0810`. The typed three-step plan settled 3/3, both Grok ACP
+  workers ran concurrently and reported their real model, duration, child identity,
+  tool count, and `1/1 succeeded`; the parent tool correctly said duration was not
+  reported when ACP supplied none.
+- Custom-model proof: local tab `CB06F6DC-17B5-4DE4-BEBD-A03D19D2C966`, backend
+  `019fec4b-c7bb-7902-b95f-6b95e5cd6632`, marker
+  `GB_REFRESH_TERRA_TOOL_OK`. The live selector and settled usage both identified
+  `gpt-5.6-terra`; its terminal tool and final `GB_REFRESH_TERRA_OK` succeeded with
+  no fallback.
+- Defect found and repaired: the two worker child-tool outcomes rendered before quit
+  but disappeared after relaunch because durable `AssistantTurnCheckpoint` worker
+  receipts omitted `childToolReceipts`. Commit
+  `734f8980ba212a4664ba5bc27205c5ffc03aeb93` made terminal statuses and child
+  receipts codable, persisted them in the checkpoint, restored them into the settled
+  run spine, and added an encode/decode regression assertion.
+- Installed persistence regression: local tab
+  `A9DCCCD3-9FE7-42C4-99BD-9A37392198B3`, parent backend
+  `019fec52-7910-7192-be49-b27eb13eb398`, child backend
+  `019fec52-8ded-7f11-a633-94c23179d581`, marker
+  `GB_REFRESH_PERSISTENCE_FIX_0810`. Before quit and again after process-zero,
+  relaunch, and local restore, the settled worker row retained `Ran on grok-4.5
+  (Grok ACP)`, `3.4 sec`, `1 tools`, `Child receipts: 1/1 succeeded`, and the same
+  parent-to-child identity.
+- Provider usage: **273,391 total tokens across 20 model calls**, comprising 270,923
+  input, 2,468 output, 135,557 cached-read, and 1,307 reasoning tokens. Grok ACP
+  reported $2.995644 for its four Grok-backed probes; the Terra route supplied no
+  provider-cost receipt, so no estimate is substituted. This is 5.47% of the
+  explicitly authorized 5,000,000-token ceiling.
+- Automated verification: focused routing/spine/transcript suites passed; complete
+  `make test` passed **759/759**; `git diff --check` was clean; `make ship` passed on
+  the persistence implementation with `dirty=false`, Team `DD2GCQJVB4`, deep/strict
+  validity, no quarantine, and installed/dist executable parity.
+- Cleanup truth: the exact five local acceptance tabs were closed through their
+  native session actions; all backend/child IDs remain ledgered above. Grok CLI still
+  cannot enumerate and delete these accepted parent/child pairs: exact
+  `grok sessions delete <ID>` attempts for all five parents and all three children
+  returned `No session found with id ...`. The restored test also demonstrated that
+  the saved parent may be locally renderable while the CLI reports that it cannot be
+  resumed. No private session-store deletion, broad cleanup, synthetic receipt, or
+  claim that this gap is closed is permitted.
+
 ---
 
 ## Slice receipt template
