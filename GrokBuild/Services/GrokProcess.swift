@@ -583,6 +583,16 @@ struct TurnCompletionReceipt: Sendable, Equatable {
     var isFailure: Bool {
         !isSuccessful && !isCancelled
     }
+
+    /// Stable only when ACP supplies a provider prompt or backend event identity.
+    /// The process generation keeps a replay from an older CLI instance from
+    /// colliding with a legitimately reused backend identifier.
+    var deduplicationKey: String? {
+        let stableReceiptID = promptID?.trimmingCharacters(in: .whitespacesAndNewlines)
+            ?? identity.backendEventID?.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let stableReceiptID, !stableReceiptID.isEmpty else { return nil }
+        return "turn|\(identity.backendSessionID)|\(identity.processGeneration)|\(stableReceiptID)"
+    }
 }
 
 struct TurnCompletionBridgeFailure: Sendable, Equatable {

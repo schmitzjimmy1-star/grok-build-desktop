@@ -1477,7 +1477,8 @@ final class ACPClientContractTests: XCTestCase {
             *'"method":"session/prompt"'*)
               printf '{"jsonrpc":"2.0","method":"_x.ai/session_notification","params":{"sessionId":"paced-backend","update":{"sessionUpdate":"agent_thought_chunk","content":{"type":"text","text":"Checked the answer shape."}}}}\n'
               printf '{"jsonrpc":"2.0","method":"_x.ai/session_notification","params":{"sessionId":"paced-backend","update":{"sessionUpdate":"agent_message_chunk","content":{"type":"text","text":"\(answer)"}}}}\n'
-              printf '{"jsonrpc":"2.0","method":"_x.ai/session_notification","params":{"sessionId":"paced-backend","update":{"sessionUpdate":"turn_completed","stop_reason":"end_turn"}}}\n'
+              printf '{"jsonrpc":"2.0","method":"_x.ai/session_notification","params":{"eventId":"paced-completion-1","sessionId":"paced-backend","update":{"sessionUpdate":"turn_completed","stop_reason":"end_turn","usage":{"totalTokens":42,"modelCalls":1,"numTurns":1}}}}\n'
+              printf '{"jsonrpc":"2.0","method":"_x.ai/session_notification","params":{"eventId":"paced-completion-1","sessionId":"paced-backend","update":{"sessionUpdate":"turn_completed","stop_reason":"end_turn","usage":{"totalTokens":42,"modelCalls":1,"numTurns":1}}}}\n'
               printf '{"jsonrpc":"2.0","id":%s,"result":{"stopReason":"end_turn"}}\n' "$id"
               ;;
           esac
@@ -1529,6 +1530,58 @@ final class ACPClientContractTests: XCTestCase {
             answer
         )
         XCTAssertFalse(store.isStreaming)
+        XCTAssertEqual(store.sessionUsage.turnCount, 1)
+        XCTAssertEqual(store.sessionUsage.totalTokens, 42)
+        await store.shutdownPermanently()
+    }
+
+    @MainActor
+    func testDelayedCompletionReplayCannotSettleANewerTurn() async throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("grokbuild-completion-replay-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let scriptURL = root.appendingPathComponent("fake-grok")
+        let script = """
+        #!/bin/sh
+        prompt_count=0
+        while IFS= read -r line; do
+          id=$(printf '%s' "$line" | sed -E 's/.*"id":([0-9]+).*/\\1/')
+          case "$line" in
+            *'"method":"initialize"'*) printf '{"jsonrpc":"2.0","id":%s,"result":{}}\n' "$id" ;;
+            *'"method":"session/new"'*) printf '{"jsonrpc":"2.0","id":%s,"result":{"sessionId":"completion-replay-backend","models":{"currentModelId":"grok-4.5","availableModels":[]}}}\n' "$id" ;;
+            *'"method":"session/set_model"'*) printf '{"jsonrpc":"2.0","id":%s,"result":{"_meta":{"model":{"Ok":"grok-4.5"}}}}\n' "$id" ;;
+            *'"method":"session/prompt"'*)
+              prompt_count=$((prompt_count + 1))
+              if [ "$prompt_count" -eq 1 ]; then
+                printf '{"jsonrpc":"2.0","method":"_x.ai/session_notification","params":{"_meta":{"eventId":"completion-first"},"sessionId":"completion-replay-backend","update":{"sessionUpdate":"turn_completed","stop_reason":"end_turn","usage":{"totalTokens":10,"modelCalls":1,"numTurns":1}}}}\n'
+              else
+                printf '{"jsonrpc":"2.0","method":"_x.ai/session_notification","params":{"_meta":{"eventId":"completion-first"},"sessionId":"completion-replay-backend","update":{"sessionUpdate":"turn_completed","stop_reason":"end_turn","usage":{"totalTokens":10,"modelCalls":1,"numTurns":1}}}}\n'
+                printf '{"jsonrpc":"2.0","method":"_x.ai/session_notification","params":{"_meta":{"eventId":"completion-second"},"sessionId":"completion-replay-backend","update":{"sessionUpdate":"turn_completed","stop_reason":"end_turn","usage":{"totalTokens":20,"modelCalls":1,"numTurns":1}}}}\n'
+              fi
+              printf '{"jsonrpc":"2.0","id":%s,"result":{"stopReason":"end_turn"}}\n' "$id"
+              ;;
+          esac
+        done
+        """
+        try script.write(to: scriptURL, atomically: true, encoding: .utf8)
+        try FileManager.default.setAttributes(
+            [.posixPermissions: 0o755],
+            ofItemAtPath: scriptURL.path
+        )
+
+        GrokProcess.cliOverrideForTests = scriptURL
+        defer { GrokProcess.cliOverrideForTests = nil }
+        let store = ChatStore()
+        store.bindTabSession(UUID(), savedModel: "grok-4.5")
+        await store.start(workspace: Workspace(name: "completion-replay", path: root))
+
+        let firstSucceeded = await store.sendAndWait("First turn")
+        let secondSucceeded = await store.sendAndWait("Second turn")
+        XCTAssertTrue(firstSucceeded)
+        XCTAssertTrue(secondSucceeded)
+        XCTAssertEqual(store.sessionUsage.turnCount, 2)
+        XCTAssertEqual(store.sessionUsage.totalTokens, 30)
         await store.shutdownPermanently()
     }
 

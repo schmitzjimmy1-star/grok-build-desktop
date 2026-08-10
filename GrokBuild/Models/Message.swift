@@ -70,6 +70,58 @@ struct AssistantTurnCheckpoint: Codable, Sendable, Hashable {
         var id: String { "\(toolCallID)|\(path)" }
     }
 
+    /// Optional full-fidelity fields added after the original compact task
+    /// checkpoint shipped. Keeping the groups optional lets older transcripts
+    /// decode honestly: absent means "not retained", never zero or success.
+    struct ToolSummaryReceipt: Codable, Sendable, Hashable {
+        let succeeded: Int
+        let failed: Int
+        let cancelled: Int
+        let unknown: Int
+    }
+
+    struct MCPProcessReceipt: Codable, Sendable, Hashable {
+        let name: String
+        let state: String
+        let reason: String?
+    }
+
+    struct ProcessReceipt: Codable, Sendable, Hashable {
+        let state: String
+        let mcps: [MCPProcessReceipt]
+    }
+
+    struct ContinuityReceipt: Codable, Sendable, Hashable {
+        let status: String
+        let reason: String
+        let provenance: String
+    }
+
+    struct ModelUsage: Codable, Sendable, Hashable {
+        let modelID: String
+        let inputTokens: Int?
+        let outputTokens: Int?
+        let totalTokens: Int?
+        let cachedReadTokens: Int?
+        let reasoningTokens: Int?
+        let modelCalls: Int?
+        let apiDurationMilliseconds: Int?
+        let costUsdTicks: Int?
+    }
+
+    struct UsageReceipt: Codable, Sendable, Hashable {
+        let totalTokens: Int?
+        let modelCalls: Int?
+        let turnCount: Int?
+        let inputTokens: Int?
+        let outputTokens: Int?
+        let cachedReadTokens: Int?
+        let reasoningTokens: Int?
+        let apiDurationMilliseconds: Int?
+        let costUsdTicks: Int?
+        let modelUsage: [ModelUsage]
+    }
+
     let objective: String?
     let outcome: String
     let plan: [PlanStep]
@@ -88,10 +140,20 @@ struct AssistantTurnCheckpoint: Codable, Sendable, Hashable {
     let artifacts: [Artifact]?
     let gitReviewFiles: [String]?
     let unresolvedErrors: [String]?
+    /// Exact settled Activity fields. Optional for transcript compatibility.
+    var workspaceID: UUID? = nil
+    var requestID: String? = nil
+    var outcomeCode: String? = nil
+    var toolSummaryReceipt: ToolSummaryReceipt? = nil
+    var processReceipt: ProcessReceipt? = nil
+    var continuityReceipt: ContinuityReceipt? = nil
+    var usageReceipt: UsageReceipt? = nil
+    var attachmentNames: [String]? = nil
 
     init(
         snapshot: RunEvidenceSnapshot,
-        requestedToolFamilies: [String]
+        requestedToolFamilies: [String],
+        attachmentNames: [String] = []
     ) {
         objective = snapshot.goalSummary
         outcome = snapshot.outcome.displayName
@@ -143,6 +205,215 @@ struct AssistantTurnCheckpoint: Codable, Sendable, Hashable {
         }
         gitReviewFiles = snapshot.gitReviewFiles
         unresolvedErrors = snapshot.unresolvedErrors
+        workspaceID = snapshot.binding.workspaceID
+        requestID = snapshot.binding.requestID
+        outcomeCode = snapshot.outcome.rawValue
+        toolSummaryReceipt = ToolSummaryReceipt(
+            succeeded: snapshot.tools.succeeded,
+            failed: snapshot.tools.failed,
+            cancelled: snapshot.tools.cancelled,
+            unknown: snapshot.tools.unknown
+        )
+        processReceipt = ProcessReceipt(
+            state: snapshot.process.state,
+            mcps: snapshot.process.mcps.map {
+                MCPProcessReceipt(name: $0.name, state: $0.state, reason: $0.reason)
+            }
+        )
+        continuityReceipt = ContinuityReceipt(
+            status: snapshot.continuity.status,
+            reason: snapshot.continuity.reason,
+            provenance: snapshot.continuity.provenance
+        )
+        usageReceipt = UsageReceipt(
+            totalTokens: snapshot.usage.totalTokens,
+            modelCalls: snapshot.usage.modelCalls,
+            turnCount: snapshot.usage.turnCount,
+            inputTokens: snapshot.usage.inputTokens,
+            outputTokens: snapshot.usage.outputTokens,
+            cachedReadTokens: snapshot.usage.cachedReadTokens,
+            reasoningTokens: snapshot.usage.reasoningTokens,
+            apiDurationMilliseconds: snapshot.usage.apiDurationMilliseconds,
+            costUsdTicks: snapshot.usage.costUsdTicks,
+            modelUsage: snapshot.usage.modelUsage.map {
+                ModelUsage(
+                    modelID: $0.modelID,
+                    inputTokens: $0.inputTokens,
+                    outputTokens: $0.outputTokens,
+                    totalTokens: $0.totalTokens,
+                    cachedReadTokens: $0.cachedReadTokens,
+                    reasoningTokens: $0.reasoningTokens,
+                    modelCalls: $0.modelCalls,
+                    apiDurationMilliseconds: $0.apiDurationMilliseconds,
+                    costUsdTicks: $0.costUsdTicks
+                )
+            }
+        )
+        self.attachmentNames = Array(Set(attachmentNames)).sorted()
+    }
+
+    /// Reconstitutes the settled Activity projection from the existing local
+    /// checkpoint only. Legacy checkpoints remain explicit about fields that
+    /// predate full-fidelity persistence instead of manufacturing receipts.
+    func restoredRunEvidenceSnapshot(
+        settledTools: [AssistantTurnTrace.Tool]
+    ) -> RunEvidenceSnapshot {
+        let legacyToolSummary = Self.toolSummary(from: settledTools)
+        let tools = toolSummaryReceipt.map {
+            RunEvidenceSnapshot.ToolSummary(
+                succeeded: $0.succeeded,
+                failed: $0.failed,
+                cancelled: $0.cancelled,
+                unknown: $0.unknown
+            )
+        } ?? legacyToolSummary
+        let process = processReceipt.map {
+            RunEvidenceSnapshot.ProcessReceipt(
+                state: $0.state,
+                model: modelID,
+                mcps: $0.mcps.map { .init(name: $0.name, state: $0.state, reason: $0.reason) }
+            )
+        } ?? .init(
+            state: "Saved checkpoint — process not running; prior state not retained",
+            model: modelID,
+            mcps: []
+        )
+        let continuity = continuityReceipt.map {
+            RunEvidenceSnapshot.Continuity(
+                status: $0.status,
+                reason: $0.reason,
+                provenance: $0.provenance,
+                requiresRecoveryAction: requiresRecoveryAction
+            )
+        } ?? .init(
+            status: "checkpointOnly",
+            reason: "Detailed continuity receipt not retained by this legacy checkpoint",
+            provenance: "Saved local checkpoint",
+            requiresRecoveryAction: requiresRecoveryAction
+        )
+        let usage = usageReceipt.map {
+            RunEvidenceSnapshot.Usage(
+                totalTokens: $0.totalTokens,
+                modelCalls: $0.modelCalls,
+                turnCount: $0.turnCount,
+                inputTokens: $0.inputTokens,
+                outputTokens: $0.outputTokens,
+                cachedReadTokens: $0.cachedReadTokens,
+                reasoningTokens: $0.reasoningTokens,
+                apiDurationMilliseconds: $0.apiDurationMilliseconds,
+                costUsdTicks: $0.costUsdTicks,
+                modelUsage: $0.modelUsage.map {
+                    ModelUsageReceipt(
+                        modelID: $0.modelID,
+                        inputTokens: $0.inputTokens,
+                        outputTokens: $0.outputTokens,
+                        totalTokens: $0.totalTokens,
+                        cachedReadTokens: $0.cachedReadTokens,
+                        reasoningTokens: $0.reasoningTokens,
+                        modelCalls: $0.modelCalls,
+                        apiDurationMilliseconds: $0.apiDurationMilliseconds,
+                        costUsdTicks: $0.costUsdTicks
+                    )
+                }
+            )
+        } ?? .init(totalTokens: nil, modelCalls: nil, turnCount: nil)
+
+        return RunEvidenceSnapshot(
+            binding: .init(
+                localTabID: localTabID,
+                workspaceID: workspaceID,
+                backendSessionID: parentBackendSessionID,
+                processGeneration: processGeneration,
+                requestID: requestID,
+                isSettled: isSettled
+            ),
+            goalSummary: objective,
+            plan: plan.map { .init(id: $0.id, title: $0.title, status: $0.status) },
+            workers: restoredWorkers,
+            tools: tools,
+            artifacts: restoredArtifacts,
+            gitReviewFiles: gitReviewFiles ?? [],
+            process: process,
+            continuity: continuity,
+            usage: usage,
+            outcome: Self.turnOutcome(code: outcomeCode, displayName: outcome),
+            unresolvedErrors: unresolvedErrors ?? [],
+            nextAction: nextAction
+        )
+    }
+
+    private static func turnOutcome(code: String?, displayName: String) -> ChatStore.TurnOutcome {
+        if let code, let exact = ChatStore.TurnOutcome(rawValue: code) { return exact }
+        switch displayName {
+        case ChatStore.TurnOutcome.failed.displayName: return .failed
+        case ChatStore.TurnOutcome.cancelled.displayName: return .cancelled
+        case ChatStore.TurnOutcome.completionReceiptMissing.displayName: return .completionReceiptMissing
+        case ChatStore.TurnOutcome.userStopped.displayName: return .userStopped
+        default: return .completed
+        }
+    }
+
+    private var restoredWorkers: [RunEvidenceSnapshot.Worker] {
+        if let workerReceipts {
+            return workerReceipts.map {
+                .init(
+                    id: $0.id,
+                    title: $0.title,
+                    status: $0.status,
+                    owningPlanStepID: $0.owningPlanStepID,
+                    childID: $0.childBackendSessionID,
+                    durationMilliseconds: $0.durationMilliseconds,
+                    toolCallCount: $0.toolCallCount,
+                    redactedError: $0.redactedError,
+                    childToolReceipts: $0.childToolReceipts,
+                    runtimeModelID: $0.runtimeModelID,
+                    routedModel: $0.routedModel
+                )
+            }
+        }
+        return workers.map {
+            .init(
+                id: $0.id,
+                title: $0.title,
+                status: $0.status,
+                owningPlanStepID: $0.owningPlanStepID,
+                childID: $0.childBackendSessionID,
+                durationMilliseconds: nil,
+                toolCallCount: nil,
+                redactedError: nil
+            )
+        }
+    }
+
+    private var restoredArtifacts: [ChatStore.RunArtifact] {
+        (artifacts ?? []).map {
+            .init(
+                toolCallID: $0.toolCallID,
+                path: $0.path,
+                status: $0.status,
+                location: ChatStore.RunArtifact.Location(rawValue: $0.location) ?? .external,
+                owningPlanStepID: $0.owningPlanStepID,
+                workerID: $0.workerID
+            )
+        }
+    }
+
+    private static func toolSummary(
+        from tools: [AssistantTurnTrace.Tool]
+    ) -> RunEvidenceSnapshot.ToolSummary {
+        var succeeded = 0
+        var failed = 0
+        var cancelled = 0
+        var unknown = 0
+        for tool in tools {
+            switch tool.status.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() {
+            case "succeeded", "success", "completed", "complete": succeeded += 1
+            case "failed", "failure", "error": failed += 1
+            case "cancelled", "canceled": cancelled += 1
+            default: unknown += 1
+            }
+        }
+        return .init(succeeded: succeeded, failed: failed, cancelled: cancelled, unknown: unknown)
     }
 }
 

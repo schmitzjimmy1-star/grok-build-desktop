@@ -382,6 +382,22 @@ enum ThreadTaskContractPresentation {
         }
     }
 
+    /// Selects the state owner before presentation formatting. A latched submit
+    /// owns the exact frozen set; otherwise an edited composer owns its visible
+    /// draft attachments. Only a quiet composer falls back to the active/settled
+    /// turn so the task contract cannot contradict an on-screen MCP chip.
+    static func currentRequestedToolNames(
+        pending: Set<String>?,
+        draft: Set<String>,
+        currentTurn: [String],
+        composerOwnsVisibleContext: Bool
+    ) -> [String] {
+        if let pending { return pending.sorted() }
+        if composerOwnsVisibleContext { return draft.sorted() }
+        if !currentTurn.isEmpty { return currentTurn }
+        return draft.sorted()
+    }
+
     static func workerHandoffs(
         live: RunEvidenceLiveProjection?,
         snapshot: RunEvidenceSnapshot?,

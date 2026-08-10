@@ -2565,6 +2565,72 @@ smoke threads, and pass Gates F–H.
   resumed. No private session-store deletion, broad cleanup, synthetic receipt, or
   claim that this gap is closed is permitted.
 
+### Race and checkpoint stress repair receipt — 2026-08-10
+
+- Scope: began from clean merged `main`/`personal/main`
+  `9e974f16b207802c357a8069d9d69e1d97bcb119` and PR #47's exact merge,
+  re-read every governing contract, then tested only current loose ends from model
+  selection through settlement and relaunch. Previously accepted Slices 1–12 were
+  not reopened for receipt farming.
+- Submit/routing defects: the pending intent omitted reasoning effort and files from
+  its full policy comparison, released its lock before awaited MCP restart work, and
+  could dispatch without exact model readback. Commit
+  `ca9a7130410419606305b33a29641a450576abe8` freezes draft, model, mode,
+  reasoning, attachments, and MCPs through every await; requires exact model/mode
+  confirmation; fails closed on missing, delayed-wrong, or unavailable readback; and
+  keeps the draft without provider spend. The same repair deduplicates immediate and
+  cross-turn replayed `turn_completed` events so usage/checkpoints settle once.
+- Visible MCP contradiction: an installed draft showed `1 MCP attached` while the
+  task contract claimed no attached MCP. Commit
+  `79f168b31b7b1e8b82d3213285f9d27ab41c42bc` gives pending/visible draft
+  intent precedence over the prior turn, without promoting requested MCPs to used.
+- Relaunch defect: a settled checkpoint restored its marker and run spine, but the
+  Activity toggle said `No run evidence`; the compact checkpoint also omitted tool
+  totals, process/MCP state, continuity detail, usage splits/cost/model totals, and
+  input attachment names. Commit
+  `8dd052068b0f707cfcb5ab3b5ecbbcb289036da6` persists those existing ACP
+  receipts in backward-compatible optional groups, restores the exact selected turn
+  into Activity, and labels legacy missing fields `not retained` / `Not reported`
+  instead of inventing zero or success.
+- Installed fail-safe probe: a frozen draft with `CANONICAL_WORKTREE.md`, High effort,
+  and exact `chrome-devtools` attachment hit the known Grok CLI saved-session gap
+  during the required policy restart. The app stopped before provider dispatch with
+  `Fresh thread required`, retained the 62-character draft/file/MCP chips, and spent
+  zero tokens. This is preserved as a safe failure, not papered over.
+- Installed discovery-only probe: local tab
+  `D6D645A6-ED27-4D50-B0F2-0C115B46C751`, backend
+  `019fec8e-9cf6-7933-b0f4-588132edd61d`, marker
+  `GB_PENDING_FREEZE_DISCOVERY_ONLY_OK_0810`. Exact `chrome-devtools` was
+  requested and discovered but no tool ran; the attachment cleared after settlement.
+  ACP reported 15,329 tokens / one call (15,256 input, 73 output, 5,504 cached-read,
+  53 reasoning), 1.7 s API time, `grok-4.5-build`, and $0.22 in the installed UI.
+- Full-fidelity relaunch probe: local tab
+  `60E281AE-56E2-44F1-AC70-4BE2B9392F2E`, backend
+  `019feca0-6b27-72b1-b215-ea68476ba4fb`, request
+  `6860eb0a-29cd-4656-b303-964f5ce38f55`, marker
+  `GB_CHECKPOINT_RESTORE_OK_0810`. Native Grok 4.5 / High and exact
+  `chrome-devtools` settled with zero tool calls. Before quit and after
+  process-zero/relaunch, Activity showed the same 15,305 tokens / one call, 15,250
+  input, 55 output, 5,504 cached-read, 41 reasoning, 1.675 s provider time,
+  `grok-4.5-build`, and exact `costUsdTicks=214732000` ($0.214732).
+- Spend: two successful installed calls used exactly **30,634 new provider tokens**;
+  the failed pre-dispatch probe used zero. The first cost was retained only at the
+  UI's displayed $0.22 precision, while the second retained an exact provider cost;
+  no fake combined precision is claimed. Total tokens were 0.61% of the authorized
+  5,000,000 ceiling.
+- Automated and signed gates: complete `make test` and candidate `make ship` passed
+  **765/765**, `git diff --check` was clean, installed commit `8dd0520…` had
+  `dirty=false`, Team `DD2GCQJVB4`, deep/strict validity, no quarantine, and
+  installed/dist executable SHA-256
+  `17328f25e5d156c8f8bbfe629cba031924c21d5ee916a1d9360a38848106491c`.
+- Cleanup truth: both exact local tabs above were closed through native `Close
+  Session`; their transcript files are absent. Exact supported CLI deletion attempts
+  for both backend IDs returned `No session found with id ...` with exit 0. That is
+  retained as visibility/deletion-gap evidence, not deletion proof. No private-store
+  file, wrapper, scraper, daemon, unrelated history, or broader cleanup was touched.
+  Normal quit left GrokBuild, Grok CLI agent, `agent-desktop`, and
+  `GrokBuildComputerUseMCP` at process zero.
+
 ---
 
 ## Slice receipt template

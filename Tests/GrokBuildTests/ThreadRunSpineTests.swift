@@ -308,6 +308,36 @@ final class ThreadRunSpineTests: XCTestCase {
         )
     }
 
+    func testTaskContractPrefersFrozenOrVisibleDraftToolsOverPriorTurn() {
+        XCTAssertEqual(
+            ThreadTaskContractPresentation.currentRequestedToolNames(
+                pending: ["chrome-devtools"],
+                draft: ["github"],
+                currentTurn: ["zotero"],
+                composerOwnsVisibleContext: true
+            ),
+            ["chrome-devtools"]
+        )
+        XCTAssertEqual(
+            ThreadTaskContractPresentation.currentRequestedToolNames(
+                pending: nil,
+                draft: ["chrome-devtools"],
+                currentTurn: ["zotero"],
+                composerOwnsVisibleContext: true
+            ),
+            ["chrome-devtools"]
+        )
+        XCTAssertEqual(
+            ThreadTaskContractPresentation.currentRequestedToolNames(
+                pending: nil,
+                draft: [],
+                currentTurn: ["zotero"],
+                composerOwnsVisibleContext: false
+            ),
+            ["zotero"]
+        )
+    }
+
     func testTaskContractRetainsExactParentChildHandoffIdentity() {
         let child = RunEvidenceSnapshot.Worker(
             id: "worker-row",
@@ -357,6 +387,78 @@ final class ThreadRunSpineTests: XCTestCase {
         XCTAssertEqual(restoredWorker?.childToolReceipts?.count, 1)
         XCTAssertEqual(restoredWorker?.childToolReceipts?.first?.status, .succeeded)
         XCTAssertEqual(ThreadRunSpinePresentation.persistedArtifacts(restored.checkpoint).first?.path, "/tmp/report.txt")
+    }
+
+    func testTaskCheckpointRestoresTheExactActivityReceiptAfterRelaunch() throws {
+        let original = snapshot(outcome: .completed, recovery: false, settled: true)
+        let checkpoint = AssistantTurnCheckpoint(
+            snapshot: original,
+            requestedToolFamilies: ["chrome-devtools"],
+            attachmentNames: ["CANONICAL_WORKTREE.md"]
+        )
+        let restoredCheckpoint = try JSONDecoder().decode(
+            AssistantTurnCheckpoint.self,
+            from: JSONEncoder().encode(checkpoint)
+        )
+
+        let restored = restoredCheckpoint.restoredRunEvidenceSnapshot(settledTools: [])
+
+        XCTAssertEqual(restored.binding, original.binding)
+        XCTAssertEqual(restored.tools, original.tools)
+        XCTAssertEqual(restored.process, original.process)
+        XCTAssertEqual(restored.continuity, original.continuity)
+        XCTAssertEqual(restored.usage, original.usage)
+        XCTAssertEqual(restored.outcome, original.outcome)
+        XCTAssertEqual(restored.artifacts, original.artifacts)
+        XCTAssertEqual(restored.gitReviewFiles, original.gitReviewFiles)
+        XCTAssertEqual(restored.unresolvedErrors, original.unresolvedErrors)
+        XCTAssertEqual(restoredCheckpoint.attachmentNames, ["CANONICAL_WORKTREE.md"])
+    }
+
+    func testLegacyTaskCheckpointDoesNotInventMissingActivityReceipts() throws {
+        let checkpoint = AssistantTurnCheckpoint(
+            snapshot: snapshot(outcome: .completed, recovery: false, settled: true),
+            requestedToolFamilies: []
+        )
+        var object = try XCTUnwrap(
+            JSONSerialization.jsonObject(with: JSONEncoder().encode(checkpoint)) as? [String: Any]
+        )
+        for key in [
+            "workspaceID", "requestID", "outcomeCode", "toolSummaryReceipt",
+            "processReceipt", "continuityReceipt", "usageReceipt", "attachmentNames",
+        ] {
+            object.removeValue(forKey: key)
+        }
+        let legacy = try JSONDecoder().decode(
+            AssistantTurnCheckpoint.self,
+            from: JSONSerialization.data(withJSONObject: object)
+        )
+
+        let restored = legacy.restoredRunEvidenceSnapshot(settledTools: [
+            .init(id: "old-tool", title: "Read", status: "Succeeded", mcpServerName: nil),
+        ])
+
+        XCTAssertEqual(restored.tools.succeeded, 1)
+        XCTAssertNil(restored.usage.totalTokens)
+        XCTAssertNil(restored.usage.costUsdTicks)
+        XCTAssertTrue(restored.process.state.contains("prior state not retained"))
+        XCTAssertTrue(restored.continuity.reason.contains("not retained"))
+    }
+
+    func testChatActivityWiresDurableCheckpointFallbackAndExactTurnSelection() throws {
+        let repositoryRoot = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        let source = try String(
+            contentsOf: repositoryRoot.appendingPathComponent("GrokBuild/Views/ChatView.swift"),
+            encoding: .utf8
+        )
+
+        XCTAssertTrue(source.contains("snapshot: activitySnapshot"))
+        XCTAssertTrue(source.contains("checkpoint.restoredRunEvidenceSnapshot(settledTools: trace.tools)"))
+        XCTAssertTrue(source.contains("selectedActivityMessageID = msg.id"))
+        XCTAssertTrue(source.contains("snapshot: activitySnapshot,"))
     }
 
     func testTaskHeaderUsesPersistedModelOnlyWhenNoProcessIsRunning() {
@@ -448,7 +550,7 @@ final class ThreadRunSpineTests: XCTestCase {
                 runtimeModelID: "grok-4.5-build",
                 routedModel: "gpt-5.6-terra"
             )],
-            tools: .init(succeeded: 0, failed: 0, cancelled: 0, unknown: 0),
+            tools: .init(succeeded: 2, failed: 1, cancelled: 1, unknown: 1),
             artifacts: [.init(
                 toolCallID: "tool",
                 path: "/tmp/report.txt",
@@ -458,14 +560,39 @@ final class ThreadRunSpineTests: XCTestCase {
                 workerID: nil
             )],
             gitReviewFiles: ["report.txt"],
-            process: .init(state: "Settled", model: "grok-4.5", mcps: []),
+            process: .init(
+                state: "Settled",
+                model: "grok-4.5",
+                mcps: [.init(name: "chrome-devtools", state: "ready", reason: nil)]
+            ),
             continuity: .init(
                 status: recovery ? "diverged" : "verified",
                 reason: recovery ? "review" : "matched",
                 provenance: recovery ? "Continuity needs review" : "Verified continuity",
                 requiresRecoveryAction: recovery
             ),
-            usage: .init(totalTokens: 1, modelCalls: 1, turnCount: 1),
+            usage: .init(
+                totalTokens: 15_329,
+                modelCalls: 1,
+                turnCount: 1,
+                inputTokens: 15_256,
+                outputTokens: 73,
+                cachedReadTokens: 5_504,
+                reasoningTokens: 53,
+                apiDurationMilliseconds: 1_700,
+                costUsdTicks: 220_000_000,
+                modelUsage: [.init(
+                    modelID: "grok-4.5-build",
+                    inputTokens: 15_256,
+                    outputTokens: 73,
+                    totalTokens: 15_329,
+                    cachedReadTokens: 5_504,
+                    reasoningTokens: 53,
+                    modelCalls: 1,
+                    apiDurationMilliseconds: 1_700,
+                    costUsdTicks: 220_000_000
+                )]
+            ),
             outcome: outcome,
             unresolvedErrors: [],
             nextAction: recovery ? "Review recovery." : "No action."
