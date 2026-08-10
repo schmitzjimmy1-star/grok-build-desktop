@@ -563,6 +563,23 @@ Do **not** commit exported plist files from repo root (`.gitignore`).
 
 The continuity gate remains authoritative in `ChatStore`. Removing the top continuity banner is a presentation change only: blocked recovery actions remain available from the drawer, and `SessionRecoveryReviewSheet` still performs the same bounded review/relink flow.
 
+**Durable task contract (thread-native Slice 10).** The compact header strip expands
+into a read-only task contract sourced from current `RunEvidenceLiveProjection`, the
+settled `RunEvidenceSnapshot`, fresh selected-worktree Git state, and the tab's saved
+backend/model receipt. At settlement, `AssistantTurnCheckpoint` copies only
+secret-free authoritative fields (objective, outcome, typed plan steps, exact
+parent/child identities, process generation, explicitly requested MCP/GUI families,
+model, recovery flag, and next action) into the existing local
+`AssistantTurnTrace`. This gives relaunch a durable presentation checkpoint without a
+second transcript, runtime, session authority, or read of grok's private storage.
+`ChatStore.resumeTaskSession()` is an explicit no-prompt action that calls the normal
+`restartProcess(resumeSessionID:)`/ACP `session/load` path and succeeds only when the
+exact saved backend returns Ready after continuity and model confirmation. Cancel
+pre-dispatch, Stop, Grok `/goal pause`/`resume`, Continue as New, and Resume are
+separate labeled controls; arbitrary live model turns expose Stop, never a synthetic
+Pause. Background/scheduled receipts link back to the owning thread's Activity
+projection, and an exited process is described as saved/stopped rather than working.
+
 ### Browser control
 
 | Piece | Location |

@@ -2062,6 +2062,83 @@ smoke threads, and pass Gates F–H.
   browser-profile processes. Slice 9 is merged and accepted. Slice 10 has not
   started.
 
+### Slice 10 completion receipt — 2026-08-09
+
+- Objective: expose a compact, durable task contract in the thread header while
+  retaining Grok CLI/ACP as the only lifecycle and session authority. Cancel,
+  Stop, Grok-goal Pause/Resume, exact saved-session Resume, and Continue as New
+  remain distinct actions; the header never claims exited work is still running.
+- Starting identity: clean `main == personal/main ==
+  ff0ea9a434efc4a7221d1ddc3236b7589db7c94f`, tree
+  `f3ae69963aa61245b3f5b1f49cda9913bdb50c3c`, installed/dist executable
+  SHA-256 `3dff0600e46e0e449ea237f3261f6c438a49569edacda47eda1767f5a6515152`,
+  Team `DD2GCQJVB4`, `dirty=false`, and all owned process counts zero. Branch:
+  `codex/grokbuild-s10-durable-task-controls`.
+- Implementation: `AssistantTurnCheckpoint` persists a secret-free projection of
+  the settled ACP/run snapshot inside the existing assistant trace; explicit
+  Resume calls the existing `restartProcess(resumeSessionID:)` / ACP
+  `session/load` path and sends no provider prompt. The task-contract popover shows
+  objective, phase, worktree/branch, model and review receipts, requested tool
+  families, exact tab/backend/generation, parent-to-child handoffs, background
+  ownership, and only the native actions valid for the current state. No runtime,
+  planner, transcript, watcher, proxy, daemon, provider fallback, or private-store
+  reader was added.
+- Verification: focused task-contract/run-spine, lifecycle/subprocess, and
+  accessibility suites passed; the complete suite passed `730/730` twice with zero
+  failures. `git diff --check` is clean. Candidate `make ship` passed and the final
+  candidate installed/dist executable SHA-256 is
+  `45464820ae8fcdf010f2f8992f17d69a996e8793751aed5079b16cee1a4040da`;
+  candidate stamp `ff0ea9a`, `dirty=true`, Team `DD2GCQJVB4`, deep/strict valid,
+  no quarantine.
+- Installed UI bug receipts: the first inline expansion reproduced a macOS 26
+  SwiftUI `SelectionOverlay` layout loop at 100% CPU, first while opening details
+  and then while ACP state changed. Both failures were preserved and the affected
+  process was terminated exactly. Moving details into a native fixed-header
+  popover eliminated transcript resizing; the exact expanded-live-worker repro
+  then stayed responsive at 0.1% CPU. The popover arrangement is covered by a
+  source-contract test.
+- Native Grok lane: local tab
+  `AC4D8BCB-0E53-448D-9E04-17D4285A4C7F`, parent backend
+  `019fe928-6963-7532-967c-2e6116ea5266`, Grok 4.5 Medium, direct xAI through
+  Grok CLI, no fallback, zero MCPs attached. Marker
+  `GB-S10-NATIVE-20260809T2050` created exactly three typed todo steps and child
+  `019fe928-9e16-7fc2-bf35-4f275aeff95b`, which returned `ff0ea9a` once. After
+  a deliberate installed-app termination, **Resume saved task** loaded the exact
+  parent backend without sending a prompt and restored its settled answer.
+- Active-worker controls: `GB-S10-STOP-20260809T2058` produced child
+  `019fe92e-2711-7f21-821e-bb9a6d405449` and a completed terminal receipt. The
+  bounded long-worker marker `GB-S10-STOP-20260809T2100` produced child
+  `019fe92f-2d4b-7c73-a55c-0fb5787b1133`; installed **Stop turn** settled the run
+  as `Stopped by you`, marked that exact worker `Stopped`, and never exposed a
+  synthetic active-turn Pause. Exact resume was offered; continuity then correctly
+  rejected the stopped backend and exposed **Continue as New**, which preserved
+  the prior record and forked the next backend.
+- OpenRouter lane: the same local tab continued as new to parent backend
+  `019fe930-dade-7b43-8e1b-56802a28be27`; marker
+  `GB-S10-OPENROUTER-20260809T2103` settled exactly once on pinned
+  `openai/gpt-4.1-mini`, brokered by `openrouter.ai`, with no GrokBuild fallback.
+  Authoritative receipt: `11,374` tokens / `1` model call; exact visible answer
+  `GB-S10-OPENROUTER-20260809T2103 READY`. The full accepted tab receipt was
+  `80.1k` tokens / `6` calls / `2` settled turns, below the `1,000,000` cap.
+- Exact cleanup: UI Close first refused the combined tab because it named two
+  conflicting backends, a preserved safety receipt rather than guessed cleanup.
+  Grok CLI then deleted both exact parents. It again returned `No session found`
+  for all three exact child IDs; their three measured directories were moved
+  recoverably to
+  `~/.Trash/GrokBuild-Slice10-child-backends-20260809T210700`. After relaunch,
+  exact UI **Close Session** removed local tab
+  `AC4D8BCB-0E53-448D-9E04-17D4285A4C7F`. All five exact IDs are absent from the
+  live Grok store. No daemon, wrapper, broad deletion, age rule, or unrelated
+  history cleanup was used.
+- Candidate Gates A-H: intended paths only, complete suite and diff checks green,
+  signed installed/dist parity exact, zero MCPs attached, exact UI and backend
+  cleanup complete, and normal quit left zero `GrokBuild`, `grok`,
+  `GrokBuildComputerUseMCP`, `agent-desktop`, `agent-browser`, or owned
+  `Google Chrome for Testing` processes.
+- Publication and merged-main acceptance: pending. Slice 11 must not begin until
+  the ready PR is reviewed, normally merged, and merged `main` is rebuilt,
+  installed, visibly accepted, cleaned, and process-zero.
+
 ---
 
 ## Slice receipt template

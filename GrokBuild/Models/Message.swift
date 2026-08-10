@@ -22,6 +22,69 @@ struct TranscriptMessageProvenance: Codable, Sendable, Hashable {
     let opaqueContentTag: String?
 }
 
+/// Durable, secret-free task checkpoint projected from one authoritative
+/// `RunEvidenceSnapshot` at the ACP settlement boundary. It lives inside the
+/// existing local assistant-turn trace so quit/relaunch can still explain the
+/// task contract without inventing a second transcript or scraping grok's
+/// private session storage.
+struct AssistantTurnCheckpoint: Codable, Sendable, Hashable {
+    struct PlanStep: Codable, Sendable, Hashable, Identifiable {
+        let id: String
+        let title: String
+        let status: String
+    }
+
+    struct Worker: Codable, Sendable, Hashable, Identifiable {
+        let id: String
+        let title: String
+        let status: String
+        let owningPlanStepID: String?
+        let childBackendSessionID: String?
+    }
+
+    let objective: String?
+    let outcome: String
+    let plan: [PlanStep]
+    let workers: [Worker]
+    let localTabID: UUID?
+    let parentBackendSessionID: String?
+    let processGeneration: UInt64?
+    let requestedToolFamilies: [String]
+    let modelID: String?
+    let nextAction: String
+    let requiresRecoveryAction: Bool
+    let isSettled: Bool
+
+    init(
+        snapshot: RunEvidenceSnapshot,
+        requestedToolFamilies: [String]
+    ) {
+        objective = snapshot.goalSummary
+        outcome = snapshot.outcome.displayName
+        plan = snapshot.plan.map {
+            PlanStep(id: $0.id, title: $0.title, status: $0.status)
+        }
+        workers = snapshot.workers.map {
+            Worker(
+                id: $0.id,
+                title: $0.title,
+                status: $0.status,
+                owningPlanStepID: $0.owningPlanStepID,
+                childBackendSessionID: $0.childID
+            )
+        }
+        localTabID = snapshot.binding.localTabID
+        parentBackendSessionID = snapshot.binding.backendSessionID
+        processGeneration = snapshot.binding.processGeneration
+        self.requestedToolFamilies = Array(Set(requestedToolFamilies))
+            .sorted { $0.localizedCaseInsensitiveCompare($1) == .orderedAscending }
+        modelID = snapshot.process.model
+        nextAction = snapshot.nextAction
+        requiresRecoveryAction = snapshot.continuity.requiresRecoveryAction
+        isSettled = snapshot.binding.isSettled
+    }
+}
+
 /// Safe, local presentation receipts for one assistant turn. The summary is
 /// the public ACP reasoning summary, never hidden chain-of-thought. Tool rows
 /// retain only redacted labels, terminal state, and an authoritative MCP server
@@ -91,9 +154,11 @@ struct AssistantTurnTrace: Codable, Sendable, Hashable {
     /// The custom subagent role that ran the whole session's turn, when one was
     /// explicitly selected. Empty/default agent stays `nil`.
     var agentName: String? = nil
+    /// Slice 10 durable task contract. Missing on legacy transcripts.
+    var checkpoint: AssistantTurnCheckpoint? = nil
 
     var hasContent: Bool {
-        !reasoningSummaryChunks.isEmpty || thinkingDuration != nil || !tools.isEmpty
+        !reasoningSummaryChunks.isEmpty || thinkingDuration != nil || !tools.isEmpty || checkpoint != nil
     }
 }
 

@@ -115,6 +115,14 @@ Make Browser and Computer Use available from **Settings → Browser** / **Settin
   preparation stage, and dispatches automatically after the selected model and
   requested connections are confirmed. Cancel before dispatch restores editing and
   sends nothing; repeated Return/click events cannot duplicate the request.
+- **Durable task contract** — expand the compact thread header to review the current
+  objective, observed phase, exact worktree/branch, model receipt, requested MCP/GUI
+  tools, Git review state, saved checkpoint, and parent→child worker identities. A
+  saved task can explicitly resume only through Grok's exact `session/load` plus the
+  existing continuity check; Cancel, Stop, goal Pause/Resume, Continue as New, and
+  Resume remain separate actions. GrokBuild never claims a task continues after its
+  owning process exits, and it does not invent a pause operation for an active model
+  call.
 - **Subagent model routing, visible** — when a spawned worker matches one of your custom roles, its receipt says exactly where it routes: "Routes to deepseek-deepseek-v4-flash-0731 (configured)". The roles editor groups model choices by provider so your OpenRouter and API models are first-class routes.
 - **Session usage HUD** — the composer's model menu keeps a running meter of settled-turn usage ("12.4k tokens · 3 calls · 2 turns"), with an honest dollar estimate range when a model's catalog pricing is known (captured automatically from OpenRouter's catalog during Test connection). No pricing, no fake $0.
 - **Tool-run inspector** — while an agent works, each live tool row in Activity expands to its full redacted input receipt. `search_tool` rows say capability discovery and never receive a browser-use/source claim; `use_tool` rows show the authoritative qualified tool and server (for example, `chrome-devtools__list_pages` via `chrome-devtools`). A requested qualified tool missing from a settled current-turn catalog receipt appears as **Unavailable for this turn**, not failed or succeeded use. Workers that finish mid-turn show their duration/tool-count receipts immediately.

@@ -570,6 +570,12 @@ private struct SessionSidebarRow: View {
             .accessibilityIdentifier("grok-sidebar-session-row")
             .accessibilityAddTraits(isSelected ? .isSelected : [])
             .accessibilityRemoveTraits(isSelected ? [] : .isSelected)
+            .accessibilityAction(named: "Rename session") {
+                onRename()
+            }
+            .accessibilityAction(named: "Close session") {
+                onClose()
+            }
 
             Menu {
                 Button("Rename…", action: onRename)
