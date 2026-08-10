@@ -11,10 +11,26 @@ enum BuiltInToolConnection: String, CaseIterable, Sendable {
 struct PendingSubmitIntent: Equatable, Sendable {
     let id: UUID
     let draft: String
+    let modelID: String?
+    let modeID: String?
+    let requestedMCPNames: Set<String>
+
+    init(
+        id: UUID,
+        draft: String,
+        modelID: String? = nil,
+        modeID: String? = nil,
+        requestedMCPNames: Set<String> = []
+    ) {
+        self.id = id
+        self.draft = draft
+        self.modelID = modelID
+        self.modeID = modeID
+        self.requestedMCPNames = requestedMCPNames
+    }
 }
 
 enum SubmitPreparation: Equatable, Sendable {
-    case dispatchNow
     case latched(UUID)
     case rejected
 
@@ -137,13 +153,25 @@ enum PermissionRequestPolicy {
         isYolo: Bool,
         options: [PermissionOption],
         mcpGatewayEnabled: Bool = true,
-        isMCPInvocation: Bool = false
+        isMCPInvocation: Bool = false,
+        invocationServerName: String? = nil,
+        allowedMCPServerNames: Set<String> = []
     ) -> PermissionRequestDisposition {
         // A thread's explicit MCP gate outranks convenience approval modes. Grok
         // CLI remains the only executor: the app answers Grok's ACP permission
         // request with its reject option and never invokes the tool client-side.
-        if isMCPInvocation && !mcpGatewayEnabled {
-            return .deny(optionID: options.first(where: { isDeny($0) })?.id)
+        if isMCPInvocation {
+            let normalizedServer = invocationServerName?
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+                .lowercased()
+            let normalizedAllowed = Set(allowedMCPServerNames.map {
+                $0.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+            })
+            guard mcpGatewayEnabled,
+                  let normalizedServer,
+                  normalizedAllowed.contains(normalizedServer) else {
+                return .deny(optionID: options.first(where: { isDeny($0) })?.id)
+            }
         }
         if isYolo || mode == .alwaysApprove {
             if let allow = options.first(where: { isAllow($0) }) {
@@ -302,6 +330,7 @@ final class ChatStore {
                 toolCallCount: $0.toolCallCount,
                 redactedError: $0.redactedError,
                 childToolReceipts: $0.childToolReceipts,
+                runtimeModelID: $0.runtimeModelID,
                 routedModel: SubagentRouting.routedModel(
                     forWorkerTitle: $0.title,
                     rolesByName: subagentRoleModelsByName
@@ -344,6 +373,7 @@ final class ChatStore {
                 qualifiedToolName: tool.qualifiedToolName,
                 discoveredQualifiedToolNames: tool.discoveredQualifiedToolNames,
                 owningPlanStepID: currentTurnToolPlanStepIDs[tool.id],
+                durationMilliseconds: tool.durationMilliseconds,
                 isActive: isActive
             )
         }
@@ -413,6 +443,7 @@ final class ChatStore {
         let discoveredQualifiedToolNames: [String]
         let retryOfToolCallID: String?
         let recoveredByToolCallID: String?
+        let durationMilliseconds: Int?
 
         init(
             id: String,
@@ -428,7 +459,8 @@ final class ChatStore {
             qualifiedToolName: String? = nil,
             discoveredQualifiedToolNames: [String] = [],
             retryOfToolCallID: String?,
-            recoveredByToolCallID: String?
+            recoveredByToolCallID: String?,
+            durationMilliseconds: Int? = nil
         ) {
             self.id = id
             self.title = title
@@ -444,6 +476,7 @@ final class ChatStore {
             self.discoveredQualifiedToolNames = discoveredQualifiedToolNames
             self.retryOfToolCallID = retryOfToolCallID
             self.recoveredByToolCallID = recoveredByToolCallID
+            self.durationMilliseconds = durationMilliseconds
         }
 
         var isFailed: Bool {
@@ -482,7 +515,8 @@ final class ChatStore {
                 qualifiedToolName: qualifiedToolName,
                 discoveredQualifiedToolNames: discoveredQualifiedToolNames,
                 retryOfToolCallID: retryOfToolCallID,
-                recoveredByToolCallID: recoveryID
+                recoveredByToolCallID: recoveryID,
+                durationMilliseconds: durationMilliseconds
             )
         }
     }
@@ -768,19 +802,31 @@ final class ChatStore {
         guard !trimmed.isEmpty || fileAttachments.contains(where: { !$0.isHidden }) else {
             return .rejected
         }
-        guard connectionState != .ready,
-              firstIntentWarmStartTask != nil || connectionState == .starting else {
-            return .dispatchNow
-        }
         switch PendingSubmitIntentPolicy.latchDecision(existing: pendingSubmitIntent, draft: trimmed) {
         case .duplicate, .conflictingDraft:
             return .rejected
         case .latch:
-            let intent = PendingSubmitIntent(id: UUID(), draft: trimmed)
+            let intent = makePendingSubmitIntent(draft: trimmed)
             pendingSubmitIntent = intent
             GrokBuildPerformance.mark(.submitIntent)
             return .latched(intent.id)
         }
+    }
+
+    private func makePendingSubmitIntent(draft: String) -> PendingSubmitIntent {
+        PendingSubmitIntent(
+            id: UUID(),
+            draft: draft,
+            modelID: currentModel,
+            modeID: currentMode.rawValue,
+            requestedMCPNames: selectedPromptMCPNames.union(enabledBuiltInToolNames)
+        )
+    }
+
+    private func pendingSubmitRouteStillMatches(_ intent: PendingSubmitIntent) -> Bool {
+        intent.modelID == currentModel
+            && intent.modeID == currentMode.rawValue
+            && intent.requestedMCPNames == selectedPromptMCPNames.union(enabledBuiltInToolNames)
     }
 
     /// Launch the backend for a brand-new tab on first typing. Deliberately narrow:
@@ -2076,6 +2122,29 @@ final class ChatStore {
             AgentBrowserService.browserMCPConfig(settings: browserSettings),
             ComputerUseService.computerUseMCPConfig(settings: computerUseSettings)
         ].compactMap { $0 }
+        let requestedMCPServerNames = selectedPromptMCPNames.union(enabledBuiltInToolNames)
+        var knownConfiguredMCPServerNames: Set<String> = []
+        if !requestedMCPServerNames.isEmpty {
+            do {
+                let catalog = try await GrokCLIService().listMCPServers(cwd: ws.path)
+                knownConfiguredMCPServerNames = Set(catalog.compactMap { server in
+                    server.isEnabled == false ? nil : server.name
+                })
+                let unsafeNames = knownConfiguredMCPServerNames.union(requestedMCPServerNames)
+                    .filter { !GrokMCPGatewayLaunchPolicy.isSafeServerName($0) }
+                guard unsafeNames.isEmpty else {
+                    connectionWatchdogTask?.cancel()
+                    connectionState = .failed("The Grok CLI MCP catalog contains a server name that cannot be represented by an exact permission rule.")
+                    lastError = "MCP launch stopped before dispatch because the exact selected-server boundary could not be expressed safely."
+                    return
+                }
+            } catch {
+                connectionWatchdogTask?.cancel()
+                connectionState = .failed("Could not verify the Grok CLI MCP catalog for this exact thread selection.")
+                lastError = "MCP launch stopped before dispatch because GrokBuild could not verify which configured servers must remain denied."
+                return
+            }
+        }
         mcpServerStatuses = MCPReadinessPolicy.connectingStatuses(for: mcpServers)
         let opts = GrokLaunchOptions(
             localTabID: tabSessionID,
@@ -2098,6 +2167,8 @@ final class ChatStore {
             forkSession: launchForkSession,
             newSessionID: launchNewSessionID,
             mcpServers: mcpServers,
+            allowedMCPServerNames: requestedMCPServerNames,
+            knownConfiguredMCPServerNames: knownConfiguredMCPServerNames,
             mcpGatewayEnabled: Self.mcpGatewayEnabled(
                 selectedPromptMCPNames: selectedPromptMCPNames,
                 enabledBuiltInToolNames: enabledBuiltInToolNames
@@ -2611,12 +2682,25 @@ final class ChatStore {
                 case .latch:
                     break
                 }
-                intent = PendingSubmitIntent(id: UUID(), draft: trimmed)
+                intent = makePendingSubmitIntent(draft: trimmed)
                 pendingSubmitIntent = intent
             }
             if let warmStart = firstIntentWarmStartTask {
                 await warmStart.value
             } else {
+                if connectionState != .ready,
+                   connectionState != .starting,
+                   process.sessionId == nil {
+                    let forceFreshStart = forcedFreshStartAfterUserStop
+                    let predecessorBackendID = stoppedBackendIDNeedingFreshStart
+                    forcedFreshStartAfterUserStop = false
+                    stoppedBackendIDNeedingFreshStart = nil
+                    await restartProcess(
+                        resumeSessionID: savedGrokSessionID,
+                        forceFreshStart: forceFreshStart,
+                        freshStartPredecessorBackendID: predecessorBackendID
+                    )
+                }
                 while connectionState == .starting, pendingSubmitIntent?.id == intent.id {
                     try? await Task.sleep(for: .milliseconds(50))
                 }
@@ -2627,6 +2711,11 @@ final class ChatStore {
                 if lastError == nil {
                     lastError = connectionState.errorMessage ?? "Grok could not prepare this task. Retry or start a new session."
                 }
+                return false
+            }
+            guard pendingSubmitRouteStillMatches(intent) else {
+                pendingSubmitIntent = nil
+                lastError = "The model, mode, or attached MCP set changed while the task was preparing. Review the restored draft and send again."
                 return false
             }
             pendingSubmitIntent = nil
@@ -2660,14 +2749,17 @@ final class ChatStore {
         guard SessionSendGate.decision(for: continuityStatus) != .block else {
             return false
         }
+        let desiredAllowedMCPServerNames = selectedPromptMCPNames.union(enabledBuiltInToolNames)
         let desiredMCPGatewayState = Self.mcpGatewayEnabled(
             selectedPromptMCPNames: selectedPromptMCPNames,
             enabledBuiltInToolNames: enabledBuiltInToolNames
         )
-        if process.launchReceipt?.mcpGatewayEnabled != desiredMCPGatewayState {
+        if process.launchReceipt?.mcpGatewayEnabled != desiredMCPGatewayState
+            || Set(process.launchReceipt?.allowedMCPServerNames ?? []) != desiredAllowedMCPServerNames {
             await restartProcess(resumeSessionID: process.sessionId ?? savedGrokSessionID)
             guard connectionState == .ready,
                   process.launchReceipt?.mcpGatewayEnabled == desiredMCPGatewayState,
+                  Set(process.launchReceipt?.allowedMCPServerNames ?? []) == desiredAllowedMCPServerNames,
                   SessionSendGate.decision(for: continuityStatus) != .block else {
                 if lastError == nil {
                     lastError = "Grok could not apply this turn's MCP gateway policy. Retry the turn."
@@ -3074,16 +3166,19 @@ final class ChatStore {
     }
 
     func addFileAttachment(path: String) {
+        guard !isPreparingSubmit else { return }
         let standardized = URL(fileURLWithPath: path).standardizedFileURL.path
         guard !fileAttachments.contains(where: { $0.path == standardized }) else { return }
         fileAttachments.append(FileAttachment(path: standardized, workspaceRoot: currentWorkspace?.path))
     }
 
     func removeFileAttachment(id: UUID) {
+        guard !isPreparingSubmit else { return }
         fileAttachments.removeAll { $0.id == id }
     }
 
     func toggleFileAttachmentHidden(id: UUID) {
+        guard !isPreparingSubmit else { return }
         guard let idx = fileAttachments.firstIndex(where: { $0.id == id }) else { return }
         fileAttachments[idx].isHidden.toggle()
     }
@@ -3108,6 +3203,7 @@ final class ChatStore {
     /// immutable MCP set supplied at ACP `session/new`.
     @discardableResult
     func toggleBuiltInTool(_ connection: BuiltInToolConnection) -> Bool {
+        guard !isPreparingSubmit else { return false }
         if enabledBuiltInToolNames.contains(connection.rawValue) {
             enabledBuiltInToolNames.remove(connection.rawValue)
         } else {
@@ -3168,6 +3264,7 @@ final class ChatStore {
     }
 
     func togglePromptMCPAttachment(named name: String) {
+        guard !isPreparingSubmit else { return }
         guard promptMCPOptions.contains(where: { $0.name == name }) else { return }
         if let builtIn = BuiltInToolConnection(rawValue: name) {
             _ = toggleBuiltInTool(builtIn)
@@ -3181,6 +3278,7 @@ final class ChatStore {
     }
 
     func removePromptMCPAttachment(named name: String) {
+        guard !isPreparingSubmit else { return }
         selectedPromptMCPNames.remove(name)
     }
 
@@ -3260,6 +3358,7 @@ final class ChatStore {
     }
 
     func setMode(_ mode: AgentMode) {
+        guard !isPreparingSubmit else { return }
         process.setMode(mode)
         // Optimistically update; will be confirmed by modeChanged event
         currentMode = mode
@@ -3304,6 +3403,7 @@ final class ChatStore {
     }
 
     func setModel(_ model: String) {
+        guard !isPreparingSubmit else { return }
         guard availableModels.contains(model) else { return }
         if model == currentModel {
             guard !tabHasExplicitModel else { return }
@@ -3576,8 +3676,9 @@ final class ChatStore {
         ].compactMap { $0 }
         lines.append("Launched capabilities: \(capabilities.isEmpty ? "none" : capabilities.joined(separator: ", ")).")
         lines.append(receipt.mcpGatewayEnabled
-            ? "MCP gateway: explicit selection requested; the app catch-all gate is omitted, while Grok CLI catalog and remaining deny rules stay authoritative."
+            ? "MCP gateway: exact thread selection active; Grok CLI denies every freshly observed configured server outside the selected set."
             : "MCP gateway: external tool invocation blocked by the session-scoped CLI deny rule MCPTool(*__*) plus fail-closed ACP permission responses.")
+        lines.append("ACP-authorized MCP servers: \(receipt.allowedMCPServerNames.isEmpty ? "none" : receipt.allowedMCPServerNames.joined(separator: ", ")).")
         lines.append("App-injected MCP servers: \(receipt.mcpServerNames.isEmpty ? "none" : receipt.mcpServerNames.joined(separator: ", ")).")
         if !receipt.observedCLIConfiguredMCPServerNames.isEmpty {
             lines.append("CLI-configured MCP servers observed: \(receipt.observedCLIConfiguredMCPServerNames.joined(separator: ", ")).")
@@ -3657,7 +3758,11 @@ final class ChatStore {
                     isYolo: true,
                     options: perm.options,
                     mcpGatewayEnabled: process.launchReceipt?.mcpGatewayEnabled == true,
-                    isMCPInvocation: perm.toolCall.qualifiedToolName != nil
+                    isMCPInvocation: perm.toolCall.qualifiedToolName != nil,
+                    invocationServerName: MCPQualifiedToolIdentity.serverName(
+                        from: perm.toolCall.qualifiedToolName
+                    ),
+                    allowedMCPServerNames: Set(process.launchReceipt?.allowedMCPServerNames ?? [])
                 ) {
                 case .allow(let optionID):
                     respondToPermission(perm, with: optionID)
@@ -3886,7 +3991,9 @@ final class ChatStore {
             sessionUsage.recordTurn(
                 modelID: modelExecutionState.effectiveModelID ?? currentModel,
                 totalTokens: completion.totalTokens,
-                modelCalls: completion.modelCalls
+                modelCalls: completion.modelCalls,
+                costUsdTicks: completion.costUsdTicks,
+                modelUsage: completion.modelUsage
             )
             let settledSnapshot = makeRunEvidenceSnapshot(completion: completion)
             runEvidenceSnapshot = settledSnapshot
@@ -3944,7 +4051,11 @@ final class ChatStore {
                 isYolo: isYolo,
                 options: req.options,
                 mcpGatewayEnabled: process.launchReceipt?.mcpGatewayEnabled == true,
-                isMCPInvocation: req.toolCall.qualifiedToolName != nil
+                isMCPInvocation: req.toolCall.qualifiedToolName != nil,
+                invocationServerName: MCPQualifiedToolIdentity.serverName(
+                    from: req.toolCall.qualifiedToolName
+                ),
+                allowedMCPServerNames: Set(process.launchReceipt?.allowedMCPServerNames ?? [])
             ) {
             case .allow(let optionID):
                 answerPermissionRequest(req, with: optionID)
@@ -4056,7 +4167,8 @@ final class ChatStore {
             qualifiedToolName: toolCall.qualifiedToolName,
             discoveredQualifiedToolNames: toolCall.discoveredQualifiedToolNames,
             retryOfToolCallID: toolCall.retryOfToolCallID,
-            recoveredByToolCallID: nil
+            recoveredByToolCallID: nil,
+            durationMilliseconds: toolCall.durationMilliseconds
         )
     }
 
@@ -4197,6 +4309,7 @@ final class ChatStore {
                 toolCallCount: $0.toolCallCount,
                 redactedError: $0.redactedError,
                 childToolReceipts: $0.childToolReceipts,
+                runtimeModelID: $0.runtimeModelID,
                 routedModel: SubagentRouting.routedModel(
                     forWorkerTitle: $0.title,
                     rolesByName: subagentRoleModelsByName
@@ -4292,7 +4405,14 @@ final class ChatStore {
             usage: .init(
                 totalTokens: completion?.totalTokens,
                 modelCalls: completion?.modelCalls,
-                turnCount: completion?.turnCount
+                turnCount: completion?.turnCount,
+                inputTokens: completion?.inputTokens,
+                outputTokens: completion?.outputTokens,
+                cachedReadTokens: completion?.cachedReadTokens,
+                reasoningTokens: completion?.reasoningTokens,
+                apiDurationMilliseconds: completion?.apiDurationMilliseconds,
+                costUsdTicks: completion?.costUsdTicks,
+                modelUsage: completion?.modelUsage ?? []
             ),
             outcome: outcome,
             unresolvedErrors: unresolvedErrors,
@@ -4344,7 +4464,8 @@ final class ChatStore {
                 existing.discoveredQualifiedToolNames + update.discoveredQualifiedToolNames
             )).sorted(),
             retryOfToolCallID: update.retryOfToolCallID ?? existing.retryOfToolCallID,
-            recoveredByToolCallID: nil
+            recoveredByToolCallID: nil,
+            durationMilliseconds: update.durationMilliseconds ?? existing.durationMilliseconds
         )
     }
 
@@ -4381,7 +4502,8 @@ final class ChatStore {
                     detail: tool.detail,
                     kind: tool.kind
                 ),
-                owningPlanStepID: currentTurnToolPlanStepIDs[tool.id]
+                owningPlanStepID: currentTurnToolPlanStepIDs[tool.id],
+                durationMilliseconds: tool.durationMilliseconds
             )
         }
         // Stamp the turn's model identity only from the confirmed execution

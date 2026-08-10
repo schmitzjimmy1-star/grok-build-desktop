@@ -526,7 +526,8 @@ struct ChatView: View {
             mcpServerName: tool.mcpServerName,
             mcpReceiptRole: tool.mcpReceiptRole,
             qualifiedToolName: tool.qualifiedToolName,
-            discoveredQualifiedToolNames: tool.discoveredQualifiedToolNames
+            discoveredQualifiedToolNames: tool.discoveredQualifiedToolNames,
+            durationMilliseconds: tool.durationMilliseconds
         )
     }
 
@@ -703,11 +704,11 @@ struct ChatView: View {
                                         && msg.id == store.streamingMessageID
                                         && store.liveRunEvidenceProjection != nil,
                                     containsSettledRunSpine: msg.role == .assistant
-                                        && msg.id == ChatTranscriptLayout.activeAssistantMessageID(
-                                            messages: store.messages,
-                                            streamingMessageID: store.streamingMessageID
-                                        )
-                                        && store.runEvidenceSnapshot != nil
+                                        && (persistedTrace?.checkpoint != nil
+                                            || (msg.id == ChatTranscriptLayout.activeAssistantMessageID(
+                                                messages: store.messages,
+                                                streamingMessageID: store.streamingMessageID
+                                            ) && store.runEvidenceSnapshot != nil))
                                 ),
                                 id: \.self
                             ) { block in
@@ -732,6 +733,7 @@ struct ChatView: View {
                                         ThreadRunSpineView(
                                             live: live,
                                             snapshot: nil,
+                                            checkpoint: nil,
                                             settledTools: [],
                                             workspace: store.currentWorkspace?.path,
                                             onOpenActivity: { showActivitySidebar = true },
@@ -751,10 +753,16 @@ struct ChatView: View {
                                     )
                                     .id(msg.id)
                                 case .settledRunSpine:
-                                    if let snapshot = store.runEvidenceSnapshot {
+                                    let ownsCurrentSnapshot = msg.id == ChatTranscriptLayout.activeAssistantMessageID(
+                                        messages: store.messages,
+                                        streamingMessageID: store.streamingMessageID
+                                    )
+                                    let snapshot = ownsCurrentSnapshot ? store.runEvidenceSnapshot : nil
+                                    if snapshot != nil || persistedTrace?.checkpoint != nil {
                                         ThreadRunSpineView(
                                             live: nil,
                                             snapshot: snapshot,
+                                            checkpoint: persistedTrace?.checkpoint,
                                             settledTools: msg.assistantTrace?.tools ?? [],
                                             workspace: store.currentWorkspace?.path,
                                             onOpenActivity: { showActivitySidebar = true },
@@ -1356,7 +1364,11 @@ struct ChatView: View {
             project: store.currentWorkspace?.displayName ?? "No project",
             worktree: store.currentWorkspace?.path.path ?? "No worktree selected",
             branch: contextBranchName,
-            modelReceipt: store.sessionReceiptCompactLabel,
+            modelReceipt: ThreadTaskContractPresentation.modelReceipt(
+                current: store.sessionReceiptCompactLabel,
+                checkpoint: store.latestTaskCheckpoint,
+                connectionState: store.connectionState
+            ),
             requestedToolFamilies: ThreadTaskContractPresentation.requestedToolFamilies(
                 current: store.currentTurnRequestedMCPNames,
                 checkpoint: store.latestTaskCheckpoint
@@ -1808,7 +1820,7 @@ struct ChatView: View {
                                     : (option.isReady ? "circle" : "circle.dashed")
                             )
                         }
-                        .disabled(store.isStreaming)
+                        .disabled(store.isStreaming || store.isPreparingSubmit)
                         .help(option.detail)
                     }
                 }
@@ -1863,6 +1875,7 @@ struct ChatView: View {
         )
         .accessibilityHint("Attach files or MCP connections, insert skills and workflows, or manage Browser Tools and Computer Use.")
         .accessibilityIdentifier("grok-composer-add-menu")
+        .disabled(store.isPreparingSubmit)
         // The Browser/Computer Use pill inputs previously refreshed from the
         // project status row; the add menu is their surviving surface.
         .task(id: store.currentWorkspace?.id) {
@@ -2661,8 +2674,9 @@ struct ChatView: View {
         .help("Change agent mode")
         .accessibilityLabel("Agent mode")
         .accessibilityValue(displayName(for: store.currentMode))
-            .accessibilityIdentifier("grok-mode-selector")
-            .accessibilityHint("Choose the agent operating mode.")
+        .accessibilityIdentifier("grok-mode-selector")
+        .accessibilityHint("Choose the agent operating mode.")
+        .disabled(store.isStreaming || store.isPreparingSubmit)
     }
 
     private func modeMenuRow(icon: String, title: String, isSelected: Bool) -> some View {
@@ -2788,7 +2802,7 @@ struct ChatView: View {
                         }
                     }
                     .accessibilityIdentifier("grok-model-option-\(modelId)")
-                    .disabled(store.isModelRequestPending || store.isStreaming)
+                    .disabled(store.isModelRequestPending || store.isStreaming || store.isPreparingSubmit)
                 }
             }
         }
@@ -2797,7 +2811,7 @@ struct ChatView: View {
                 store.setCurrentModelAsProjectDefault()
             }
             .accessibilityIdentifier("grok-model-set-project-default")
-            .disabled(store.currentWorkspace == nil)
+            .disabled(store.currentWorkspace == nil || store.isPreparingSubmit)
         }
     }
 

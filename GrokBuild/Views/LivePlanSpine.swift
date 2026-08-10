@@ -97,6 +97,55 @@ enum ThreadRunSpinePresentation {
         return "\(completed) completed · \(max(0, plan.count - completed)) remaining"
     }
 
+    static func persistedPlan(_ checkpoint: AssistantTurnCheckpoint?) -> [RunEvidenceSnapshot.PlanStep] {
+        (checkpoint?.plan ?? []).map { .init(id: $0.id, title: $0.title, status: $0.status) }
+    }
+
+    static func persistedWorkers(_ checkpoint: AssistantTurnCheckpoint?) -> [RunEvidenceSnapshot.Worker] {
+        guard let checkpoint else { return [] }
+        if let receipts = checkpoint.workerReceipts {
+            return receipts.map {
+                .init(
+                    id: $0.id,
+                    title: $0.title,
+                    status: $0.status,
+                    owningPlanStepID: $0.owningPlanStepID,
+                    childID: $0.childBackendSessionID,
+                    durationMilliseconds: $0.durationMilliseconds,
+                    toolCallCount: $0.toolCallCount,
+                    redactedError: $0.redactedError,
+                    runtimeModelID: $0.runtimeModelID,
+                    routedModel: $0.routedModel
+                )
+            }
+        }
+        return checkpoint.workers.map {
+            .init(
+                id: $0.id,
+                title: $0.title,
+                status: $0.status,
+                owningPlanStepID: $0.owningPlanStepID,
+                childID: $0.childBackendSessionID,
+                durationMilliseconds: nil,
+                toolCallCount: nil,
+                redactedError: nil
+            )
+        }
+    }
+
+    static func persistedArtifacts(_ checkpoint: AssistantTurnCheckpoint?) -> [ChatStore.RunArtifact] {
+        (checkpoint?.artifacts ?? []).map {
+            .init(
+                toolCallID: $0.toolCallID,
+                path: $0.path,
+                status: $0.status,
+                location: ChatStore.RunArtifact.Location(rawValue: $0.location) ?? .external,
+                owningPlanStepID: $0.owningPlanStepID,
+                workerID: $0.workerID
+            )
+        }
+    }
+
     static func livePhase(_ projection: RunEvidenceLiveProjection) -> String {
         if let tool = projection.tools.first(where: \.isActive) {
             return "Using \(toolFamily(kind: tool.kind, mcpServerName: tool.mcpServerName))"
@@ -129,7 +178,7 @@ enum ThreadRunSpinePresentation {
                 family: toolFamily(kind: tool.kind, mcpServerName: tool.mcpServerName),
                 operation: operation(title: tool.title, qualifiedToolName: tool.qualifiedToolName),
                 status: tool.status,
-                duration: "Duration not reported",
+                duration: durationLabel(tool.durationMilliseconds),
                 worker: "Parent agent",
                 outputBoundary: outputBoundary(
                     toolID: tool.id,
@@ -157,7 +206,7 @@ enum ThreadRunSpinePresentation {
                 family: toolFamily(kind: tool.kind, mcpServerName: tool.mcpServerName),
                 operation: operation(title: tool.title, qualifiedToolName: tool.qualifiedToolName),
                 status: tool.status,
-                duration: "Duration not reported",
+                duration: durationLabel(tool.durationMilliseconds),
                 worker: "Parent agent",
                 outputBoundary: outputBoundary(toolID: tool.id, artifacts: artifacts, workspace: workspace),
                 resultDetail: tool.resultDetail,
@@ -229,6 +278,12 @@ enum ThreadRunSpinePresentation {
         TranscriptTextPresentation.singleLine(qualifiedToolName ?? title, maxLength: 160)
     }
 
+    static func durationLabel(_ milliseconds: Int?) -> String {
+        guard let milliseconds, milliseconds >= 0 else { return "Duration not reported" }
+        if milliseconds < 1_000 { return "\(milliseconds) ms" }
+        return String(format: "%.1f s", Double(milliseconds) / 1_000)
+    }
+
     private static func outputBoundary(
         toolID: String,
         artifacts: [ChatStore.RunArtifact],
@@ -296,6 +351,17 @@ enum ThreadTaskContractPresentation {
             ?? latestUserText
             ?? fallback
         return TranscriptTextPresentation.singleLine(candidate, maxLength: 240)
+    }
+
+    static func modelReceipt(
+        current: String,
+        checkpoint: AssistantTurnCheckpoint?,
+        connectionState: GrokProcessState
+    ) -> String {
+        guard case .idle = connectionState,
+              let model = checkpoint?.modelID?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !model.isEmpty else { return current }
+        return "\(model) · saved checkpoint"
     }
 
     static func requestedToolFamilies(
@@ -523,6 +589,7 @@ struct ThreadTaskContractView: View {
 struct ThreadRunSpineView: View {
     let live: RunEvidenceLiveProjection?
     let snapshot: RunEvidenceSnapshot?
+    let checkpoint: AssistantTurnCheckpoint?
     let settledTools: [AssistantTurnTrace.Tool]
     let workspace: URL?
     let onOpenActivity: () -> Void
@@ -531,11 +598,17 @@ struct ThreadRunSpineView: View {
 
     @State private var receiptsExpanded = false
 
-    private var plan: [RunEvidenceSnapshot.PlanStep] { live?.plan ?? snapshot?.plan ?? [] }
-    private var workers: [RunEvidenceSnapshot.Worker] { live?.workers ?? snapshot?.workers ?? [] }
-    private var artifacts: [ChatStore.RunArtifact] { live?.artifacts ?? snapshot?.artifacts ?? [] }
+    private var plan: [RunEvidenceSnapshot.PlanStep] {
+        live?.plan ?? snapshot?.plan ?? ThreadRunSpinePresentation.persistedPlan(checkpoint)
+    }
+    private var workers: [RunEvidenceSnapshot.Worker] {
+        live?.workers ?? snapshot?.workers ?? ThreadRunSpinePresentation.persistedWorkers(checkpoint)
+    }
+    private var artifacts: [ChatStore.RunArtifact] {
+        live?.artifacts ?? snapshot?.artifacts ?? ThreadRunSpinePresentation.persistedArtifacts(checkpoint)
+    }
     private var parentBackendSessionID: String? {
-        live?.binding.backendSessionID ?? snapshot?.binding.backendSessionID
+        live?.binding.backendSessionID ?? snapshot?.binding.backendSessionID ?? checkpoint?.parentBackendSessionID
     }
     private var tools: [ThreadRunSpinePresentation.ToolRow] {
         if let live { return ThreadRunSpinePresentation.liveTools(live, workspace: workspace) }
@@ -702,6 +775,30 @@ struct ThreadRunSpineView: View {
                             .foregroundStyle(.tertiary)
                     }
                 }
+            } else if let checkpoint {
+                Label(
+                    checkpoint.requiresRecoveryAction ? "Recovery required" : "Checkpoint saved",
+                    systemImage: checkpoint.requiresRecoveryAction
+                        ? "exclamationmark.triangle.fill" : "bookmark.fill"
+                )
+                .font(AppTheme.Typography.caption)
+                .foregroundStyle(checkpoint.requiresRecoveryAction ? Color.orange : Color.secondary)
+
+                Text(checkpoint.nextAction)
+                    .font(AppTheme.Typography.caption)
+                    .foregroundStyle(.secondary)
+
+                if let warnings = checkpoint.unresolvedErrors, !warnings.isEmpty {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("Warnings and unresolved decisions")
+                            .font(AppTheme.Typography.caption.weight(.semibold))
+                        ForEach(warnings, id: \.self) { warning in
+                            Text(warning)
+                                .font(AppTheme.Typography.caption)
+                                .foregroundStyle(.orange)
+                        }
+                    }
+                }
             }
 
             if !ungroupedArtifacts.isEmpty {
@@ -715,8 +812,9 @@ struct ThreadRunSpineView: View {
             HStack(spacing: 14) {
                 Button("Activity", action: onOpenActivity)
                     .buttonStyle(.link)
-                if let snapshot, !snapshot.gitReviewFiles.isEmpty {
-                    Button("Review \(snapshot.gitReviewFiles.count) changed", action: onOpenReview)
+                let reviewFiles = snapshot?.gitReviewFiles ?? checkpoint?.gitReviewFiles ?? []
+                if !reviewFiles.isEmpty {
+                    Button("Review \(reviewFiles.count) changed", action: onOpenReview)
                         .buttonStyle(.link)
                 }
             }
@@ -727,7 +825,7 @@ struct ThreadRunSpineView: View {
     private var phase: String {
         if let live { return ThreadRunSpinePresentation.livePhase(live) }
         if let snapshot { return ThreadRunSpinePresentation.settledPhase(snapshot) }
-        return "No run"
+        return checkpoint?.outcome ?? "No run"
     }
 
     private var accessibilityValue: String {
@@ -739,6 +837,7 @@ struct ThreadRunSpineView: View {
             parts.append("\(live == nil ? "Latest" : "Current") tool \(current.operation)")
         }
         if let snapshot { parts.append(ThreadRunSpinePresentation.checkpointLabel(snapshot)) }
+        else if checkpoint != nil { parts.append("Checkpoint saved") }
         return parts.joined(separator: ", ")
     }
 
@@ -754,6 +853,7 @@ struct ThreadRunSpineView: View {
             toolCallCount: worker.toolCallCount,
             redactedError: worker.redactedError,
             childToolReceipts: worker.childToolReceipts,
+            runtimeModelID: worker.runtimeModelID,
             routedModel: worker.routedModel
         )
         return VStack(alignment: .leading, spacing: 2) {
@@ -813,7 +913,7 @@ struct ThreadRunSpineView: View {
             VStack(alignment: .leading, spacing: 2) {
                 Label(
                     ActivitySidebarPresentation.displayPath(artifact.path, relativeTo: workspace),
-                    systemImage: snapshot?.gitReviewFiles.contains(where: {
+                    systemImage: (snapshot?.gitReviewFiles ?? checkpoint?.gitReviewFiles ?? []).contains(where: {
                         artifact.path.hasSuffix("/\($0)") || artifact.path == $0
                     }) == true ? "doc.badge.ellipsis" : "doc"
                 )

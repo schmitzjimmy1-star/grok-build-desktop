@@ -21,6 +21,9 @@ struct BackgroundActivity: Identifiable, Equatable, Sendable {
     /// Backend child/session identity supplied by `subagent_spawned` or the spawn
     /// tool receipt. A worker without this is not allowed to look completed.
     var childID: String?
+    /// Model reported by Grok's typed `subagent_spawned` lifecycle event. This is
+    /// runtime truth and must not be replaced by configured role routing.
+    var runtimeModelID: String?
     /// Authoritative terminal worker receipt fields. These stay nil until the
     /// typed `subagent_finished` event arrives.
     var durationMilliseconds: Int?
@@ -47,6 +50,7 @@ struct BackgroundActivity: Identifiable, Equatable, Sendable {
         scheduledTask: ScheduledTask? = nil,
         toolCallID: String? = nil,
         childID: String? = nil,
+        runtimeModelID: String? = nil,
         durationMilliseconds: Int? = nil,
         turns: Int? = nil,
         toolCallCount: Int? = nil,
@@ -63,6 +67,7 @@ struct BackgroundActivity: Identifiable, Equatable, Sendable {
         self.status = status
         self.toolCallID = toolCallID
         self.childID = childID
+        self.runtimeModelID = runtimeModelID
         self.durationMilliseconds = durationMilliseconds
         self.turns = turns
         self.toolCallCount = toolCallCount
@@ -320,6 +325,7 @@ struct BackgroundTaskTracker {
         }
         var activity = activities[index]
         activity.childID = event.childID
+        activity.runtimeModelID = event.modelID?.trimmingCharacters(in: .whitespacesAndNewlines)
         if !BackgroundActivityStatusPolicy.isTerminalWorkerStatus(activity.status) {
             activity.status = "running"
         }

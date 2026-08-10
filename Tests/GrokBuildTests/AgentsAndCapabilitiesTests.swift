@@ -124,10 +124,19 @@ final class AgentsAndCapabilitiesTests: XCTestCase {
         XCTAssertEqual(
             GrokMCPGatewayLaunchPolicy.denyRules(
                 userRules: ["terminal:rm"],
-                gatewayEnabled: true
+                gatewayEnabled: true,
+                allowedServerNames: ["zotero"],
+                knownConfiguredServerNames: ["github", "zotero", "chrome-devtools"]
             ),
-            ["terminal:rm"]
+            [
+                "terminal:rm",
+                "MCPTool(chrome-devtools__*)",
+                "MCPTool(github__*)",
+            ],
+            "the CLI itself must deny every fresh configured server not selected by this thread"
         )
+        XCTAssertTrue(GrokMCPGatewayLaunchPolicy.isSafeServerName("chrome-devtools"))
+        XCTAssertFalse(GrokMCPGatewayLaunchPolicy.isSafeServerName("bad*server"))
     }
 
     func testPermissionRequestsFollowEffectiveLivePolicy() {
@@ -182,9 +191,24 @@ final class AgentsAndCapabilitiesTests: XCTestCase {
                 isYolo: true,
                 options: options,
                 mcpGatewayEnabled: true,
-                isMCPInvocation: true
+                isMCPInvocation: true,
+                invocationServerName: "zotero",
+                allowedMCPServerNames: ["zotero"]
             ),
             .allow(optionID: "allow-once")
+        )
+        XCTAssertEqual(
+            PermissionRequestPolicy.disposition(
+                mode: .alwaysApprove,
+                isYolo: true,
+                options: options,
+                mcpGatewayEnabled: true,
+                isMCPInvocation: true,
+                invocationServerName: "github",
+                allowedMCPServerNames: ["zotero"]
+            ),
+            .deny(optionID: "reject-once"),
+            "selecting one MCP must not authorize a different configured server"
         )
     }
 

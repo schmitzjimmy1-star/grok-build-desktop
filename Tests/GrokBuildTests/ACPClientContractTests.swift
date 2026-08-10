@@ -1158,6 +1158,34 @@ final class ACPClientContractTests: XCTestCase {
         XCTAssertEqual(parsed?.diagnosticDetail, #"{"error":"tool_execution_failed","message":"Terminal exited with status 2"}"#)
     }
 
+    func testToolCallKeepsAuthoritativeDurationWithoutStartingAClientTimer() {
+        let process = GrokProcess()
+        let direct = process.parseToolCall(from: [
+            "toolCallId": "duration-direct",
+            "kind": "execute",
+            "title": "Run tests",
+            "status": "completed",
+            "durationMs": 1_250,
+        ])
+        let nested = process.parseToolCall(from: [
+            "toolCallId": "duration-output",
+            "kind": "execute",
+            "title": "Run checks",
+            "status": "completed",
+            "rawOutput": ["elapsed_ms": 900],
+        ])
+        let absent = process.parseToolCall(from: [
+            "toolCallId": "duration-absent",
+            "kind": "read",
+            "title": "Read file",
+            "status": "completed",
+        ])
+
+        XCTAssertEqual(direct?.durationMilliseconds, 1_250)
+        XCTAssertEqual(nested?.durationMilliseconds, 900)
+        XCTAssertNil(absent?.durationMilliseconds)
+    }
+
     func testSuccessfulTerminalReceiptProjectsOutputInsteadOfProtocolJSON() {
         let rawOutput: [String: Any] = [
             "command": "./check.sh",

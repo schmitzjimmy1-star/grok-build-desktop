@@ -42,6 +42,33 @@ struct AssistantTurnCheckpoint: Codable, Sendable, Hashable {
         let childBackendSessionID: String?
     }
 
+    /// Full settled worker fields needed to reconstruct the receipt after a
+    /// relaunch. The older compact `workers` array remains for transcript
+    /// compatibility and parent/child identity presentation.
+    struct WorkerReceipt: Codable, Sendable, Hashable, Identifiable {
+        let id: String
+        let title: String
+        let status: String
+        let owningPlanStepID: String?
+        let childBackendSessionID: String?
+        let durationMilliseconds: Int?
+        let toolCallCount: Int?
+        let redactedError: String?
+        let runtimeModelID: String?
+        let routedModel: String?
+    }
+
+    struct Artifact: Codable, Sendable, Hashable, Identifiable {
+        let toolCallID: String
+        let path: String
+        let status: String
+        let location: String
+        let owningPlanStepID: String?
+        let workerID: String?
+
+        var id: String { "\(toolCallID)|\(path)" }
+    }
+
     let objective: String?
     let outcome: String
     let plan: [PlanStep]
@@ -54,6 +81,12 @@ struct AssistantTurnCheckpoint: Codable, Sendable, Hashable {
     let nextAction: String
     let requiresRecoveryAction: Bool
     let isSettled: Bool
+    /// Optional so transcripts written before the durable run-spine repair
+    /// continue to decode without migration or invented receipts.
+    let workerReceipts: [WorkerReceipt]?
+    let artifacts: [Artifact]?
+    let gitReviewFiles: [String]?
+    let unresolvedErrors: [String]?
 
     init(
         snapshot: RunEvidenceSnapshot,
@@ -82,6 +115,32 @@ struct AssistantTurnCheckpoint: Codable, Sendable, Hashable {
         nextAction = snapshot.nextAction
         requiresRecoveryAction = snapshot.continuity.requiresRecoveryAction
         isSettled = snapshot.binding.isSettled
+        workerReceipts = snapshot.workers.map {
+            WorkerReceipt(
+                id: $0.id,
+                title: $0.title,
+                status: $0.status,
+                owningPlanStepID: $0.owningPlanStepID,
+                childBackendSessionID: $0.childID,
+                durationMilliseconds: $0.durationMilliseconds,
+                toolCallCount: $0.toolCallCount,
+                redactedError: $0.redactedError,
+                runtimeModelID: $0.runtimeModelID,
+                routedModel: $0.routedModel
+            )
+        }
+        artifacts = snapshot.artifacts.map {
+            Artifact(
+                toolCallID: $0.toolCallID,
+                path: $0.path,
+                status: $0.status,
+                location: $0.location.rawValue,
+                owningPlanStepID: $0.owningPlanStepID,
+                workerID: $0.workerID
+            )
+        }
+        gitReviewFiles = snapshot.gitReviewFiles
+        unresolvedErrors = snapshot.unresolvedErrors
     }
 }
 
@@ -102,6 +161,7 @@ struct AssistantTurnTrace: Codable, Sendable, Hashable {
         let discoveredQualifiedToolNames: [String]
         let resultDetail: String?
         let owningPlanStepID: String?
+        let durationMilliseconds: Int?
 
         init(
             id: String,
@@ -113,7 +173,8 @@ struct AssistantTurnTrace: Codable, Sendable, Hashable {
             qualifiedToolName: String? = nil,
             discoveredQualifiedToolNames: [String] = [],
             resultDetail: String? = nil,
-            owningPlanStepID: String? = nil
+            owningPlanStepID: String? = nil,
+            durationMilliseconds: Int? = nil
         ) {
             self.id = id
             self.title = title
@@ -125,12 +186,13 @@ struct AssistantTurnTrace: Codable, Sendable, Hashable {
             self.discoveredQualifiedToolNames = discoveredQualifiedToolNames
             self.resultDetail = resultDetail
             self.owningPlanStepID = owningPlanStepID
+            self.durationMilliseconds = durationMilliseconds
         }
 
         private enum CodingKeys: String, CodingKey {
             case id, title, kind, status, mcpServerName, mcpReceiptRole
             case qualifiedToolName, discoveredQualifiedToolNames
-            case resultDetail, owningPlanStepID
+            case resultDetail, owningPlanStepID, durationMilliseconds
         }
 
         init(from decoder: Decoder) throws {
@@ -148,6 +210,7 @@ struct AssistantTurnTrace: Codable, Sendable, Hashable {
             ) ?? []
             resultDetail = try values.decodeIfPresent(String.self, forKey: .resultDetail)
             owningPlanStepID = try values.decodeIfPresent(String.self, forKey: .owningPlanStepID)
+            durationMilliseconds = try values.decodeIfPresent(Int.self, forKey: .durationMilliseconds)
         }
     }
 

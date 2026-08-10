@@ -38,6 +38,14 @@ struct GrokLaunchOptions: Sendable {
     var forkSession: Bool = false
     var newSessionID: String? = nil
     var mcpServers: [MCPServerConfig] = []
+    /// Exact MCP server identities selected for this process generation. The
+    /// gateway Boolean is only the coarse launch state; CLI deny rules and ACP
+    /// permission responses enforce this server set individually.
+    var allowedMCPServerNames: Set<String> = []
+    /// Fresh `grok mcp list` catalog captured before an MCP-enabled launch.
+    /// Used only to add CLI-native denies for configured servers the thread did
+    /// not select; Grok CLI remains the permission authority.
+    var knownConfiguredMCPServerNames: Set<String> = []
     /// Whether an explicit thread/turn selection lets this generation omit the
     /// app's default catch-all MCP deny rule. Grok and user-supplied deny rules
     /// remain authoritative, and the app never mutates global MCP configuration.
@@ -77,6 +85,7 @@ struct GrokLaunchReceipt: Sendable, Equatable {
     let computerUseEnabled: Bool
     let mcpServerNames: [String]
     let mcpGatewayEnabled: Bool
+    let allowedMCPServerNames: [String]
     var observedCLIConfiguredMCPServerNames: [String]
     let startedAt: Date
 
@@ -105,6 +114,9 @@ struct GrokLaunchReceipt: Sendable, Equatable {
         resumeSessionID = options.resumeSessionID
         mcpServerNames = options.mcpServers.map(\.name).sorted()
         mcpGatewayEnabled = options.mcpGatewayEnabled
+        allowedMCPServerNames = options.allowedMCPServerNames.sorted {
+            $0.localizedCaseInsensitiveCompare($1) == .orderedAscending
+        }
         observedCLIConfiguredMCPServerNames = []
         browserEnabled = mcpServerNames.contains("grokbuild-browser")
         computerUseEnabled = mcpServerNames.contains("grokbuild-computer-use")
@@ -134,15 +146,40 @@ enum GrokMCPGatewayLaunchPolicy {
     /// both halves must be globbed to cover the configured catalog.
     static let catchAllDenyRule = "MCPTool(*__*)"
 
-    static func denyRules(userRules: [String], gatewayEnabled: Bool) -> [String] {
+    static func denyRules(
+        userRules: [String],
+        gatewayEnabled: Bool,
+        allowedServerNames: Set<String> = [],
+        knownConfiguredServerNames: Set<String> = []
+    ) -> [String] {
         var rules = userRules.filter { !$0.isEmpty }
         if !gatewayEnabled,
            !rules.contains(where: {
                $0.trimmingCharacters(in: .whitespacesAndNewlines) == catchAllDenyRule
            }) {
             rules.append(catchAllDenyRule)
+        } else if gatewayEnabled {
+            let allowed = Set(allowedServerNames.map(normalizedServerName))
+            for server in knownConfiguredServerNames.sorted(by: {
+                $0.localizedCaseInsensitiveCompare($1) == .orderedAscending
+            }) {
+                let normalized = normalizedServerName(server)
+                guard !normalized.isEmpty, !allowed.contains(normalized) else { continue }
+                let rule = "MCPTool(\(server)__*)"
+                if !rules.contains(rule) { rules.append(rule) }
+            }
         }
         return rules
+    }
+
+    private static func normalizedServerName(_ name: String) -> String {
+        name.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+    }
+
+    static func isSafeServerName(_ name: String) -> Bool {
+        let normalized = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        return !normalized.isEmpty
+            && normalized.range(of: #"^[A-Za-z0-9._-]+$"#, options: .regularExpression) != nil
     }
 }
 
@@ -223,6 +260,8 @@ struct ToolCall: @unchecked Sendable, Identifiable, Hashable {
     let discoveredQualifiedToolNames: [String]
     /// Only backend-supplied metadata may link one invocation to the call it retried.
     let retryOfToolCallID: String?
+    /// Provider/ACP-reported elapsed time. The client does not fabricate one.
+    let durationMilliseconds: Int?
 
     init(
         id: String,
@@ -236,7 +275,8 @@ struct ToolCall: @unchecked Sendable, Identifiable, Hashable {
         mcpReceiptRole: MCPToolReceiptRole? = nil,
         qualifiedToolName: String? = nil,
         discoveredQualifiedToolNames: [String] = [],
-        retryOfToolCallID: String? = nil
+        retryOfToolCallID: String? = nil,
+        durationMilliseconds: Int? = nil
     ) {
         self.id = id
         self.kind = kind
@@ -250,6 +290,7 @@ struct ToolCall: @unchecked Sendable, Identifiable, Hashable {
         self.qualifiedToolName = qualifiedToolName
         self.discoveredQualifiedToolNames = discoveredQualifiedToolNames
         self.retryOfToolCallID = retryOfToolCallID
+        self.durationMilliseconds = durationMilliseconds
     }
 
     var terminalStatus: ToolCallTerminalStatus? {
@@ -467,6 +508,18 @@ enum AcpEvent: @unchecked Sendable {
 /// The terminal parent-turn receipt emitted by ACP. This is deliberately small
 /// and credential-free: only final outcome metadata needed by the run-evidence
 /// projection crosses the process boundary.
+struct ModelUsageReceipt: Sendable, Equatable, Hashable {
+    let modelID: String
+    let inputTokens: Int?
+    let outputTokens: Int?
+    let totalTokens: Int?
+    let cachedReadTokens: Int?
+    let reasoningTokens: Int?
+    let modelCalls: Int?
+    let apiDurationMilliseconds: Int?
+    let costUsdTicks: Int?
+}
+
 struct TurnCompletionReceipt: Sendable, Equatable {
     let identity: ACPEventIdentity
     let promptID: String?
@@ -475,6 +528,45 @@ struct TurnCompletionReceipt: Sendable, Equatable {
     let totalTokens: Int?
     let modelCalls: Int?
     let turnCount: Int?
+    let inputTokens: Int?
+    let outputTokens: Int?
+    let cachedReadTokens: Int?
+    let reasoningTokens: Int?
+    let apiDurationMilliseconds: Int?
+    let costUsdTicks: Int?
+    let modelUsage: [ModelUsageReceipt]
+
+    init(
+        identity: ACPEventIdentity,
+        promptID: String?,
+        stopReason: String?,
+        redactedError: String?,
+        totalTokens: Int?,
+        modelCalls: Int?,
+        turnCount: Int?,
+        inputTokens: Int? = nil,
+        outputTokens: Int? = nil,
+        cachedReadTokens: Int? = nil,
+        reasoningTokens: Int? = nil,
+        apiDurationMilliseconds: Int? = nil,
+        costUsdTicks: Int? = nil,
+        modelUsage: [ModelUsageReceipt] = []
+    ) {
+        self.identity = identity
+        self.promptID = promptID
+        self.stopReason = stopReason
+        self.redactedError = redactedError
+        self.totalTokens = totalTokens
+        self.modelCalls = modelCalls
+        self.turnCount = turnCount
+        self.inputTokens = inputTokens
+        self.outputTokens = outputTokens
+        self.cachedReadTokens = cachedReadTokens
+        self.reasoningTokens = reasoningTokens
+        self.apiDurationMilliseconds = apiDurationMilliseconds
+        self.costUsdTicks = costUsdTicks
+        self.modelUsage = modelUsage
+    }
 
     private var normalizedStopReason: String? {
         stopReason?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
@@ -702,6 +794,13 @@ final class GrokProcess: @unchecked Sendable {
         let rawOutputDetail = Self.toolRawOutputText(rawOutput)
         let commandOutputDetail = Self.toolCommandOutputText(rawOutput, kind: kind)
         let terminalFailure = Self.terminalFailureDetail(rawOutput)
+        let outputObject = rawOutput as? [String: Any]
+        let durationMilliseconds = Self.integer(
+            tool["duration_ms"] ?? tool["durationMs"] ?? tool["elapsed_ms"]
+                ?? tool["elapsedMs"] ?? outputObject?["duration_ms"]
+                ?? outputObject?["durationMs"] ?? outputObject?["elapsed_ms"]
+                ?? outputObject?["elapsedMs"]
+        )
 
         return ToolCall(
             id: tcid,
@@ -718,7 +817,8 @@ final class GrokProcess: @unchecked Sendable {
             mcpReceiptRole: mcpReceiptRole,
             qualifiedToolName: qualifiedToolName,
             discoveredQualifiedToolNames: discoveredQualifiedToolNames,
-            retryOfToolCallID: Self.retryOfToolCallID(from: tool, rawInput: raw)
+            retryOfToolCallID: Self.retryOfToolCallID(from: tool, rawInput: raw),
+            durationMilliseconds: durationMilliseconds
         )
     }
 
@@ -1052,7 +1152,9 @@ final class GrokProcess: @unchecked Sendable {
         }
         for rule in GrokMCPGatewayLaunchPolicy.denyRules(
             userRules: options.denyRules,
-            gatewayEnabled: options.mcpGatewayEnabled
+            gatewayEnabled: options.mcpGatewayEnabled,
+            allowedServerNames: options.allowedMCPServerNames,
+            knownConfiguredServerNames: options.knownConfiguredMCPServerNames
         ) {
             args += ["--deny", rule]
         }
@@ -2145,8 +2247,35 @@ final class GrokProcess: @unchecked Sendable {
             redactedError: Self.redactedLifecycleText(rawError),
             totalTokens: Self.integer(usage["totalTokens"]),
             modelCalls: Self.integer(usage["modelCalls"]),
-            turnCount: Self.integer(usage["numTurns"])
+            turnCount: Self.integer(usage["numTurns"]),
+            inputTokens: Self.integer(usage["inputTokens"]),
+            outputTokens: Self.integer(usage["outputTokens"]),
+            cachedReadTokens: Self.integer(usage["cachedReadTokens"]),
+            reasoningTokens: Self.integer(usage["reasoningTokens"]),
+            apiDurationMilliseconds: Self.integer(usage["apiDurationMs"]),
+            costUsdTicks: Self.integer(usage["costUsdTicks"]),
+            modelUsage: Self.modelUsageReceipts(from: usage["modelUsage"])
         )
+    }
+
+    static func modelUsageReceipts(from value: Any?) -> [ModelUsageReceipt] {
+        guard let raw = value as? [String: Any] else { return [] }
+        return raw.compactMap { modelID, value -> ModelUsageReceipt? in
+            guard let usage = value as? [String: Any] else { return nil }
+            let normalized = modelID.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !normalized.isEmpty else { return nil }
+            return ModelUsageReceipt(
+                modelID: normalized,
+                inputTokens: integer(usage["inputTokens"]),
+                outputTokens: integer(usage["outputTokens"]),
+                totalTokens: integer(usage["totalTokens"]),
+                cachedReadTokens: integer(usage["cachedReadTokens"]),
+                reasoningTokens: integer(usage["reasoningTokens"]),
+                modelCalls: integer(usage["modelCalls"]),
+                apiDurationMilliseconds: integer(usage["apiDurationMs"]),
+                costUsdTicks: integer(usage["costUsdTicks"])
+            )
+        }.sorted { $0.modelID.localizedCaseInsensitiveCompare($1.modelID) == .orderedAscending }
     }
 
     static func eventSessionID(from params: [String: Any], update: [String: Any]?) -> String? {

@@ -91,7 +91,8 @@ enum ActivitySidebarPresentation {
             durationMilliseconds: activity.durationMilliseconds,
             toolCallCount: activity.toolCallCount,
             redactedError: activity.redactedError,
-            childToolReceipts: activity.childToolReceipts
+            childToolReceipts: activity.childToolReceipts,
+            runtimeModelID: activity.runtimeModelID
         )
     }
 
@@ -101,9 +102,13 @@ enum ActivitySidebarPresentation {
         toolCallCount: Int?,
         redactedError: String?,
         childToolReceipts: [ChildToolReceipt]? = nil,
+        runtimeModelID: String? = nil,
         routedModel: String? = nil
     ) -> String {
         var parts: [String] = []
+        if let runtimeModelID, !runtimeModelID.isEmpty {
+            parts.append("Ran on \(runtimeModelID) (Grok ACP)")
+        }
         if let routedModel, !routedModel.isEmpty {
             // Declared routing from [subagents.roles.*] — config truth, not a billing claim.
             parts.append("Routes to \(routedModel) (configured)")
@@ -573,6 +578,7 @@ struct ActivitySidebar: View {
                                 toolCallCount: worker.toolCallCount,
                                 redactedError: worker.redactedError,
                                 childToolReceipts: worker.childToolReceipts,
+                                runtimeModelID: worker.runtimeModelID,
                                 routedModel: worker.routedModel
                             )
                             if !detail.isEmpty {
@@ -788,6 +794,7 @@ struct ActivitySidebar: View {
                                 durationMilliseconds: worker.durationMilliseconds,
                                 toolCallCount: worker.toolCallCount,
                                 redactedError: worker.redactedError,
+                                runtimeModelID: worker.runtimeModelID,
                                 routedModel: worker.routedModel
                             )
                             if !detail.isEmpty {
@@ -816,6 +823,7 @@ struct ActivitySidebar: View {
             toolCallCount: worker.toolCallCount,
             redactedError: worker.redactedError,
             childToolReceipts: worker.childToolReceipts,
+            runtimeModelID: worker.runtimeModelID,
             routedModel: worker.routedModel
         )
         return detail.isEmpty
@@ -831,6 +839,31 @@ struct ActivitySidebar: View {
             detailRow("Process", value: snapshot.process.state)
             detailRow("Continuity", value: snapshot.continuity.provenance)
             detailRow("Usage", value: usageLabel(snapshot.usage))
+            let tokenSplit = [
+                snapshot.usage.inputTokens.map { "\($0.formatted()) input" },
+                snapshot.usage.outputTokens.map { "\($0.formatted()) output" },
+                snapshot.usage.cachedReadTokens.map { "\($0.formatted()) cached read" },
+                snapshot.usage.reasoningTokens.map { "\($0.formatted()) reasoning" },
+            ].compactMap { $0 }
+            if !tokenSplit.isEmpty {
+                detailRow("Token split", value: tokenSplit.joined(separator: " • "))
+            }
+            if let duration = snapshot.usage.apiDurationMilliseconds {
+                detailRow("Provider API time", value: ThreadRunSpinePresentation.durationLabel(duration))
+            }
+            if !snapshot.usage.modelUsage.isEmpty {
+                detailRow(
+                    "Models used",
+                    value: snapshot.usage.modelUsage.map { usage in
+                        let split = [
+                            usage.totalTokens.map { "\($0.formatted()) total" },
+                            usage.inputTokens.map { "\($0.formatted()) in" },
+                            usage.outputTokens.map { "\($0.formatted()) out" },
+                        ].compactMap { $0 }.joined(separator: " · ")
+                        return split.isEmpty ? usage.modelID : "\(usage.modelID) · \(split)"
+                    }.joined(separator: " • ")
+                )
+            }
             detailRow("Next", value: snapshot.nextAction)
             if !snapshot.unresolvedErrors.isEmpty { detailRow("Unresolved", value: "\(snapshot.unresolvedErrors.count) reported") }
         }
@@ -846,7 +879,10 @@ struct ActivitySidebar: View {
     private func usageLabel(_ usage: RunEvidenceSnapshot.Usage) -> String {
         let tokens = usage.totalTokens.map { $0.formatted() } ?? "Not reported"
         let calls = usage.modelCalls.map { "\($0) model calls" } ?? "model calls not reported"
-        return "\(tokens) tokens • \(calls)"
+        let cost = usage.costUsdTicks.map {
+            " • \(SessionUsageLedger.dollars(Double($0) / 1_000_000_000)) provider-reported"
+        } ?? ""
+        return "\(tokens) tokens • \(calls)\(cost)"
     }
 
     private func compactUsage(_ usage: RunEvidenceSnapshot.Usage) -> String {

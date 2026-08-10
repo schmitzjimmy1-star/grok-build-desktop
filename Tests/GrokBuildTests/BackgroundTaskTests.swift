@@ -123,6 +123,7 @@ final class BackgroundTaskTests: XCTestCase {
         XCTAssertEqual(worker?.durationMilliseconds, 1_234)
         XCTAssertEqual(worker?.toolCallCount, 7)
         XCTAssertEqual(worker?.collectionReceiptCount, 1)
+        XCTAssertEqual(worker?.runtimeModelID, "grok-4.5")
     }
 
     func testLifecycleDescriptionBindsAnExistingSpawnWhenToolChildIDIsNull() {
