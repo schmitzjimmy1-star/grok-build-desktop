@@ -1,7 +1,7 @@
 # Thread-native product refinement slices — 2026-08-09
 
-Status: **authorized campaign; Slices 7 and 8 are merged and accepted. Slices 9
-through 12 have not started.**
+Status: **authorized campaign; Slices 7 through 9 are merged and accepted. Slices
+10 through 12 have not started.**
 
 The canonical campaign in `docs/OUTSTANDING.md` remains closed through Slice 6.
 This document records a fresh installed-product audit and defines the next bounded
