@@ -37,6 +37,8 @@ struct SessionUsageLedger: Equatable {
         let modelID: String?
         let totalTokens: Int
         let modelCalls: Int
+        let costUsdTicks: Int?
+        let modelUsage: [ModelUsageReceipt]
     }
 
     /// A low–high USD bound: the true split between prompt and completion tokens is
@@ -57,12 +59,20 @@ struct SessionUsageLedger: Equatable {
     var totalModelCalls: Int { entries.reduce(0) { $0 + $1.modelCalls } }
     var isEmpty: Bool { entries.isEmpty }
 
-    mutating func recordTurn(modelID: String?, totalTokens: Int?, modelCalls: Int?) {
+    mutating func recordTurn(
+        modelID: String?,
+        totalTokens: Int?,
+        modelCalls: Int?,
+        costUsdTicks: Int? = nil,
+        modelUsage: [ModelUsageReceipt] = []
+    ) {
         guard let totalTokens, totalTokens > 0 else { return }
         entries.append(Entry(
             modelID: modelID?.trimmingCharacters(in: .whitespacesAndNewlines),
             totalTokens: totalTokens,
-            modelCalls: modelCalls ?? 0
+            modelCalls: modelCalls ?? 0,
+            costUsdTicks: costUsdTicks,
+            modelUsage: modelUsage
         ))
     }
 
@@ -75,6 +85,30 @@ struct SessionUsageLedger: Equatable {
         var high = 0.0
         var pricedTokens = 0
         for entry in entries {
+            if !entry.modelUsage.isEmpty {
+                for model in entry.modelUsage {
+                    guard let tokens = model.totalTokens,
+                          let price = pricing[model.modelID] else { continue }
+                    if let input = model.inputTokens,
+                       let output = model.outputTokens,
+                       input >= 0, output >= 0, input + output <= tokens {
+                        let exactSplitCost = Double(input) * price.promptPerToken
+                            + Double(output) * price.completionPerToken
+                        let unclassified = tokens - input - output
+                        low += exactSplitCost
+                            + Double(unclassified) * min(price.promptPerToken, price.completionPerToken)
+                        high += exactSplitCost
+                            + Double(unclassified) * max(price.promptPerToken, price.completionPerToken)
+                    } else {
+                        let lowRate = min(price.promptPerToken, price.completionPerToken)
+                        let highRate = max(price.promptPerToken, price.completionPerToken)
+                        low += Double(tokens) * lowRate
+                        high += Double(tokens) * highRate
+                    }
+                    pricedTokens += tokens
+                }
+                continue
+            }
             guard let modelID = entry.modelID, let price = pricing[modelID] else { continue }
             let lowRate = min(price.promptPerToken, price.completionPerToken)
             let highRate = max(price.promptPerToken, price.completionPerToken)
@@ -96,7 +130,15 @@ struct SessionUsageLedger: Equatable {
             "\(totalModelCalls) calls",
             "\(turnCount) \(turnCount == 1 ? "turn" : "turns")"
         ]
-        if let estimate = estimate(pricing: pricing) {
+        let exactCostEntries = entries.compactMap(\.costUsdTicks)
+        if !exactCostEntries.isEmpty {
+            let exactUSD = Double(exactCostEntries.reduce(0, +)) / 1_000_000_000
+            var cost = "\(Self.dollars(exactUSD)) provider-reported"
+            if exactCostEntries.count != entries.count {
+                cost += " (partial)"
+            }
+            parts.append(cost)
+        } else if let estimate = estimate(pricing: pricing) {
             var dollars = "≈\(Self.dollars(estimate.low))–\(Self.dollars(estimate.high)) est."
             if !estimate.coversAllTokens {
                 dollars += " (priced portion)"

@@ -24,6 +24,7 @@ struct RunEvidenceLiveProjection: Equatable, Sendable {
         let qualifiedToolName: String?
         let discoveredQualifiedToolNames: [String]
         let owningPlanStepID: String?
+        let durationMilliseconds: Int?
         let isActive: Bool
 
         init(
@@ -37,6 +38,7 @@ struct RunEvidenceLiveProjection: Equatable, Sendable {
             qualifiedToolName: String? = nil,
             discoveredQualifiedToolNames: [String] = [],
             owningPlanStepID: String? = nil,
+            durationMilliseconds: Int? = nil,
             isActive: Bool
         ) {
             self.id = id
@@ -49,6 +51,7 @@ struct RunEvidenceLiveProjection: Equatable, Sendable {
             self.qualifiedToolName = qualifiedToolName
             self.discoveredQualifiedToolNames = discoveredQualifiedToolNames
             self.owningPlanStepID = owningPlanStepID
+            self.durationMilliseconds = durationMilliseconds
             self.isActive = isActive
         }
     }

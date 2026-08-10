@@ -38,6 +38,8 @@ struct RunEvidenceSnapshot: Equatable, Sendable {
         let toolCallCount: Int?
         let redactedError: String?
         var childToolReceipts: [ChildToolReceipt]? = nil
+        /// Exact runtime model emitted by Grok for this child lifecycle.
+        var runtimeModelID: String? = nil
         /// Configured `[subagents.roles.*]` model for this worker's role name, when the
         /// title matches a role exactly. Declared routing from config — displayed as
         /// "(configured)", never as a runtime billing claim.
@@ -53,6 +55,7 @@ struct RunEvidenceSnapshot: Equatable, Sendable {
             toolCallCount: Int?,
             redactedError: String?,
             childToolReceipts: [ChildToolReceipt]? = nil,
+            runtimeModelID: String? = nil,
             routedModel: String? = nil
         ) {
             self.id = id
@@ -64,6 +67,7 @@ struct RunEvidenceSnapshot: Equatable, Sendable {
             self.toolCallCount = toolCallCount
             self.redactedError = redactedError
             self.childToolReceipts = childToolReceipts
+            self.runtimeModelID = runtimeModelID
             self.routedModel = routedModel
         }
 
@@ -103,6 +107,37 @@ struct RunEvidenceSnapshot: Equatable, Sendable {
         let totalTokens: Int?
         let modelCalls: Int?
         let turnCount: Int?
+        let inputTokens: Int?
+        let outputTokens: Int?
+        let cachedReadTokens: Int?
+        let reasoningTokens: Int?
+        let apiDurationMilliseconds: Int?
+        let costUsdTicks: Int?
+        let modelUsage: [ModelUsageReceipt]
+
+        init(
+            totalTokens: Int?,
+            modelCalls: Int?,
+            turnCount: Int?,
+            inputTokens: Int? = nil,
+            outputTokens: Int? = nil,
+            cachedReadTokens: Int? = nil,
+            reasoningTokens: Int? = nil,
+            apiDurationMilliseconds: Int? = nil,
+            costUsdTicks: Int? = nil,
+            modelUsage: [ModelUsageReceipt] = []
+        ) {
+            self.totalTokens = totalTokens
+            self.modelCalls = modelCalls
+            self.turnCount = turnCount
+            self.inputTokens = inputTokens
+            self.outputTokens = outputTokens
+            self.cachedReadTokens = cachedReadTokens
+            self.reasoningTokens = reasoningTokens
+            self.apiDurationMilliseconds = apiDurationMilliseconds
+            self.costUsdTicks = costUsdTicks
+            self.modelUsage = modelUsage
+        }
     }
 
     struct ProcessReceipt: Equatable, Sendable {

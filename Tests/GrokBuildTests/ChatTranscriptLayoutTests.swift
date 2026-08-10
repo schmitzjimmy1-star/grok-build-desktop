@@ -564,6 +564,47 @@ final class ChatTranscriptLayoutTests: XCTestCase {
         )
     }
 
+    func testPendingSubmitIntentFreezesModelModeAndExactMCPSet() {
+        let intent = PendingSubmitIntent(
+            id: UUID(),
+            draft: "prove route",
+            modelID: "grok-4.5-build",
+            modeID: "agent",
+            requestedMCPNames: ["zotero"]
+        )
+        XCTAssertEqual(intent.modelID, "grok-4.5-build")
+        XCTAssertEqual(intent.modeID, "agent")
+        XCTAssertEqual(intent.requestedMCPNames, ["zotero"])
+        XCTAssertNotEqual(
+            intent,
+            PendingSubmitIntent(
+                id: intent.id,
+                draft: intent.draft,
+                modelID: intent.modelID,
+                modeID: intent.modeID,
+                requestedMCPNames: ["github"]
+            )
+        )
+    }
+
+    func testPreparingSubmitLocksEveryRouteControl() throws {
+        let repositoryRoot = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        let chatSource = try String(
+            contentsOf: repositoryRoot.appendingPathComponent("GrokBuild/Views/ChatView.swift"),
+            encoding: .utf8
+        )
+        let storeSource = try String(
+            contentsOf: repositoryRoot.appendingPathComponent("GrokBuild/Services/ChatStore.swift"),
+            encoding: .utf8
+        )
+        XCTAssertTrue(chatSource.contains(".disabled(store.isStreaming || store.isPreparingSubmit)"))
+        XCTAssertTrue(storeSource.contains("guard !isPreparingSubmit else { return }"))
+        XCTAssertTrue(storeSource.contains("pendingSubmitRouteStillMatches(intent)"))
+    }
+
     func testNativeSubmitLatchesBeforeLaunchingAsyncDelivery() throws {
         let repositoryRoot = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent()

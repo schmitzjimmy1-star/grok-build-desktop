@@ -38,6 +38,23 @@ final class ThreadRunSpineTests: XCTestCase {
         XCTAssertEqual(ThreadRunSpinePresentation.livePhase(projection), "Using terminal")
     }
 
+    func testToolDurationUsesOnlyAuthoritativeMilliseconds() {
+        let projection = live(tools: [.init(
+            id: "terminal-duration",
+            title: "Run tests",
+            kind: "terminal",
+            status: "Succeeded",
+            detail: nil,
+            durationMilliseconds: 1_250,
+            isActive: false
+        )])
+        XCTAssertEqual(
+            ThreadRunSpinePresentation.liveTools(projection, workspace: nil)[0].duration,
+            "1.2 s"
+        )
+        XCTAssertEqual(ThreadRunSpinePresentation.durationLabel(nil), "Duration not reported")
+    }
+
     func testSequentialMultiToolReceiptsKeepOrderAndArtifactBoundary() {
         let workspace = URL(fileURLWithPath: "/tmp/project")
         let projection = live(
@@ -334,6 +351,35 @@ final class ThreadRunSpineTests: XCTestCase {
 
         XCTAssertEqual(restored.checkpoint, checkpoint)
         XCTAssertTrue(restored.hasContent)
+        XCTAssertEqual(ThreadRunSpinePresentation.persistedPlan(restored.checkpoint).count, 1)
+        let restoredWorker = ThreadRunSpinePresentation.persistedWorkers(restored.checkpoint).first
+        XCTAssertEqual(restoredWorker?.runtimeModelID, "grok-4.5-build")
+        XCTAssertEqual(restoredWorker?.childToolReceipts?.count, 1)
+        XCTAssertEqual(restoredWorker?.childToolReceipts?.first?.status, .succeeded)
+        XCTAssertEqual(ThreadRunSpinePresentation.persistedArtifacts(restored.checkpoint).first?.path, "/tmp/report.txt")
+    }
+
+    func testTaskHeaderUsesPersistedModelOnlyWhenNoProcessIsRunning() {
+        let checkpoint = AssistantTurnCheckpoint(
+            snapshot: snapshot(outcome: .completed, recovery: false, settled: true),
+            requestedToolFamilies: []
+        )
+        XCTAssertEqual(
+            ThreadTaskContractPresentation.modelReceipt(
+                current: "No confirmed model",
+                checkpoint: checkpoint,
+                connectionState: .idle
+            ),
+            "grok-4.5 · saved checkpoint"
+        )
+        XCTAssertEqual(
+            ThreadTaskContractPresentation.modelReceipt(
+                current: "grok-4.5 · generation 3",
+                checkpoint: checkpoint,
+                connectionState: .ready
+            ),
+            "grok-4.5 · generation 3"
+        )
     }
 
     private func live(
@@ -381,11 +427,37 @@ final class ThreadRunSpineTests: XCTestCase {
                 isSettled: settled
             ),
             goalSummary: "Acceptance",
-            plan: [],
-            workers: [],
+            plan: [.init(id: "verify", title: "Verify", status: "completed")],
+            workers: [.init(
+                id: "worker",
+                title: "Verifier",
+                status: "completed",
+                owningPlanStepID: "verify",
+                childID: "child",
+                durationMilliseconds: 120,
+                toolCallCount: 1,
+                redactedError: nil,
+                childToolReceipts: [.init(
+                    id: "child-tool",
+                    title: "Child tool",
+                    status: .succeeded,
+                    mcpReceiptRole: nil,
+                    qualifiedToolName: nil,
+                    discoveredQualifiedToolNames: []
+                )],
+                runtimeModelID: "grok-4.5-build",
+                routedModel: "gpt-5.6-terra"
+            )],
             tools: .init(succeeded: 0, failed: 0, cancelled: 0, unknown: 0),
-            artifacts: [],
-            gitReviewFiles: [],
+            artifacts: [.init(
+                toolCallID: "tool",
+                path: "/tmp/report.txt",
+                status: "Completed",
+                location: .external,
+                owningPlanStepID: "verify",
+                workerID: nil
+            )],
+            gitReviewFiles: ["report.txt"],
             process: .init(state: "Settled", model: "grok-4.5", mcps: []),
             continuity: .init(
                 status: recovery ? "diverged" : "verified",

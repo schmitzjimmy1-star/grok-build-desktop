@@ -50,6 +50,19 @@ final class UsageAndRoutingTests: XCTestCase {
         XCTAssertFalse(unrouted.contains("Routes to"))
     }
 
+    func testWorkerReceiptPrefersRuntimeModelWithoutErasingConfiguredRoute() {
+        let detail = ActivitySidebarPresentation.workerReceiptDetail(
+            status: "completed",
+            durationMilliseconds: nil,
+            toolCallCount: 1,
+            redactedError: nil,
+            runtimeModelID: "grok-4.5-build",
+            routedModel: "gpt-5.6-terra"
+        )
+        XCTAssertTrue(detail.hasPrefix("Ran on grok-4.5-build (Grok ACP)"))
+        XCTAssertTrue(detail.contains("Routes to gpt-5.6-terra (configured)"))
+    }
+
     // MARK: - Slice 6: pricing capture
 
     func testParseCapturesOpenRouterPricingAndToleratesShapes() throws {
@@ -134,6 +147,65 @@ final class UsageAndRoutingTests: XCTestCase {
 
         let unpricedSummary = try! XCTUnwrap(ledger.summaryText(pricing: [:]))
         XCTAssertFalse(unpricedSummary.contains("$"), "tokens only when no pricing is known")
+    }
+
+    func testAuthoritativePerModelUsageAndProviderCostOverrideMainRouteGuess() {
+        var ledger = SessionUsageLedger()
+        ledger.recordTurn(
+            modelID: "main-model",
+            totalTokens: 3_000,
+            modelCalls: 2,
+            costUsdTicks: 125_000_000,
+            modelUsage: [
+                .init(
+                    modelID: "worker-model",
+                    inputTokens: 2_000,
+                    outputTokens: 1_000,
+                    totalTokens: 3_000,
+                    cachedReadTokens: 500,
+                    reasoningTokens: 250,
+                    modelCalls: 2,
+                    apiDurationMilliseconds: 4_500,
+                    costUsdTicks: 125_000_000
+                )
+            ]
+        )
+        let pricing = ["worker-model": ModelPricing(promptPerToken: 1e-6, completionPerToken: 2e-6)]
+        let estimate = try! XCTUnwrap(ledger.estimate(pricing: pricing))
+        XCTAssertEqual(estimate.pricedTokens, 3_000)
+        XCTAssertEqual(estimate.low, 0.004, accuracy: 1e-12)
+        XCTAssertEqual(estimate.high, 0.004, accuracy: 1e-12)
+        let summary = try! XCTUnwrap(ledger.summaryText(pricing: [:]))
+        XCTAssertTrue(summary.contains("$0.12 provider-reported"), summary)
+        XCTAssertFalse(summary.contains("est."), summary)
+    }
+
+    func testModelUsageParserKeepsEveryAuthoritativeSplit() {
+        let receipts = GrokProcess.modelUsageReceipts(from: [
+            "grok-4.5-build": [
+                "inputTokens": 11,
+                "outputTokens": 7,
+                "totalTokens": 18,
+                "cachedReadTokens": 5,
+                "reasoningTokens": 3,
+                "modelCalls": 2,
+                "apiDurationMs": 900,
+                "costUsdTicks": 42_000_000,
+            ],
+        ])
+        XCTAssertEqual(receipts, [
+            .init(
+                modelID: "grok-4.5-build",
+                inputTokens: 11,
+                outputTokens: 7,
+                totalTokens: 18,
+                cachedReadTokens: 5,
+                reasoningTokens: 3,
+                modelCalls: 2,
+                apiDurationMilliseconds: 900,
+                costUsdTicks: 42_000_000
+            )
+        ])
     }
 
     func testCompactTokenAndDollarFormatting() {
