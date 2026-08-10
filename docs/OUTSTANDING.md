@@ -2085,11 +2085,14 @@ smoke threads, and pass Gates F–H.
   reader was added.
 - Verification: focused task-contract/run-spine, lifecycle/subprocess, and
   accessibility suites passed; the complete suite passed `730/730` twice with zero
-  failures. `git diff --check` is clean. Candidate `make ship` passed and the final
-  candidate installed/dist executable SHA-256 is
-  `45464820ae8fcdf010f2f8992f17d69a996e8793751aed5079b16cee1a4040da`;
-  candidate stamp `ff0ea9a`, `dirty=true`, Team `DD2GCQJVB4`, deep/strict valid,
-  no quarantine.
+  failures. `git diff --check` is clean. Clean committed candidate `make ship`
+  passed at `d75c3641420cec4ffce666fd259fdf14a405319c`; its installed/dist executable
+  SHA-256 was
+  `82f2a217cef18fe7b74adecc3a7c905f84e5136e9af320e2ebcd90d2db43f946`,
+  `dirty=false`, Team `DD2GCQJVB4`, deep/strict valid, no quarantine. The earlier
+  dirty candidate SHA-256
+  `45464820ae8fcdf010f2f8992f17d69a996e8793751aed5079b16cee1a4040da`
+  is retained only as a superseded build receipt.
 - Installed UI bug receipts: the first inline expansion reproduced a macOS 26
   SwiftUI `SelectionOverlay` layout loop at 100% CPU, first while opening details
   and then while ACP state changed. Both failures were preserved and the affected
@@ -2135,9 +2138,28 @@ smoke threads, and pass Gates F–H.
   cleanup complete, and normal quit left zero `GrokBuild`, `grok`,
   `GrokBuildComputerUseMCP`, `agent-desktop`, `agent-browser`, or owned
   `Google Chrome for Testing` processes.
-- Publication and merged-main acceptance: pending. Slice 11 must not begin until
-  the ready PR is reviewed, normally merged, and merged `main` is rebuilt,
-  installed, visibly accepted, cleaned, and process-zero.
+- Publication: ready PR
+  `https://github.com/schmitzjimmy1-star/grok-build-desktop/pull/39` was reviewed at
+  exact head `d75c3641420cec4ffce666fd259fdf14a405319c`, was mergeable/clean with no
+  configured checks, and merged normally as
+  `d54c5cbc99afcd6fccb1e2a3727a004111191da2`.
+- Merged-main acceptance: `make ship` passed `730/730` with zero failures from
+  clean `main == personal/main == d54c5cbc99afcd6fccb1e2a3727a004111191da2`.
+  Installed and dist executable SHA-256 matched at
+  `33c8783ec068f5bf5d923eb66633577cd9801f2cdbad5b67294a1cd1b1e1df63`;
+  installed `GrokBuildSourceDirty=false`, Team `DD2GCQJVB4`, deep/strict valid,
+  and no quarantine. In the installed UI, a fresh chat visibly showed `0 files,
+  0 MCPs attached`; the task contract opened as a fixed-header native popover and
+  truthfully showed draft/no-process/clean worktree state; Settings -> App visibly
+  showed `0.1.20 Personal • main @ d54c5cbc`, the canonical personal repository,
+  and no active process receipt.
+- Final Gates A-H: exact intended implementation and ledger paths only; complete
+  suite and diff checks green; both required billable provider lanes settled below
+  cap; exact local, parent, and child cleanup remains proven; installed identity,
+  signing, and dist parity exact; final normal in-app quit left zero exact
+  `GrokBuild`, `grok`, `GrokBuildComputerUseMCP`, `agent-desktop`, `agent-browser`,
+  or owned `Google Chrome for Testing` processes. Slice 10 is merged and accepted.
+  Slice 11 has not started.
 
 ---
 
