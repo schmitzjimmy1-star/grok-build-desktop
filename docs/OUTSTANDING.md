@@ -2382,6 +2382,85 @@ smoke threads, and pass Gates F–H.
   `personal/main` clean and equal; final normal quit left every scoped owned process
   count zero. Slices 7-12 are merged and accepted. No further slice is authorized.
 
+### Slices 1-5 model-routing synchronization repair receipt — 2026-08-10
+
+- Objective: reconcile saved/live model selection, generation-bound route receipts,
+  ACP terminal outcomes, and per-thread MCP gating without moving execution,
+  permissions, session, model, or MCP authority out of Grok CLI/ACP. This is a
+  bounded repair to the already accepted Slices 1-5, not a reopened campaign slice.
+- Starting identity: clean `main == personal/main ==
+  35a4ec66a5ef41a58a17ad74eb7c54d033667041`; installed provenance matched that
+  commit at `dirty=false`, Team `DD2GCQJVB4`, executable SHA-256
+  `df8d1a905b1fcd18a4d130ceb0218e507aca34e1dbc4b1bf57d4f3e7d83f6e8d`, and
+  every scoped owned process count was zero.
+- Model and route truth: an unavailable explicitly saved model now fails closed
+  instead of silently falling back. Live switches require the exact allowed ACP
+  effective-model readback and are blocked while streaming or after any assistant
+  history because encrypted provider reasoning is not portable. Route/model/provider,
+  backend, process generation, and PID receipts now bind to the active generation;
+  no GrokBuild fallback is invented.
+- MCP authority: app launch remains `grok agent stdio`; Grok remains the only tool
+  executor. GrokBuild observes CLI-configured server names and responds to Grok's ACP
+  permission request. A qualified MCP invocation is rejected before Always Approve or
+  YOLO can override the default-off per-thread gate; explicit selection omits only the
+  app catch-all gate while the CLI catalog and all remaining deny rules stay active.
+  No MCP server is injected by the app. An attempted CLI PreToolUse plugin route was
+  removed after Grok discovered it but reported `total_hooks=0`; no ineffective plugin
+  asset remains in the shipped tree.
+- Terminal settlement: ACP `stop_reason:error` is a redacted failure, never a false
+  completion. ACP `stop_reason:cancelled` is an authoritative cancelled outcome with
+  `Turn cancelled` / `Cancelled checkpoint`, not `Turn completed`, `Stopped by you`,
+  or a generic transport failure. Grok CLI 1.0 can emit cancelled completion after a
+  rejected permission without replying to the matching `session/prompt` RPC; the one
+  owned active prompt continuation is now released by that authoritative completion,
+  with any late response ignored by request identity.
+- Verification: focused routing, permission, cancellation, activity, and run-spine
+  suites passed; complete `swift test` and committed-candidate `make ship` passed
+  `751/751`, zero failures. Candidate head
+  `2486daef0cd717e6d5891df7b2a47e4e83d717f9` installed at `dirty=false`, Team
+  `DD2GCQJVB4`, deep/strict valid, no quarantine, with dist/installed executable
+  SHA-256
+  `ca99fd6dc877e29e09ceecdd473757ba35eb6f8f70513fca6b3bb41935ffe6c4`.
+- Default-off installed acceptance: backend
+  `019fea9d-f276-7553-a562-bb04fd40c0f6` requested
+  `chrome-devtools__list_pages` with no attachment. Grok's ACP permission request was
+  rejected, the tool visibly failed, and the turn settled `stop_reason:cancelled`
+  with `Turn cancelled`, `Cancelled checkpoint`, ready composer, no generic failure
+  banner, and retained usage: model `grok-4.5-build`, `15,403` tokens, `1` model
+  call, raw `costUsdTicks=312964000`; prompt ID
+  `ec5ce1ba-e565-4c49-8393-68a334bb5a14`.
+- Explicit-MCP installed acceptance: fresh backend
+  `019feaa1-5059-7521-99e0-41f689ab046c` attached `chrome-devtools` before launch.
+  Capability discovery and `Chrome-devtools List Pages` succeeded, exact marker
+  `GB_MCP_FINAL_EXPLICIT_OK_0810` settled `stop_reason:end_turn`, and the attachment
+  cleared after the turn. Route receipt showed `Live model Grok 4.5`, native xAI
+  through Grok CLI, no alternate fallback, generation 1, no app-injected servers,
+  and CLI-configured `chrome-devtools`. Raw usage: model `grok-4.5-build`, `48,945`
+  tokens, `3` model calls, `numTurns=3`, and `costUsdTicks=345796000`; the app's
+  generation-bound task receipt showed one local turn. Prompt ID
+  `a1d48d27-c434-46b4-a07a-a35e801c5b7a`.
+- Recovery boundary retained: enabling MCP on the already cancelled default-off task
+  failed safe because Grok CLI could not resume that cancelled backend. The installed
+  UI exposed `Fresh thread required`, `Continue as New`, and the unapplied-policy
+  error. Continue-as-New records recovery but still requires the subsequent send;
+  that continuity interaction is preserved for the read-only Slice 10 review rather
+  than mislabeled as successful same-session application.
+- Publication: ready implementation PR
+  `https://github.com/schmitzjimmy1-star/grok-build-desktop/pull/45` was reviewed at
+  exact head `2486daef0cd717e6d5891df7b2a47e4e83d717f9`, mergeable/clean with no
+  configured checks, and merged normally as
+  `03ab4f6efa20c31af67d967a29e58e221bc4474d`.
+- Merged-main acceptance: clean `main == personal/main ==
+  03ab4f6efa20c31af67d967a29e58e221bc4474d`; `make ship` again passed
+  `751/751`. Installed/dist executable SHA-256 matched at
+  `1bf2de27ad8e71b1c4320e2273c1484b47db9c7cfb652c6a4f529df9303b6f72`;
+  installed `dirty=false`, Team `DD2GCQJVB4`, deep/strict valid, no quarantine,
+  and every scoped owned process count was zero.
+- Cleanup and known gap: no acceptance session was deleted. The exact backend IDs and
+  markers above remain preserved because Grok CLI's documented child/session
+  visibility and deletion gap remains unresolved. No private-store scrape, wrapper,
+  daemon, broad deletion, or invented cleanup proof was used.
+
 ---
 
 ## Slice receipt template
