@@ -2159,7 +2159,114 @@ smoke threads, and pass Gates F–H.
   signing, and dist parity exact; final normal in-app quit left zero exact
   `GrokBuild`, `grok`, `GrokBuildComputerUseMCP`, `agent-desktop`, `agent-browser`,
   or owned `Google Chrome for Testing` processes. Slice 10 is merged and accepted.
-  Slice 11 has not started.
+  Slice 11 is merged and accepted; Slice 12 has not started.
+
+### Slice 11 completion receipt — 2026-08-09
+
+- Objective: make completed Grok CLI/ACP work immediately reviewable inside the
+  thread without creating a second Git, artifact, planning, session, tool, or
+  publication authority. Settled results now group typed tools, terminal output,
+  artifacts, worker provenance, warnings, and unresolved decisions under the
+  producing typed todo step when ACP exposes that ownership.
+- Starting identity: clean `main == personal/main ==
+  e913cb2efd1a0d9ce897e28b14b094f763791baa`, tree
+  `6f4cc031ef97bd3b70afff8110f23ff81336e3c0`, installed/dist executable
+  SHA-256 `d9fb7c3ecd20744a3771cb9fdb538239019765d34e4d478ab3633df5beafdb47`,
+  Team `DD2GCQJVB4`, `dirty=false`, and every owned process count zero. Branch:
+  `codex/grokbuild-s11-thread-review-results`.
+- Implementation: fresh Git truth now distinguishes All changes, Unstaged,
+  Staged, Last commit, Branch, and Last turn. Rename/copy parsing retains both
+  current path identity and original-path provenance. Last turn intersects
+  successful write/edit receipts with a fresh Git snapshot; when that exact
+  attribution is unavailable, the UI says so and falls back without guessing.
+  Review names `branch @ HEAD`, file status, and explicit commit/PR readiness,
+  while preserving publication as a separate user action.
+- Safe revert: the installed UI preflights one exact repository-relative path,
+  refuses ambiguous rename/copy rows, runs Git's recoverable per-path stash,
+  proves the selected path is clean afterward, and compares unrelated status
+  before/after. It never deletes or copies user file contents itself. The
+  disposable fixture proved `result.txt` reverted, `unrelated-dirty.txt` survived,
+  and stash `GrokBuild recoverable revert: result.txt` retained recovery authority.
+- Run-spine/artifact truth: streaming presentation is a stable single-row phase,
+  current typed todo, progress, and Activity link. Rich tool/output/artifact groups
+  appear only after authoritative settlement, avoiding macOS 26 transcript layout
+  feedback. Exact local artifact paths retain parent tool/worker provenance.
+  Terminal receipts decode human command output, including byte-array and
+  JSON-string ACP shapes, without projecting raw protocol JSON.
+- Verification: focused Git review, run-spine, and ACP terminal projection suites
+  passed. The complete suite passed `735/735` repeatedly with zero failures;
+  `git diff --check` remained clean. Clean committed candidate `make ship` passed
+  at `d3d9c3b4647e741c8ab4a1edb3904e182218978f`, tree
+  `2e10122ba2be752cf49fc8aaf3fd0e3496cc74fe`; installed/dist executable
+  SHA-256 `0f293c40742d9f2704d6083a1ead5f61a1c237aa6c7c980eb6300f3f928f731a`,
+  `dirty=false`, Team `DD2GCQJVB4`, deep/strict valid, and no quarantine.
+- Preserved failures and retries: the first native attempt
+  `GB-S11-NATIVE-20260809T213800` produced no fixture edits and exposed a 100% CPU
+  SwiftUI layout loop. Retry `GB-S11-NATIVE-RETRY-20260809T215300` made the native
+  edits but reproduced the live layout loop. Full marker
+  `GB-S11-NATIVE-FINAL-20260809T215900` then settled the three typed todos and
+  exposed a second settled-detail loop from raw protocol text. Exact process
+  samples were preserved during diagnosis; affected app processes were terminated
+  exactly, and no backend session was found for the first two failed attempts.
+  The stable live row plus settled-only typed output removed both loops.
+- Installed native edit/test/review lane: marker
+  `GB-S11-NATIVE-SETTLED-20260809T220700` edited `result.txt`, created
+  `artifact.md`, ran `./check.sh`, and refreshed Git status in the disposable
+  fixture. Parent backend `019fe965-591d-7d31-82ed-655d57966b42` used Grok 4.5
+  Medium through direct xAI/Grok CLI with no fallback and zero MCPs. The installed
+  review showed exactly three All changes, exact last-turn `result.txt` plus
+  `artifact.md`, the same three Unstaged paths, an explicit empty Staged receipt,
+  and `main @ 48572af` with commit/push remaining explicit.
+- Final native terminal-output lane: marker
+  `GB-S11-NATIVE-WIRE-FINAL-20260809T222600`, local tab
+  `4C5F3069-84F3-484C-A589-2D4B0E3AE518`, parent backend
+  `019fe97d-e9fe-71e3-a928-d85c153bc785`, process generation `1`, PID `70653`,
+  Grok 4.5 Medium, direct xAI through Grok CLI, no fallback, and zero MCPs.
+  `./check.sh` ran exactly once; the settled tool receipt visibly reported
+  `GB-S11-TESTS-PASSED` with no protocol JSON. Usage: `29,200` tokens / `2`
+  model calls.
+- OpenRouter lane: marker `GB-S11-OPENROUTER-20260809T222900`, local tab
+  `BA94457D-1D94-4C85-B44A-0AA1FDBD2969`, parent backend
+  `019fe980-1781-7802-bad5-698aa2b8f825`, process generation `1`, PID `71055`,
+  pinned `openai/gpt-4.1-mini`, brokered by `openrouter.ai`, no GrokBuild fallback,
+  zero MCPs, and exact answer `GB-S11-OPENROUTER-20260809T222900 READY`. Usage:
+  `10,431` tokens / `1` model call. Combined final provider usage was `39,631`
+  tokens / `3` calls, safely below the `1,000,000` cap.
+- Exact cleanup: both final local tabs were closed through installed UI **Close
+  Session** and their GrokBuild transcript files disappeared. Grok CLI search
+  returned zero for all retained Slice 11 markers. Exact delete attempts for the
+  three known parent IDs returned `No session found`; this is recorded as the same
+  upstream CLI session-deletion visibility gap, not papered over with private-store
+  scraping or a daemon. The complete fixture, including all three recovery stashes,
+  was moved recoverably to
+  `~/.Trash/GrokBuild-Slice11-fixture-20260809T213800`. No unrelated history was
+  touched.
+- Candidate Gates A-H: canonical identity and intended paths only; complete tests
+  and diff checks green; safe revert preserved unrelated dirt; both required
+  billable routes and exact settled outputs proven; installed/dist/signing parity
+  exact; zero MCPs; exact local and CLI-visible cleanup complete; normal in-app quit
+  left zero `GrokBuild`, `grok`, `GrokBuildComputerUseMCP`, `agent-desktop`,
+  `agent-browser`, or owned browser-profile processes.
+- Publication: ready PR
+  `https://github.com/schmitzjimmy1-star/grok-build-desktop/pull/41` was reviewed at
+  exact head `d3d9c3b4647e741c8ab4a1edb3904e182218978f`; its remote tree exactly matched
+  local tree `2e10122ba2be752cf49fc8aaf3fd0e3496cc74fe`, it was mergeable/clean with no
+  configured checks, and it merged normally as
+  `212f74f22d1f0aac0712e9c5293bc72ee03f31be`.
+- Merged-main acceptance: clean `main == personal/main ==
+  212f74f22d1f0aac0712e9c5293bc72ee03f31be`; `make ship` passed `735/735` and
+  installed/dist executable SHA-256 matched at
+  `40d2e146a2086de53bbc4a0fa97fef3665d23e71805e1193954019673f90daeb`.
+  Installed `GrokBuildSourceDirty=false`, Team `DD2GCQJVB4`, deep/strict valid,
+  and no quarantine. Installed UI visibly showed `0 files, 0 MCPs attached` and
+  Settings -> App showed `0.1.20 Personal • main @ 212f74f2`, the canonical
+  personal repository, and no active process receipt.
+- Final Gates A-H: exact implementation and ledger paths only; CLI
+  `1.0.0 (3cd0d0cbcebe) [stable]`; required provider routes settled below cap;
+  exact cleanup and the honest CLI deletion gap recorded; installed identity,
+  hashes, signing, and clean worktree parity exact; final normal UI quit left every
+  owned process count zero. Slice 11 is merged and accepted. Slice 12 is the exact
+  next and final slice.
 
 ---
 
