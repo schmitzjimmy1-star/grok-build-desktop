@@ -1,15 +1,12 @@
 # Thread-native product refinement slices — 2026-08-09
 
-Status: **authorized campaign; Slices 7 through 10 are merged and accepted.
-Slices 11 and 12 have not started.**
+Status: **closed campaign; Slices 7 through 12 are merged and accepted.**
 
-The canonical campaign in `docs/OUTSTANDING.md` remains closed through Slice 6.
-This document records a fresh installed-product audit and defines the next bounded
-campaign. It does not reopen, rewrite, or weaken any prior completion receipt.
-Each slice below requires separate authorization, its own branch and pull request,
-and full Gates A–H from `docs/OUTSTANDING.md`. Do not begin a later slice until the
-current slice has merged, installed acceptance has passed, scoped test artifacts
-have been removed, and merged `main` is clean and process-zero.
+The canonical campaign in `docs/OUTSTANDING.md` is all clear. This document preserves
+the completed installed-product audit and bounded campaign; it does not reopen,
+rewrite, or weaken any completion receipt. The accepted results are recorded in
+`docs/OUTSTANDING.md` and `docs/UI_ACCEPTANCE_MATRIX.md`. No remaining slice is
+authorized by this historical plan.
 
 ## Product direction
 
@@ -425,7 +422,7 @@ slice. Do not borrow work from a later slice to make an earlier receipt look gre
 
 ## Current authorization boundary
 
-Slices **7 → 12** are authorized in strict order, including scoped implementation,
-build/install, bounded billable acceptance, exact cleanup, commit, push, ready PR,
-normal merge, merged-main reinstall, and final gate verification. A slice may not
-begin until the preceding slice is merged and clean.
+This campaign is closed. Slices **7 → 12** are merged and accepted, and this
+historical plan authorizes no additional implementation, provider spend, cleanup, or
+publication. Any future GrokBuild work requires a fresh explicit scope reconciled into
+`docs/OUTSTANDING.md` before editing.
