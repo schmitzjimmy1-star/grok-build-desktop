@@ -587,6 +587,7 @@ final class ChatStore {
     /// Exact prompt attachment intent captured before the composer clears.
     /// This is per-turn request evidence only; it never implies catalog or use.
     private(set) var currentTurnRequestedMCPNames: [String] = []
+    private(set) var currentTurnAttachmentNames: [String] = []
     private(set) var promptMCPInventoryIsLoading = false
     private(set) var promptMCPInventoryUnavailable = false
     private var configuredPromptMCPOptions: [PromptMCPOption] = PromptMCPInventoryCatalog.cached()
@@ -1712,6 +1713,7 @@ final class ChatStore {
         pendingQuestions.removeAll()
         fileAttachments.removeAll()
         currentTurnRequestedMCPNames.removeAll()
+        currentTurnAttachmentNames.removeAll()
         goalState = nil
         clearWorkflowRunState()
         clearBackgroundTaskState()
@@ -2016,6 +2018,7 @@ final class ChatStore {
         pendingExitPlan = nil
         pendingQuestions.removeAll()
         fileAttachments.removeAll()
+        currentTurnAttachmentNames.removeAll()
         goalState = nil
         clearWorkflowRunState()
         if currentWorkspace != nil {
@@ -2887,6 +2890,9 @@ final class ChatStore {
             attachmentBlocks.append(mcpBlock)
         }
         let dispatchAttachments = claimedPendingIntent?.fileAttachments ?? fileAttachments
+        currentTurnAttachmentNames = dispatchAttachments
+            .filter { !$0.isHidden }
+            .map(\.relativePath)
         if let fileBlock = AttachmentPromptBuilder.build(from: dispatchAttachments) {
             attachmentBlocks.append(fileBlock)
         }
@@ -4648,7 +4654,8 @@ final class ChatStore {
         }
         let checkpoint = AssistantTurnCheckpoint(
             snapshot: snapshot,
-            requestedToolFamilies: currentTurnRequestedMCPNames
+            requestedToolFamilies: currentTurnRequestedMCPNames,
+            attachmentNames: currentTurnAttachmentNames
         )
         if var trace = messages[index].assistantTrace {
             trace.checkpoint = checkpoint

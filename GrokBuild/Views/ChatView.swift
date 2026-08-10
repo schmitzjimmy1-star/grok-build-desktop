@@ -313,6 +313,10 @@ struct ChatView: View {
     // Keep the composer calm. Backend receipts and worker/file evidence live in
     // the optional right-side activity drawer instead of permanent chrome.
     @State private var showActivitySidebar = false
+    /// A transcript Activity link may target an older settled turn. The ID is
+    /// local UI selection only; its evidence still comes from that turn's
+    /// durable checkpoint and trace.
+    @State private var selectedActivityMessageID: UUID?
     /// Measured chat-area width driving the Slice 7 responsive policy.
     @State private var chatAreaWidth: Double = .infinity
     @State private var toolPillStatus = ToolPillStatus()
@@ -587,7 +591,7 @@ struct ChatView: View {
     /// is wide enough, as a docked third column — same panel, same state.
     private func activityInspector(docked: Bool) -> some View {
         ActivitySidebar(
-            snapshot: store.runEvidenceSnapshot,
+            snapshot: activitySnapshot,
             liveProjection: store.liveRunEvidenceProjection,
             workspace: store.currentWorkspace?.path,
             onClose: {
@@ -765,7 +769,10 @@ struct ChatView: View {
                                             checkpoint: persistedTrace?.checkpoint,
                                             settledTools: msg.assistantTrace?.tools ?? [],
                                             workspace: store.currentWorkspace?.path,
-                                            onOpenActivity: { showActivitySidebar = true },
+                                            onOpenActivity: {
+                                                selectedActivityMessageID = msg.id
+                                                showActivitySidebar = true
+                                            },
                                             onOpenReview: {
                                                 onOpenTurnReview()
                                                 if !isReviewVisible { onToggleReview() }
@@ -1403,7 +1410,10 @@ struct ChatView: View {
                 Task { _ = await store.resumeTaskSession() }
             },
             onContinueAsNew: { Task { _ = await store.continueAsNew() } },
-            onOpenActivity: { showActivitySidebar = true },
+            onOpenActivity: {
+                selectedActivityMessageID = nil
+                showActivitySidebar = true
+            },
             isExpanded: $taskContractExpanded
         )
         .accessibilityIdentifier("grok-task-context-strip")
@@ -1932,6 +1942,9 @@ struct ChatView: View {
 
     private var activitySidebarToggle: some View {
         Button {
+            if !showActivitySidebar {
+                selectedActivityMessageID = nil
+            }
             if reduceMotion {
                 showActivitySidebar.toggle()
             } else {
@@ -1945,7 +1958,7 @@ struct ChatView: View {
                     .font(.system(size: 12, weight: .semibold))
                 Text("Activity")
                     .font(AppTheme.Typography.label)
-                if let snapshot = store.runEvidenceSnapshot {
+                if let snapshot = activitySnapshot {
                     Circle()
                         .fill(snapshot.outcome == .completionReceiptMissing ? Color.orange : Color.secondary)
                         .frame(width: 6, height: 6)
@@ -1979,7 +1992,7 @@ struct ChatView: View {
                 $0.mcpReceiptRole == .discovery ? nil : $0.mcpServerName
             }
         }
-        if let trace = store.messages.last(where: { $0.role == .assistant })?.assistantTrace {
+        if let trace = activityTrace {
             return trace.tools.compactMap {
                 $0.mcpReceiptRole == .discovery ? nil : $0.mcpServerName
             }
@@ -2001,7 +2014,7 @@ struct ChatView: View {
                 )
             }
         }
-        guard let trace = store.messages.last(where: { $0.role == .assistant })?.assistantTrace else {
+        guard let trace = activityTrace else {
             return []
         }
         return trace.tools.map {
@@ -2021,6 +2034,9 @@ struct ChatView: View {
         if store.liveRunEvidenceProjection != nil || store.runEvidenceSnapshot != nil {
             return store.currentTurnRequestedMCPNames
         }
+        if let requested = activityTrace?.checkpoint?.requestedToolFamilies {
+            return requested
+        }
         return Array(
             Set(store.selectedPromptMCPOptions.map(\.name))
                 .union(store.enabledBuiltInToolNames)
@@ -2034,8 +2050,8 @@ struct ChatView: View {
             .map(\.state.displayName)
         return ContextInspectorProjection.model(
             live: store.liveRunEvidenceProjection,
-            snapshot: store.runEvidenceSnapshot,
-            attachmentNames: store.fileAttachments.map(\.relativePath),
+            snapshot: activitySnapshot,
+            attachmentNames: activityAttachmentNames,
             requestedMCPNames: activityRequestedMCPNames,
             evidencedMCPServers: evidencedMCPServers,
             computerUseConfigured: toolPillStatus.computerUseAvailable,
@@ -2050,13 +2066,53 @@ struct ChatView: View {
     }
 
     private var activityEvidenceAccessibilityValue: String {
-        if let snapshot = store.runEvidenceSnapshot {
+        if let snapshot = activitySnapshot {
             return "Settled: \(snapshot.outcome.displayName)"
         }
         if store.liveRunEvidenceProjection != nil {
             return "Live run evidence, not settled"
         }
         return "No run evidence"
+    }
+
+    /// The current in-memory settlement wins. During a live run, no prior
+    /// checkpoint is allowed to masquerade as current evidence. Once idle,
+    /// Activity falls back to the selected (or latest) durable assistant trace.
+    private var activitySnapshot: RunEvidenceSnapshot? {
+        if selectedActivityMessageID != nil,
+           store.liveRunEvidenceProjection == nil,
+           let trace = activityTrace,
+           let checkpoint = trace.checkpoint {
+            return checkpoint.restoredRunEvidenceSnapshot(settledTools: trace.tools)
+        }
+        if let snapshot = store.runEvidenceSnapshot { return snapshot }
+        guard store.liveRunEvidenceProjection == nil,
+              let trace = activityTrace,
+              let checkpoint = trace.checkpoint else { return nil }
+        return checkpoint.restoredRunEvidenceSnapshot(settledTools: trace.tools)
+    }
+
+    private var activityTrace: AssistantTurnTrace? {
+        if let selectedActivityMessageID,
+           let selected = store.messages.first(where: {
+               $0.id == selectedActivityMessageID && $0.role == .assistant
+           })?.assistantTrace,
+           selected.checkpoint != nil {
+            return selected
+        }
+        return store.messages.last(where: {
+            $0.role == .assistant && $0.assistantTrace?.checkpoint != nil
+        })?.assistantTrace
+    }
+
+    private var activityAttachmentNames: [String] {
+        if store.liveRunEvidenceProjection != nil || store.runEvidenceSnapshot != nil {
+            return store.currentTurnAttachmentNames
+        }
+        if let retained = activityTrace?.checkpoint?.attachmentNames {
+            return retained
+        }
+        return []
     }
 
     private var showWorkflowsPill: Bool {
