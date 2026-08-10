@@ -1955,7 +1955,7 @@ smoke threads, and pass Gates F–H.
 - Exact next slice: Slice 9, Thread-native run spine, only after this receipt is
   completed on clean merged `main` and the installed merged app passes Gates A-H.
 
-### Slice 9 candidate receipt — 2026-08-09
+### Slice 9 completion receipt — 2026-08-09
 
 - Objective: make the thread itself the compact, native record of a CLI-owned run:
   observed phase, stable typed plan steps, owning workers, exact current tool,
@@ -2043,9 +2043,24 @@ smoke threads, and pass Gates F–H.
   stores; normal Command-Q left zero exact `GrokBuild`, `grok`,
   `GrokBuildComputerUseMCP`, and `agent-desktop` processes and no owned browser
   profile process.
-- Publication and merged-main receipt: pending the authorized ready PR, normal
-  merge, clean `main` reinstall, Settings -> App agreement, and final process-zero.
-  Slice 10 has not started.
+- Publication: ready PR
+  `https://github.com/schmitzjimmy1-star/grok-build-desktop/pull/37` reviewed exact
+  head `d8aa367ed124b546a8376c6e7ad482451ebf6363`, was mergeable with no configured
+  checks, and merged normally as
+  `5624dbcea39dbd3b3cfddb3a9315e80b68d864aa`.
+- Post-merge `make ship`: `723/723`, zero failures; clean installed source
+  `5624dbcea39dbd3b3cfddb3a9315e80b68d864aa`; installed/dist executable SHA-256
+  `618be14b21b3542177e9258f8574690af7fd630dee124782005071e8bfb2dfca`;
+  Team `DD2GCQJVB4`, deep/strict valid, no quarantine. Settings -> App visibly
+  agreed with `Personal • main @ 5624dbce`, the canonical personal repository, and
+  `Unknown — no active process receipt for this tab` while the composer retained
+  `0 MCPs attached`.
+- Final Gates A-H: local `main == personal/main == 5624dbce`; every exact Slice 9
+  marker, local transcript, parent backend, and measured child backend remains
+  absent from live storage; the worktree is clean; final normal quit left zero
+  exact `GrokBuild`, `grok`, `GrokBuildComputerUseMCP`, `agent-desktop`, or owned
+  browser-profile processes. Slice 9 is merged and accepted. Slice 10 has not
+  started.
 
 ---
 
