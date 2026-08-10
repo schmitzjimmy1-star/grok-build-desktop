@@ -14,7 +14,7 @@ OAuth, OpenRouter, alternate ACP backends, endpoint trust hardening, and the ope
 
 | Capability | UI entry | Swift owner | Grok/runtime owner | Persistence | Process impact | Visible failure/result | Decision |
 |---|---|---|---|---|---|---|---|
-| Chat and tools | `ChatView` composer | `ChatStore` → `GrokProcess` | `grok agent stdio` owns reasoning, ACP, tools, permissions, and session state | Grok session plus GrokBuild transcript/layout stores | Long-lived process per live session | Transcript, tool cards, permission UI, connection state | **Keep** |
+| Chat and tools | `ChatView` composer | `ChatStore` → `GrokProcess`; client answers ACP permission requests | `grok agent stdio` owns reasoning, tool execution, permissions, and session state | Grok session plus GrokBuild transcript/layout stores | Long-lived process per live session | Transcript, tool cards, permission UI, connection state | **Keep** |
 | Main ↔ Settings navigation | Toolbar/sidebar gear, Settings Session button, Escape | `ContentView.AppRoute` and persisted selected settings tab | None | Selected Settings tab in app state | None | Route changes on the first action; active session/model remains intact | **Fixed** |
 | Custom provider metadata | Settings → Models | `CustomModelsSettingsViewModel`, `ProviderStore` | None | UserDefaults, excluding credentials | Catalog refresh only | Provider connection card | **Fixed** |
 | Provider credentials | Provider editor | `KeychainProviderCredentialStore` | Grok CLI still requires per-model `api_key` | Keychain service `com.grokbuild.provider-credential`; projected CLI copy in config | No restart by itself | Key saved/missing badge; actionable migration issue | **Fixed** |
@@ -61,6 +61,13 @@ The startup config migration also removes older GrokBuild schema violations. It 
 6. reapplies `0600`.
 
 This prevents GrokBuild panes from clobbering one another and preserves unrelated CLI content. It does not lock out a simultaneous external Grok CLI or text-editor write; cross-process advisory locking is deferred until there is evidence that the CLI mutates the same file during these short edits.
+
+MCP invocation is default-off per thread. GrokBuild adds Grok's
+`MCPTool(*__*)` deny rule to a no-attachment launch and, when Grok 1.0.0
+surfaces that denial as an ACP permission request, selects Grok's reject option.
+That gate precedes Yolo and Always Approve. An explicit thread/turn attachment
+restarts with the gate open; Grok CLI still discovers and executes the MCP, and
+the Swift client never calls an MCP tool itself.
 
 ## Provider contract
 

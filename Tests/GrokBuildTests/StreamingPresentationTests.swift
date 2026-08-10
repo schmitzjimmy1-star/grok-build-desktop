@@ -197,10 +197,10 @@ extension StreamingPresentationTests {
             contentsOf: repositoryRoot.appendingPathComponent("GrokBuild/Services/ChatStore.swift"),
             encoding: .utf8
         )
-        let settle = try XCTUnwrap(source.range(of: "latestTurnOutcome = .completed"))
-        let after = String(source[settle.upperBound...].prefix(1_600))
-        XCTAssertTrue(after.contains("finishPromptNow(assistantID: stuckAssistantID, ok: true)"),
-                      "turn_completed must finish a turn whose prompt response never resolved")
+        let settle = try XCTUnwrap(source.range(of: "let turnSucceeded = completion.isSuccessful"))
+        let after = String(source[settle.upperBound...].prefix(2_600))
+        XCTAssertTrue(after.contains("finishPromptNow(assistantID: stuckAssistantID, ok: turnSucceeded)"),
+                      "turn_completed must finish a stuck prompt without promoting error completions")
         XCTAssertTrue(after.contains("deferredPromptCompletion == nil"),
                       "the deferred-drain path keeps ownership when it is already pending")
         XCTAssertTrue(after.contains("streamingTextBuffer.isEmpty"),

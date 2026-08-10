@@ -284,7 +284,10 @@ struct ToolActivityGroup: View {
                         Text("Run summary")
                             .font(.caption2)
                             .foregroundStyle(.tertiary)
-                        Label(turnOutcome.displayName, systemImage: "checkmark.circle")
+                        Label(
+                            turnOutcome.displayName,
+                            systemImage: turnOutcome == .completed ? "checkmark.circle" : "slash.circle"
+                        )
                             .font(.caption2.weight(.semibold))
                             .foregroundStyle(.secondary)
                     }

@@ -46,14 +46,14 @@ struct TurnSettlementCoordinator {
     private(set) var generation = 0
     private var assistantID: UUID?
     private var promptResult: Bool?
-    private var completionConsumed = false
+    private var completionResult: Bool?
     private var finalized = false
 
     mutating func begin(assistantID: UUID) -> Int {
         generation &+= 1
         self.assistantID = assistantID
         promptResult = nil
-        completionConsumed = false
+        completionResult = nil
         finalized = false
         return generation
     }
@@ -64,9 +64,9 @@ struct TurnSettlementCoordinator {
         return takeDecisionIfReady()
     }
 
-    mutating func recordCompletionConsumed() -> Decision? {
+    mutating func recordCompletionConsumed(ok: Bool = true) -> Decision? {
         guard assistantID != nil, !finalized else { return nil }
-        completionConsumed = true
+        completionResult = ok
         return takeDecisionIfReady()
     }
 
@@ -74,7 +74,7 @@ struct TurnSettlementCoordinator {
         generation &+= 1
         assistantID = nil
         promptResult = nil
-        completionConsumed = false
+        completionResult = nil
         finalized = true
     }
 
@@ -82,9 +82,13 @@ struct TurnSettlementCoordinator {
         guard let assistantID, let promptResult else { return nil }
         // A failed RPC is terminal even when the CLI never emits completion. Success
         // waits until the completion event has crossed ChatStore's event queue.
-        guard !promptResult || completionConsumed else { return nil }
+        if !promptResult {
+            finalized = true
+            return Decision(assistantID: assistantID, ok: false)
+        }
+        guard let completionResult else { return nil }
         finalized = true
-        return Decision(assistantID: assistantID, ok: promptResult)
+        return Decision(assistantID: assistantID, ok: completionResult)
     }
 }
 
@@ -131,8 +135,16 @@ enum PermissionRequestPolicy {
     static func disposition(
         mode: GrokPermissionMode,
         isYolo: Bool,
-        options: [PermissionOption]
+        options: [PermissionOption],
+        mcpGatewayEnabled: Bool = true,
+        isMCPInvocation: Bool = false
     ) -> PermissionRequestDisposition {
+        // A thread's explicit MCP gate outranks convenience approval modes. Grok
+        // CLI remains the only executor: the app answers Grok's ACP permission
+        // request with its reject option and never invokes the tool client-side.
+        if isMCPInvocation && !mcpGatewayEnabled {
+            return .deny(optionID: options.first(where: { isDeny($0) })?.id)
+        }
         if isYolo || mode == .alwaysApprove {
             if let allow = options.first(where: { isAllow($0) }) {
                 return .allow(optionID: allow.id)
@@ -221,6 +233,10 @@ final class ChatStore {
     /// `true` when the failed switch can be resolved by starting a new session; the banner
     /// then offers a "Start New Session" action.
     var modelSwitchNeedsNewSession = false
+    /// The model the user actually requested when the current transcript made a live switch
+    /// unsafe. Keep it separate from `currentModel`, which remains pinned to the model that
+    /// produced the existing transcript until the user accepts a fresh-session boundary.
+    private var pendingModelForNewSession: String?
 
     // VS Code extension-style turn state
     private(set) var isGrokking = false
@@ -366,12 +382,16 @@ final class ChatStore {
 
     enum TurnOutcome: String, Hashable {
         case completed
+        case failed
+        case cancelled
         case completionReceiptMissing
         case userStopped
 
         var displayName: String {
             switch self {
             case .completed: "Turn completed"
+            case .failed: "Turn failed"
+            case .cancelled: "Turn cancelled"
             case .completionReceiptMissing: "Completion receipt missing"
             case .userStopped: "Stopped by you"
             }
@@ -2077,7 +2097,11 @@ final class ChatStore {
             resumeSessionID: effectiveResumeSessionID,
             forkSession: launchForkSession,
             newSessionID: launchNewSessionID,
-            mcpServers: mcpServers
+            mcpServers: mcpServers,
+            mcpGatewayEnabled: Self.mcpGatewayEnabled(
+                selectedPromptMCPNames: selectedPromptMCPNames,
+                enabledBuiltInToolNames: enabledBuiltInToolNames
+            )
         )
         let spawnInterval = GrokBuildPerformance.begin(.processSpawnToACPReady)
         await process.start(workspace: ws, options: opts)
@@ -2636,6 +2660,21 @@ final class ChatStore {
         guard SessionSendGate.decision(for: continuityStatus) != .block else {
             return false
         }
+        let desiredMCPGatewayState = Self.mcpGatewayEnabled(
+            selectedPromptMCPNames: selectedPromptMCPNames,
+            enabledBuiltInToolNames: enabledBuiltInToolNames
+        )
+        if process.launchReceipt?.mcpGatewayEnabled != desiredMCPGatewayState {
+            await restartProcess(resumeSessionID: process.sessionId ?? savedGrokSessionID)
+            guard connectionState == .ready,
+                  process.launchReceipt?.mcpGatewayEnabled == desiredMCPGatewayState,
+                  SessionSendGate.decision(for: continuityStatus) != .block else {
+                if lastError == nil {
+                    lastError = "Grok could not apply this turn's MCP gateway policy. Retry the turn."
+                }
+                return false
+            }
+        }
 
         if commandHistory.last != trimmed {
             commandHistory.append(trimmed)
@@ -2765,8 +2804,20 @@ final class ChatStore {
         closedTurnHasAuthoritativeHistory = false
         authoritativeTailAssistantID = nil
         activeTurnBackendSessionID = nil
-        lastError = process.state.errorMessage ?? "Failed to send to grok."
-        connectionState = process.state == .ready ? .ready : process.state
+        if latestTurnOutcome != .cancelled {
+            lastError = lastError ?? process.state.errorMessage ?? "Failed to send to grok."
+        }
+        // An owned `turn_completed` is the lifecycle authority even when its
+        // stop reason is error/cancelled. GrokProcess releases a missing prompt
+        // RPC response from that acknowledgement, but can still read `.busy`
+        // in this synchronous handler before its async `send` resumes and sets
+        // `.ready`. Do not strand the next turn behind that harmless race.
+        let hasAuthoritativeCompletion = latestTurnOutcome.map {
+            [.completed, .failed, .cancelled].contains($0)
+        } ?? false
+        connectionState = hasAuthoritativeCompletion && process.sessionId != nil
+            ? .ready
+            : process.state
         if let idx = messages.firstIndex(where: { $0.id == assistantID }),
            messages[idx].content.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             messages.remove(at: idx)
@@ -3254,16 +3305,52 @@ final class ChatStore {
 
     func setModel(_ model: String) {
         guard availableModels.contains(model) else { return }
+        if model == currentModel {
+            guard !tabHasExplicitModel else { return }
+            tabHasExplicitModel = true
+            tabModelIntent = .explicit(model)
+            if process.activeProcessGeneration == nil {
+                modelExecutionState = .savedIntent(modelID: model)
+            }
+            saveCurrentSessionSelection()
+            notifyModelChanged()
+            return
+        }
+        switch Self.modelSwitchSafetyBlock(
+            isStreaming: isStreaming,
+            hasProviderSpecificHistory: hasProviderSpecificHistory
+        ) {
+        case .activeTurn:
+            modelSwitchError = "Wait for the current response to finish before changing models."
+            modelSwitchNeedsNewSession = false
+            pendingModelForNewSession = nil
+            return
+        case .providerHistory:
+            modelSwitchError = "This session contains model-specific response history that is not replay-safe across models. Start a new session to change models."
+            modelSwitchNeedsNewSession = true
+            pendingModelForNewSession = model
+            return
+        case nil:
+            break
+        }
         let previous = currentModel
         let previousIntent = persistedModelIntent
         currentModel = model
         modelSwitchError = nil
         modelSwitchNeedsNewSession = false
+        pendingModelForNewSession = nil
         process.modelSwitchError = nil
         process.modelSwitchNeedsNewSession = false
         tabHasExplicitModel = true
         tabModelIntent = .explicit(model)
-        let handle = process.setModel(model)
+        let expectedEffectiveModelID = customModelsByID[model]?.model
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        let handle = process.setModel(
+            model,
+            expectedEffectiveModelID: expectedEffectiveModelID?.isEmpty == false
+                ? expectedEffectiveModelID
+                : nil
+        )
         modelExecutionState = handle == nil
             ? ModelExecutionState.savedIntent(modelID: model)
             : process.modelExecutionState
@@ -3288,6 +3375,10 @@ final class ChatStore {
                         requested: model,
                         effective: effective
                     )
+                    self.routeContractsByProcessGeneration[identity.processGeneration] = ModelRouteContract.resolve(
+                        selectedModelID: model,
+                        customModel: self.customModelsByID[model]
+                    )
                 }
             case .requested:
                 // ACP accepted the request without exposing the effective model.
@@ -3303,6 +3394,10 @@ final class ChatStore {
                 self.modelSwitchError = self.process.modelSwitchError
                     ?? "Grok did not accept the requested model."
                 self.modelSwitchNeedsNewSession = self.process.modelSwitchNeedsNewSession
+                self.pendingModelForNewSession = self.modelSwitchNeedsNewSession ? model : nil
+                if case .failed = self.process.state {
+                    self.connectionState = self.process.state
+                }
             case .unknown, .pending:
                 break
             }
@@ -3311,7 +3406,68 @@ final class ChatStore {
         }
     }
 
+    func dismissModelSwitchIssue() {
+        modelSwitchError = nil
+        modelSwitchNeedsNewSession = false
+        pendingModelForNewSession = nil
+    }
+
+    func resolveModelSwitchByStartingNewSession() async {
+        guard modelSwitchNeedsNewSession,
+              let model = Self.recoverableModelForNewSession(
+                  pendingModelForNewSession,
+                  availableModels: availableModels
+              ) else {
+            dismissModelSwitchIssue()
+            return
+        }
+        currentModel = model
+        tabHasExplicitModel = true
+        tabModelIntent = .explicit(model)
+        dismissModelSwitchIssue()
+        saveCurrentSessionSelection()
+        notifyModelChanged()
+        await startNewSession(resetThreadTools: true)
+    }
+
     var isModelRequestPending: Bool { modelExecutionState.status == .pending }
+
+    enum ModelSwitchSafetyBlock: Equatable {
+        case activeTurn
+        case providerHistory
+    }
+
+    nonisolated static func modelSwitchSafetyBlock(
+        isStreaming: Bool,
+        hasProviderSpecificHistory: Bool
+    ) -> ModelSwitchSafetyBlock? {
+        if isStreaming { return .activeTurn }
+        if hasProviderSpecificHistory { return .providerHistory }
+        return nil
+    }
+
+    nonisolated static func recoverableModelForNewSession(
+        _ requestedModel: String?,
+        availableModels: [String]
+    ) -> String? {
+        guard let requestedModel, availableModels.contains(requestedModel) else { return nil }
+        return requestedModel
+    }
+
+    private var hasProviderSpecificHistory: Bool {
+        Self.hasProviderSpecificHistory(in: messages)
+    }
+
+    nonisolated static func hasProviderSpecificHistory(in messages: [Message]) -> Bool {
+        messages.contains { $0.role == .assistant }
+    }
+
+    nonisolated static func mcpGatewayEnabled(
+        selectedPromptMCPNames: Set<String>,
+        enabledBuiltInToolNames: Set<String>
+    ) -> Bool {
+        !selectedPromptMCPNames.isEmpty || !enabledBuiltInToolNames.isEmpty
+    }
 
     private var modelReceiptIsCurrentProcess: Bool {
         guard let identity = modelExecutionState.identity,
@@ -3405,13 +3561,9 @@ final class ChatStore {
         let pid = receipt.processIdentifier.map(String.init) ?? "unavailable"
         lines.append("Process generation \(receipt.processGeneration), PID \(pid), \(receipt.outcome.rawValue).")
         lines.append("Tab \(Self.shortReceiptID(receipt.localTabID?.uuidString)); backend \(Self.shortReceiptID(receipt.backendSessionID)).")
-        lines.append("Requested model: \(receipt.requestedModelID.map(modelDisplayName) ?? "CLI default").")
-        let routeModelID = receipt.requestedModelID ?? currentModel
+        lines.append("Launch requested model: \(receipt.requestedModelID.map(modelDisplayName) ?? "CLI default").")
         let routeContract = routeContractsByProcessGeneration[receipt.processGeneration]
-            ?? ModelRouteContract.resolve(
-                selectedModelID: routeModelID,
-                customModel: customModelsByID[routeModelID]
-            )
+            ?? currentRouteContract
         lines.append(contentsOf: routeContract.detailLines)
         lines.append("Agent: \(GrokAgentProfiles.displayName(for: receipt.requestedAgentID ?? "")); effort: \(receipt.requestedReasoningEffort?.isEmpty == false ? receipt.requestedReasoningEffort! : "default").")
         lines.append("Permissions: \(receipt.permissionMode.displayName); sandbox: \(receipt.sandboxProfile).")
@@ -3423,7 +3575,13 @@ final class ChatStore {
             receipt.computerUseEnabled ? "computer use" : nil,
         ].compactMap { $0 }
         lines.append("Launched capabilities: \(capabilities.isEmpty ? "none" : capabilities.joined(separator: ", ")).")
-        lines.append("MCP servers: \(receipt.mcpServerNames.isEmpty ? "none" : receipt.mcpServerNames.joined(separator: ", ")).")
+        lines.append(receipt.mcpGatewayEnabled
+            ? "MCP gateway: explicit selection requested; the app catch-all gate is omitted, while Grok CLI catalog and remaining deny rules stay authoritative."
+            : "MCP gateway: external tool invocation blocked by the session-scoped CLI deny rule MCPTool(*__*) plus fail-closed ACP permission responses.")
+        lines.append("App-injected MCP servers: \(receipt.mcpServerNames.isEmpty ? "none" : receipt.mcpServerNames.joined(separator: ", ")).")
+        if !receipt.observedCLIConfiguredMCPServerNames.isEmpty {
+            lines.append("CLI-configured MCP servers observed: \(receipt.observedCLIConfiguredMCPServerNames.joined(separator: ", ")).")
+        }
         return lines
     }
 
@@ -3497,7 +3655,9 @@ final class ChatStore {
                 switch PermissionRequestPolicy.disposition(
                     mode: effectivePermissionMode,
                     isYolo: true,
-                    options: perm.options
+                    options: perm.options,
+                    mcpGatewayEnabled: process.launchReceipt?.mcpGatewayEnabled == true,
+                    isMCPInvocation: perm.toolCall.qualifiedToolName != nil
                 ) {
                 case .allow(let optionID):
                     respondToPermission(perm, with: optionID)
@@ -3711,7 +3871,17 @@ final class ChatStore {
             backgroundActivities = backgroundTaskTracker.activities
             settleToolCallsAtTurnBarrier()
             attachCurrentTurnTrace(to: streamingMessageID)
-            latestTurnOutcome = .completed
+            let turnSucceeded = completion.isSuccessful
+            latestTurnOutcome = if turnSucceeded {
+                .completed
+            } else if completion.isCancelled {
+                .cancelled
+            } else {
+                .failed
+            }
+            if latestTurnOutcome == .failed {
+                lastError = completion.redactedError ?? "Grok reported that this turn ended with an error."
+            }
             // Slice 6: the authoritative completion receipt is the only usage source.
             sessionUsage.recordTurn(
                 modelID: modelExecutionState.effectiveModelID ?? currentModel,
@@ -3731,11 +3901,11 @@ final class ChatStore {
                deferredPromptCompletion == nil,
                streamingTextBuffer.isEmpty,
                let stuckAssistantID = streamingMessageID ?? closedTurnAssistantID {
-                finishPromptNow(assistantID: stuckAssistantID, ok: true)
+                finishPromptNow(assistantID: stuckAssistantID, ok: turnSucceeded)
             }
             requestGitRefresh()
             process.acknowledgeTurnCompletionBridge(authoritative: true)
-            applyTurnSettlementDecision(turnSettlement.recordCompletionConsumed())
+            applyTurnSettlementDecision(turnSettlement.recordCompletionConsumed(ok: turnSucceeded))
         case .turnCompletionReceiptMissing(let failure):
             guard ownsActiveCompletionEvent(failure.identity) else { break }
             // The watchdog is a failure boundary, never a synthetic completion.
@@ -3754,6 +3924,7 @@ final class ChatStore {
                 identity: failure.identity,
                 promptID: nil,
                 stopReason: nil,
+                redactedError: nil,
                 totalTokens: nil,
                 modelCalls: nil,
                 turnCount: nil
@@ -3771,7 +3942,9 @@ final class ChatStore {
             switch PermissionRequestPolicy.disposition(
                 mode: liveMode,
                 isYolo: isYolo,
-                options: req.options
+                options: req.options,
+                mcpGatewayEnabled: process.launchReceipt?.mcpGatewayEnabled == true,
+                isMCPInvocation: req.toolCall.qualifiedToolName != nil
             ) {
             case .allow(let optionID):
                 answerPermissionRequest(req, with: optionID)
@@ -4045,7 +4218,7 @@ final class ChatStore {
                 guard receipt.status != .succeeded else { return nil }
                 return "Child tool \(receipt.qualifiedToolName ?? receipt.title) ended \(receipt.status.rawValue)."
             }
-        }
+        } + [completion?.redactedError].compactMap { $0 }
         let provenance: String = switch continuityStatus {
         case .localOnly: "Local only"
         case .backendBound: "Fresh backend bound"
@@ -4060,12 +4233,20 @@ final class ChatStore {
         // watchdog can preserve evidence, but it cannot paint the process settled.
         let processState = processStateOverride ?? (outcome == .completed
             ? "Settled"
-            : outcome == .userStopped
-                ? "Stopped by you"
-                : "Incomplete — completion receipt missing")
+            : outcome == .failed
+                ? "Failed"
+                : outcome == .cancelled
+                    ? "Cancelled"
+                    : outcome == .userStopped
+                        ? "Stopped by you"
+                        : "Incomplete — completion receipt missing")
         let nextAction: String
         if let nextActionOverride {
             nextAction = nextActionOverride
+        } else if outcome == .failed {
+            nextAction = "Review the provider or CLI error before retrying."
+        } else if outcome == .cancelled {
+            nextAction = "Review the cancellation and unresolved tool receipts before retrying."
         } else if outcome == .completionReceiptMissing {
             nextAction = "Reconnect before sending another turn; the backend completion receipt was not reported."
         } else if outcome == .userStopped {
@@ -4087,7 +4268,7 @@ final class ChatStore {
                 backendSessionID: process.sessionId,
                 processGeneration: process.activeProcessGeneration,
                 requestID: completion?.promptID,
-                isSettled: outcome == .completed
+                isSettled: outcome == .completed || outcome == .failed || outcome == .cancelled
             ),
             goalSummary: goalState?.objective ?? latestUserMessage.map {
                 TranscriptTextPresentation.singleLine($0, maxLength: 240)
@@ -4663,10 +4844,11 @@ final class ChatStore {
     }
 
     private func applyTabModel(_ model: String) {
-        guard availableModels.contains(model) else { return }
-        currentModel = model
+        let trimmed = model.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+        currentModel = trimmed
         tabHasExplicitModel = true
-        tabModelIntent = .explicit(model)
+        tabModelIntent = .explicit(trimmed)
     }
 
     private func applyLegacyModelIfAvailable(_ model: String) {
@@ -4683,7 +4865,8 @@ final class ChatStore {
     }
 
     private func modelForProcessLaunch(fallbackSelection: SessionSelection?) -> String {
-        if tabHasExplicitModel, availableModels.contains(currentModel) {
+        if tabHasExplicitModel,
+           !currentModel.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             return currentModel
         }
         if case .legacyUnknown(let model) = tabModelIntent,

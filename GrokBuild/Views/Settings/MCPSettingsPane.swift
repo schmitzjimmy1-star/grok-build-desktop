@@ -244,7 +244,7 @@ struct MCPSettingsPane: View {
                 VStack(alignment: .leading, spacing: 7) {
                     Label("Literal secret storage", systemImage: "exclamationmark.triangle")
                         .font(.callout.weight(.semibold))
-                    Text("The installed Grok 0.2.118 CLI accepts literal --env/--header values and exposes no interoperable secret-reference syntax. Grok stores them in the selected config. User config remains owner-only (0600); project config may be shared. GrokBuild never mirrors or reveals these values.")
+                    Text("The installed Grok CLI accepts literal --env/--header values and exposes no interoperable secret-reference syntax. Grok stores them in the selected config. User config remains owner-only (0600); project config may be shared. GrokBuild never mirrors or reveals these values.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                     Toggle("I understand where these literal values will be stored", isOn: $acknowledgedLiteralStorage)
@@ -527,4 +527,3 @@ struct MCPSettingsPane: View {
         operationTask?.cancel()
     }
 }
-

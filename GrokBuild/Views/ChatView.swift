@@ -655,13 +655,10 @@ struct ChatView: View {
                     message: switchError,
                     canStartNewSession: store.modelSwitchNeedsNewSession,
                     onStartNewSession: {
-                        store.modelSwitchError = nil
-                        store.modelSwitchNeedsNewSession = false
-                        Task { await store.startNewSession(resetThreadTools: true) }
+                        Task { await store.resolveModelSwitchByStartingNewSession() }
                     },
                     onDismiss: {
-                        store.modelSwitchError = nil
-                        store.modelSwitchNeedsNewSession = false
+                        store.dismissModelSwitchIssue()
                     }
                 )
             }
@@ -1076,7 +1073,7 @@ struct ChatView: View {
         }
         .onChange(of: store.runEvidenceSnapshot?.outcome) { _, outcome in
             guard let outcome,
-                  [.completionReceiptMissing, .userStopped].contains(outcome),
+                  [.failed, .cancelled, .completionReceiptMissing, .userStopped].contains(outcome),
                   !showActivitySidebar else { return }
             if reduceMotion {
                 showActivitySidebar = true
@@ -1085,9 +1082,19 @@ struct ChatView: View {
                     showActivitySidebar = true
                 }
             }
-            VoiceOverAnnouncer.announce(outcome == .userStopped
-                ? "Stopped by you. Activity opened with the local stop outcome and next action."
-                : "Completion receipt missing. Activity opened with the preserved run evidence.")
+            let announcement = switch outcome {
+            case .failed:
+                "Turn failed. Activity opened with the provider or CLI error."
+            case .cancelled:
+                "Turn cancelled. Activity opened with the preserved cancellation and tool receipts."
+            case .userStopped:
+                "Stopped by you. Activity opened with the local stop outcome and next action."
+            case .completionReceiptMissing:
+                "Completion receipt missing. Activity opened with the preserved run evidence."
+            case .completed:
+                "Turn completed."
+            }
+            VoiceOverAnnouncer.announce(announcement)
         }
         .confirmationDialog(
             "Change reasoning effort?",
@@ -2781,7 +2788,7 @@ struct ChatView: View {
                         }
                     }
                     .accessibilityIdentifier("grok-model-option-\(modelId)")
-                    .disabled(store.isModelRequestPending)
+                    .disabled(store.isModelRequestPending || store.isStreaming)
                 }
             }
         }
@@ -2807,7 +2814,7 @@ struct ChatView: View {
             return "A model request is pending; other model choices are temporarily unavailable"
         }
         if store.isStreaming {
-            return "Select model; wait for the current turn to finish before changing reasoning effort"
+            return "Wait for the current response to finish before changing model or reasoning effort"
         }
         if !store.currentModelSupportsReasoningEffort {
             return "Model selector; reasoning effort is off for this custom model"

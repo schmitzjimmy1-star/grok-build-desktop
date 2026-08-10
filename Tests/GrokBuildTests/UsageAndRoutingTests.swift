@@ -246,7 +246,7 @@ final class UsageAndRoutingTests: XCTestCase {
             2,
             "both worker construction sites (live projection + settled snapshot) must carry routing"
         )
-        let settleAnchor = try XCTUnwrap(chatStoreSource.range(of: "latestTurnOutcome = .completed"))
+        let settleAnchor = try XCTUnwrap(chatStoreSource.range(of: "let turnSucceeded = completion.isSuccessful"))
         let afterSettle = String(chatStoreSource[settleAnchor.upperBound...].prefix(600))
         XCTAssertTrue(afterSettle.contains("sessionUsage.recordTurn("),
                       "the ledger records only at the authoritative completion barrier")

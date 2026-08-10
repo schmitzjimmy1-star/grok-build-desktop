@@ -399,6 +399,16 @@ final class ACPClientContractTests: XCTestCase {
             failed.recordPromptResult(generation: failedGeneration, ok: false),
             .init(assistantID: failedID, ok: false)
         )
+
+        var backendFailure = TurnSettlementCoordinator()
+        let backendFailureID = UUID()
+        let backendFailureGeneration = backendFailure.begin(assistantID: backendFailureID)
+        XCTAssertNil(backendFailure.recordPromptResult(generation: backendFailureGeneration, ok: true))
+        XCTAssertEqual(
+            backendFailure.recordCompletionConsumed(ok: false),
+            .init(assistantID: backendFailureID, ok: false),
+            "an authoritative ACP error completion must not be promoted to success"
+        )
     }
 
     func testModelReducerRequiresExactTabBackendGenerationAndRequestIdentity() {
@@ -515,6 +525,24 @@ final class ACPClientContractTests: XCTestCase {
         XCTAssertEqual(GrokProcess.effectiveModelID(from: [
             "modelState": ["currentModelId": "gpt-5.6-terra"]
         ]), "gpt-5.6-terra")
+    }
+
+    func testFreshSessionRecoveryPreservesTheRequestedModelOnlyWhileItIsAvailable() {
+        XCTAssertEqual(
+            ChatStore.recoverableModelForNewSession(
+                "deepseek-deepseek-v4-flash-0731",
+                availableModels: ["grok-4.5", "deepseek-deepseek-v4-flash-0731"]
+            ),
+            "deepseek-deepseek-v4-flash-0731"
+        )
+        XCTAssertNil(ChatStore.recoverableModelForNewSession(
+            "deepseek-deepseek-v4-flash-0731",
+            availableModels: ["grok-4.5"]
+        ))
+        XCTAssertNil(ChatStore.recoverableModelForNewSession(
+            nil,
+            availableModels: ["grok-4.5"]
+        ))
     }
 
     @MainActor
@@ -747,6 +775,197 @@ final class ACPClientContractTests: XCTestCase {
         await process.stop()
     }
 
+    func testLiveModelSwitchRejectsAnUnexpectedEffectiveReadback() async throws {
+        let fixtureRoot = FileManager.default.temporaryDirectory
+            .appendingPathComponent("grokbuild-model-mismatch-fixture-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: fixtureRoot, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: fixtureRoot) }
+        let scriptURL = fixtureRoot.appendingPathComponent("fake-grok")
+        let script = """
+        #!/bin/sh
+        while IFS= read -r line; do
+          id=$(printf '%s' "$line" | sed -E 's/.*"id":([0-9]+).*/\\1/')
+          case "$line" in
+            *'"method":"initialize"'*)
+              printf '{"jsonrpc":"2.0","id":%s,"result":{}}\\n' "$id"
+              ;;
+            *'"method":"session/new"'*)
+              printf '{"jsonrpc":"2.0","id":%s,"result":{"sessionId":"model-mismatch-session","models":{"currentModelId":"grok-4.5","availableModels":[]}}}\\n' "$id"
+              ;;
+            *'"method":"session/set_model"'*)
+              printf '{"jsonrpc":"2.0","id":%s,"result":{"_meta":{"model":{"Ok":"unrelated-provider/model"}}}}\\n' "$id"
+              ;;
+          esac
+        done
+        """
+        try script.write(to: scriptURL, atomically: true, encoding: .utf8)
+        try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: scriptURL.path)
+
+        GrokProcess.cliOverrideForTests = scriptURL
+        defer { GrokProcess.cliOverrideForTests = nil }
+        let process = GrokProcess()
+        await process.start(
+            workspace: Workspace(name: "fixture", path: fixtureRoot),
+            options: GrokLaunchOptions(localTabID: UUID(), model: "grok-4.5")
+        )
+        XCTAssertEqual(process.state, .ready)
+
+        let handle = try XCTUnwrap(process.setModel("gpt-5.6-terra"))
+        let result = await handle.result.value
+        XCTAssertEqual(result.status, .rejected)
+        XCTAssertTrue(process.modelSwitchNeedsNewSession)
+        XCTAssertTrue(process.modelSwitchError?.contains("unrelated-provider/model") == true)
+        guard case .failed = process.state else {
+            return XCTFail("An unexpected effective model must make the process unsendable")
+        }
+        await process.stop()
+    }
+
+    @MainActor
+    func testUnavailableExplicitModelRemainsTheFailClosedTabSelection() async {
+        let store = ChatStore()
+        store.prepare(workspace: Workspace(
+            name: "fixture",
+            path: FileManager.default.temporaryDirectory
+        ))
+        store.bindTabSession(
+            UUID(),
+            modelIntent: .explicit("removed-custom-model")
+        )
+
+        XCTAssertEqual(store.persistedModelIntent, .explicit("removed-custom-model"))
+        XCTAssertTrue(store.modelSelectorDisplayLabel.hasPrefix("removed-custom-model"))
+        await store.shutdownPermanently()
+    }
+
+    func testModelChoiceIsBlockedWhileATurnIsStreaming() {
+        XCTAssertEqual(
+            ChatStore.modelSwitchSafetyBlock(
+                isStreaming: true,
+                hasProviderSpecificHistory: false
+            ),
+            .activeTurn
+        )
+    }
+
+    func testAnyAssistantHistoryRequiresANewSessionBeforeChangingModel() {
+        let messages = [
+            Message(role: .user, content: "Inspect it"),
+            Message(
+                role: .assistant,
+                content: "Done",
+                assistantTrace: AssistantTurnTrace(
+                    reasoningSummaryChunks: [],
+                    thinkingDuration: nil,
+                    tools: [
+                        .init(
+                            id: "tool-1",
+                            title: "Web search",
+                            status: "Succeeded",
+                            mcpServerName: nil
+                        )
+                    ]
+                )
+            ),
+        ]
+        XCTAssertTrue(ChatStore.hasProviderSpecificHistory(in: messages))
+        XCTAssertEqual(
+            ChatStore.modelSwitchSafetyBlock(
+                isStreaming: false,
+                hasProviderSpecificHistory: true
+            ),
+            .providerHistory
+        )
+    }
+
+    func testPlainAssistantHistoryIsProviderSpecificEvenWithoutTools() {
+        let messages = [
+            Message(role: .user, content: "Say hello"),
+            Message(role: .assistant, content: "Hello"),
+        ]
+        XCTAssertTrue(ChatStore.hasProviderSpecificHistory(in: messages))
+        XCTAssertEqual(
+            ChatStore.modelSwitchSafetyBlock(
+                isStreaming: false,
+                hasProviderSpecificHistory: true
+            ),
+            .providerHistory
+        )
+    }
+
+    func testMCPGatewayPolicyDefaultsOffAndRequiresExplicitSelection() {
+        XCTAssertFalse(ChatStore.mcpGatewayEnabled(
+            selectedPromptMCPNames: [],
+            enabledBuiltInToolNames: []
+        ))
+        XCTAssertTrue(ChatStore.mcpGatewayEnabled(
+            selectedPromptMCPNames: ["chrome-devtools"],
+            enabledBuiltInToolNames: []
+        ))
+        XCTAssertTrue(ChatStore.mcpGatewayEnabled(
+            selectedPromptMCPNames: [],
+            enabledBuiltInToolNames: [BuiltInToolConnection.browser.rawValue]
+        ))
+    }
+
+    func testCLIConfiguredMCPNotificationNamesAreCredentialFreeAndSorted() {
+        XCTAssertEqual(
+            GrokProcess.mcpServerNames(from: [
+                "mcpServers": [
+                    ["name": "chrome-devtools", "url": "http://secret.invalid"],
+                    ["server_name": "alpha"],
+                    ["name": "chrome-devtools"],
+                ]
+            ]),
+            ["alpha", "chrome-devtools"]
+        )
+    }
+
+    func testACPErrorCompletionIsAnAuthoritativeFailure() {
+        let identity = ACPEventIdentity(
+            localTabID: UUID(),
+            backendSessionID: "backend",
+            processGeneration: 9,
+            backendEventID: "event"
+        )
+        let receipt = TurnCompletionReceipt(
+            identity: identity,
+            promptID: "prompt",
+            stopReason: "error",
+            redactedError: GrokProcess.redactedLifecycleText("API error: encrypted reasoning could not be verified"),
+            totalTokens: nil,
+            modelCalls: nil,
+            turnCount: nil
+        )
+        XCTAssertTrue(receipt.isFailure)
+        XCTAssertEqual(receipt.redactedError, "API error: encrypted reasoning could not be verified")
+
+        let success = TurnCompletionReceipt(
+            identity: identity,
+            promptID: "prompt",
+            stopReason: "end_turn",
+            redactedError: nil,
+            totalTokens: 12,
+            modelCalls: 1,
+            turnCount: 1
+        )
+        XCTAssertFalse(success.isFailure)
+        XCTAssertTrue(success.isSuccessful)
+
+        let cancelled = TurnCompletionReceipt(
+            identity: identity,
+            promptID: "prompt",
+            stopReason: "cancelled",
+            redactedError: nil,
+            totalTokens: 12,
+            modelCalls: 1,
+            turnCount: 1
+        )
+        XCTAssertTrue(cancelled.isCancelled)
+        XCTAssertFalse(cancelled.isSuccessful)
+        XCTAssertFalse(cancelled.isFailure)
+    }
+
     func testCustomLaunchAcceptsOnlyItsDeclaredProviderModelReadback() async throws {
         let fixtureRoot = FileManager.default.temporaryDirectory
             .appendingPathComponent("grokbuild-custom-alias-fixture-\(UUID().uuidString)", isDirectory: true)
@@ -788,6 +1007,52 @@ final class ACPClientContractTests: XCTestCase {
         XCTAssertEqual(process.state, .ready)
         XCTAssertEqual(process.modelExecutionState.requestedModelID, "deepseek-deepseek-v4-flash-0731")
         XCTAssertEqual(process.modelExecutionState.effectiveModelID, "deepseek/deepseek-v4-flash-0731")
+        await process.stop()
+    }
+
+    func testLiveCustomModelSwitchAcceptsOnlyItsDeclaredProviderAlias() async throws {
+        let fixtureRoot = FileManager.default.temporaryDirectory
+            .appendingPathComponent("grokbuild-live-custom-alias-fixture-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: fixtureRoot, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: fixtureRoot) }
+        let scriptURL = fixtureRoot.appendingPathComponent("fake-grok")
+        let script = """
+        #!/bin/sh
+        while IFS= read -r line; do
+          id=$(printf '%s' "$line" | sed -E 's/.*"id":([0-9]+).*/\\1/')
+          case "$line" in
+            *'"method":"initialize"'*)
+              printf '{"jsonrpc":"2.0","id":%s,"result":{}}\\n' "$id"
+              ;;
+            *'"method":"session/new"'*)
+              printf '{"jsonrpc":"2.0","id":%s,"result":{"sessionId":"live-custom-alias-session","models":{"currentModelId":"grok-4.5","availableModels":[]}}}\\n' "$id"
+              ;;
+            *'"method":"session/set_model"'*)
+              printf '{"jsonrpc":"2.0","id":%s,"result":{"_meta":{"model":{"Ok":"deepseek/deepseek-v4-flash-0731"}}}}\\n' "$id"
+              ;;
+          esac
+        done
+        """
+        try script.write(to: scriptURL, atomically: true, encoding: .utf8)
+        try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: scriptURL.path)
+
+        GrokProcess.cliOverrideForTests = scriptURL
+        defer { GrokProcess.cliOverrideForTests = nil }
+        let process = GrokProcess()
+        await process.start(
+            workspace: Workspace(name: "fixture", path: fixtureRoot),
+            options: GrokLaunchOptions(localTabID: UUID(), model: "grok-4.5")
+        )
+
+        let handle = try XCTUnwrap(process.setModel(
+            "deepseek-deepseek-v4-flash-0731",
+            expectedEffectiveModelID: "deepseek/deepseek-v4-flash-0731"
+        ))
+        let result = await handle.result.value
+        XCTAssertEqual(result.status, .confirmed)
+        XCTAssertEqual(result.requestedModelID, "deepseek-deepseek-v4-flash-0731")
+        XCTAssertEqual(result.effectiveModelID, "deepseek/deepseek-v4-flash-0731")
+        XCTAssertEqual(process.state, .ready)
         await process.stop()
     }
 
@@ -1095,7 +1360,8 @@ final class ACPClientContractTests: XCTestCase {
         XCTAssertTrue(chrome.contains("explicit backend retry correlation"))
         XCTAssertTrue(chrome.contains("turnOutcome.displayName"))
         XCTAssertTrue(store.contains("settleToolCallsAtTurnBarrier()"))
-        XCTAssertTrue(store.contains("latestTurnOutcome = .completed"))
+        XCTAssertTrue(store.contains("else if completion.isCancelled"))
+        XCTAssertTrue(store.contains(".cancelled"))
         XCTAssertTrue(store.contains("The agent reported no next action."))
         XCTAssertTrue(store.contains("Review unresolved worker receipts."))
         XCTAssertFalse(store.contains("No further action reported."))
@@ -1235,6 +1501,52 @@ final class ACPClientContractTests: XCTestCase {
             answer
         )
         XCTAssertFalse(store.isStreaming)
+        await store.shutdownPermanently()
+    }
+
+    @MainActor
+    func testCancelledCompletionReleasesMissingPromptRPCResponse() async throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("grokbuild-cancelled-prompt-fixture-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let scriptURL = root.appendingPathComponent("fake-grok")
+        let script = """
+        #!/bin/sh
+        while IFS= read -r line; do
+          id=$(printf '%s' "$line" | sed -E 's/.*"id":([0-9]+).*/\\1/')
+          case "$line" in
+            *'"method":"initialize"'*) printf '{"jsonrpc":"2.0","id":%s,"result":{}}\n' "$id" ;;
+            *'"method":"session/new"'*) printf '{"jsonrpc":"2.0","id":%s,"result":{"sessionId":"cancelled-backend","models":{"currentModelId":"grok-4.5","availableModels":[]}}}\n' "$id" ;;
+            *'"method":"session/set_model"'*) printf '{"jsonrpc":"2.0","id":%s,"result":{"_meta":{"model":{"Ok":"grok-4.5"}}}}\n' "$id" ;;
+            *'"method":"session/prompt"'*)
+              printf '{"jsonrpc":"2.0","method":"_x.ai/session_notification","params":{"sessionId":"cancelled-backend","update":{"sessionUpdate":"turn_completed","stop_reason":"cancelled","usage":{"totalTokens":42,"modelCalls":1,"numTurns":1}}}}\n'
+              # Grok CLI 1.0 omits the matching JSON-RPC response on this path.
+              ;;
+          esac
+        done
+        """
+        try script.write(to: scriptURL, atomically: true, encoding: .utf8)
+        try FileManager.default.setAttributes(
+            [.posixPermissions: 0o755],
+            ofItemAtPath: scriptURL.path
+        )
+
+        GrokProcess.cliOverrideForTests = scriptURL
+        defer { GrokProcess.cliOverrideForTests = nil }
+        let store = ChatStore()
+        store.bindTabSession(UUID(), savedModel: "grok-4.5")
+        await store.start(workspace: Workspace(name: "cancelled-prompt", path: root))
+
+        let sendSucceeded = await store.sendAndWait("Exercise cancelled completion")
+
+        XCTAssertTrue(sendSucceeded, "the authoritative ACP receipt releases the transport wait")
+        XCTAssertEqual(store.latestTurnOutcome, .cancelled)
+        XCTAssertFalse(store.isStreaming)
+        XCTAssertEqual(store.connectionState, .ready)
+        XCTAssertNil(store.lastError)
+        XCTAssertEqual(store.runEvidenceSnapshot?.process.state, "Cancelled")
+        XCTAssertEqual(store.runEvidenceSnapshot?.usage.totalTokens, 42)
         await store.shutdownPermanently()
     }
 
