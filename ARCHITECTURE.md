@@ -580,7 +580,8 @@ settled `RunEvidenceSnapshot`, fresh selected-worktree Git state, and the tab's 
 backend/model receipt. At settlement, `AssistantTurnCheckpoint` copies only
 secret-free authoritative fields (objective, outcome, typed plan steps, full worker
 receipts including runtime/configured model distinction, exact parent/child identities,
-artifacts, review paths, unresolved warnings, process generation, explicitly requested
+and reconciled child-tool outcomes, artifacts, review paths, unresolved warnings,
+process generation, explicitly requested
 MCP/GUI families, model, recovery flag, and next action) into the existing local
 `AssistantTurnTrace`. Persisted tool receipts also retain only provider-reported
 duration. This lets every restored assistant turn rebuild its own settled run spine and

@@ -54,6 +54,7 @@ struct AssistantTurnCheckpoint: Codable, Sendable, Hashable {
         let durationMilliseconds: Int?
         let toolCallCount: Int?
         let redactedError: String?
+        let childToolReceipts: [ChildToolReceipt]?
         let runtimeModelID: String?
         let routedModel: String?
     }
@@ -125,6 +126,7 @@ struct AssistantTurnCheckpoint: Codable, Sendable, Hashable {
                 durationMilliseconds: $0.durationMilliseconds,
                 toolCallCount: $0.toolCallCount,
                 redactedError: $0.redactedError,
+                childToolReceipts: $0.childToolReceipts,
                 runtimeModelID: $0.runtimeModelID,
                 routedModel: $0.routedModel
             )

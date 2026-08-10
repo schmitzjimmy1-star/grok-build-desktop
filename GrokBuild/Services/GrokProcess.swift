@@ -222,7 +222,7 @@ struct AgentMode: RawRepresentable, Sendable, Hashable, Equatable {
     static let yolo  = AgentMode(rawValue: "yolo")
 }
 
-enum ToolCallTerminalStatus: String, Sendable, Hashable {
+enum ToolCallTerminalStatus: String, Codable, Sendable, Hashable {
     case succeeded
     case failed
     case cancelled
@@ -445,7 +445,7 @@ struct SubagentFinishedEvent: Sendable, Hashable {
     }
 }
 
-struct ChildToolReceipt: Sendable, Hashable {
+struct ChildToolReceipt: Codable, Sendable, Hashable {
     let id: String
     let title: String
     let status: ToolCallTerminalStatus

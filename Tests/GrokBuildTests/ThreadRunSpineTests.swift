@@ -352,7 +352,10 @@ final class ThreadRunSpineTests: XCTestCase {
         XCTAssertEqual(restored.checkpoint, checkpoint)
         XCTAssertTrue(restored.hasContent)
         XCTAssertEqual(ThreadRunSpinePresentation.persistedPlan(restored.checkpoint).count, 1)
-        XCTAssertEqual(ThreadRunSpinePresentation.persistedWorkers(restored.checkpoint).first?.runtimeModelID, "grok-4.5-build")
+        let restoredWorker = ThreadRunSpinePresentation.persistedWorkers(restored.checkpoint).first
+        XCTAssertEqual(restoredWorker?.runtimeModelID, "grok-4.5-build")
+        XCTAssertEqual(restoredWorker?.childToolReceipts?.count, 1)
+        XCTAssertEqual(restoredWorker?.childToolReceipts?.first?.status, .succeeded)
         XCTAssertEqual(ThreadRunSpinePresentation.persistedArtifacts(restored.checkpoint).first?.path, "/tmp/report.txt")
     }
 
@@ -434,6 +437,14 @@ final class ThreadRunSpineTests: XCTestCase {
                 durationMilliseconds: 120,
                 toolCallCount: 1,
                 redactedError: nil,
+                childToolReceipts: [.init(
+                    id: "child-tool",
+                    title: "Child tool",
+                    status: .succeeded,
+                    mcpReceiptRole: nil,
+                    qualifiedToolName: nil,
+                    discoveredQualifiedToolNames: []
+                )],
                 runtimeModelID: "grok-4.5-build",
                 routedModel: "gpt-5.6-terra"
             )],

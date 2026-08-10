@@ -114,6 +114,7 @@ enum ThreadRunSpinePresentation {
                     durationMilliseconds: $0.durationMilliseconds,
                     toolCallCount: $0.toolCallCount,
                     redactedError: $0.redactedError,
+                    childToolReceipts: $0.childToolReceipts,
                     runtimeModelID: $0.runtimeModelID,
                     routedModel: $0.routedModel
                 )
