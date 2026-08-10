@@ -651,6 +651,7 @@ final class GrokProcess: @unchecked Sendable {
         )
         let contentDetail = Self.toolContentText(tool["content"])
         let rawOutputDetail = Self.toolRawOutputText(rawOutput)
+        let commandOutputDetail = Self.toolCommandOutputText(rawOutput, kind: kind)
         let terminalFailure = Self.terminalFailureDetail(rawOutput)
 
         return ToolCall(
@@ -659,7 +660,10 @@ final class GrokProcess: @unchecked Sendable {
             title: title,
             rawInput: raw.isEmpty ? nil : raw,
             status: status,
-            detail: Self.redactedToolText(terminalFailure ?? rawOutputDetail ?? contentDetail, limit: 280),
+            detail: Self.redactedToolText(
+                terminalFailure ?? commandOutputDetail ?? rawOutputDetail ?? contentDetail,
+                limit: 280
+            ),
             diagnosticDetail: Self.toolDiagnosticText(rawOutput),
             target: Self.toolTarget(from: raw),
             mcpReceiptRole: mcpReceiptRole,
@@ -799,6 +803,39 @@ final class GrokProcess: @unchecked Sendable {
                   let data = try? JSONSerialization.data(withJSONObject: dictionary, options: [.sortedKeys]),
                   let text = String(data: data, encoding: .utf8) else { return nil }
             return text
+        }
+        return nil
+    }
+
+    private static func toolCommandOutputText(_ value: Any?, kind _: String) -> String? {
+        let dictionary: [String: Any]?
+        if let value = value as? [String: Any] {
+            dictionary = value
+        } else if let text = value as? String,
+                  let data = text.data(using: .utf8),
+                  let decoded = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
+            dictionary = decoded
+        } else {
+            dictionary = nil
+        }
+        guard let dictionary else { return nil }
+        guard dictionary["command"] != nil || dictionary["exit_code"] != nil else { return nil }
+
+        if let output = dictionary["output"] as? String {
+            let trimmed = output.trimmingCharacters(in: .whitespacesAndNewlines)
+            return trimmed.isEmpty ? nil : trimmed
+        }
+        if let values = dictionary["output"] as? [Any] {
+            let bytes = values.compactMap { value -> UInt8? in
+                guard let number = value as? NSNumber,
+                      number.intValue >= 0,
+                      number.intValue <= 255 else { return nil }
+                return UInt8(number.intValue)
+            }
+            guard bytes.count == values.count else { return nil }
+            let decoded = String(decoding: bytes, as: UTF8.self)
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            return decoded.isEmpty ? nil : decoded
         }
         return nil
     }

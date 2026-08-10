@@ -873,7 +873,7 @@ final class ACPClientContractTests: XCTestCase {
         let parsed = process.parseToolCall(from: [
             "sessionUpdate": "tool_call_update",
             "toolCallId": "call-1",
-            "kind": "execute",
+            "kind": "unknown",
             "title": "Run command",
             "status": "failed",
             "content": [[
@@ -891,6 +891,27 @@ final class ACPClientContractTests: XCTestCase {
         XCTAssertEqual(parsed?.detail, "Terminal exited with status 2")
         XCTAssertEqual(parsed?.terminalStatus, .failed)
         XCTAssertEqual(parsed?.diagnosticDetail, #"{"error":"tool_execution_failed","message":"Terminal exited with status 2"}"#)
+    }
+
+    func testSuccessfulTerminalReceiptProjectsOutputInsteadOfProtocolJSON() {
+        let rawOutput: [String: Any] = [
+            "command": "./check.sh",
+            "exit_code": 0,
+            "output": [71, 66, 45, 84, 69, 83, 84, 83, 45, 80, 65, 83, 83, 69, 68, 10],
+            "output_file": "/private/backend/path",
+        ]
+        let rawOutputData = try! JSONSerialization.data(withJSONObject: rawOutput)
+        let parsed = GrokProcess().parseToolCall(from: [
+            "sessionUpdate": "tool_call_update",
+            "toolCallId": "call-output",
+            "kind": "execute",
+            "title": "Run checks",
+            "status": "completed",
+            "rawOutput": String(decoding: rawOutputData, as: UTF8.self),
+        ])
+
+        XCTAssertEqual(parsed?.detail, "GB-TESTS-PASSED")
+        XCTAssertFalse(parsed?.detail?.contains("output_file") == true)
     }
 
     func testToolCallPreservesAuthoritativeMCPServerName() {

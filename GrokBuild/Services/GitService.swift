@@ -23,6 +23,7 @@ struct GitWorktreeInfo: Identifiable, Hashable, Sendable {
 struct GitChangedFile: Identifiable, Hashable, Sendable {
     let path: String
     let status: String
+    var originalPath: String? = nil
 
     var id: String { path }
 }
@@ -255,19 +256,26 @@ enum GitService {
             }
 
             let status = String(field.prefix(2))
-            var pathField = field.dropFirst(3)
+            let pathField = field.dropFirst(3)
+            var originalPath: String?
 
-            // For rename/copy, porcelain emits: "R  old\0new\0" (same for "C ")
+            // With `status --porcelain=v1 -z`, rename/copy order is the reverse
+            // of the human format: `R  new\0old\0`. Keep the selected current
+            // path as identity and retain the old path only as provenance.
             if status.hasPrefix("R") || status.hasPrefix("C") {
                 index += 1
                 if index < fields.count {
-                    pathField = fields[index]
+                    originalPath = String(fields[index])
                 }
             }
 
             let path = String(pathField).trimmingCharacters(in: .whitespacesAndNewlines)
             if !path.isEmpty {
-                result.append(GitChangedFile(path: path, status: status))
+                result.append(GitChangedFile(
+                    path: path,
+                    status: status,
+                    originalPath: originalPath
+                ))
             }
             index += 1
         }
@@ -301,6 +309,7 @@ enum GitService {
     /// by the caller, which owns the run-evidence snapshot.
     enum ReviewScope: String, CaseIterable, Identifiable, Sendable {
         case workingTree
+        case unstaged
         case staged
         case lastCommit
         case branch
@@ -310,7 +319,8 @@ enum GitService {
 
         var displayName: String {
             switch self {
-            case .workingTree: return "Working tree"
+            case .workingTree: return "All changes"
+            case .unstaged: return "Unstaged"
             case .staged: return "Staged"
             case .lastCommit: return "Last commit"
             case .branch: return "Branch"
@@ -324,6 +334,17 @@ enum GitService {
         switch scope {
         case .workingTree, .lastTurn:
             return try await changedFiles(in: directory)
+        case .unstaged:
+            let tracked = parseNameStatus(try await run(
+                ["diff", "--name-status", "-z"], in: directory
+            ))
+            let untrackedOutput = try await run(
+                ["ls-files", "--others", "--exclude-standard", "-z"], in: directory
+            )
+            let untracked = untrackedOutput
+                .split(separator: "\0", omittingEmptySubsequences: true)
+                .map { GitChangedFile(path: String($0), status: "??") }
+            return tracked + untracked
         case .staged:
             let output = try await run(
                 ["diff", "--cached", "--name-status", "-z"], in: directory)
@@ -354,6 +375,18 @@ enum GitService {
         switch scope {
         case .workingTree, .lastTurn:
             return try await diffForChangedFile(file, in: directory)
+        case .unstaged:
+            if file.status == "??" {
+                return """
+                Untracked file: \(file.path)
+
+                This file is not tracked by git yet, so there is no unified diff.
+                """
+            }
+            let output = try await run(
+                ["diff", "--no-ext-diff", "--no-color", "--", file.path],
+                in: directory)
+            return output.isEmpty ? "Changed file: \(file.path)" : output
         case .staged:
             let output = try await run(
                 ["diff", "--cached", "--no-ext-diff", "--no-color", "--", file.path],
@@ -386,14 +419,19 @@ enum GitService {
             let status = String(fields[index])
             index += 1
             guard index < fields.count else { break }
-            var path = String(fields[index])
+            let firstPath = String(fields[index])
+            var path = firstPath
             index += 1
             if status.hasPrefix("R") || status.hasPrefix("C"), index < fields.count {
                 path = String(fields[index])
                 index += 1
             }
             if !path.isEmpty {
-                result.append(GitChangedFile(path: path, status: status))
+                result.append(GitChangedFile(
+                    path: path,
+                    status: status,
+                    originalPath: path == firstPath ? nil : firstPath
+                ))
             }
         }
         return result
@@ -401,26 +439,104 @@ enum GitService {
 
     // MARK: Gated per-file revert (OUTSTANDING D-2, 2026-08-08)
 
-    /// Discard working-tree changes for exactly one path. Tracked files are
-    /// restored from HEAD across both index and worktree; untracked files are
-    /// removed with `clean -f -- <path>`. The status check runs against the
-    /// live repository at call time, never a cached row, so a file that was
-    /// committed or deleted since the pane rendered is handled truthfully.
-    /// Destructive by design — callers must present an explicit confirmation
-    /// before invoking this.
-    static func revertPath(_ path: String, in directory: URL) async throws {
-        guard isRepository(directory) else { throw GitError.notARepository }
-        let status = try await run(
-            ["status", "--porcelain=v1", "-z", "--", path], in: directory)
-        let trimmed = status.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else { return }
-        if trimmed.hasPrefix("??") {
-            _ = try await run(["clean", "-f", "--", path], in: directory)
-        } else {
-            _ = try await run(
-                ["restore", "--source=HEAD", "--staged", "--worktree", "--", path],
-                in: directory)
+    struct RevertReceipt: Equatable, Sendable {
+        let path: String
+        let preflightStatus: String
+        let recoveryRef: String
+        let postActionStatus: String
+        let unrelatedChangesSurvived: Bool
+
+        var summary: String {
+            "Reverted \(path) recoverably · saved at \(recoveryRef) · post-action Git clean for selected path"
         }
+    }
+
+    /// Recoverably remove working-tree changes for exactly one selected path.
+    /// Git's own stash is the recovery authority; GrokBuild does not copy or
+    /// interpret file contents. Exact preflight and post-action status receipts
+    /// prove the selected path changed and unrelated dirt survived byte-for-byte.
+    static func revertPath(_ path: String, in directory: URL) async throws -> RevertReceipt? {
+        guard isRepository(directory) else { throw GitError.notARepository }
+        let normalizedPath = try validatedRepositoryRelativePath(path)
+        let status = try await run(
+            ["status", "--porcelain=v1", "-z", "--", normalizedPath], in: directory)
+        guard !status.isEmpty else { return nil }
+        let selectedEntries = statusEntries(status)
+        guard !selectedEntries.contains(where: {
+            $0.status.hasPrefix("R") || $0.status.hasPrefix("C")
+        }) else {
+            throw GitError.commandFailed(
+                "Recoverable per-file revert is unavailable for a rename/copy because Git names two paths; review both paths explicitly."
+            )
+        }
+
+        let allBefore = try await run(["status", "--porcelain=v1", "-z"], in: directory)
+        let beforeUnrelated = statusEntries(allBefore).filter { $0.path != normalizedPath }
+        let previousStash = try? await run(["rev-parse", "--verify", "refs/stash"], in: directory)
+        _ = try await run(
+            ["stash", "push", "--include-untracked", "--message", "GrokBuild recoverable revert: \(normalizedPath)", "--", normalizedPath],
+            in: directory
+        )
+        let recoveryRef = try await run(["rev-parse", "--verify", "refs/stash"], in: directory)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !recoveryRef.isEmpty,
+              recoveryRef != previousStash?.trimmingCharacters(in: .whitespacesAndNewlines) else {
+            throw GitError.commandFailed("Git did not create a recovery stash for \(normalizedPath).")
+        }
+
+        let postStatus = try await run(
+            ["status", "--porcelain=v1", "-z", "--", normalizedPath], in: directory)
+        let allAfter = try await run(["status", "--porcelain=v1", "-z"], in: directory)
+        let afterUnrelated = statusEntries(allAfter).filter { $0.path != normalizedPath }
+        guard postStatus.isEmpty else {
+            throw GitError.commandFailed("Git preserved the recovery stash but the selected path is still changed: \(normalizedPath).")
+        }
+        guard beforeUnrelated == afterUnrelated else {
+            throw GitError.commandFailed("Git preserved the recovery stash, but unrelated repository state changed; inspect \(recoveryRef).")
+        }
+        return RevertReceipt(
+            path: normalizedPath,
+            preflightStatus: status,
+            recoveryRef: recoveryRef,
+            postActionStatus: postStatus,
+            unrelatedChangesSurvived: true
+        )
+    }
+
+    private struct StatusEntry: Equatable {
+        let status: String
+        let path: String
+    }
+
+    private static func statusEntries(_ output: String) -> [StatusEntry] {
+        let fields = output.split(separator: "\0", omittingEmptySubsequences: true)
+        var result: [StatusEntry] = []
+        var index = 0
+        while index < fields.count {
+            let field = String(fields[index])
+            index += 1
+            guard field.count >= 4 else { continue }
+            let status = String(field.prefix(2))
+            var path = String(field.dropFirst(3))
+            if (status.hasPrefix("R") || status.hasPrefix("C")), index < fields.count {
+                path = String(fields[index])
+                index += 1
+            }
+            result.append(StatusEntry(status: status, path: path))
+        }
+        return result
+    }
+
+    private static func validatedRepositoryRelativePath(_ path: String) throws -> String {
+        let trimmed = path.trimmingCharacters(in: .whitespacesAndNewlines)
+        let components = NSString(string: trimmed).pathComponents
+        guard !trimmed.isEmpty,
+              !trimmed.hasPrefix("/"),
+              !trimmed.contains("\0"),
+              !components.contains("..") else {
+            throw GitError.commandFailed("Refusing revert outside the selected repository path boundary.")
+        }
+        return NSString(string: trimmed).standardizingPath
     }
 
     static func gitDirectory(for projectURL: URL) -> URL? {

@@ -123,6 +123,16 @@ Make Browser and Computer Use available from **Settings → Browser** / **Settin
   Resume remain separate actions. GrokBuild never claims a task continues after its
   owning process exits, and it does not invent a pause operation for an active model
   call.
+- **Thread-native review result** — settled typed plan steps retain the exact parent
+  command/test receipts and successful artifact paths that were observed while each
+  step was current. Review always re-reads the selected worktree through Git and
+  makes **All changes**, **Unstaged**, **Staged**, **Last commit**, **Branch**, and
+  **Last turn** scopes explicit. If last-turn attribution cannot be proved from a
+  successful write/edit receipt, the pane says so and falls back to current
+  repository truth. Per-file revert is offered only for a supported exact path: Git
+  saves a recovery stash first, reverts that path, then proves unrelated dirt
+  survived. Commit/push/PR readiness is visible review state; publication remains an
+  explicit user action.
 - **Subagent model routing, visible** — when a spawned worker matches one of your custom roles, its receipt says exactly where it routes: "Routes to deepseek-deepseek-v4-flash-0731 (configured)". The roles editor groups model choices by provider so your OpenRouter and API models are first-class routes.
 - **Session usage HUD** — the composer's model menu keeps a running meter of settled-turn usage ("12.4k tokens · 3 calls · 2 turns"), with an honest dollar estimate range when a model's catalog pricing is known (captured automatically from OpenRouter's catalog during Test connection). No pricing, no fake $0.
 - **Tool-run inspector** — while an agent works, each live tool row in Activity expands to its full redacted input receipt. `search_tool` rows say capability discovery and never receive a browser-use/source claim; `use_tool` rows show the authoritative qualified tool and server (for example, `chrome-devtools__list_pages` via `chrome-devtools`). A requested qualified tool missing from a settled current-turn catalog receipt appears as **Unavailable for this turn**, not failed or succeeded use. Workers that finish mid-turn show their duration/tool-count receipts immediately.

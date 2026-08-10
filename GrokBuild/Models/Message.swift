@@ -100,6 +100,8 @@ struct AssistantTurnTrace: Codable, Sendable, Hashable {
         let mcpReceiptRole: MCPToolReceiptRole?
         let qualifiedToolName: String?
         let discoveredQualifiedToolNames: [String]
+        let resultDetail: String?
+        let owningPlanStepID: String?
 
         init(
             id: String,
@@ -109,7 +111,9 @@ struct AssistantTurnTrace: Codable, Sendable, Hashable {
             mcpServerName: String?,
             mcpReceiptRole: MCPToolReceiptRole? = nil,
             qualifiedToolName: String? = nil,
-            discoveredQualifiedToolNames: [String] = []
+            discoveredQualifiedToolNames: [String] = [],
+            resultDetail: String? = nil,
+            owningPlanStepID: String? = nil
         ) {
             self.id = id
             self.title = title
@@ -119,11 +123,14 @@ struct AssistantTurnTrace: Codable, Sendable, Hashable {
             self.mcpReceiptRole = mcpReceiptRole
             self.qualifiedToolName = qualifiedToolName
             self.discoveredQualifiedToolNames = discoveredQualifiedToolNames
+            self.resultDetail = resultDetail
+            self.owningPlanStepID = owningPlanStepID
         }
 
         private enum CodingKeys: String, CodingKey {
             case id, title, kind, status, mcpServerName, mcpReceiptRole
             case qualifiedToolName, discoveredQualifiedToolNames
+            case resultDetail, owningPlanStepID
         }
 
         init(from decoder: Decoder) throws {
@@ -139,6 +146,8 @@ struct AssistantTurnTrace: Codable, Sendable, Hashable {
                 [String].self,
                 forKey: .discoveredQualifiedToolNames
             ) ?? []
+            resultDetail = try values.decodeIfPresent(String.self, forKey: .resultDetail)
+            owningPlanStepID = try values.decodeIfPresent(String.self, forKey: .owningPlanStepID)
         }
     }
 

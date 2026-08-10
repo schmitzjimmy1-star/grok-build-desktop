@@ -22,7 +22,7 @@ final class ThreadRunSpineTests: XCTestCase {
             title: "Run tests",
             kind: "terminal",
             status: "Running",
-            detail: nil,
+            detail: "streaming output",
             qualifiedToolName: "terminal__run",
             isActive: true
         )])
@@ -34,6 +34,7 @@ final class ThreadRunSpineTests: XCTestCase {
         XCTAssertEqual(row.duration, "Duration not reported")
         XCTAssertEqual(row.worker, "Parent agent")
         XCTAssertEqual(row.outputBoundary, "No file artifact reported")
+        XCTAssertNil(row.resultDetail, "Changing tool output must wait for the settled spine")
         XCTAssertEqual(ThreadRunSpinePresentation.livePhase(projection), "Using terminal")
     }
 
@@ -71,6 +72,54 @@ final class ThreadRunSpineTests: XCTestCase {
         XCTAssertEqual(ThreadRunSpinePresentation.progressLabel([step]), "0 completed · 1 remaining")
     }
 
+    func testSettledCommandsAndArtifactsGroupUnderProducingPlanStep() {
+        let step = RunEvidenceSnapshot.PlanStep(id: "verify", title: "Verify result", status: "completed")
+        let tools = ThreadRunSpinePresentation.settledTools(
+            [.init(
+                id: "terminal-verify",
+                title: "Run tests",
+                kind: "terminal",
+                status: "Succeeded",
+                mcpServerName: nil,
+                resultDetail: "5 tests passed",
+                owningPlanStepID: step.id
+            )],
+            artifacts: [],
+            workspace: nil
+        )
+        let artifacts = [ChatStore.RunArtifact(
+            toolCallID: "terminal-verify",
+            path: "/tmp/report.txt",
+            status: "Completed",
+            location: .external,
+            owningPlanStepID: step.id,
+            workerID: nil
+        )]
+
+        XCTAssertEqual(ThreadRunSpinePresentation.tools(tools, ownedBy: step).map(\.resultDetail), ["5 tests passed"])
+        XCTAssertEqual(ThreadRunSpinePresentation.artifacts(artifacts, ownedBy: step).map(\.toolCallID), ["terminal-verify"])
+        XCTAssertTrue(ThreadRunSpinePresentation.unownedTools(tools, plan: [step]).isEmpty)
+        XCTAssertTrue(ThreadRunSpinePresentation.unownedArtifacts(artifacts, plan: [step]).isEmpty)
+    }
+
+    func testCommandOutputDecodesWithoutProjectingProtocolJSON() {
+        let detail = #"{"command":"./check.sh","exit_code":0,"output":[71,66,45,83,49,49,45,84,69,83,84,83,45,80,65,83,83,69,68,10]}"#
+
+        XCTAssertEqual(
+            ToolResultPresentation.commandOutput(detail: detail, kind: "execute"),
+            "GB-S11-TESTS-PASSED"
+        )
+        XCTAssertNil(ToolResultPresentation.commandOutput(detail: detail, kind: "edit"))
+        XCTAssertNil(ToolResultPresentation.commandOutput(
+            detail: #"{"EditsApplied":{"absolute_path":"/tmp/result.txt"}}"#,
+            kind: "edit"
+        ))
+        XCTAssertEqual(
+            ToolResultPresentation.commandOutput(detail: "GB-S11-TESTS-PASSED", kind: "execute"),
+            "GB-S11-TESTS-PASSED"
+        )
+    }
+
     func testFailureReceiptStaysFailedAfterSettlement() {
         let rows = ThreadRunSpinePresentation.settledTools(
             [.init(id: "bad", title: "Run command", kind: "terminal", status: "Failed", mcpServerName: nil)],
@@ -97,7 +146,9 @@ final class ThreadRunSpineTests: XCTestCase {
             title: "Run",
             kind: "terminal",
             status: "Succeeded",
-            mcpServerName: nil
+            mcpServerName: nil,
+            resultDetail: "tests passed",
+            owningPlanStepID: "verify"
         )
         let restored = try JSONDecoder().decode(
             AssistantTurnTrace.Tool.self,
@@ -109,7 +160,11 @@ final class ThreadRunSpineTests: XCTestCase {
         )
 
         XCTAssertEqual(restored.kind, "terminal")
+        XCTAssertEqual(restored.resultDetail, "tests passed")
+        XCTAssertEqual(restored.owningPlanStepID, "verify")
         XCTAssertNil(legacy.kind)
+        XCTAssertNil(legacy.resultDetail)
+        XCTAssertNil(legacy.owningPlanStepID)
     }
 
     func testTypedTodoPlanCreatesStableStepsAndMergesStatusOnlyUpdates() {

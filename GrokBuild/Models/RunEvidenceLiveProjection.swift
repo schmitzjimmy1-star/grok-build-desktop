@@ -23,6 +23,7 @@ struct RunEvidenceLiveProjection: Equatable, Sendable {
         let mcpReceiptRole: MCPToolReceiptRole?
         let qualifiedToolName: String?
         let discoveredQualifiedToolNames: [String]
+        let owningPlanStepID: String?
         let isActive: Bool
 
         init(
@@ -35,6 +36,7 @@ struct RunEvidenceLiveProjection: Equatable, Sendable {
             mcpReceiptRole: MCPToolReceiptRole? = nil,
             qualifiedToolName: String? = nil,
             discoveredQualifiedToolNames: [String] = [],
+            owningPlanStepID: String? = nil,
             isActive: Bool
         ) {
             self.id = id
@@ -46,6 +48,7 @@ struct RunEvidenceLiveProjection: Equatable, Sendable {
             self.mcpReceiptRole = mcpReceiptRole
             self.qualifiedToolName = qualifiedToolName
             self.discoveredQualifiedToolNames = discoveredQualifiedToolNames
+            self.owningPlanStepID = owningPlanStepID
             self.isActive = isActive
         }
     }

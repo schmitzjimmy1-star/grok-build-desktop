@@ -42,6 +42,48 @@ enum TranscriptTextPresentation {
     }
 }
 
+/// Extracts only user-facing terminal output from a Grok tool result envelope.
+/// Protocol JSON, edit receipts, and todo state remain authoritative elsewhere;
+/// they are not command output and must not be dumped into the transcript.
+enum ToolResultPresentation {
+    static func commandOutput(detail: String?, kind: String?) -> String? {
+        guard let detail,
+              let kind = kind?.lowercased(),
+              kind == "execute" || kind == "terminal" else {
+            return nil
+        }
+
+        guard let data = detail.data(using: .utf8),
+              let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+            let normalized = TranscriptTextPresentation.normalize(detail)
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !normalized.isEmpty, !normalized.hasPrefix("{") else { return nil }
+            return TranscriptTextPresentation.singleLine(normalized, maxLength: 280)
+        }
+        guard object["command"] != nil || object["exit_code"] != nil else { return nil }
+
+        let output: String?
+        if let text = object["output"] as? String {
+            output = text
+        } else if let bytes = object["output"] as? [NSNumber],
+                  bytes.allSatisfy({ $0.intValue >= 0 && $0.intValue <= 255 }) {
+            output = String(decoding: bytes.map { UInt8($0.intValue) }, as: UTF8.self)
+        } else {
+            output = nil
+        }
+
+        let normalized = output.map(TranscriptTextPresentation.normalize)?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        if let normalized, !normalized.isEmpty {
+            return TranscriptTextPresentation.singleLine(normalized, maxLength: 280)
+        }
+        if let exitCode = object["exit_code"] as? NSNumber {
+            return "Exit \(exitCode.intValue) · no command output reported"
+        }
+        return nil
+    }
+}
+
 /// Keeps a streaming transcript legible without pretending an unfinished Markdown
 /// construct is final. The complete message remains the transcript authority; this
 /// is only a short-lived display split used while ACP is still producing chunks.
