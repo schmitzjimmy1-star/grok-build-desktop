@@ -2159,7 +2159,7 @@ smoke threads, and pass Gates F–H.
   signing, and dist parity exact; final normal in-app quit left zero exact
   `GrokBuild`, `grok`, `GrokBuildComputerUseMCP`, `agent-desktop`, `agent-browser`,
   or owned `Google Chrome for Testing` processes. Slice 10 is merged and accepted.
-  Slice 11 is merged and accepted; Slice 12 has not started.
+  Slice 11 and Slice 12 closeouts follow below.
 
 ### Slice 11 completion receipt — 2026-08-09
 
@@ -2265,8 +2265,121 @@ smoke threads, and pass Gates F–H.
   `1.0.0 (3cd0d0cbcebe) [stable]`; required provider routes settled below cap;
   exact cleanup and the honest CLI deletion gap recorded; installed identity,
   hashes, signing, and clean worktree parity exact; final normal UI quit left every
-  owned process count zero. Slice 11 is merged and accepted. Slice 12 is the exact
-  next and final slice.
+  owned process count zero. Slice 11 is merged and accepted. Slice 12 closes below.
+
+### Slice 12 completion receipt — 2026-08-09
+
+- Objective: close the thread-native campaign without moving authority out of Grok
+  CLI/ACP. Restorable launches now expose named **Resume current task**, **Start new
+  task**, and **Browse old tasks** actions; settled work keeps authoritative
+  tool/output/artifact emphasis; observable request composition and evidence-derived
+  release ceilings are explicit, while opaque CLI/provider bytes remain unmeasured.
+- Starting identity: clean `main == personal/main ==
+  8e67576b6bf65f86429866c799d44f77bdfb8cb4`, tree
+  `c044e98b68859f11b071962341cdc48f40ec3bd6`, installed/dist executable
+  SHA-256 `21b7f9e4b1ce11b800dc058839c09fc0b6dedf0f6ad56148ba4f5d7913d32bfc`,
+  Team `DD2GCQJVB4`, `dirty=false`, and every owned process count zero. Branch:
+  `codex/grokbuild-s12-product-closeout`.
+- Implementation: `PromptContextBudget` separates observable system instructions,
+  project instructions/context, skill and MCP inventories, requested/deferred
+  schemas, transcript, user content, memory, and provider wrappers. Only exact bytes
+  count; unavailable Grok CLI system/provider wrappers say **unmeasured**. Release
+  assertions cover 750 ms cold first window, 10 s first intent, 8 s cold and 3 s
+  warm dispatch-to-first-chunk, zero idle owned processes, and a 40K minimal-terminal
+  ceiling. They are test gates, not a scheduler, token estimator, or runtime owner.
+- Launch/accessibility: the retired `Resuming saved session. Send to continue.`
+  foreground warning is gone. The installed app exposed all three quiet launch
+  choices with stable AX identifiers, labels, and hints; Command-N and the named
+  Browse shortcut were visible. Wide/dark, narrow/dark, and wide/light renders were
+  exercised, Dark was restored, and reduced motion remained covered by its
+  source/automated contract without mutating the system preference.
+- Timing receipt: external launch-plus-AX samples were 10.062/9.720/10.683 seconds;
+  warm Command-N samples were 0.966/2.786/0.844 seconds. Those outer Computer Use
+  timings include app launch and accessibility-tree capture and are not mislabeled as
+  the internal first-window signpost. The release-budget tests use the recorded
+  internal Slice 6/7 measurements and reject an over-budget sample.
+- Verification: focused product-closeout/lifecycle coverage passed; complete
+  `make test`/`make ship` passed `738/738` repeatedly with zero failures;
+  `git diff --check` stayed clean. The clean committed candidate at
+  `ae550ea28dc3d94c05928349f611619e81331757`, tree
+  `bd630c136e0b45740257dd59c5c133db49cabfa0`, installed/dist executable
+  SHA-256 `0fa8ed9a83f4a1aea599fd96ee89dce16a83c8d25d323152cf4ea1efd3fd5f20`,
+  `dirty=false`, Team `DD2GCQJVB4`, deep/strict valid, and no quarantine. The earlier
+  dirty candidate hash
+  `f315b63d0aed7896feb18100b74cee00f9275c9138a2fe72cd1bc76e43859f37`
+  remains only as a superseded candidate receipt.
+- Sustained native lane: local tab
+  `AF9108DC-ACF4-44AD-98A1-1F6E4B351CBC`, parent backend
+  `019fe99b-44a6-7013-945a-abf04ea07da2`, generation 1 PID `91667`, Grok 4.5
+  Medium, direct xAI through Grok CLI, no fallback, and zero persistent MCPs. Marker
+  `GB-S12-NATIVE-20260809T230000` settled four typed steps, exact artifacts
+  `result.txt`/`artifact.md`, `GB-S12-CHECK-PASS`, and two parallel workers:
+  `019fe99b-db9c-7243-ba75-dfbdeafd9825` and
+  `019fe99b-db9d-7da2-a0ca-e0dc60fd3e12`. Review showed the exact two files,
+  `main @ 03d23a3`, All changes, safe-revert affordances, and explicit no-auto-publish
+  copy. First-turn usage was `139.5k` tokens / `11` calls / `1` turn.
+- Stop/resume/recovery: `GB-S12-STOP-20260809T230200` ran one exact 20-second
+  terminal sleep; installed **Stop** settled `Stopped by you` with no false success
+  or token claim. Exact UI Resume invoked Grok CLI session load; continuity correctly
+  refused the stopped parent and exposed **Continue as New**. Recovery backend
+  `019fe99d-ad68-7a81-9304-d965ccf28d6c`, generation 2 PID `91896`, settled
+  `GB-S12-CONTINUED-SAFELY`; `14,460` tokens / `1` call. The native tab cumulative
+  receipt was `154.0k` tokens / `12` reported calls / `2` settled turns; the stopped
+  turn exposed no usage and is not guessed.
+- OpenRouter lane: local tab `EEBEC936-736C-413A-9518-F5DA77337DCC`, generation 1
+  PID `95614`, pinned `openai/gpt-4.1-mini` Medium, brokered by `openrouter.ai`, no
+  fallback, downstream serving provider unproven, zero persistent MCPs. Marker
+  `GB-S12-OPENROUTER-20260809T230800` ran `./check.sh` once and settled
+  `GB-S12-OPENROUTER-DONE`; `20.9k` tokens / `2` calls / `1` turn, estimated cost
+  shown as approximately `$0.0084-$0.03`. The ACP backend was captured only as the
+  terminal suffix `...50d0b284`; after exact UI closure the app no longer retained
+  enough public metadata to recover the full ID, so this receipt does not invent it.
+- Browser lane: local tab `7B105FEE-F680-44AE-AB31-F0B30C78224C`, generation 1
+  PID `96375`; exact per-thread `grokbuild-browser` capability discovery, local-page
+  open, and snapshot settled `GB-S12-BROWSER-DONE: GB-S12-BROWSER-MARKER`; `67.3k`
+  tokens / `4` calls / `1` turn. The backend terminal suffix was `...bfb05e24`.
+- Computer Use lane: local tab terminal suffix `...E9DD402F`, generation 1 PID
+  `96544`; exact per-thread `grokbuild-computer-use` discovery and one semantic
+  snapshot settled `GB-S12-COMPUTER-DONE GrokBuild`; `52.6k` tokens / `3` calls /
+  `1` turn. The backend terminal suffix was `...565b6e3e`. Full tab/backend IDs were
+  no longer present on the public app/CLI surfaces after exact UI closure; no private
+  store was scraped to manufacture them.
+- Spend: accepted visible usage was approximately `294.8k` tokens / `21` reported
+  calls, below the `1,000,000` cap. Provider/model route receipts stayed separate;
+  Browser and Computer Use helper MCPs were per-thread and named in authoritative
+  task/tool receipts while the composer truthfully kept persistent user MCPs at zero.
+- Exact cleanup: all four acceptance tabs were closed through installed UI **Close
+  Session** and the disposable project was removed. Grok CLI deleted native parent
+  `019fe99b-44a6-7013-945a-abf04ea07da2`; it returned `No session found` for recovery
+  backend `019fe99d-ad68-7a81-9304-d965ccf28d6c` and both exact child IDs, the same
+  upstream visibility/deletion gap as Slices 9-11. No private-storage scan, wrapper,
+  daemon, broad deletion, age rule, or unrelated history cleanup was used. Exact
+  fixture hashes and `GB-S12-CHECK-PASS` were captured before its six files moved
+  recoverably to `~/.Trash/GrokBuild-Slice12-fixture-20260809T233000`.
+- Candidate Gates A-H: intended implementation/test/README/acceptance-matrix paths
+  only; full tests and diff checks green; required native/OpenRouter prompts and
+  Browser/Computer Use spots settled under cap; exact UI/CLI cleanup completed to the
+  public capability boundary; installed/dist/signing parity exact; normal in-app quit
+  left zero `GrokBuild`, `grok`, `GrokBuildComputerUseMCP`, `agent-desktop`, or owned
+  browser-profile processes.
+- Publication: ready PR
+  `https://github.com/schmitzjimmy1-star/grok-build-desktop/pull/43` was reviewed at
+  exact head `ae550ea28dc3d94c05928349f611619e81331757`; local and remote trees matched
+  `bd630c136e0b45740257dd59c5c133db49cabfa0`, it was mergeable/clean with no
+  configured checks, and it merged normally as
+  `979837bc6b8b496defaead2b4cca58fce95461f6`.
+- Merged-main acceptance: clean `main == personal/main ==
+  979837bc6b8b496defaead2b4cca58fce95461f6`; `make ship` passed `738/738` and
+  installed/dist executable SHA-256 matched at
+  `a01f9def4213f5242c2f6d54365677bc7a86b4cd60114ba1935e720f11b345cc`.
+  Installed `GrokBuildSourceDirty=false`, Team `DD2GCQJVB4`, deep/strict valid, and
+  no quarantine. The installed AX tree visibly exposed all three named launch
+  choices and `0 files, 0 MCPs attached`; Settings opened through Command-comma.
+- Final Gates A-H: CLI `1.0.0 (3cd0d0cbcebe) [stable]`; exact implementation and
+  closeout paths only; provider routes, model/call/token totals, failures, and cleanup
+  gap retained; merged installed identity/hash/signing exact; worktree and
+  `personal/main` clean and equal; final normal quit left every scoped owned process
+  count zero. Slices 7-12 are merged and accepted. No further slice is authorized.
 
 ---
 
