@@ -564,17 +564,50 @@ final class ChatTranscriptLayoutTests: XCTestCase {
         )
     }
 
-    func testPendingSubmitIntentFreezesModelModeAndExactMCPSet() {
+    func testPendingSubmitIntentFreezesEveryDispatchInputAndRejectsMutation() {
+        let workspace = URL(fileURLWithPath: "/tmp/grokbuild-pending-freeze")
+        let attachment = FileAttachment(
+            path: "/tmp/grokbuild-pending-freeze/proof.txt",
+            workspaceRoot: workspace
+        )
         let intent = PendingSubmitIntent(
             id: UUID(),
             draft: "prove route",
             modelID: "grok-4.5-build",
             modeID: "agent",
+            reasoningEffort: "high",
+            fileAttachments: [attachment],
             requestedMCPNames: ["zotero"]
         )
         XCTAssertEqual(intent.modelID, "grok-4.5-build")
         XCTAssertEqual(intent.modeID, "agent")
+        XCTAssertEqual(intent.reasoningEffort, "high")
+        XCTAssertEqual(intent.fileAttachments, [attachment])
         XCTAssertEqual(intent.requestedMCPNames, ["zotero"])
+        XCTAssertTrue(PendingSubmitIntentPolicy.routeStillMatches(
+            intent,
+            modelID: "grok-4.5-build",
+            modeID: "agent",
+            reasoningEffort: "high",
+            fileAttachments: [attachment],
+            requestedMCPNames: ["zotero"]
+        ))
+        XCTAssertFalse(PendingSubmitIntentPolicy.routeStillMatches(
+            intent,
+            modelID: "grok-4.5-build",
+            modeID: "agent",
+            reasoningEffort: "low",
+            fileAttachments: [attachment],
+            requestedMCPNames: ["zotero"]
+        ))
+        XCTAssertFalse(PendingSubmitIntentPolicy.routeStillMatches(
+            intent,
+            modelID: "grok-4.5-build",
+            modeID: "agent",
+            reasoningEffort: "high",
+            fileAttachments: [],
+            requestedMCPNames: ["zotero"]
+        ))
         XCTAssertNotEqual(
             intent,
             PendingSubmitIntent(
@@ -582,9 +615,59 @@ final class ChatTranscriptLayoutTests: XCTestCase {
                 draft: intent.draft,
                 modelID: intent.modelID,
                 modeID: intent.modeID,
+                reasoningEffort: intent.reasoningEffort,
+                fileAttachments: intent.fileAttachments,
                 requestedMCPNames: ["github"]
             )
         )
+    }
+
+    func testPendingSubmitRequiresExactModelReadbackAndModeBeforeDispatch() {
+        let intent = PendingSubmitIntent(
+            id: UUID(),
+            draft: "prove custom route",
+            modelID: "custom-terra",
+            modeID: "agent"
+        )
+        let confirmedProviderReadback = ModelExecutionState(
+            status: .confirmed,
+            requestedModelID: "custom-terra",
+            effectiveModelID: "openai/gpt-5.6-terra",
+            identity: nil,
+            failure: nil,
+            updatedAt: nil
+        )
+        XCTAssertTrue(PendingSubmitIntentPolicy.backendRouteIsConfirmed(
+            intent,
+            modelExecutionState: confirmedProviderReadback,
+            expectedEffectiveModelID: "openai/gpt-5.6-terra",
+            currentModeID: "agent"
+        ))
+
+        var missingReadback = confirmedProviderReadback
+        missingReadback.status = .requested
+        missingReadback.effectiveModelID = nil
+        XCTAssertFalse(PendingSubmitIntentPolicy.backendRouteIsConfirmed(
+            intent,
+            modelExecutionState: missingReadback,
+            expectedEffectiveModelID: "openai/gpt-5.6-terra",
+            currentModeID: "agent"
+        ))
+
+        var wrongReadback = confirmedProviderReadback
+        wrongReadback.effectiveModelID = "grok-4.5"
+        XCTAssertFalse(PendingSubmitIntentPolicy.backendRouteIsConfirmed(
+            intent,
+            modelExecutionState: wrongReadback,
+            expectedEffectiveModelID: "openai/gpt-5.6-terra",
+            currentModeID: "agent"
+        ))
+        XCTAssertFalse(PendingSubmitIntentPolicy.backendRouteIsConfirmed(
+            intent,
+            modelExecutionState: confirmedProviderReadback,
+            expectedEffectiveModelID: "openai/gpt-5.6-terra",
+            currentModeID: "plan"
+        ))
     }
 
     func testPreparingSubmitLocksEveryRouteControl() throws {

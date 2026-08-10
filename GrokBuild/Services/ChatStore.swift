@@ -13,6 +13,8 @@ struct PendingSubmitIntent: Equatable, Sendable {
     let draft: String
     let modelID: String?
     let modeID: String?
+    let reasoningEffort: String
+    let fileAttachments: [FileAttachment]
     let requestedMCPNames: Set<String>
 
     init(
@@ -20,12 +22,16 @@ struct PendingSubmitIntent: Equatable, Sendable {
         draft: String,
         modelID: String? = nil,
         modeID: String? = nil,
+        reasoningEffort: String = "",
+        fileAttachments: [FileAttachment] = [],
         requestedMCPNames: Set<String> = []
     ) {
         self.id = id
         self.draft = draft
         self.modelID = modelID
         self.modeID = modeID
+        self.reasoningEffort = reasoningEffort
+        self.fileAttachments = fileAttachments
         self.requestedMCPNames = requestedMCPNames
     }
 }
@@ -50,6 +56,39 @@ enum PendingSubmitIntentPolicy {
     static func latchDecision(existing: PendingSubmitIntent?, draft: String) -> LatchDecision {
         guard let existing else { return .latch }
         return existing.draft == draft ? .duplicate : .conflictingDraft
+    }
+
+    static func routeStillMatches(
+        _ intent: PendingSubmitIntent,
+        modelID: String,
+        modeID: String,
+        reasoningEffort: String,
+        fileAttachments: [FileAttachment],
+        requestedMCPNames: Set<String>
+    ) -> Bool {
+        intent.modelID == modelID
+            && intent.modeID == modeID
+            && intent.reasoningEffort == reasoningEffort
+            && intent.fileAttachments == fileAttachments
+            && intent.requestedMCPNames == requestedMCPNames
+    }
+
+    static func backendRouteIsConfirmed(
+        _ intent: PendingSubmitIntent,
+        modelExecutionState: ModelExecutionState,
+        expectedEffectiveModelID: String?,
+        currentModeID: String
+    ) -> Bool {
+        let expectedProviderModel = expectedEffectiveModelID?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        let acceptedEffectiveModels = Set([
+            intent.modelID,
+            expectedProviderModel?.isEmpty == false ? expectedProviderModel : nil
+        ].compactMap { $0 })
+        return modelExecutionState.status == .confirmed
+            && modelExecutionState.requestedModelID == intent.modelID
+            && modelExecutionState.effectiveModelID.map(acceptedEffectiveModels.contains) == true
+            && currentModeID == intent.modeID
     }
 }
 
@@ -819,14 +858,21 @@ final class ChatStore {
             draft: draft,
             modelID: currentModel,
             modeID: currentMode.rawValue,
+            reasoningEffort: modelSupportsReasoningEffort(currentModel) ? workspaceReasoningEffort : "",
+            fileAttachments: fileAttachments,
             requestedMCPNames: selectedPromptMCPNames.union(enabledBuiltInToolNames)
         )
     }
 
     private func pendingSubmitRouteStillMatches(_ intent: PendingSubmitIntent) -> Bool {
-        intent.modelID == currentModel
-            && intent.modeID == currentMode.rawValue
-            && intent.requestedMCPNames == selectedPromptMCPNames.union(enabledBuiltInToolNames)
+        PendingSubmitIntentPolicy.routeStillMatches(
+            intent,
+            modelID: currentModel,
+            modeID: currentMode.rawValue,
+            reasoningEffort: modelSupportsReasoningEffort(currentModel) ? workspaceReasoningEffort : "",
+            fileAttachments: fileAttachments,
+            requestedMCPNames: selectedPromptMCPNames.union(enabledBuiltInToolNames)
+        )
     }
 
     /// Launch the backend for a brand-new tab on first typing. Deliberately narrow:
@@ -986,6 +1032,8 @@ final class ChatStore {
     private var deferredPromptCompletion: (assistantID: UUID, ok: Bool)?
     private var turnSettlement = TurnSettlementCoordinator()
     private var activeTurnBackendSessionID: String?
+    private var activeTurnCompletionConsumed = false
+    private var consumedTurnCompletionKeys: Set<String> = []
     private var authoritativeTailAssistantID: UUID?
     private var closedTurnAssistantID: UUID?
     private var closedTurnHasAuthoritativeHistory = false
@@ -2638,7 +2686,20 @@ final class ChatStore {
         preparedIntentID: UUID? = nil
     ) async -> Bool {
         var trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty || fileAttachments.contains(where: { !$0.isHidden }) else { return false }
+        var claimedPendingIntent: PendingSubmitIntent?
+        defer {
+            if let claimedPendingIntent,
+               pendingSubmitIntent?.id == claimedPendingIntent.id {
+                pendingSubmitIntent = nil
+            }
+        }
+        let initiallyFrozenAttachments = preparedIntentID.flatMap { intentID in
+            pendingSubmitIntent?.id == intentID ? pendingSubmitIntent?.fileAttachments : nil
+        }
+        guard !trimmed.isEmpty
+                || (initiallyFrozenAttachments ?? fileAttachments).contains(where: { !$0.isHidden }) else {
+            return false
+        }
         guard currentWorkspace != nil else {
             lastError = "Select a project first."
             return false
@@ -2685,6 +2746,7 @@ final class ChatStore {
                 intent = makePendingSubmitIntent(draft: trimmed)
                 pendingSubmitIntent = intent
             }
+            claimedPendingIntent = intent
             if let warmStart = firstIntentWarmStartTask {
                 await warmStart.value
             } else {
@@ -2714,11 +2776,9 @@ final class ChatStore {
                 return false
             }
             guard pendingSubmitRouteStillMatches(intent) else {
-                pendingSubmitIntent = nil
-                lastError = "The model, mode, or attached MCP set changed while the task was preparing. Review the restored draft and send again."
+                lastError = "The model, mode, reasoning effort, attachments, or attached MCP set changed while the task was preparing. Review the restored draft and send again."
                 return false
             }
-            pendingSubmitIntent = nil
         }
         if connectionState != .ready {
             if process.sessionId == nil && connectionState != .starting {
@@ -2749,21 +2809,53 @@ final class ChatStore {
         guard SessionSendGate.decision(for: continuityStatus) != .block else {
             return false
         }
-        let desiredAllowedMCPServerNames = selectedPromptMCPNames.union(enabledBuiltInToolNames)
-        let desiredMCPGatewayState = Self.mcpGatewayEnabled(
-            selectedPromptMCPNames: selectedPromptMCPNames,
-            enabledBuiltInToolNames: enabledBuiltInToolNames
-        )
+        let desiredAllowedMCPServerNames = claimedPendingIntent?.requestedMCPNames
+            ?? selectedPromptMCPNames.union(enabledBuiltInToolNames)
+        let desiredMCPGatewayState = !desiredAllowedMCPServerNames.isEmpty
+        let desiredReasoningEffort = claimedPendingIntent?.reasoningEffort
+            ?? (modelSupportsReasoningEffort(currentModel) ? workspaceReasoningEffort : "")
+        let frozenReasoningLaunchMismatch = claimedPendingIntent != nil
+            && (process.launchReceipt?.requestedReasoningEffort ?? "") != desiredReasoningEffort
         if process.launchReceipt?.mcpGatewayEnabled != desiredMCPGatewayState
-            || Set(process.launchReceipt?.allowedMCPServerNames ?? []) != desiredAllowedMCPServerNames {
+            || Set(process.launchReceipt?.allowedMCPServerNames ?? []) != desiredAllowedMCPServerNames
+            || frozenReasoningLaunchMismatch {
             await restartProcess(resumeSessionID: process.sessionId ?? savedGrokSessionID)
             guard connectionState == .ready,
                   process.launchReceipt?.mcpGatewayEnabled == desiredMCPGatewayState,
                   Set(process.launchReceipt?.allowedMCPServerNames ?? []) == desiredAllowedMCPServerNames,
+                  (claimedPendingIntent == nil
+                    || (process.launchReceipt?.requestedReasoningEffort ?? "") == desiredReasoningEffort),
                   SessionSendGate.decision(for: continuityStatus) != .block else {
                 if lastError == nil {
-                    lastError = "Grok could not apply this turn's MCP gateway policy. Retry the turn."
+                    lastError = "Grok could not apply this turn's frozen reasoning-effort and MCP launch policy. Retry the turn."
                 }
+                return false
+            }
+        }
+
+        if let claimedPendingIntent {
+            var confirmationWaits = 0
+            while (process.modelExecutionState.isPending
+                    || process.currentMode.rawValue != claimedPendingIntent.modeID),
+                  pendingSubmitIntent?.id == claimedPendingIntent.id,
+                  confirmationWaits < 240 {
+                confirmationWaits += 1
+                try? await Task.sleep(for: .milliseconds(50))
+            }
+            guard pendingSubmitIntent?.id == claimedPendingIntent.id,
+                  pendingSubmitRouteStillMatches(claimedPendingIntent) else {
+                lastError = "The frozen task inputs no longer match after backend preparation. Review the restored draft and send again."
+                return false
+            }
+            modelExecutionState = process.modelExecutionState
+            let expectedEffectiveModel = customModelsByID[claimedPendingIntent.modelID ?? ""]?.model
+            guard PendingSubmitIntentPolicy.backendRouteIsConfirmed(
+                claimedPendingIntent,
+                modelExecutionState: modelExecutionState,
+                expectedEffectiveModelID: expectedEffectiveModel,
+                currentModeID: process.currentMode.rawValue
+            ) else {
+                lastError = "Grok did not confirm the frozen model and mode before dispatch. The draft was preserved and no provider request was sent."
                 return false
             }
         }
@@ -2779,13 +2871,12 @@ final class ChatStore {
         startStallWatchdog()
 
         var attachmentBlocks: [String] = []
-        currentTurnRequestedMCPNames = selectedPromptMCPNames
-            .union(enabledBuiltInToolNames)
-            .sorted()
+        currentTurnRequestedMCPNames = desiredAllowedMCPServerNames.sorted()
         if let mcpBlock = PromptMCPAttachmentPromptBuilder.build(from: currentTurnRequestedMCPNames) {
             attachmentBlocks.append(mcpBlock)
         }
-        if let fileBlock = AttachmentPromptBuilder.build(from: fileAttachments) {
+        let dispatchAttachments = claimedPendingIntent?.fileAttachments ?? fileAttachments
+        if let fileBlock = AttachmentPromptBuilder.build(from: dispatchAttachments) {
             attachmentBlocks.append(fileBlock)
         }
         if !attachmentBlocks.isEmpty {
@@ -2800,6 +2891,7 @@ final class ChatStore {
         }
         fileAttachments.removeAll()
         selectedPromptMCPNames.removeAll()
+        pendingSubmitIntent = nil
 
         let userMsg = Message(role: .user, content: trimmed)
         messages.append(userMsg)
@@ -2975,6 +3067,7 @@ final class ChatStore {
         currentTurnWorkerActivityIDs = []
         currentTurnWorkerPlanStepIDs = [:]
         pendingArtifactPathsByToolCallID = [:]
+        activeTurnCompletionConsumed = false
     }
 
     private func invalidateTurnSettlement() {
@@ -3388,6 +3481,7 @@ final class ChatStore {
     }
 
     func applyReasoningEffort(_ effort: String, strategy: ReasoningEffortRestartStrategy) async {
+        guard !isPreparingSubmit else { return }
         guard effort != currentReasoningEffort else { return }
         workspaceReasoningEffort = effort
         saveWorkspaceAgentSettings()
@@ -3958,6 +4052,15 @@ final class ChatStore {
                 )
                 break
             }
+            // One active provider turn has exactly one terminal authority. Grok can
+            // repeat the same notification while a large final text chunk is still
+            // draining; replaying settlement would double usage, checkpoints, and
+            // worker finalization even though no second provider turn occurred.
+            guard !activeTurnCompletionConsumed else { break }
+            if let key = completion.deduplicationKey {
+                guard consumedTurnCompletionKeys.insert(key).inserted else { break }
+            }
+            activeTurnCompletionConsumed = true
             // This event shares the same AsyncStream queue as text/tool updates. By
             // acknowledging only here, `process.send` cannot outrun already-yielded
             // synthesis chunks and detach them from their assistant message. Keep
