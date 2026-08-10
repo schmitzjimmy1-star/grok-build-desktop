@@ -1955,6 +1955,98 @@ smoke threads, and pass Gates F–H.
 - Exact next slice: Slice 9, Thread-native run spine, only after this receipt is
   completed on clean merged `main` and the installed merged app passes Gates A-H.
 
+### Slice 9 candidate receipt — 2026-08-09
+
+- Objective: make the thread itself the compact, native record of a CLI-owned run:
+  observed phase, stable typed plan steps, owning workers, exact current tool,
+  truthful missing-duration/artifact boundaries, checkpoint/recovery state, and
+  direct Activity/Review navigation without a second ledger.
+- Starting main: clean `main == personal/main` at
+  `f359358403ee25732a87dfacbef008bb8cdf54bd`; branch
+  `codex/grokbuild-s9-thread-run-spine`.
+- Implementation commits: `93ec472acc33e7a70d4ecd50f9ba1619ad11febb`
+  (thread-native run spine) and `f9c7044f36a4c1dd901e22f978d45108e6d3a5b5`
+  (project the Grok CLI's typed `todo_write` receipts by stable todo ID). The
+  projection consumes existing ACP/tool/lifecycle authority only; it adds no
+  runtime, watcher, planner, transcript, or receipt source.
+- Verification: focused `ThreadRunSpineTests` passed `9/9`; two complete suites
+  passed `723/723` with zero failures; final `make ship` repeated `723/723` and
+  installed clean `f9c7044f`, signed by Team `DD2GCQJVB4`, deep/strict valid,
+  no quarantine, with installed/dist executable SHA-256
+  `25f0371c54daf4f14bb2c750cc2b38a913c6a21d396c3a958d0839014f9cf289`.
+  `git diff --check` was clean.
+- Automated matrix: no-tool, one-tool, sequential multi-tool, two sibling workers,
+  failure, cancellation, recovery-required, legacy Codable compatibility, typed
+  todo creation, and status-only typed todo merges all passed. Missing parent-tool
+  duration, worker ownership, and file artifacts remain explicitly not reported.
+- Native terminal/files/Git lane:
+  `GB-S9-ACCEPT-NATIVE-MULTISTEP-20260809T194000Z`, local
+  `3BA57507-22BE-4AE6-BD12-0475864E26C0`, backend
+  `019fe8e5-e64a-7410-b4aa-eb47426685d3`, Grok 4.5 Medium,
+  `48,583` tokens / `3` model calls. One parent turn created the one disposable
+  file, read it through the file tool, ran exact Git status, and settled with three
+  succeeded receipts and the correct artifact boundary; the file was then removed.
+- OpenRouter lane:
+  `GB-S9-ACCEPT-OPENROUTER-TWO-WORKERS-20260809T194500Z`, local
+  `86B1F2B7-2833-41A5-946E-BA6B0118EEAA`, backend
+  `019fe8e7-936d-7410-96a5-de8b6d5bc91c`, pinned
+  `openai/gpt-4.1-mini`, `58,032` tokens / `7` calls. It delegated the packet to
+  one child instead of two siblings, so it is preserved as provider acceptance and
+  a failed two-worker shape, not relabeled as success.
+- Native two-worker receipts: preserved retry local/backend
+  `E8672090-B2BA-4F78-9A83-5290C2D6F51C` /
+  `019fe8e8-fdbd-7c62-8798-5a7220979e1b` used `101,975` tokens / `8` calls and
+  produced exact children `019fe8e9-44e8-73b3-8bfc-3b81c12dbaee` and
+  `019fe8e9-44eb-7261-957c-4cf2a62a0228`. A one-core SwiftUI layout stall on that
+  long restored process did not reproduce after process-zero relaunch. The clean
+  reproduction local/backend `7B110A8F-8CF4-4C9B-8050-37BCB9C1505B` /
+  `019fe8ec-6d9c-7741-8a56-804062f6c10c` settled responsive with children
+  `019fe8ec-ca00-7301-99d9-e98ade465506` and
+  `019fe8ec-ca01-72d3-83d8-c93937164872`.
+- Typed-plan installed acceptance: the first prompt
+  `GB-S9-ACCEPT-TYPED-PLAN-FINAL-20260809T200500Z`, local/backend
+  `6AEDF50C-9F47-484A-A71D-FB0F5776743F` /
+  `019fe8f4-3d79-72d2-897f-ca0ce55c77e2`, intentionally preserved the discovery
+  that replacing the installed bundle does not replace an already-running process.
+  After normal quit reached process-zero, the actual `f9c7044f` process ran
+  `GB-S9-ACCEPT-TYPED-PLAN-RELAUNCH-20260809T201000Z`, local/backend
+  `A3E1115D-AFF5-476F-A683-03B4A810D405` /
+  `019fe8f6-5a46-7e71-9d19-43bd49e527a0`, Grok 4.5 Medium,
+  `101,352` tokens / `8` calls. The live card showed `0 completed · 3 remaining`,
+  two active sibling workers under **Spawn**, and the exact current tool; settlement
+  showed all three stable CLI todo IDs completed, both exact child IDs/durations,
+  six succeeded parent receipts, and checkpoint state. Activity opened from the
+  card and reported the same `101,352`/`8` receipt. Settings -> App showed
+  `codex/grokbuild-s9-thread-run-spine @ f9c7044f` while the composer showed
+  `0 MCPs attached`, confirming helpers remained off by default.
+- Spend boundary: the four copied exact parent totals sum to `309,942` tokens; the
+  two additional preserved native reproduction receipts used the same bounded
+  eight-call shape. The slice remained below the authorized `1,000,000`-token cap.
+  Both required provider lanes settled without fallback.
+- Exact cleanup: all six parent tabs were closed through **Close Session**, which
+  removed their six exact transcripts and parent backend histories; every exact
+  marker search reports `Total: 0` outside excluded `prompt_history.jsonl`.
+  Parent close left nine exact child-history directories even though
+  `grok sessions delete <child-id>` reported `No session found`; those nine measured
+  directories were moved out of the live backend root to the recoverable Trash
+  bundle `~/.Trash/GrokBuild-Slice9-child-backends-20260809T200400`. No age, glob,
+  summary, or unrelated-session cleanup was used.
+- Cleanup automation finding: current Grok CLI does not expose spawned child
+  histories through `sessions delete`, so automatic child cleanup cannot be added
+  honestly without either a CLI capability or GrokBuild scraping private CLI
+  storage. The latter is rejected by the thin-client boundary. The measured gap is
+  recorded for CLI follow-up; no daemon, wrapper, or speculative filesystem reaper
+  was added.
+- Candidate Gates A-H: canonical identity stayed exact; intended paths only;
+  `723/723`, clean diff, signed installed identity and UI receipt passed; six local
+  and parent backend identities plus nine child histories are absent from live
+  stores; normal Command-Q left zero exact `GrokBuild`, `grok`,
+  `GrokBuildComputerUseMCP`, and `agent-desktop` processes and no owned browser
+  profile process.
+- Publication and merged-main receipt: pending the authorized ready PR, normal
+  merge, clean `main` reinstall, Settings -> App agreement, and final process-zero.
+  Slice 10 has not started.
+
 ---
 
 ## Slice receipt template

@@ -277,6 +277,7 @@ final class ChatStore {
                 id: $0.id,
                 title: $0.title,
                 status: $0.status,
+                owningPlanStepID: currentTurnWorkerPlanStepIDs[$0.id],
                 childID: $0.childID,
                 durationMilliseconds: $0.durationMilliseconds,
                 toolCallCount: $0.toolCallCount,
@@ -677,6 +678,9 @@ final class ChatStore {
     /// but run evidence may include only worker rows created or changed during
     /// the active parent turn.
     private var currentTurnWorkerActivityIDs: Set<String> = []
+    /// Captured once when an owned worker first changes. This preserves the
+    /// current authoritative plan-step relationship without parsing worker prose.
+    private var currentTurnWorkerPlanStepIDs: [String: String] = [:]
 
     // MARK: - Prompt queue (send while streaming)
     private(set) var promptQueue: [String] = []
@@ -2786,6 +2790,7 @@ final class ChatStore {
         runEvidenceSnapshot = nil
         currentRunPlan = []
         currentTurnWorkerActivityIDs = []
+        currentTurnWorkerPlanStepIDs = [:]
         pendingArtifactPathsByToolCallID = [:]
     }
 
@@ -3601,7 +3606,7 @@ final class ChatStore {
             backgroundActivities = backgroundTaskTracker.activities
             recordCurrentTurnWorkerChanges(since: previousActivities)
         case .plan(let payload):
-            currentRunPlan = Self.planSteps(from: payload)
+            currentRunPlan = Self.applyingPlanUpdate(payload, to: currentRunPlan)
         case .planFileContent(let content):
             if !content.isEmpty, var plan = pendingExitPlan {
                 plan.planText = content
@@ -3779,6 +3784,10 @@ final class ChatStore {
         for activity in backgroundTaskTracker.activities where activity.kind == .subagent {
             if previousByID[activity.id] != activity {
                 currentTurnWorkerActivityIDs.insert(activity.id)
+                if currentTurnWorkerPlanStepIDs[activity.id] == nil,
+                   let stepID = currentRunPlan.first(where: \.isCurrent)?.id {
+                    currentTurnWorkerPlanStepIDs[activity.id] = stepID
+                }
             }
         }
     }
@@ -3898,19 +3907,44 @@ final class ChatStore {
         )
     }
 
-    private static func planSteps(from payload: [String: Any]) -> [RunEvidenceSnapshot.PlanStep] {
-        guard let entries = payload["entries"] as? [[String: Any]] else { return [] }
-        return entries.enumerated().compactMap { index, entry in
-            guard let rawTitle = entry["title"] as? String else { return nil }
-            let title = TranscriptTextPresentation.singleLine(rawTitle, maxLength: 240)
-            guard !title.isEmpty else { return nil }
-            let status = (entry["status"] as? String ?? "not_reported")
-            return RunEvidenceSnapshot.PlanStep(
-                id: "\(index)|\(title)",
-                title: title,
-                status: status
-            )
+    nonisolated static func applyingPlanUpdate(
+        _ payload: [String: Any],
+        to current: [RunEvidenceSnapshot.PlanStep]
+    ) -> [RunEvidenceSnapshot.PlanStep] {
+        let rawInput = payload["rawInput"] as? [String: Any]
+        let entries = payload["entries"] as? [[String: Any]]
+            ?? rawInput?["todos"] as? [[String: Any]]
+            ?? []
+        let merge = rawInput?["merge"] as? Bool ?? false
+        let updates = entries.enumerated().compactMap { index, entry -> (String, String?, String)? in
+            let rawTitle = entry["title"] as? String ?? entry["content"] as? String
+            let title = rawTitle.map { TranscriptTextPresentation.singleLine($0, maxLength: 240) }
+            let rawID = entry["id"] as? String
+            let id = rawID?.trimmingCharacters(in: .whitespacesAndNewlines)
+                ?? title.map { "\(index)|\($0)" }
+                ?? ""
+            guard !id.isEmpty, title?.isEmpty != true else { return nil }
+            return (id, title, entry["status"] as? String ?? "not_reported")
         }
+        guard merge else {
+            return updates.compactMap { id, title, status in
+                guard let title else { return nil }
+                return .init(id: id, title: title, status: status)
+            }
+        }
+        var result = current
+        for (id, title, status) in updates {
+            if let index = result.firstIndex(where: { $0.id == id }) {
+                result[index] = .init(
+                    id: id,
+                    title: title ?? result[index].title,
+                    status: status
+                )
+            } else if let title {
+                result.append(.init(id: id, title: title, status: status))
+            }
+        }
+        return result
     }
 
     private func makeRunEvidenceSnapshot(
@@ -3926,6 +3960,7 @@ final class ChatStore {
                 id: $0.id,
                 title: $0.title,
                 status: $0.status,
+                owningPlanStepID: currentTurnWorkerPlanStepIDs[$0.id],
                 childID: $0.childID,
                 durationMilliseconds: $0.durationMilliseconds,
                 toolCallCount: $0.toolCallCount,
@@ -4095,6 +4130,7 @@ final class ChatStore {
             AssistantTurnTrace.Tool(
                 id: tool.id,
                 title: TranscriptTextPresentation.singleLine(tool.title, maxLength: 160),
+                kind: TranscriptTextPresentation.singleLine(tool.kind, maxLength: 80),
                 status: tool.terminalStatus.map { String(describing: $0).capitalized }
                     ?? tool.status.map(ActivitySidebarPresentation.activityStatus)
                     ?? "Status not settled",

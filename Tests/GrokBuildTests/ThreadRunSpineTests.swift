@@ -1,0 +1,221 @@
+import XCTest
+@testable import GrokBuild
+
+final class ThreadRunSpineTests: XCTestCase {
+    private let binding = RunEvidenceLiveProjection.Binding(
+        localTabID: UUID(),
+        workspaceID: UUID(),
+        backendSessionID: "backend",
+        processGeneration: 9
+    )
+
+    func testNoToolRunKeepsAQuietTruthfulPhase() {
+        let projection = live(plan: [], workers: [], tools: [])
+
+        XCTAssertEqual(ThreadRunSpinePresentation.livePhase(projection), "Working")
+        XCTAssertTrue(ThreadRunSpinePresentation.liveTools(projection, workspace: nil).isEmpty)
+    }
+
+    func testOneToolReceiptNamesFamilyOperationStatusAndUnknownBoundaries() {
+        let projection = live(tools: [.init(
+            id: "terminal-1",
+            title: "Run tests",
+            kind: "terminal",
+            status: "Running",
+            detail: nil,
+            qualifiedToolName: "terminal__run",
+            isActive: true
+        )])
+
+        let row = ThreadRunSpinePresentation.liveTools(projection, workspace: nil)[0]
+        XCTAssertEqual(row.family, "terminal")
+        XCTAssertEqual(row.operation, "terminal__run")
+        XCTAssertEqual(row.status, "Running")
+        XCTAssertEqual(row.duration, "Duration not reported")
+        XCTAssertEqual(row.worker, "Parent agent")
+        XCTAssertEqual(row.outputBoundary, "No file artifact reported")
+        XCTAssertEqual(ThreadRunSpinePresentation.livePhase(projection), "Using terminal")
+    }
+
+    func testSequentialMultiToolReceiptsKeepOrderAndArtifactBoundary() {
+        let workspace = URL(fileURLWithPath: "/tmp/project")
+        let projection = live(
+            tools: [
+                .init(id: "read", title: "Read file", kind: "read", status: "Succeeded", detail: nil, isActive: false),
+                .init(id: "write", title: "Write file", kind: "edit", status: "Succeeded", detail: nil, isActive: false),
+            ],
+            artifacts: [.init(
+                toolCallID: "write",
+                path: "/tmp/project/Sources/App.swift",
+                status: "Completed",
+                location: .workspace
+            )]
+        )
+
+        let rows = ThreadRunSpinePresentation.liveTools(projection, workspace: workspace)
+        XCTAssertEqual(rows.map(\.operation), ["Read file", "Write file"])
+        XCTAssertEqual(rows[0].outputBoundary, "No file artifact reported")
+        XCTAssertEqual(rows[1].outputBoundary, "Sources/App.swift")
+    }
+
+    func testTwoParallelWorkersGroupUnderOwningPlanStep() {
+        let step = RunEvidenceSnapshot.PlanStep(id: "build", title: "Build both lanes", status: "in_progress")
+        let workers = [
+            worker(id: "one", stepID: step.id, status: "running"),
+            worker(id: "two", stepID: step.id, status: "running"),
+            worker(id: "unowned", stepID: nil, status: "running"),
+        ]
+
+        XCTAssertEqual(ThreadRunSpinePresentation.workers(workers, ownedBy: step).map(\.id), ["one", "two"])
+        XCTAssertEqual(ThreadRunSpinePresentation.unownedWorkers(workers, plan: [step]).map(\.id), ["unowned"])
+        XCTAssertEqual(ThreadRunSpinePresentation.progressLabel([step]), "0 completed · 1 remaining")
+    }
+
+    func testFailureReceiptStaysFailedAfterSettlement() {
+        let rows = ThreadRunSpinePresentation.settledTools(
+            [.init(id: "bad", title: "Run command", kind: "terminal", status: "Failed", mcpServerName: nil)],
+            artifacts: [],
+            workspace: nil
+        )
+
+        XCTAssertEqual(rows.map(\.status), ["Failed"])
+        XCTAssertEqual(rows.map(\.duration), ["Duration not reported"])
+    }
+
+    func testCancellationAndRecoveryRequiredRemainDistinctCheckpoints() {
+        let cancelled = snapshot(outcome: .userStopped, recovery: false, settled: true)
+        let recovery = snapshot(outcome: .completed, recovery: true, settled: true)
+
+        XCTAssertEqual(ThreadRunSpinePresentation.checkpointLabel(cancelled), "Stopped checkpoint")
+        XCTAssertEqual(ThreadRunSpinePresentation.checkpointLabel(recovery), "Recovery required")
+        XCTAssertEqual(ThreadRunSpinePresentation.settledPhase(cancelled), "Stopped by you")
+    }
+
+    func testTraceKindRoundTripsWithoutBreakingLegacyRows() throws {
+        let current = AssistantTurnTrace.Tool(
+            id: "tool",
+            title: "Run",
+            kind: "terminal",
+            status: "Succeeded",
+            mcpServerName: nil
+        )
+        let restored = try JSONDecoder().decode(
+            AssistantTurnTrace.Tool.self,
+            from: JSONEncoder().encode(current)
+        )
+        let legacy = try JSONDecoder().decode(
+            AssistantTurnTrace.Tool.self,
+            from: Data(#"{"id":"old","title":"Read","status":"Succeeded","mcpServerName":null,"discoveredQualifiedToolNames":[]}"#.utf8)
+        )
+
+        XCTAssertEqual(restored.kind, "terminal")
+        XCTAssertNil(legacy.kind)
+    }
+
+    func testTypedTodoPlanCreatesStableStepsAndMergesStatusOnlyUpdates() {
+        let initial: [String: Any] = [
+            "rawInput": [
+                "merge": false,
+                "todos": [
+                    ["id": "Spawn", "content": "Spawn sibling workers", "status": "in_progress"],
+                    ["id": "Collect", "content": "Collect both", "status": "pending"],
+                    ["id": "Report", "content": "Report", "status": "pending"],
+                ],
+            ],
+        ]
+        let partial: [String: Any] = [
+            "rawInput": [
+                "merge": true,
+                "todos": [
+                    ["id": "Spawn", "status": "completed"],
+                    ["id": "Collect", "status": "in_progress"],
+                ],
+            ],
+        ]
+
+        let created = ChatStore.applyingPlanUpdate(initial, to: [])
+        let merged = ChatStore.applyingPlanUpdate(partial, to: created)
+
+        XCTAssertEqual(created.map(\.id), ["Spawn", "Collect", "Report"])
+        XCTAssertEqual(merged.map(\.title), ["Spawn sibling workers", "Collect both", "Report"])
+        XCTAssertEqual(merged.map(\.status), ["completed", "in_progress", "pending"])
+    }
+
+    func testOnlyTypedTodoWriteReceiptsEnterThePlanProjection() {
+        XCTAssertTrue(GrokProcess.isPlanToolUpdate([
+            "_meta": ["x.ai/tool": ["name": "todo_write"]],
+            "rawInput": ["todos": []],
+        ]))
+        XCTAssertTrue(GrokProcess.isPlanToolUpdate([
+            "rawInput": ["variant": "TodoWrite", "todos": []],
+        ]))
+        XCTAssertFalse(GrokProcess.isPlanToolUpdate([
+            "_meta": ["x.ai/tool": ["name": "execute"]],
+            "rawInput": ["command": "true"],
+        ]))
+    }
+
+    private func live(
+        plan: [RunEvidenceSnapshot.PlanStep] = [],
+        workers: [RunEvidenceSnapshot.Worker] = [],
+        tools: [RunEvidenceLiveProjection.Tool] = [],
+        artifacts: [ChatStore.RunArtifact] = []
+    ) -> RunEvidenceLiveProjection {
+        RunEvidenceLiveProjection(
+            binding: binding,
+            goalSummary: "Acceptance",
+            plan: plan,
+            workers: workers,
+            tools: tools,
+            artifacts: artifacts,
+            process: .init(state: "In progress — not settled", model: "grok-4.5", mcps: [])
+        )
+    }
+
+    private func worker(id: String, stepID: String?, status: String) -> RunEvidenceSnapshot.Worker {
+        .init(
+            id: id,
+            title: "Worker \(id)",
+            status: status,
+            owningPlanStepID: stepID,
+            childID: id,
+            durationMilliseconds: nil,
+            toolCallCount: nil,
+            redactedError: nil
+        )
+    }
+
+    private func snapshot(
+        outcome: ChatStore.TurnOutcome,
+        recovery: Bool,
+        settled: Bool
+    ) -> RunEvidenceSnapshot {
+        RunEvidenceSnapshot(
+            binding: .init(
+                localTabID: UUID(),
+                workspaceID: UUID(),
+                backendSessionID: "backend",
+                processGeneration: 9,
+                requestID: "prompt",
+                isSettled: settled
+            ),
+            goalSummary: "Acceptance",
+            plan: [],
+            workers: [],
+            tools: .init(succeeded: 0, failed: 0, cancelled: 0, unknown: 0),
+            artifacts: [],
+            gitReviewFiles: [],
+            process: .init(state: "Settled", model: "grok-4.5", mcps: []),
+            continuity: .init(
+                status: recovery ? "diverged" : "verified",
+                reason: recovery ? "review" : "matched",
+                provenance: recovery ? "Continuity needs review" : "Verified continuity",
+                requiresRecoveryAction: recovery
+            ),
+            usage: .init(totalTokens: 1, modelCalls: 1, turnCount: 1),
+            outcome: outcome,
+            unresolvedErrors: [],
+            nextAction: recovery ? "Review recovery." : "No action."
+        )
+    }
+}

@@ -31,6 +31,7 @@ struct AssistantTurnTrace: Codable, Sendable, Hashable {
     struct Tool: Codable, Sendable, Hashable, Identifiable {
         let id: String
         let title: String
+        let kind: String?
         let status: String
         let mcpServerName: String?
         let mcpReceiptRole: MCPToolReceiptRole?
@@ -40,6 +41,7 @@ struct AssistantTurnTrace: Codable, Sendable, Hashable {
         init(
             id: String,
             title: String,
+            kind: String? = nil,
             status: String,
             mcpServerName: String?,
             mcpReceiptRole: MCPToolReceiptRole? = nil,
@@ -48,6 +50,7 @@ struct AssistantTurnTrace: Codable, Sendable, Hashable {
         ) {
             self.id = id
             self.title = title
+            self.kind = kind
             self.status = status
             self.mcpServerName = mcpServerName
             self.mcpReceiptRole = mcpReceiptRole
@@ -56,7 +59,7 @@ struct AssistantTurnTrace: Codable, Sendable, Hashable {
         }
 
         private enum CodingKeys: String, CodingKey {
-            case id, title, status, mcpServerName, mcpReceiptRole
+            case id, title, kind, status, mcpServerName, mcpReceiptRole
             case qualifiedToolName, discoveredQualifiedToolNames
         }
 
@@ -64,6 +67,7 @@ struct AssistantTurnTrace: Codable, Sendable, Hashable {
             let values = try decoder.container(keyedBy: CodingKeys.self)
             id = try values.decode(String.self, forKey: .id)
             title = try values.decode(String.self, forKey: .title)
+            kind = try values.decodeIfPresent(String.self, forKey: .kind)
             status = try values.decode(String.self, forKey: .status)
             mcpServerName = try values.decodeIfPresent(String.self, forKey: .mcpServerName)
             mcpReceiptRole = try values.decodeIfPresent(MCPToolReceiptRole.self, forKey: .mcpReceiptRole)
