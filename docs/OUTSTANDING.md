@@ -176,7 +176,8 @@ MCP, ready badge, or model-picker label is never acceptance by itself.
 For every matrix:
 
 1. Use fresh disposable sessions with exact `GB-S<slice>-...` markers. Never reuse
-   provider-specific web/tool history across models.
+   any prior assistant response history across models; even plain visible responses
+   can retain provider-specific encrypted reasoning.
 2. Cover at least these four evidence classes across the slice's prompts:
    - a normal successful path;
    - an intentional tool or capability failure;
@@ -2433,7 +2434,7 @@ them:
 |---|---|---|
 | B-1 | Second-launch activation is unconditional and may foreground GrokBuild. | Existing architecture/close-out receipt |
 | B-2 | System Events cannot reliably read AXDescription on SwiftUI elements; automation should use stable identifiers. | Existing accessibility receipt |
-| C-1 | Cross-provider web/tool history is not replay-safe; start a new session when switching providers after such a turn. | `docs/TOOL_USE_AND_MULTI_TURN_CONTRACT.md` |
+| C-1 | Any prior assistant response can retain non-portable provider reasoning state; start a new session before switching models after the first response. | `docs/TOOL_USE_AND_MULTI_TURN_CONTRACT.md` |
 | C-2 | A compound multi-MCP first turn may need one same-session retry on fast OpenRouter routes while servers connect. Slice 2 may tighten presentation but must not rewrite history. | `docs/TOOL_USE_AND_MULTI_TURN_CONTRACT.md` |
 | C-3 | Changed-files counts refresh at selection/turn boundaries rather than arbitrary external edits. | `ARCHITECTURE.md` |
 | C-4 | Historical turns without a per-turn model receipt retain the neutral Build agent label. | `ARCHITECTURE.md` |

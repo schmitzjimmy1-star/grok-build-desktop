@@ -119,6 +119,8 @@ final class SettingsTabTests: XCTestCase {
             browserEnabled: false,
             computerUseEnabled: false,
             mcpServerNames: [],
+            mcpGatewayEnabled: false,
+            observedCLIConfiguredMCPServerNames: [],
             startedAt: Date(),
             freshness: .live
         )

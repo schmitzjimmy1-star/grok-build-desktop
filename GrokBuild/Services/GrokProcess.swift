@@ -38,6 +38,10 @@ struct GrokLaunchOptions: Sendable {
     var forkSession: Bool = false
     var newSessionID: String? = nil
     var mcpServers: [MCPServerConfig] = []
+    /// Whether an explicit thread/turn selection lets this generation omit the
+    /// app's default catch-all MCP deny rule. Grok and user-supplied deny rules
+    /// remain authoritative, and the app never mutates global MCP configuration.
+    var mcpGatewayEnabled: Bool = false
 }
 
 enum GrokLaunchOutcome: String, Sendable, Equatable {
@@ -72,6 +76,8 @@ struct GrokLaunchReceipt: Sendable, Equatable {
     let browserEnabled: Bool
     let computerUseEnabled: Bool
     let mcpServerNames: [String]
+    let mcpGatewayEnabled: Bool
+    var observedCLIConfiguredMCPServerNames: [String]
     let startedAt: Date
 
     init(
@@ -98,6 +104,8 @@ struct GrokLaunchReceipt: Sendable, Equatable {
         subagentsEnabled = !options.noSubagents
         resumeSessionID = options.resumeSessionID
         mcpServerNames = options.mcpServers.map(\.name).sorted()
+        mcpGatewayEnabled = options.mcpGatewayEnabled
+        observedCLIConfiguredMCPServerNames = []
         browserEnabled = mcpServerNames.contains("grokbuild-browser")
         computerUseEnabled = mcpServerNames.contains("grokbuild-computer-use")
         self.startedAt = startedAt
@@ -117,6 +125,24 @@ enum GrokMemoryFlag {
         if noMemory { return "--no-memory" }
         if experimentalMemory { return "--experimental-memory" }
         return nil
+    }
+}
+
+enum GrokMCPGatewayLaunchPolicy {
+    /// Grok's MCP permission matcher evaluates the full `server__tool` name.
+    /// Live CLI 1.0.0 acceptance proved `MCPTool(*)` does not cross that separator;
+    /// both halves must be globbed to cover the configured catalog.
+    static let catchAllDenyRule = "MCPTool(*__*)"
+
+    static func denyRules(userRules: [String], gatewayEnabled: Bool) -> [String] {
+        var rules = userRules.filter { !$0.isEmpty }
+        if !gatewayEnabled,
+           !rules.contains(where: {
+               $0.trimmingCharacters(in: .whitespacesAndNewlines) == catchAllDenyRule
+           }) {
+            rules.append(catchAllDenyRule)
+        }
+        return rules
     }
 }
 
@@ -445,9 +471,26 @@ struct TurnCompletionReceipt: Sendable, Equatable {
     let identity: ACPEventIdentity
     let promptID: String?
     let stopReason: String?
+    let redactedError: String?
     let totalTokens: Int?
     let modelCalls: Int?
     let turnCount: Int?
+
+    private var normalizedStopReason: String? {
+        stopReason?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+    }
+
+    var isSuccessful: Bool {
+        normalizedStopReason == "end_turn" && redactedError == nil
+    }
+
+    var isCancelled: Bool {
+        normalizedStopReason == "cancelled" && redactedError == nil
+    }
+
+    var isFailure: Bool {
+        !isSuccessful && !isCancelled
+    }
 }
 
 struct TurnCompletionBridgeFailure: Sendable, Equatable {
@@ -532,6 +575,11 @@ final class GrokProcess: @unchecked Sendable {
         let timeoutTask: Task<Void, Never>?
     }
     private var pendingRequests: [Int: PendingRequest] = [:]
+    /// `session/prompt` is lifecycle-owned by `turn_completed`. Grok CLI 1.0 can
+    /// omit the matching JSON-RPC response after a rejected tool permission, so
+    /// the authoritative completion acknowledgement must also release this one
+    /// pending request. A late response is then ignored by normal request lookup.
+    private var activePromptRequestID: Int?
     private var turnCompletionContinuation: CheckedContinuation<Bool, Never>?
     private var turnCompletionTimeoutTask: Task<Void, Never>?
     private var turnCompletionResult: Bool?
@@ -540,6 +588,7 @@ final class GrokProcess: @unchecked Sendable {
     private(set) var sessionId: String?
     private(set) var launchReceipt: GrokLaunchReceipt?
     private(set) var mcpServerStatuses: [MCPServerStatus] = []
+    private(set) var observedCLIConfiguredMCPServerNames: [String] = []
     private var configuredMCPServerNames: [String] = []
     /// Monotonic launch identity. `activeProcessGeneration == nil` means the most
     /// recent receipt is historical rather than a live-process claim.
@@ -941,6 +990,7 @@ final class GrokProcess: @unchecked Sendable {
         let launchGeneration = processGeneration
         activeProcessGeneration = launchGeneration
         configuredMCPServerNames = options.mcpServers.map(\.name)
+        observedCLIConfiguredMCPServerNames = []
         mcpServerStatuses = MCPReadinessPolicy.connectingStatuses(for: options.mcpServers)
         let launchIdentity = ModelRequestIdentity(
             localTabID: options.localTabID,
@@ -1000,7 +1050,10 @@ final class GrokProcess: @unchecked Sendable {
         for rule in options.allowRules where !rule.isEmpty {
             args += ["--allow", rule]
         }
-        for rule in options.denyRules where !rule.isEmpty {
+        for rule in GrokMCPGatewayLaunchPolicy.denyRules(
+            userRules: options.denyRules,
+            gatewayEnabled: options.mcpGatewayEnabled
+        ) {
             args += ["--deny", rule]
         }
         if options.forkSession {
@@ -1425,7 +1478,10 @@ final class GrokProcess: @unchecked Sendable {
     }
 
     @discardableResult
-    func setModel(_ modelId: String) -> ModelSwitchHandle? {
+    func setModel(
+        _ modelId: String,
+        expectedEffectiveModelID: String? = nil
+    ) -> ModelSwitchHandle? {
         guard let sid = sessionId,
               let generation = activeProcessGeneration else { return nil }
         let identity = ModelRequestIdentity(
@@ -1457,6 +1513,24 @@ final class GrokProcess: @unchecked Sendable {
                     return self.modelExecutionState
                 }
                 if let effective = Self.effectiveModelID(from: result) {
+                    let expected = expectedEffectiveModelID?
+                        .trimmingCharacters(in: .whitespacesAndNewlines)
+                    var acceptedReadbacks: Set<String> = [modelId]
+                    if let expected, !expected.isEmpty {
+                        acceptedReadbacks.insert(expected)
+                    }
+                    guard acceptedReadbacks.contains(effective) else {
+                        self.currentModelId = effective
+                        self.modelSwitchError = "Grok confirmed \(effective) instead of the requested model \(modelId). Start a new session before sending another prompt."
+                        self.modelSwitchNeedsNewSession = true
+                        _ = ModelExecutionReducer.reject(
+                            failure: .rejected,
+                            identity: identity,
+                            state: &self.modelExecutionState
+                        )
+                        self.state = .failed(self.modelSwitchError ?? "Grok confirmed an unexpected model.")
+                        return self.modelExecutionState
+                    }
                     if ModelExecutionReducer.confirm(
                         effectiveModelID: effective,
                         identity: identity,
@@ -1562,10 +1636,14 @@ final class GrokProcess: @unchecked Sendable {
         return try await withCheckedThrowingContinuation { c in
             ioLock.lock()
             pendingRequests[id] = PendingRequest(continuation: c, timeoutTask: nil)
+            if method == "session/prompt" {
+                activePromptRequestID = id
+            }
             ioLock.unlock()
             if !writeJson(req) {
                 ioLock.lock()
                 pendingRequests.removeValue(forKey: id)
+                if activePromptRequestID == id { activePromptRequestID = nil }
                 ioLock.unlock()
                 c.resume(throwing: NSError(domain: "ACP", code: -1))
             }
@@ -1666,6 +1744,19 @@ final class GrokProcess: @unchecked Sendable {
         turnCompletionLock.unlock()
         timeout?.cancel()
         continuation?.resume(returning: authoritative)
+        if authoritative {
+            releasePendingPromptRequestAfterAuthoritativeCompletion()
+        }
+    }
+
+    private func releasePendingPromptRequestAfterAuthoritativeCompletion() {
+        ioLock.lock()
+        let promptID = activePromptRequestID
+        activePromptRequestID = nil
+        let pending = promptID.flatMap { pendingRequests.removeValue(forKey: $0) }
+        ioLock.unlock()
+        pending?.timeoutTask?.cancel()
+        pending?.continuation.resume(returning: nil)
     }
 
     /// Records an exact ownership rejection instead of silently waiting for the
@@ -1712,6 +1803,7 @@ final class GrokProcess: @unchecked Sendable {
         ioLock.lock()
         let pending = Array(pendingRequests.values)
         pendingRequests.removeAll()
+        activePromptRequestID = nil
         ioLock.unlock()
         for item in pending {
             item.timeoutTask?.cancel()
@@ -1853,6 +1945,12 @@ final class GrokProcess: @unchecked Sendable {
             let params = j["params"] as? [String: Any] ?? [:]
             let rid = j["id"]
 
+            if method == "_x.ai/mcp/servers_updated" {
+                observedCLIConfiguredMCPServerNames = Self.mcpServerNames(from: params)
+                launchReceipt?.observedCLIConfiguredMCPServerNames = observedCLIConfiguredMCPServerNames
+                return
+            }
+
             if method == "session/update"
                 || method == "_x.ai/session/update"
                 || method == "_x.ai/session_notification" {
@@ -1970,6 +2068,7 @@ final class GrokProcess: @unchecked Sendable {
         if let id = jsonRequestId(from: j) {
             ioLock.lock()
             let pending = pendingRequests.removeValue(forKey: id)
+            if activePromptRequestID == id { activePromptRequestID = nil }
             ioLock.unlock()
             if let pending {
                 pending.timeoutTask?.cancel()
@@ -2026,6 +2125,14 @@ final class GrokProcess: @unchecked Sendable {
               sessionID == self.sessionId,
               activeProcessGeneration == processGeneration else { return nil }
         let usage = update["usage"] as? [String: Any] ?? [:]
+        let stopReason = update["stop_reason"] as? String ?? update["stopReason"] as? String
+        let rawError: String? = if stopReason?.lowercased() == "error" {
+            update["agent_result"] as? String
+                ?? update["agentResult"] as? String
+                ?? update["error"] as? String
+        } else {
+            update["error"] as? String
+        }
         return TurnCompletionReceipt(
             identity: ACPEventIdentity(
                 localTabID: launchReceipt?.localTabID,
@@ -2034,7 +2141,8 @@ final class GrokProcess: @unchecked Sendable {
                 backendEventID: backendEventID
             ),
             promptID: update["prompt_id"] as? String ?? update["promptId"] as? String,
-            stopReason: update["stop_reason"] as? String ?? update["stopReason"] as? String,
+            stopReason: stopReason,
+            redactedError: Self.redactedLifecycleText(rawError),
             totalTokens: Self.integer(usage["totalTokens"]),
             modelCalls: Self.integer(usage["modelCalls"]),
             turnCount: Self.integer(usage["numTurns"])
@@ -2054,6 +2162,17 @@ final class GrokProcess: @unchecked Sendable {
     ) -> Bool {
         guard let eventSessionID, let currentSessionID else { return true }
         return eventSessionID == currentSessionID
+    }
+
+    static func mcpServerNames(from params: [String: Any]) -> [String] {
+        let servers = params["mcpServers"] as? [[String: Any]]
+            ?? params["mcp_servers"] as? [[String: Any]]
+            ?? params["servers"] as? [[String: Any]]
+            ?? []
+        return Array(Set(servers.compactMap {
+            ($0["name"] as? String ?? $0["serverName"] as? String ?? $0["server_name"] as? String)?
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+        }.filter { !$0.isEmpty })).sorted()
     }
 
     private func routeUpdate(

@@ -132,12 +132,15 @@ final class ThreadRunSpineTests: XCTestCase {
     }
 
     func testCancellationAndRecoveryRequiredRemainDistinctCheckpoints() {
-        let cancelled = snapshot(outcome: .userStopped, recovery: false, settled: true)
+        let stopped = snapshot(outcome: .userStopped, recovery: false, settled: true)
+        let cancelled = snapshot(outcome: .cancelled, recovery: false, settled: true)
         let recovery = snapshot(outcome: .completed, recovery: true, settled: true)
 
-        XCTAssertEqual(ThreadRunSpinePresentation.checkpointLabel(cancelled), "Stopped checkpoint")
+        XCTAssertEqual(ThreadRunSpinePresentation.checkpointLabel(stopped), "Stopped checkpoint")
+        XCTAssertEqual(ThreadRunSpinePresentation.checkpointLabel(cancelled), "Cancelled checkpoint")
         XCTAssertEqual(ThreadRunSpinePresentation.checkpointLabel(recovery), "Recovery required")
-        XCTAssertEqual(ThreadRunSpinePresentation.settledPhase(cancelled), "Stopped by you")
+        XCTAssertEqual(ThreadRunSpinePresentation.settledPhase(stopped), "Stopped by you")
+        XCTAssertEqual(ThreadRunSpinePresentation.settledPhase(cancelled), "Turn cancelled")
     }
 
     func testTraceKindRoundTripsWithoutBreakingLegacyRows() throws {

@@ -5,6 +5,12 @@ import SwiftUI
 /// they do not decide lifecycle state.
 enum ActivitySidebarPresentation {
     static func summaryDetail(_ snapshot: RunEvidenceSnapshot) -> String {
+        if snapshot.outcome == .failed {
+            return "The backend confirmed that this turn ended with an error."
+        }
+        if snapshot.outcome == .cancelled {
+            return "The backend confirmed that this turn was cancelled before completion."
+        }
         if snapshot.outcome == .completionReceiptMissing {
             return "The reply arrived, but the backend never confirmed the turn finished."
         }
@@ -855,6 +861,8 @@ struct ActivitySidebar: View {
     }
 
     private func summarySymbol(_ snapshot: RunEvidenceSnapshot) -> String {
+        if snapshot.outcome == .failed { return "xmark.octagon" }
+        if snapshot.outcome == .cancelled { return "slash.circle" }
         if snapshot.outcome == .completionReceiptMissing { return "exclamationmark.triangle" }
         if snapshot.outcome == .userStopped { return "stop.circle" }
         if snapshot.activeWorkerCount > 0 { return "bolt.circle" }
@@ -865,7 +873,9 @@ struct ActivitySidebar: View {
     }
 
     private func summaryColor(_ snapshot: RunEvidenceSnapshot) -> Color {
-        if snapshot.outcome == .completionReceiptMissing
+        if snapshot.outcome == .failed { return .red }
+        if snapshot.outcome == .cancelled
+            || snapshot.outcome == .completionReceiptMissing
             || snapshot.unresolvedWorkerCount > 0
             || !snapshot.unresolvedErrors.isEmpty {
             return .orange

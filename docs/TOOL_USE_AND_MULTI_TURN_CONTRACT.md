@@ -1,25 +1,30 @@
 ---
 title: GrokBuild tool use and multi-turn operating contract
-status: installed-app verified
-verified: 2026-08-02
+status: installed-app verified with 2026-08-10 routing correction
+verified: 2026-08-10
 ---
 
 # GrokBuild tool use and multi-turn operating contract
 
 Use this contract when a GrokBuild task needs terminal tools, built-in web
 search, interactive browser control, native macOS Computer Use, or several
-dependent turns. It describes the installed `0.1.20` personal build running
-Grok CLI `0.2.118`; do not infer future capability from this dated receipt.
+dependent turns. Grok CLI/ACP is the sole runtime authority; verify the installed
+CLI version and app provenance in the current acceptance receipt rather than
+copying a historical version number from this contract.
 
 ## Core operating rules
 
 1. **Verify the live route before work.** The generation-bound session receipt,
    not the saved picker label, must name the requested model. Stop if the live
    model is missing or wrong.
-2. **Keep one provider/model for the life of a tool-rich session.** Provider
-   tool-call and tool-result encodings are not universally portable. After a
-   web or tool turn, start a new session before changing provider or model.
-3. **Discover MCP tools before the first call.** Browser and Computer Use
+2. **Keep one provider/model after the first assistant response.** Grok may
+   retain provider-specific encrypted reasoning even when the visible answer is
+   plain text. Model changes are safe only before the first response; afterward,
+   start a new session.
+3. **Attach MCPs explicitly before the first call.** A no-attachment process
+   launches with Grok CLI's session-scoped `MCPTool(*__*)` deny rule, and the
+   ACP client answers any resulting qualified MCP permission request with Grok's
+   reject option even under Yolo or Always Approve. Browser and Computer Use
    servers are injected during ACP `session/new`/`session/load` and may still be
    connecting when a very fast model begins its first turn.
 4. **Treat `server is still connecting` as readiness, not incapability.** Wait a
@@ -228,8 +233,16 @@ overhead.
 
 ## Known boundaries
 
-- A provider switch after provider-specific web/tool history can fail with
-  `Invalid params` before usage or a final answer. Start a new session.
+- A provider switch after any assistant turn can fail before usage or a final
+  answer because hidden encrypted reasoning is not portable across providers.
+  GrokBuild blocks that switch and offers a fresh-session action.
+- ACP `mcpServers: []` does not disable MCPs configured in Grok CLI. GrokBuild
+  keeps external MCP invocation default-off with the CLI's own `MCPTool(*__*)`
+  deny rule plus a fail-closed ACP permission response for qualified MCP calls.
+  Grok CLI 1.0.0 enforces that deny directly in headless mode but still asks the
+  ACP client in `agent stdio`; the per-thread gate must outrank Yolo and Always
+  Approve there. The app omits its catch-all only for an explicit thread or turn
+  selection; user-supplied and Grok-owned deny rules still apply.
 - MCP injection at session creation does not currently block the composer until
   every server is ready. Use the readiness gate above.
 - Provider catalogs and Settings toggles prove configuration, not successful
@@ -252,7 +265,7 @@ Browser or Computer Use call, discover the exact tool and verify the MCP server
 is ready; if it is still connecting, wait and retry the same call. Observe each
 result before the next action, refresh snapshot refs after state changes, and
 leave a short Goal/Completed/Evidence/State changed/Next checkpoint after each
-material turn. Do not switch model or provider after web/tool history; start a
+material turn. GrokBuild blocks model changes after any assistant response; start a
 new session and carry over only the plain-text checkpoint. Never expose secrets
 or perform destructive, authentication, payment, consent, or external-send
 actions without the required user authorization.

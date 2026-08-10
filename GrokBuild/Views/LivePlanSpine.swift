@@ -112,6 +112,8 @@ enum ThreadRunSpinePresentation {
 
     static func checkpointLabel(_ snapshot: RunEvidenceSnapshot) -> String {
         if snapshot.continuity.requiresRecoveryAction { return "Recovery required" }
+        if snapshot.outcome == .failed { return "Failed checkpoint" }
+        if snapshot.outcome == .cancelled { return "Cancelled checkpoint" }
         if snapshot.outcome == .completionReceiptMissing { return "Checkpoint incomplete" }
         if snapshot.outcome == .userStopped { return "Stopped checkpoint" }
         return snapshot.binding.isSettled ? "Checkpoint saved" : "Checkpoint not settled"

@@ -62,6 +62,8 @@ struct EffectiveSessionReceipt: Equatable, Sendable {
     let browserEnabled: Bool
     let computerUseEnabled: Bool
     let mcpServerNames: [String]
+    let mcpGatewayEnabled: Bool
+    let observedCLIConfiguredMCPServerNames: [String]
     let startedAt: Date
     let freshness: EffectiveSessionReceiptFreshness
 
@@ -95,6 +97,8 @@ extension GrokLaunchReceipt {
             browserEnabled: browserEnabled,
             computerUseEnabled: computerUseEnabled,
             mcpServerNames: mcpServerNames,
+            mcpGatewayEnabled: mcpGatewayEnabled,
+            observedCLIConfiguredMCPServerNames: observedCLIConfiguredMCPServerNames,
             startedAt: startedAt,
             freshness: isLive ? .live : .historical
         )

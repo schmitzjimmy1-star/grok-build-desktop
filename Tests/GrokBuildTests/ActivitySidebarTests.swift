@@ -308,6 +308,11 @@ final class ActivitySidebarTests: XCTestCase {
     func testMissingReceiptAndUserStopRemainDistinctFromCompletion() {
         let missing = makeSnapshot(outcome: .completionReceiptMissing)
         let stopped = makeSnapshot(outcome: .userStopped)
+        let failed = makeSnapshot(
+            outcome: .failed,
+            unresolvedErrors: ["Provider rejected non-portable history"],
+            nextAction: "Review the provider or CLI error before retrying."
+        )
 
         XCTAssertEqual(
             ActivitySidebarPresentation.summaryDetail(missing),
@@ -317,8 +322,25 @@ final class ActivitySidebarTests: XCTestCase {
             ActivitySidebarPresentation.summaryDetail(stopped),
             "You stopped this run before it finished."
         )
+        XCTAssertEqual(
+            ActivitySidebarPresentation.summaryDetail(failed),
+            "The backend confirmed that this turn ended with an error."
+        )
         XCTAssertFalse(missing.binding.isSettled)
         XCTAssertFalse(stopped.binding.isSettled)
+        XCTAssertTrue(failed.binding.isSettled)
+    }
+
+    func testBackendCancellationNeverRendersAsCompletionOrUserStop() {
+        let cancelled = makeSnapshot(outcome: .cancelled)
+
+        XCTAssertEqual(cancelled.outcome.displayName, "Turn cancelled")
+        XCTAssertEqual(
+            ActivitySidebarPresentation.summaryDetail(cancelled),
+            "The backend confirmed that this turn was cancelled before completion."
+        )
+        XCTAssertNotEqual(cancelled.outcome, .completed)
+        XCTAssertNotEqual(cancelled.outcome, .userStopped)
     }
 
     func testActiveUnknownAndOrphanedWorkersCannotRenderCleanCompletion() {
@@ -487,7 +509,7 @@ final class ActivitySidebarTests: XCTestCase {
                 backendSessionID: "backend",
                 processGeneration: 1,
                 requestID: "prompt",
-                isSettled: outcome == .completed
+                isSettled: outcome == .completed || outcome == .failed || outcome == .cancelled
             ),
             goalSummary: goalSummary,
             plan: [],

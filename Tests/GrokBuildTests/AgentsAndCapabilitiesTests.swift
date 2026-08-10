@@ -100,7 +100,34 @@ final class AgentsAndCapabilitiesTests: XCTestCase {
         XCTAssertTrue(receipt.webSearchEnabled)
         XCTAssertTrue(receipt.subagentsEnabled)
         XCTAssertEqual(receipt.resumeSessionID, "019f-resume")
+        XCTAssertFalse(receipt.mcpGatewayEnabled)
+        XCTAssertEqual(receipt.observedCLIConfiguredMCPServerNames, [])
         XCTAssertFalse(String(describing: receipt).contains("terminal:rm"))
+    }
+
+    func testMCPGatewayLaunchPolicyUsesTheCLIDenyRuleByDefault() {
+        XCTAssertEqual(
+            GrokMCPGatewayLaunchPolicy.denyRules(
+                userRules: ["terminal:rm"],
+                gatewayEnabled: false
+            ),
+            ["terminal:rm", "MCPTool(*__*)"]
+        )
+        XCTAssertEqual(
+            GrokMCPGatewayLaunchPolicy.denyRules(
+                userRules: ["MCPTool(*__*)"],
+                gatewayEnabled: false
+            ),
+            ["MCPTool(*__*)"],
+            "the app invariant must not duplicate an equivalent user deny rule"
+        )
+        XCTAssertEqual(
+            GrokMCPGatewayLaunchPolicy.denyRules(
+                userRules: ["terminal:rm"],
+                gatewayEnabled: true
+            ),
+            ["terminal:rm"]
+        )
     }
 
     func testPermissionRequestsFollowEffectiveLivePolicy() {
@@ -136,6 +163,28 @@ final class AgentsAndCapabilitiesTests: XCTestCase {
                 options: [options[1]]
             ),
             .deny(optionID: "reject-once")
+        )
+
+        XCTAssertEqual(
+            PermissionRequestPolicy.disposition(
+                mode: .alwaysApprove,
+                isYolo: true,
+                options: options,
+                mcpGatewayEnabled: false,
+                isMCPInvocation: true
+            ),
+            .deny(optionID: "reject-once"),
+            "the per-thread MCP gate must outrank Yolo and Always Approve"
+        )
+        XCTAssertEqual(
+            PermissionRequestPolicy.disposition(
+                mode: .alwaysApprove,
+                isYolo: true,
+                options: options,
+                mcpGatewayEnabled: true,
+                isMCPInvocation: true
+            ),
+            .allow(optionID: "allow-once")
         )
     }
 
