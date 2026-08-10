@@ -687,9 +687,9 @@ final class SubprocessHygieneTests: XCTestCase {
                        "the error-toned label is replaced by state-aware copy")
     }
 
-    /// The composer surfaces continuity state inline as calm, non-blocking notes: a resume
-    /// hint while verifying and a fresh-thread heads-up (with a Review link) for the recovery
-    /// states. Send auto-forks — the block lives in `deliverPrompt`, not the banner.
+    /// The composer surfaces a demonstrated mismatch as a recovery note, while an ordinary
+    /// restorable task gets explicit Resume/New/Browse launch choices. Send auto-forks on a
+    /// mismatch — the block lives in `deliverPrompt`, not either presentation surface.
     func testComposerSurfacesContinuityStatusBannerInline() throws {
         let repositoryRoot = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent()
@@ -702,12 +702,17 @@ final class SubprocessHygieneTests: XCTestCase {
         XCTAssertTrue(chatViewSource.contains("if store.continuityRequiresRecovery {"),
                       "recovery note must be gated on the hard-block predicate")
         XCTAssertTrue(chatViewSource.contains("} else if store.continuityIsResuming {"),
-                      "resume hint must be gated on the transient verifying predicate")
+                      "quiet launch choices must be gated on the transient verifying predicate")
         XCTAssertTrue(chatViewSource.contains("ContinuityStatusBanner("),
                       "the inline continuity note must be composed above the composer")
+        XCTAssertTrue(chatViewSource.contains("LaunchSessionChoices("),
+                      "a restorable launch must expose explicit session choices")
         let recoveryStart = try XCTUnwrap(chatViewSource.range(of: "kind: .needsRecovery"))
         let recoveryEnd = try XCTUnwrap(
-            chatViewSource.range(of: "kind: .resuming", range: recoveryStart.upperBound..<chatViewSource.endIndex)
+            chatViewSource.range(
+                of: "} else if store.continuityIsResuming {",
+                range: recoveryStart.upperBound..<chatViewSource.endIndex
+            )
         )
         let recoveryBlock = String(chatViewSource[recoveryStart.lowerBound..<recoveryEnd.lowerBound])
         XCTAssertTrue(recoveryBlock.contains("store.reviewRecoveryCandidates()"),
