@@ -2461,6 +2461,49 @@ smoke threads, and pass Gates F–H.
   visibility and deletion gap remains unresolved. No private-store scrape, wrapper,
   daemon, broad deletion, or invented cleanup proof was used.
 
+### Slices 6-10 model-routing synchronization repair receipt — 2026-08-10
+
+- Objective: repair contradictions found during the accepted Slices 6-10 review
+  without reopening those slices or moving runtime authority out of Grok CLI/ACP.
+  The implementation is local on `codex/slices-6-10-authority-sync`; publication is
+  intentionally pending a separate explicit authorization.
+- Worker route truth: typed ACP `subagent_spawned.model` is retained as the worker's
+  runtime model and displayed separately from the configured role route. The UI says
+  `Ran on <model> (Grok ACP)` and, when applicable, `Routes to <model> (configured)`;
+  it no longer presents a configured guess as execution proof.
+- Exact MCP authorization: every MCP-enabled launch refreshes `grok mcp list` before
+  provider dispatch. Grok CLI receives an explicit deny for each configured but
+  unselected server, while ACP independently rejects any invocation outside the
+  generation-bound selected set. A thread with no selection retains the catch-all
+  `MCPTool(*__*)` deny. This preserves Grok CLI as executor and MCPs as default-off,
+  exact per-thread controls.
+- Usage and timing truth: ACP usage retains authoritative input, output, cached,
+  reasoning, total, API duration, provider cost, and per-model splits. Provider cost
+  overrides catalog estimates; exact per-model token splits drive estimates. Tool
+  duration renders only from ACP `duration_ms`, `durationMs`, `elapsed_ms`, or
+  `elapsedMs`; otherwise it says duration was not reported.
+- Submit and persistence truth: Send freezes the exact draft, model, mode, MCP set,
+  and attachments before starting or resuming a process, locks those controls while
+  pending, and revalidates the same route before dispatch. Settled checkpoints now
+  persist each turn's full plan, worker receipts, artifacts, Git-review paths,
+  warnings, and authoritative tool duration; the task header falls back to the saved
+  checkpoint model only while no process is running.
+- Verification: implementation commit
+  `15d4bdd7715fa9d11e216d160876f06abed5425e` passed complete `make test` and
+  `make ship`: **759/759**, zero failures, clean build, installed stamp equal to
+  HEAD, Team `DD2GCQJVB4`, deep/strict valid, no quarantine, and matching
+  dist/installed executable SHA-256
+  `3b3441a56807e8556b8d9c5821586ff315b86075191ff55d8d3e5fef2ab82baf`.
+- Installed-app acceptance: the exact installed bundle launched normally. Its saved
+  task exposed `grok-4.5 · saved checkpoint`; the model menu reported direct xAI
+  through Grok CLI with no alternate fallback; Add Context showed `0 MCPs attached`,
+  one explicitly unselected configured server, and Browser/Computer Use off for the
+  thread. No prompt was sent and no provider token was spent. Normal quit left every
+  scoped owned process count zero.
+- Known gap retained: no session or child session was deleted. Grok CLI's documented
+  child/session visibility and deletion gap remains unresolved; no private-store
+  scrape, wrapper, daemon, broad deletion, or fabricated cleanup receipt was added.
+
 ---
 
 ## Slice receipt template
