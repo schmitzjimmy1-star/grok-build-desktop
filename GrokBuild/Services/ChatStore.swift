@@ -817,6 +817,17 @@ final class ChatStore {
 
     var isPreparingSubmit: Bool { pendingSubmitIntent != nil }
 
+    var taskContractRequestedToolNames: [String] {
+        ThreadTaskContractPresentation.currentRequestedToolNames(
+            pending: pendingSubmitIntent?.requestedMCPNames,
+            draft: selectedPromptMCPNames.union(enabledBuiltInToolNames),
+            currentTurn: currentTurnRequestedMCPNames,
+            composerOwnsVisibleContext: !selectedPromptMCPNames.isEmpty
+                || !composerDraft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                || hasVisibleFileAttachments
+        )
+    }
+
     var pendingSubmitStageText: String? {
         guard pendingSubmitIntent != nil else { return nil }
         if process.sessionId == nil { return "Starting agent…" }

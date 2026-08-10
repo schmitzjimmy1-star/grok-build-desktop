@@ -1370,7 +1370,7 @@ struct ChatView: View {
                 connectionState: store.connectionState
             ),
             requestedToolFamilies: ThreadTaskContractPresentation.requestedToolFamilies(
-                current: store.currentTurnRequestedMCPNames,
+                current: store.taskContractRequestedToolNames,
                 checkpoint: store.latestTaskCheckpoint
             ),
             reviewState: reviewFileCount == 0

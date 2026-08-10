@@ -308,6 +308,36 @@ final class ThreadRunSpineTests: XCTestCase {
         )
     }
 
+    func testTaskContractPrefersFrozenOrVisibleDraftToolsOverPriorTurn() {
+        XCTAssertEqual(
+            ThreadTaskContractPresentation.currentRequestedToolNames(
+                pending: ["chrome-devtools"],
+                draft: ["github"],
+                currentTurn: ["zotero"],
+                composerOwnsVisibleContext: true
+            ),
+            ["chrome-devtools"]
+        )
+        XCTAssertEqual(
+            ThreadTaskContractPresentation.currentRequestedToolNames(
+                pending: nil,
+                draft: ["chrome-devtools"],
+                currentTurn: ["zotero"],
+                composerOwnsVisibleContext: true
+            ),
+            ["chrome-devtools"]
+        )
+        XCTAssertEqual(
+            ThreadTaskContractPresentation.currentRequestedToolNames(
+                pending: nil,
+                draft: [],
+                currentTurn: ["zotero"],
+                composerOwnsVisibleContext: false
+            ),
+            ["zotero"]
+        )
+    }
+
     func testTaskContractRetainsExactParentChildHandoffIdentity() {
         let child = RunEvidenceSnapshot.Worker(
             id: "worker-row",
