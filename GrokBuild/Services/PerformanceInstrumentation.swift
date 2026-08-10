@@ -65,6 +65,34 @@ enum GrokBuildPerformanceStage: String, CaseIterable, Sendable {
     case settled
 }
 
+/// Release acceptance budgets derived from the measured Slice 7 cold/warm ranges
+/// and the Slice 6 minimal-terminal baseline. They are test/acceptance thresholds,
+/// not a second runtime scheduler: Grok CLI/ACP still owns dispatch and tokens.
+enum ThreadNativeReleaseBudgets {
+    static let maximumColdFirstWindowMilliseconds = 750.0
+    static let maximumColdFirstIntentReadyMilliseconds = 10_000.0
+    static let maximumColdDispatchToFirstChunkMilliseconds = 8_000.0
+    static let maximumWarmDispatchToFirstChunkMilliseconds = 3_000.0
+    static let maximumIdleOwnedProcessCount = 0
+    static let maximumMinimalTerminalTurnTokens = 40_000
+
+    static func accepts(
+        coldFirstWindowMilliseconds: Double,
+        coldFirstIntentReadyMilliseconds: Double,
+        coldDispatchToFirstChunkMilliseconds: Double,
+        warmDispatchToFirstChunkMilliseconds: Double,
+        idleOwnedProcessCount: Int,
+        minimalTerminalTurnTokens: Int
+    ) -> Bool {
+        coldFirstWindowMilliseconds <= maximumColdFirstWindowMilliseconds
+            && coldFirstIntentReadyMilliseconds <= maximumColdFirstIntentReadyMilliseconds
+            && coldDispatchToFirstChunkMilliseconds <= maximumColdDispatchToFirstChunkMilliseconds
+            && warmDispatchToFirstChunkMilliseconds <= maximumWarmDispatchToFirstChunkMilliseconds
+            && idleOwnedProcessCount <= maximumIdleOwnedProcessCount
+            && minimalTerminalTurnTokens <= maximumMinimalTerminalTurnTokens
+    }
+}
+
 final class GrokBuildPerformanceInterval: @unchecked Sendable {
     fileprivate let lane: GrokBuildPerformanceLane
     fileprivate let state: OSSignpostIntervalState

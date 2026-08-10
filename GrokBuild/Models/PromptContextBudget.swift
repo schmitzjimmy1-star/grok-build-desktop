@@ -5,12 +5,15 @@ import Foundation
 /// remain explicitly unmeasured instead of being reverse-engineered or guessed.
 struct PromptContextContributor: Equatable, Sendable {
     enum Kind: String, Sendable {
+        case systemInstructions
         case projectInstructions
+        case projectContext
         case skillCatalog
         case mcpCatalog
         case requestedToolSchemas
         case deferredToolSchemas
         case sessionHistory
+        case userContent
         case memory
         case providerWrapper
     }
@@ -19,12 +22,20 @@ struct PromptContextContributor: Equatable, Sendable {
     let label: String
     let bytes: Int
     let isDeferred: Bool
+    let isMeasured: Bool
 
-    init(kind: Kind, label: String, bytes: Int, isDeferred: Bool = false) {
+    init(
+        kind: Kind,
+        label: String,
+        bytes: Int,
+        isDeferred: Bool = false,
+        isMeasured: Bool = true
+    ) {
         self.kind = kind
         self.label = label
         self.bytes = max(0, bytes)
         self.isDeferred = isDeferred
+        self.isMeasured = isMeasured
     }
 }
 
@@ -32,11 +43,15 @@ struct PromptContextBudgetReport: Equatable, Sendable {
     let contributors: [PromptContextContributor]
 
     var loadedBytes: Int {
-        contributors.filter { !$0.isDeferred }.reduce(0) { $0 + $1.bytes }
+        contributors.filter { !$0.isDeferred && $0.isMeasured }.reduce(0) { $0 + $1.bytes }
     }
 
     var deferredBytes: Int {
-        contributors.filter(\.isDeferred).reduce(0) { $0 + $1.bytes }
+        contributors.filter { $0.isDeferred && $0.isMeasured }.reduce(0) { $0 + $1.bytes }
+    }
+
+    var unmeasuredLabels: [String] {
+        contributors.filter { !$0.isMeasured }.map(\.label)
     }
 
     /// A comparison aid only. Live provider usage remains authoritative.
@@ -59,13 +74,29 @@ enum PromptContextBudget {
         deferredToolSchemas: [Data] = [],
         sessionHistory: Data = Data(),
         memory: Data = Data(),
-        providerWrapperBytes: Int? = nil
+        providerWrapperBytes: Int? = nil,
+        systemInstructionsBytes: Int? = nil,
+        projectContext: Data = Data(),
+        userContent: Data = Data()
     ) -> PromptContextBudgetReport {
         var contributors = [
+            PromptContextContributor(
+                kind: .systemInstructions,
+                label: systemInstructionsBytes == nil
+                    ? "Grok CLI system instructions (not exposed; unmeasured)"
+                    : "Grok CLI system instructions",
+                bytes: systemInstructionsBytes ?? 0,
+                isMeasured: systemInstructionsBytes != nil
+            ),
             PromptContextContributor(
                 kind: .projectInstructions,
                 label: "Project instructions",
                 bytes: projectInstructions.count
+            ),
+            PromptContextContributor(
+                kind: .projectContext,
+                label: "Selected project context",
+                bytes: projectContext.count
             ),
             PromptContextContributor(
                 kind: .skillCatalog,
@@ -90,8 +121,13 @@ enum PromptContextBudget {
             ),
             PromptContextContributor(
                 kind: .sessionHistory,
-                label: "Session history",
+                label: "Observable transcript history",
                 bytes: sessionHistory.count
+            ),
+            PromptContextContributor(
+                kind: .userContent,
+                label: "Current user content",
+                bytes: userContent.count
             ),
             PromptContextContributor(
                 kind: .memory,
@@ -104,7 +140,8 @@ enum PromptContextBudget {
             label: providerWrapperBytes == nil
                 ? "Provider wrapper (owned by Grok CLI; unmeasured)"
                 : "Provider wrapper",
-            bytes: providerWrapperBytes ?? 0
+            bytes: providerWrapperBytes ?? 0,
+            isMeasured: providerWrapperBytes != nil
         ))
         return PromptContextBudgetReport(contributors: contributors)
     }

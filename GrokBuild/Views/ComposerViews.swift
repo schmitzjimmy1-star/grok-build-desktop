@@ -310,13 +310,10 @@ struct BtwAsideBanner: View {
 
 // MARK: - Continuity status banner
 
-/// Inline, composer-adjacent continuity status. Both kinds are calm, non-blocking one-line
-/// notes — Send always works. `.resuming` says a restored tab will resume on Send (the
-/// transient `.verifying` state); `.needsRecovery` says the saved backend can't be resumed,
-/// so Send will fork to a fresh thread (keeping local messages), with a small Review link
-/// for anyone who wants to relink to the exact backend instead.
+/// Inline, composer-adjacent recovery status for a saved backend that cannot be resumed.
+/// The ordinary restorable launch path lives in `LaunchSessionChoices`; this banner is
+/// reserved for a demonstrated continuity mismatch and offers a bounded Review action.
 enum ContinuityBannerKind: Equatable {
-    case resuming
     case needsRecovery
 }
 
@@ -327,21 +324,6 @@ struct ContinuityStatusBanner: View {
 
     var body: some View {
         switch kind {
-        case .resuming:
-            HStack(spacing: 8) {
-                Image(systemName: "arrow.triangle.2.circlepath")
-                    .foregroundStyle(.secondary)
-                Text(message)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-            }
-            .padding(.horizontal, 12)
-            .padding(.vertical, 8)
-            .background(Color.secondary.opacity(0.08), in: RoundedRectangle(cornerRadius: AppTheme.Radius.large))
-            .accessibilityElement(children: .combine)
-            .accessibilityLabel("Resuming saved session. Send to continue.")
-            .accessibilityIdentifier("grok-continuity-resuming")
         case .needsRecovery:
             HStack(spacing: 8) {
                 Image(systemName: "arrow.triangle.branch")

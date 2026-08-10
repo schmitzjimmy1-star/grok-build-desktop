@@ -1000,9 +1000,12 @@ struct ChatView: View {
                 )
                 .padding(.horizontal, 12)
             } else if store.continuityIsResuming {
-                ContinuityStatusBanner(
-                    kind: .resuming,
-                    message: "Resuming saved session. Send to continue."
+                LaunchSessionChoices(
+                    onResumeCurrent: {
+                        Task { _ = await store.resumeTaskSession() }
+                    },
+                    onStartNew: onNewSession,
+                    onBrowseOld: onBrowseSessions
                 )
                 .padding(.horizontal, 12)
             }
@@ -1405,6 +1408,10 @@ struct ChatView: View {
                 .font(AppTheme.Typography.caption)
                 .foregroundStyle(.secondary)
 
+            Text("Start a new task")
+                .font(AppTheme.Typography.section)
+                .accessibilityIdentifier("grok-launch-start-new")
+
             HStack(spacing: 8) {
                 ForEach(WorkbenchIntent.defaults) { item in
                     CodexPromptPill(item: item) {
@@ -1457,12 +1464,23 @@ struct ChatView: View {
                                 .contentShape(Rectangle())
                             }
                             .buttonStyle(.plain)
-                            .accessibilityLabel("Resume \(entry.title)")
+                            .accessibilityLabel("Resume current task: \(entry.title)")
+                            .accessibilityHint("Loads this saved task without starting a provider turn until you explicitly resume or send.")
                             .accessibilityIdentifier("grok-recent-task-\(entry.id.uuidString)")
                         }
                     }
                     .frame(maxWidth: 480)
                 }
+
+                Button("Browse old tasks", systemImage: "clock.arrow.circlepath") {
+                    onBrowseSessions()
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+                .help("Browse old tasks (Shift-Command-R)")
+                .accessibilityLabel("Browse old tasks")
+                .accessibilityHint("Opens historical Grok sessions without starting one.")
+                .accessibilityIdentifier("grok-launch-browse-old")
             }
             .padding(.top, 6)
         }
@@ -2921,6 +2939,62 @@ struct ChatView: View {
         slashActiveIndex = min(slashActiveIndex, count - 1)
     }
 
+}
+
+private struct LaunchSessionChoices: View {
+    let onResumeCurrent: () -> Void
+    let onStartNew: () -> Void
+    let onBrowseOld: () -> Void
+
+    var body: some View {
+        HStack(spacing: 8) {
+            Text("Saved task")
+                .font(AppTheme.Typography.captionStrong)
+            Text("Choose what happens next.")
+                .font(AppTheme.Typography.caption)
+                .foregroundStyle(.secondary)
+            Spacer(minLength: 8)
+            launchButton(
+                "Resume current task",
+                help: "Resume the exact saved Grok backend without sending a prompt.",
+                identifier: "grok-launch-resume-current",
+                action: onResumeCurrent
+            )
+            launchButton(
+                "Start new task",
+                help: "Start a clean local task (Command-N). The saved task stays available.",
+                identifier: "grok-launch-new-task",
+                action: onStartNew
+            )
+            launchButton(
+                "Browse old tasks",
+                help: "Browse historical sessions (Shift-Command-R) without starting one.",
+                identifier: "grok-launch-browse-old",
+                action: onBrowseOld
+            )
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 8)
+        .background(Color.primary.opacity(0.035), in: RoundedRectangle(cornerRadius: 10))
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("Saved task launch choices")
+        .accessibilityIdentifier("grok-launch-session-choices")
+    }
+
+    private func launchButton(
+        _ title: String,
+        help: String,
+        identifier: String,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button(title, action: action)
+            .buttonStyle(.bordered)
+            .controlSize(.small)
+            .help(help)
+            .accessibilityLabel(title)
+            .accessibilityHint(help)
+            .accessibilityIdentifier(identifier)
+    }
 }
 
 // MARK: - Workbench Intents
