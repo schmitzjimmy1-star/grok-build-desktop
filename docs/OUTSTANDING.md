@@ -17,7 +17,7 @@
 > User conversations, historical acceptance evidence, unnamed sessions that were not
 > created by the current slice, and unrelated browser/app state are protected.
 
-## Status — seven-slice repair campaign
+## Status — all clear
 
 The installed-app audit on 2026-08-08 verified the canonical repository and
 installed application, then exposed seven bounded repair areas. They are ordered
@@ -37,11 +37,17 @@ No slice may begin until the preceding slice is merged, local `main` matches
 `personal/main`, the installed app is stamped to that merged commit, slice-created
 threads are gone, and the process-zero gate is green.
 
-All seven audit slices in that campaign are merged and accepted. A separate
-thread-native product-refinement campaign is now authorized for Slices 7 through
-12 in strict order; its current authority, token ceilings, provider requirements,
-and close gates are owned by
+All seven audit slices in that campaign and all six thread-native product-refinement
+Slices 7 through 12 are merged and accepted. No product slice remains authorized or
+open. The historical thread-native scope, token ceilings, provider requirements, and
+close gates remain preserved in
 `docs/THREAD_NATIVE_PRODUCT_REFINEMENT_SLICES_2026-08-09.md`.
+
+The only retained unresolved limitation is the upstream Grok CLI parent/child session
+visibility and deletion gap recorded in the receipts below. It is not an open
+GrokBuild repair: do not add a private-storage scraper, wrapper, daemon, broad cleanup,
+or synthetic deletion proof. Reassess it only after a supported Grok CLI update exposes
+authoritative session enumeration/deletion behavior.
 
 ---
 
@@ -2667,10 +2673,10 @@ Append a completed receipt beneath the relevant slice before merging:
 - Exact next slice:
 ```
 
-After a slice closes, mark its status **Merged and accepted** in the top table. Keep the
-receipt in this ledger until all seven slices close; then move durable historical detail
-to `docs/UI_ACCEPTANCE_MATRIX.md`, retain a compact close-out here, and restore the
-status to **all clear**.
+For any future explicitly authorized campaign, mark each closed slice **Merged and
+accepted**, move durable historical detail to `docs/UI_ACCEPTANCE_MATRIX.md`, retain a
+compact close-out here, and restore this ledger to **all clear** when no product slice
+remains.
 
 ---
 
@@ -2690,7 +2696,10 @@ them:
 
 ## One-sentence new-session handoff
 
-Continue the canonical GrokBuild repair campaign from `/Users/jimmyschmitz/Desktop/Projects/MCP Servers/Grok Build/grok-build-desktop/docs/OUTSTANDING.md`; execute exactly the next open slice, follow Gates A–H and its complete skeptical billable acceptance matrix, commit/push/open and merge its PR to `personal/main`, remove only exact ledgered test threads, end at process zero on the verified merged installed version, and do not begin the following slice.
+The GrokBuild ledger is all clear: begin no new slice unless Jimmy explicitly authorizes
+one, re-derive canonical repository and installed-app identity before any future work,
+and preserve the upstream Grok CLI session visibility/deletion gap without inventing a
+GrokBuild-side workaround or deletion proof.
 
 ## Hard stop conditions
 

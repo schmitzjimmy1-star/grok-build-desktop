@@ -737,9 +737,11 @@ session-row identifier, and focused `ResponsiveAndAccessibilityTests`.
 | Automated verification | **Pass** — `ResponsiveAndAccessibilityTests` 6/6; full `make test` **630 tests, 0 failures**; `git diff --check` clean; `make ship` all-PASS (stamp `ef7570c0…` == HEAD, dirty=true disclosed, dist == installed, Team `DD2GCQJVB4`, no quarantine). |
 | Shutdown | **Pass** — UI-only acceptance, no provider prompt; clean quit, zero orphans. |
 
-Remaining Slice 7 items (tracked in `docs/CODEX_PARITY_SLICE_7_8_WORKLIST_2026-08-07.md`):
-Session Dashboard sheet AX exposure, light-mode parity tuning and captures, the
-icon-only control audit sweep, and the end-to-end keyboard/VoiceOver pass.
+Slice 7 follow-up is closed. The historical worklist records completed Session
+Dashboard AX exposure, light-mode acceptance, the icon-only audit, and the keyboard
+pass; its standalone VoiceOver spot-check was removed by owner decision. Slice 12
+later reverified named AX controls/hints plus wide/dark, narrow/dark, and wide/light
+surfaces without reopening the accepted slice.
 
 ## Thread-native product refinement Slice 12 — product closeout acceptance (2026-08-09)
 
