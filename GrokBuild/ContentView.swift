@@ -254,8 +254,7 @@ struct ContentView: View {
                 onBrowseSessions: { sessionModal = .sessionBrowser },
                 onOpenActivity: { sessionModal = .activityDashboard },
                 onOpenPlugins: { openSettings(tab: .plugins) },
-                onOpenSecurity: { openSettings(tab: .permissions) },
-                onOpenSettings: { openSettings(tab: selectedSettingsTab) }
+                onOpenSecurity: { openSettings(tab: .permissions) }
             )
             .frame(
                 minWidth: ResponsiveLayoutPolicy.sidebarMinimumWidth,
@@ -292,8 +291,6 @@ struct ContentView: View {
                             }
                         },
                         onOpenTurnReview: { reviewScope = .lastTurn },
-                        onSelectSession: { selectSession($0) },
-                        recentSessions: recentSessionEntries,
                         onBrowseSessions: { sessionModal = .sessionBrowser },
                         onNewSession: { startNewSessionForCurrentProject() },
                         onAddProject: { showPicker = true },
@@ -887,26 +884,6 @@ struct ContentView: View {
             counts[workspace.id] = max(0, total - SessionLayoutStore.maxSidebarSessions)
         }
         return counts
-    }
-
-    /// Workbench W-3: MRU recent tasks for the selected project (excluding the
-    /// active one), titled from the cache so the landing stays stream-free.
-    private var recentSessionEntries: [RecentSessionEntry] {
-        _ = sessionListRevision
-        guard let workspaceID = selectedWorkspaceID else { return [] }
-        var ordered: [LiveSession] = []
-        for id in recentSessionOrder {
-            guard id != selectedSessionID,
-                  let session = liveSessions.first(where: { $0.id == id && $0.workspace.id == workspaceID }) else { continue }
-            ordered.append(session)
-        }
-        return ordered.prefix(4).map { session in
-            RecentSessionEntry(
-                id: session.id,
-                title: sessionTitle(for: session),
-                subtitle: session.store.modelDisplayName(session.store.currentModel)
-            )
-        }
     }
 
     private var sidebarSessions: [SidebarSession] {

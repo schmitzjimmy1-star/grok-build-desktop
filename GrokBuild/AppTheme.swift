@@ -3,19 +3,22 @@ import AppKit
 
 /// Shared visual language for the main GrokBuild surface.
 ///
-/// The app stays neutral and warm across System, Light, and Dark appearances.
-/// NSColor dynamic providers keep the existing dark graphite treatment while
-/// giving light mode real boundaries instead of a dark palette pasted on white.
+/// The app stays neutral across System, Light, and Dark appearances.
+/// Dark mode uses a soft-black canvas; light mode keeps real boundaries instead
+/// of a dark palette pasted on white. `canvasNSColor` is the same token the
+/// AppKit window uses so the transparent titlebar matches the work surface.
 enum AppTheme {
     enum Palette {
-        static let canvas = adaptive(
-            dark: NSColor(red: 0.129, green: 0.129, blue: 0.129, alpha: 1),
+        static let canvasNSColor = adaptiveNSColor(
+            dark: NSColor(red: 0.08, green: 0.08, blue: 0.08, alpha: 1),
             light: NSColor(red: 0.985, green: 0.985, blue: 0.98, alpha: 1)
         )
-        static let sidebar = adaptive(
-            dark: NSColor(red: 0.105, green: 0.105, blue: 0.105, alpha: 1),
+        static let canvas = Color(nsColor: canvasNSColor)
+        static let sidebarNSColor = adaptiveNSColor(
+            dark: NSColor(red: 0.05, green: 0.05, blue: 0.05, alpha: 1),
             light: NSColor(red: 0.95, green: 0.95, blue: 0.945, alpha: 1)
         )
+        static let sidebar = Color(nsColor: sidebarNSColor)
         static let chrome = canvas
         static let surface = adaptive(
             dark: NSColor(red: 0.165, green: 0.165, blue: 0.165, alpha: 1),
@@ -64,11 +67,15 @@ enum AppTheme {
             light: NSColor.black.withAlphaComponent(0.035)
         )
 
-        private static func adaptive(dark: NSColor, light: NSColor) -> Color {
-            Color(nsColor: NSColor(name: nil) { appearance in
+        private static func adaptiveNSColor(dark: NSColor, light: NSColor) -> NSColor {
+            NSColor(name: nil) { appearance in
                 let best = appearance.bestMatch(from: [.darkAqua, .aqua])
                 return best == .darkAqua ? dark : light
-            })
+            }
+        }
+
+        private static func adaptive(dark: NSColor, light: NSColor) -> Color {
+            Color(nsColor: adaptiveNSColor(dark: dark, light: light))
         }
     }
 
@@ -130,7 +137,7 @@ enum AppTheme {
 }
 
 /// Consistent desktop chrome control: forgiving hit area, hover/press feedback, keyboard focus,
-/// and restrained disabled treatment without changing the graphite visual language.
+/// and restrained disabled treatment without changing the soft-black visual language.
 struct GrokChromeButtonStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
         GrokChromeButtonBody(configuration: configuration)

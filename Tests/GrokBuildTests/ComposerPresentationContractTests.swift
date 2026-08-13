@@ -22,7 +22,7 @@ final class ComposerPresentationContractTests: XCTestCase {
     func testAuthoringControlsArePresentInTheCodexShape() throws {
         let chatView = try source("GrokBuild/Views/ChatView.swift")
 
-        // One rounded surface with the Do anything editor on top…
+        // One rounded surface with the Describe a task editor on top…
         XCTAssertTrue(chatView.contains("TextField(\"Describe a task\""))
         XCTAssertTrue(chatView.contains("ComposerDensityPolicy.minimumLineCount...ComposerDensityPolicy.maximumLineCount"),
                       "one-line idle height growing to the existing eight-line cap")

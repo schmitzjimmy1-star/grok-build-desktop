@@ -131,6 +131,14 @@ final class CodexShellParityTests: XCTestCase {
                       "native List selection must expose the one real persistent destination")
         XCTAssertTrue(sidebar.contains("visibleSelectedSessionID"),
                       "a hidden or unavailable session row must fall back to project selection")
+        XCTAssertFalse(sidebar.contains("Help and settings"),
+                       "Settings lives in the session header and Command-comma, not the sidebar footer")
+        XCTAssertFalse(sidebar.contains("Text(workspace.path.path)"),
+                       "project rows keep the path as a tooltip, not a second line of chrome")
+
+        let appDelegate = try source("GrokBuild/AppDelegate.swift")
+        XCTAssertTrue(appDelegate.contains("AppTheme.Palette.canvasNSColor"),
+                      "the AppKit window fill must match the SwiftUI canvas token")
 
         let contentView = try source("GrokBuild/ContentView.swift")
         for wiring in [
@@ -222,6 +230,14 @@ final class CodexShellParityTests: XCTestCase {
                       "Red-baseline inventory: the welcome state still exists")
         XCTAssertTrue(chatView.contains("WorkbenchIntent.defaults"),
                       "Red-baseline inventory: the Ask/Build/Review intent pills still render")
+        XCTAssertTrue(chatView.contains("Text(\"Grok agent runs in this folder.\")"),
+                      "empty New chat names the selected folder as the grok agent cwd")
+        XCTAssertTrue(chatView.contains("Text(item.detail)"),
+                      "Ask/Build/Review pills show their outcome copy on canvas")
+        XCTAssertFalse(chatView.contains("Text(\"Recent tasks\")"),
+                       "W-3 recent-task dashboard must not return to the empty canvas")
+        XCTAssertTrue(chatView.contains("private var showsTaskContextStrip"),
+                      "the task-contract strip is gated, not permanent chrome")
     }
 
     /// Slice 4 contract (supersedes the Slice 0/2 residue inventory): Review has

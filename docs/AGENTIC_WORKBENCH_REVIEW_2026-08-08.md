@@ -87,13 +87,12 @@ Suggested order: W-1 now (answers "reduce the sidebar"), then W-3 + W-4
   all-zero stat grid collapsed to one line, Files in review capped at 5,
   and user prompts rendered as full-width task statements with a leading
   rule and "You" caption.
-- **W-3 and W-4 shipped 2026-08-08**: the landing is a workspace overview
-  (branch, changed files, intent cards, MRU recent tasks with one-click
-  resume) and a context strip above the transcript carries
-  project · branch · changes · live model receipt. The owner's tool-
-  visibility ask shipped with them: live turns auto-open their trace so
-  running tool calls are visible, and worker counts appear only when
-  nonzero.
+- **W-3 and W-4 shipped 2026-08-08**, then the empty-canvas chrome was walked
+  back: New chat keeps heading, project name, Ask/Build/Review (with on-canvas
+  detail), and the composer. The task-contract strip is hidden on empty drafts
+  and idle restored transcripts; Resume / Start new / Browse is the one
+  restored-task decision row. Branch, recents, and Browse stay in the sidebar
+  and header More menu.
 - **W-5 and W-6 shipped 2026-08-08**, closing the slice list. W-5: while a
   run is active, the live plan projection renders in the transcript flow as
   a `Plan · m of n done` spine on the streaming turn — independent of the

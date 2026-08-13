@@ -435,7 +435,7 @@ struct PreviewPane: View {
         }
         .disabled(isRunningGitOperation)
         .frame(width: 460)
-        .background(Color(nsColor: .windowBackgroundColor))
+        .background(AppTheme.Palette.canvas)
         // O-5: the popover opens ready to type. Async so the field exists
         // before focus lands (popover content mounts on presentation).
         .onAppear {

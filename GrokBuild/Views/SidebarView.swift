@@ -116,7 +116,6 @@ struct SidebarView: View {
     var onOpenActivity: () -> Void = {}
     var onOpenPlugins: () -> Void = {}
     var onOpenSecurity: () -> Void = {}
-    var onOpenSettings: () -> Void
 
     @State private var filter = ""
     @State private var isFilterVisible = false
@@ -191,8 +190,6 @@ struct SidebarView: View {
     var body: some View {
         VStack(spacing: 0) {
             HStack(spacing: 6) {
-                Text("GrokBuild")
-                    .font(.system(size: 15, weight: .semibold))
                 Spacer()
                 Button {
                     withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.16)) { isFilterVisible.toggle() }
@@ -388,20 +385,11 @@ struct SidebarView: View {
                     .font(AppTheme.Typography.captionStrong)
                     .lineLimit(1)
                 Spacer()
-                Button(action: onOpenSettings) {
-                    Image(systemName: "questionmark.circle")
-                        .frame(width: 24, height: 24)
-                        .contentShape(Rectangle().inset(by: -6))
-                }
-                .buttonStyle(.plain)
-                .foregroundStyle(.secondary)
-                .accessibilityLabel("Help and settings")
-                .accessibilityHint("Opens Settings.")
             }
             .padding(.horizontal, 12)
             .frame(height: 44)
-            .contentShape(Rectangle())
-            .onTapGesture(perform: onOpenSettings)
+            .accessibilityElement(children: .combine)
+            .accessibilityLabel(NSFullUserName().isEmpty ? NSUserName() : NSFullUserName())
         }
         .background(AppTheme.Palette.sidebar)
         .navigationTitle("GrokBuild")
@@ -628,12 +616,9 @@ private struct WorkspaceRow: View {
                             .help(areSessionsHidden ? "Show sessions" : "Hide sessions")
                     }
                 }
-                Text(workspace.path.path)
-                    .font(.caption2)
-                    .foregroundStyle(isSelected ? .secondary : .tertiary)
-                    .lineLimit(1)
-                    .truncationMode(.middle)
             }
+            .help(workspace.path.path)
+            .accessibilityValue(workspace.path.path)
         }
         .padding(.horizontal, 8)
         .padding(.vertical, 6)

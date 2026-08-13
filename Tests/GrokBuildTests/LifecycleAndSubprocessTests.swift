@@ -701,8 +701,8 @@ final class SubprocessHygieneTests: XCTestCase {
         )
         XCTAssertTrue(chatViewSource.contains("if store.continuityRequiresRecovery {"),
                       "recovery note must be gated on the hard-block predicate")
-        XCTAssertTrue(chatViewSource.contains("} else if store.continuityIsResuming {"),
-                      "quiet launch choices must be gated on the transient verifying predicate")
+        XCTAssertTrue(chatViewSource.contains("} else if store.continuityIsResuming && !store.messages.isEmpty {"),
+                      "quiet launch choices belong on restored transcripts, not empty New chat")
         XCTAssertTrue(chatViewSource.contains("ContinuityStatusBanner("),
                       "the inline continuity note must be composed above the composer")
         XCTAssertTrue(chatViewSource.contains("LaunchSessionChoices("),
@@ -710,7 +710,7 @@ final class SubprocessHygieneTests: XCTestCase {
         let recoveryStart = try XCTUnwrap(chatViewSource.range(of: "kind: .needsRecovery"))
         let recoveryEnd = try XCTUnwrap(
             chatViewSource.range(
-                of: "} else if store.continuityIsResuming {",
+                of: "} else if store.continuityIsResuming && !store.messages.isEmpty {",
                 range: recoveryStart.upperBound..<chatViewSource.endIndex
             )
         )
