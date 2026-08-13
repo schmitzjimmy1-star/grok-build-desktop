@@ -9,7 +9,8 @@ actor GrokModelCatalog {
     private static let cacheKey = "grokbuild.builtInModelCatalog.v1"
     private static let refreshInterval: TimeInterval = 60
     private static let fallbackModels = [
-        GrokModelInfo(id: "grok-4.5", name: "Grok 4.5", isDefault: true)
+        GrokModelInfo(id: "grok-4.6", name: "Grok 4.6", isDefault: true),
+        GrokModelInfo(id: "grok-4.5", name: "Grok 4.5", isDefault: false)
     ]
 
     private var inMemory: [GrokModelInfo]?
@@ -49,6 +50,7 @@ actor GrokModelCatalog {
     }
 
     nonisolated static func displayName(for modelID: String) -> String {
+        if modelID == "grok-4.6" { return "Grok 4.6" }
         if modelID == "grok-4.5" { return "Grok 4.5" }
         var components = modelID.split(separator: "-").map(String.init)
         if components.count > 1,

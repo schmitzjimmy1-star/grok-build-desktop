@@ -3689,13 +3689,70 @@ final class ChatStore {
     }
 
     var modelSelectorStatusLabel: String {
-        switch modelExecutionState.status {
+        Self.modelSelectorStatusLabel(
+            status: modelExecutionState.status,
+            receiptIsCurrentProcess: modelReceiptIsCurrentProcess,
+            currentModel: currentModel,
+            effectiveModelID: modelExecutionState.effectiveModelID,
+            requestedModelID: modelExecutionState.requestedModelID,
+            providerFacingRequestedModel: modelExecutionState.requestedModelID.flatMap {
+                customModelsByID[$0]?.model
+            },
+            requestHasIdentity: modelExecutionState.identity != nil,
+            followsInheritedDefault: {
+                if case .inheritProjectDefault = tabModelIntent { return true }
+                return false
+            }()
+        )
+    }
+
+    /// Last live/Live may only name the picker when it still matches the confirmed receipt.
+    /// Inherited tabs that followed a newer CLI/project default keep that selection, but they
+    /// do not inherit the previous turn's Last live badge.
+    nonisolated static func currentModelMatchesConfirmedReceipt(
+        currentModel: String,
+        effectiveModelID: String?,
+        requestedModelID: String?,
+        providerFacingRequestedModel: String?
+    ) -> Bool {
+        let current = currentModel.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !current.isEmpty else { return false }
+        let effective = effectiveModelID?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        let requested = requestedModelID?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        let provider = providerFacingRequestedModel?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        if current == effective || current == requested { return true }
+        return !requested.isEmpty
+            && current == requested
+            && !provider.isEmpty
+            && effective == provider
+    }
+
+    nonisolated static func modelSelectorStatusLabel(
+        status: ModelExecutionStatus,
+        receiptIsCurrentProcess: Bool,
+        currentModel: String,
+        effectiveModelID: String?,
+        requestedModelID: String?,
+        providerFacingRequestedModel: String?,
+        requestHasIdentity: Bool,
+        followsInheritedDefault: Bool
+    ) -> String {
+        switch status {
         case .confirmed:
-            return modelReceiptIsCurrentProcess ? "Live" : "Last live"
+            let matchesReceipt = currentModelMatchesConfirmedReceipt(
+                currentModel: currentModel,
+                effectiveModelID: effectiveModelID,
+                requestedModelID: requestedModelID,
+                providerFacingRequestedModel: providerFacingRequestedModel
+            )
+            if matchesReceipt {
+                return receiptIsCurrentProcess ? "Live" : "Last live"
+            }
+            return followsInheritedDefault ? "Default" : "Saved"
         case .pending:
-            return modelReceiptIsCurrentProcess ? "Pending" : "Stale"
+            return receiptIsCurrentProcess ? "Pending" : "Stale"
         case .requested:
-            return modelExecutionState.identity == nil ? "Saved" : "Requested"
+            return requestHasIdentity ? "Requested" : "Saved"
         case .rejected:
             return "Rejected"
         case .unknown:
