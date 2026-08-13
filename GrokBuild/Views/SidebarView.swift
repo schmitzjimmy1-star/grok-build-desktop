@@ -10,6 +10,19 @@ struct SidebarSession: Identifiable, Hashable {
     let isRunning: Bool
 }
 
+enum SidebarSessionActivity {
+    /// Sidebar "working" is a live spawn or turn, not a connected unsent draft.
+    static func isWorking(connectionState: GrokProcessState, isStreaming: Bool) -> Bool {
+        if isStreaming { return true }
+        switch connectionState {
+        case .starting, .busy:
+            return true
+        case .ready, .idle, .failed:
+            return false
+        }
+    }
+}
+
 enum SessionSidebarMetadata {
     static func helpText(for session: SidebarSession) -> String {
         let activity = session.lastAccessed.map {

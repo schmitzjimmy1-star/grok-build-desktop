@@ -722,6 +722,36 @@ final class ChatTranscriptLayoutTests: XCTestCase {
             "Starting agent…"
         )
     }
+
+    func testConnectedIdleDraftDoesNotReadAsALiveSidebarTask() {
+        XCTAssertFalse(SidebarSessionActivity.isWorking(connectionState: .ready, isStreaming: false))
+        XCTAssertEqual(
+            ThreadTaskContractPresentation.phase(
+                live: nil,
+                snapshot: nil,
+                checkpoint: nil,
+                connectionState: .ready,
+                isPreparingSubmit: false,
+                canResumeSavedTask: false,
+                continuityRequiresRecovery: false,
+                isResumedSession: false
+            ),
+            "Connected — idle"
+        )
+        XCTAssertEqual(
+            SessionSidebarMetadata.accessibilityLabel(
+                for: SidebarSession(
+                    id: UUID(),
+                    workspaceID: UUID(),
+                    title: "Draft",
+                    modelName: "Grok 4.6",
+                    lastAccessed: nil,
+                    isRunning: false
+                )
+            ),
+            "Session: Draft, Grok 4.6, idle, new session"
+        )
+    }
 }
 
 extension ChatTranscriptLayoutTests {

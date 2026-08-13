@@ -900,9 +900,10 @@ struct ContentView: View {
                         title: sessionTitle(for: session),
                         modelName: session.store.modelDisplayName(session.store.currentModel),
                         lastAccessed: savedRecord?.lastAccessed,
-                        isRunning: session.store.connectionState == .busy
-                            || session.store.connectionState == .starting
-                            || session.store.isStreaming
+                        isRunning: SidebarSessionActivity.isWorking(
+                            connectionState: session.store.connectionState,
+                            isStreaming: session.store.isStreaming
+                        )
                     )
                 )
             }

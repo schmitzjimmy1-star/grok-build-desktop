@@ -31,8 +31,8 @@ fallback. Do not scrape `~/.grok/sessions`.
 |---|---|---:|---:|---|
 | 0 | Prove pass: mode fail-closed, MCP split-name Always Approve, Ready/Resuming CU, frozen terminal/MCP packets as needed | High | Frozen packets as needed; stop on route drift | Proven 2026-08-13 |
 | 1 | Mode authority: unadvertised Plan/YOLO must not be invented or persisted | Medium | After repair, Plan control absent on grok 1.0.3 | Merged PR #53 `a8bce9fe` |
-| 2 | MCP permission identity: split `serverName`+`toolName` must still hit the per-thread gate | High | Default-off then explicit `chrome-devtools` packets | CU passed on `8f07439`; PR next |
-| 3 | Readiness copy: fresh start must not say Resuming saved task; unsent Ready must not contradict idle sidebar | Low | None unless a live turn later lies | Blocked on Slice 2 |
+| 2 | MCP permission identity: split `serverName`+`toolName` must still hit the per-thread gate | High | Default-off then explicit `chrome-devtools` packets | Merged PR #54 `152534a` |
+| 3 | Readiness copy: fresh start must not say Resuming saved task; unsent Ready must not contradict idle sidebar | Low | None unless a live turn later lies | In progress on `fix/grokbuild-ui-readiness` |
 
 No slice may begin until the preceding slice is merged, local `main` matches
 `personal/main`, the installed app is stamped to that merged commit, slice-created
@@ -153,6 +153,10 @@ List Pages / Succeeded. Marker plus
 `stop_reason:end_turn`, Turn completed. 2 model calls (tool, then the answer),
 33,219 tokens, `costUsdTicks` 513,100,000. Not an XML text dump. After the
 turn the composer returned to `0 files, 0 MCPs attached`.
+
+Repair is merged as PR #54 `152534a208c6f0e08e24daeaaf93e7ed7b17e5fe`.
+Local `main` and `/Applications/GrokBuild.app` were restamped to that merge
+commit before Slice 3.
 
 **Ledgered Slice 2 backends (deleted after this receipt):**
 

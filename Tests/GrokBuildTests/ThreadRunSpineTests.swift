@@ -244,7 +244,8 @@ final class ThreadRunSpineTests: XCTestCase {
                 connectionState: .idle,
                 isPreparingSubmit: false,
                 canResumeSavedTask: true,
-                continuityRequiresRecovery: false
+                continuityRequiresRecovery: false,
+                isResumedSession: false
             ),
             "Paused locally — ready to resume"
         )
@@ -256,7 +257,8 @@ final class ThreadRunSpineTests: XCTestCase {
                 connectionState: .idle,
                 isPreparingSubmit: false,
                 canResumeSavedTask: false,
-                continuityRequiresRecovery: false
+                continuityRequiresRecovery: false,
+                isResumedSession: false
             ),
             "Saved checkpoint — no process running"
         )
@@ -271,7 +273,8 @@ final class ThreadRunSpineTests: XCTestCase {
                 connectionState: .starting,
                 isPreparingSubmit: true,
                 canResumeSavedTask: false,
-                continuityRequiresRecovery: false
+                continuityRequiresRecovery: false,
+                isResumedSession: false
             ),
             "Preparing task — not dispatched"
         )
@@ -283,10 +286,57 @@ final class ThreadRunSpineTests: XCTestCase {
                 connectionState: .idle,
                 isPreparingSubmit: false,
                 canResumeSavedTask: false,
-                continuityRequiresRecovery: true
+                continuityRequiresRecovery: true,
+                isResumedSession: false
             ),
             "Fresh thread required"
         )
+    }
+
+    func testTaskContractDistinguishesFreshStartFromSavedResumeAndIdleReady() {
+        XCTAssertEqual(
+            ThreadTaskContractPresentation.phase(
+                live: nil,
+                snapshot: nil,
+                checkpoint: nil,
+                connectionState: .starting,
+                isPreparingSubmit: false,
+                canResumeSavedTask: false,
+                continuityRequiresRecovery: false,
+                isResumedSession: false
+            ),
+            "Starting agent…"
+        )
+        XCTAssertEqual(
+            ThreadTaskContractPresentation.phase(
+                live: nil,
+                snapshot: nil,
+                checkpoint: nil,
+                connectionState: .starting,
+                isPreparingSubmit: false,
+                canResumeSavedTask: false,
+                continuityRequiresRecovery: false,
+                isResumedSession: true
+            ),
+            "Resuming saved task"
+        )
+        XCTAssertEqual(
+            ThreadTaskContractPresentation.phase(
+                live: nil,
+                snapshot: nil,
+                checkpoint: nil,
+                connectionState: .ready,
+                isPreparingSubmit: false,
+                canResumeSavedTask: false,
+                continuityRequiresRecovery: false,
+                isResumedSession: false
+            ),
+            "Connected — idle"
+        )
+        XCTAssertTrue(SidebarSessionActivity.isWorking(connectionState: .starting, isStreaming: false))
+        XCTAssertFalse(SidebarSessionActivity.isWorking(connectionState: .ready, isStreaming: false))
+        XCTAssertFalse(SidebarSessionActivity.isWorking(connectionState: .idle, isStreaming: false))
+        XCTAssertTrue(SidebarSessionActivity.isWorking(connectionState: .ready, isStreaming: true))
     }
 
     func testTaskContractNamesOnlyExplicitRequestedToolFamilies() {
