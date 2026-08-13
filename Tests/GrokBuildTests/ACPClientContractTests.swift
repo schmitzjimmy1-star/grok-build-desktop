@@ -1008,6 +1008,32 @@ final class ACPClientContractTests: XCTestCase {
         await store.shutdownPermanently()
     }
 
+    func testFirstIntentStartingCopyAgreesWithIdleReadySidebar() throws {
+        let repositoryRoot = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        let chatView = try String(
+            contentsOf: repositoryRoot.appendingPathComponent("GrokBuild/Views/ChatView.swift"),
+            encoding: .utf8
+        )
+        let chatStore = try String(
+            contentsOf: repositoryRoot.appendingPathComponent("GrokBuild/Services/ChatStore.swift"),
+            encoding: .utf8
+        )
+        let contentView = try String(
+            contentsOf: repositoryRoot.appendingPathComponent("GrokBuild/ContentView.swift"),
+            encoding: .utf8
+        )
+
+        XCTAssertTrue(chatView.contains("isResumedSession: store.isResumedSessionTab"))
+        XCTAssertTrue(chatView.contains("case .starting, .ready, .busy:"))
+        XCTAssertTrue(chatStore.contains("isResumedSession: false"))
+        XCTAssertTrue(chatStore.contains("ThreadTaskContractPresentation.phase("))
+        XCTAssertTrue(contentView.contains("SidebarSessionActivity.isWorking("))
+        XCTAssertFalse(contentView.contains("connectionState == .ready"))
+    }
+
     func testLiveProcessLaunchAndRestartReceiptsTrackEffectivePermissionAndResume() async throws {
         let fixtureRoot = FileManager.default.temporaryDirectory
             .appendingPathComponent("grokbuild-acp-fixture-\(UUID().uuidString)", isDirectory: true)

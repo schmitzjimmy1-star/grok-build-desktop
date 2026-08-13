@@ -31,8 +31,8 @@ fallback. Do not scrape `~/.grok/sessions`.
 |---|---|---:|---:|---|
 | 0 | Prove pass: mode fail-closed, MCP split-name Always Approve, Ready/Resuming CU, frozen terminal/MCP packets as needed | High | Frozen packets as needed; stop on route drift | Proven 2026-08-13 |
 | 1 | Mode authority: unadvertised Plan/YOLO must not be invented or persisted | Medium | After repair, Plan control absent on grok 1.0.3 | Merged PR #53 `a8bce9fe` |
-| 2 | MCP permission identity: split `serverName`+`toolName` must still hit the per-thread gate | High | Default-off then explicit `chrome-devtools` packets | CU passed on `8f07439`; PR next |
-| 3 | Readiness copy: fresh start must not say Resuming saved task; unsent Ready must not contradict idle sidebar | Low | None unless a live turn later lies | Blocked on Slice 2 |
+| 2 | MCP permission identity: split `serverName`+`toolName` must still hit the per-thread gate | High | Default-off then explicit `chrome-devtools` packets | Merged PR #54 `152534a` |
+| 3 | Readiness copy: fresh start must not say Resuming saved task; unsent Ready must not contradict idle sidebar | Low | None unless a live turn later lies | CU passed on `c7cb11f`; PR next |
 
 No slice may begin until the preceding slice is merged, local `main` matches
 `personal/main`, the installed app is stamped to that merged commit, slice-created
@@ -154,10 +154,34 @@ List Pages / Succeeded. Marker plus
 33,219 tokens, `costUsdTicks` 513,100,000. Not an XML text dump. After the
 turn the composer returned to `0 files, 0 MCPs attached`.
 
+Repair is merged as PR #54 `152534a208c6f0e08e24daeaaf93e7ed7b17e5fe`.
+Local `main` and `/Applications/GrokBuild.app` were restamped to that merge
+commit before Slice 3.
+
 **Ledgered Slice 2 backends (deleted after this receipt):**
 
 - `019ffd19-a628-76d1-9be2-56498d50258b` — default-off deny
 - `019ffd1c-8ea1-7333-937d-38046bf7f146` — explicit `list_pages` success
+
+### Slice 3 receipt — readiness copy, 2026-08-13
+
+Repair is on `fix/grokbuild-ui-readiness` at
+`c7cb11fb65df1a84553a4c39e8e1485aa9369d1c`. `make test` **779/779**,
+`make ship` `dirty=false`, Team `DD2GCQJVB4`, stamp == HEAD.
+Settings → App: `Personal • fix/grokbuild-ui-readiness @ c7cb11fb`.
+No Send. MCP attach remains behind the composer **+** Add menu; that is still
+existing composer contract, not this slice.
+
+Installed Computer Use on a New chat: landing kept Ask/Build/Review, sidebar
+**idle**. Typing `x` hid welcome. While `.starting`, task contract
+`grok-task-context-strip` was **Starting agent…** and the selected sidebar row
+was **working**. After connect, unsent draft: strip **Connected — idle**,
+sidebar **idle**, model `Live model Grok 4.6`. Warm-start backend
+`019ffd2e-385f-7a31-97d3-9a1689ca84f0` had `num_messages` 0.
+
+**Ledgered Slice 3 backends (deleted after this receipt):**
+
+- `019ffd2e-385f-7a31-97d3-9a1689ca84f0` — first-intent warm start, no Send
 
 ### ACP harmony Slice 0 receipt — 2026-08-13
 

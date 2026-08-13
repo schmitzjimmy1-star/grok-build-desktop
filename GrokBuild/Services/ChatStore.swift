@@ -842,14 +842,20 @@ final class ChatStore {
 
     /// First-intent warm-start is not a Send. Show starting copy so the sidebar
     /// working dot is not the only signal while `session/new` is still in flight.
+    /// Same wording as the task strip for a fresh `.starting` process.
     var firstIntentStartupStageText: String? {
         guard pendingSubmitIntent == nil else { return nil }
         guard connectionState == .starting else { return nil }
         guard messages.isEmpty, savedGrokSessionID == nil else { return nil }
-        return ConnectionStatusPresentation.subtitle(
-            state: .starting,
-            isResumedSession: false,
-            hasWorkspace: currentWorkspace != nil
+        return ThreadTaskContractPresentation.phase(
+            live: nil,
+            snapshot: nil,
+            checkpoint: nil,
+            connectionState: .starting,
+            isPreparingSubmit: false,
+            canResumeSavedTask: false,
+            continuityRequiresRecovery: false,
+            isResumedSession: false
         )
     }
 

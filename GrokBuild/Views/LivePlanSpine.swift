@@ -320,7 +320,8 @@ enum ThreadTaskContractPresentation {
         connectionState: GrokProcessState,
         isPreparingSubmit: Bool,
         canResumeSavedTask: Bool,
-        continuityRequiresRecovery: Bool
+        continuityRequiresRecovery: Bool,
+        isResumedSession: Bool
     ) -> String {
         if isPreparingSubmit { return "Preparing task — not dispatched" }
         if let live { return ThreadRunSpinePresentation.livePhase(live) }
@@ -329,8 +330,8 @@ enum ThreadTaskContractPresentation {
         if let snapshot { return ThreadRunSpinePresentation.checkpointLabel(snapshot) }
         if canResumeSavedTask { return "Paused locally — ready to resume" }
         switch connectionState {
-        case .ready: return "Ready"
-        case .starting: return "Resuming saved task"
+        case .ready: return "Connected — idle"
+        case .starting: return isResumedSession ? "Resuming saved task" : "Starting agent…"
         case .failed: return "Connection failed"
         case .idle:
             if let checkpoint { return checkpoint.outcome == "Stopped by you" ? "Stopped" : "Saved checkpoint — no process running" }

@@ -1346,7 +1346,9 @@ struct ChatView: View {
     /// Slice 10 expands the old one-line context strip into a compact task
     /// contract. Empty New chats and idle restored transcripts keep the header
     /// plus composer (and Resume/Start/Browse when a saved backend is waiting).
-    /// The strip returns for a live, stalled, or recovery session.
+    /// The strip returns for a live, stalled, recovery, first-intent start, or
+    /// connected-idle draft. `.ready` is connected with no turn — copy says
+    /// Connected — idle, matching the sidebar, not a live task.
     private var showsTaskContextStrip: Bool {
         guard store.currentWorkspace != nil else { return false }
         if store.showsEmptyTranscriptWelcome { return false }
@@ -1379,7 +1381,8 @@ struct ChatView: View {
                 connectionState: store.connectionState,
                 isPreparingSubmit: store.isPreparingSubmit,
                 canResumeSavedTask: store.canResumeTaskSession,
-                continuityRequiresRecovery: store.continuityRequiresRecovery
+                continuityRequiresRecovery: store.continuityRequiresRecovery,
+                isResumedSession: store.isResumedSessionTab
             ),
             project: store.currentWorkspace?.displayName ?? "No project",
             worktree: store.currentWorkspace?.path.path ?? "No worktree selected",
