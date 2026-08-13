@@ -32,6 +32,10 @@ final class ComposerPresentationContractTests: XCTestCase {
         // …and a bottom row of immediate authoring/run controls only.
         XCTAssertTrue(chatView.contains("private var composerAddMenu"))
         XCTAssertTrue(chatView.contains("grok-mode-selector"))
+        XCTAssertTrue(
+            chatView.contains("if !store.availableModes.isEmpty"),
+            "the mode control is hidden when ACP advertised no session modes"
+        )
         XCTAssertTrue(chatView.contains("grok-model-effort-selector"))
         XCTAssertTrue(chatView.contains("MicButton("))
         XCTAssertTrue(chatView.contains("sessionActionButton"))

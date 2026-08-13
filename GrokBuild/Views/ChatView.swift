@@ -1760,7 +1760,9 @@ struct ChatView: View {
     private var composerPrimaryControls: some View {
         HStack(spacing: 9) {
             composerAddMenu
-            modeSelector
+            if !store.availableModes.isEmpty {
+                modeSelector
+            }
         }
     }
 

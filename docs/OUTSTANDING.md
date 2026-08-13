@@ -17,24 +17,35 @@
 > User conversations, historical acceptance evidence, unnamed sessions that were not
 > created by the current slice, and unrelated browser/app state are protected.
 
-## Status — ACP harmony campaign (chat mode, warmup, all projects)
+## Status — Prove then repair campaign (mode, MCP identity, readiness)
 
-The 2026-08-08 audit campaign and thread-native Slices 7–12 are merged and
-accepted. This is a new four-slice campaign after that all-clear. Same gates
-A–H, one PR per slice, `make test` + `make ship` + Computer Use. No second grok
-runtime: GrokBuild still launches only `grok agent stdio`. Chat vs Agent, if it
-exists, is `session/set_mode`. Ask/Build/Review remain prompt seeds.
+The ACP harmony campaign (Slices 0–3) is merged and accepted on
+`17060e91df72c41d3500d105266b310b1b6df2f9`. The 2026-08-13 live-balance audit
+proved remaining live mismatches and made no Swift repair. This campaign proves
+those defects on the installed app, then ships one bounded PR per owner. Same
+gates A–H, `make test` + `make ship` + Computer Use. No second grok runtime:
+GrokBuild still launches only `grok agent stdio`. Do not invent provider
+fallback. Do not scrape `~/.grok/sessions`.
 
 | Slice | Objective | Risk | Provider spend | Status |
 |---|---|---:|---:|---|
-| 0 | Live grok ACP mode dump, first-intent warmup Computer Use, Browse Sessions scope receipt | Low | None; control slice creates no product behavior | Receipt captured 2026-08-13 |
-| 1 | Parse nested/load ACP `availableModes`; label Chat/unknown honestly; fake-ACP `chat` fixture | Medium | None; fake ACP only | Implemented in this campaign pass |
-| 2 | Idle inherited New chat says Default; hide welcome on draft; show starting while warm-start runs | Medium | None; no Send | Implemented in this campaign pass |
-| 3 | Pass every GrokBuild sidebar workspace into Browse Sessions; Resume stays cwd-bound | Low | None | Implemented in this campaign pass |
+| 0 | Prove pass: mode fail-closed, MCP split-name Always Approve, Ready/Resuming CU, frozen terminal/MCP packets as needed | High | Frozen packets as needed; stop on route drift | Proven 2026-08-13 |
+| 1 | Mode authority: unadvertised Plan/YOLO must not be invented or persisted | Medium | After repair, Plan control absent on grok 1.0.3 | In progress 2026-08-13 |
+| 2 | MCP permission identity: split `serverName`+`toolName` must still hit the per-thread gate | High | Default-off then explicit `chrome-devtools` packets | Blocked on Slice 1 |
+| 3 | Readiness copy: fresh start must not say Resuming saved task; unsent Ready must not contradict idle sidebar | Low | None unless a live turn later lies | Blocked on Slice 2 |
 
 No slice may begin until the preceding slice is merged, local `main` matches
 `personal/main`, the installed app is stamped to that merged commit, slice-created
 threads are gone, and the process-zero gate is green.
+
+Installed prove baseline (re-derived, not copied): worktree `main` equals
+`personal/main` at `17060e91df72c41d3500d105266b310b1b6df2f9`;
+`/Applications/GrokBuild.app` stamp `personal • main @ 17060e91…`, `dirty=false`;
+Team `DD2GCQJVB4` deep/strict valid; no quarantine; dist/installed SHA-256
+`7ab999d410a9293d4177165afadd9b7545a8c6e27df6bba2d9047ffbfc8b44f9`; Grok CLI
+`1.0.3 (1a29d5bc12d4) [stable]`; process zero before the prove pass. The
+uncommitted live-balance receipt in this file is documentation only and was not
+baked into that install.
 
 Historical audit Slices 0–6 and thread-native Slices 7–12 remain merged and
 accepted. Their token ceilings and close gates stay in
@@ -44,7 +55,63 @@ The upstream Grok CLI parent/child session visibility and deletion gap remains a
 retained CLI limitation, not a GrokBuild repair: do not scrape `~/.grok/sessions`
 for folders that are not GrokBuild projects.
 
-### Slice 0 receipt — 2026-08-13
+### Prove then repair Slice 0 receipt — 2026-08-13
+
+Installed Computer Use plus frozen billable packets on
+`/Applications/GrokBuild.app` at `17060e91df72c41d3500d105266b310b1b6df2f9`,
+`dirty=false`. Native xAI. Permission mode was already `alwaysApprove`.
+
+**C. Readiness copy (no Send):** New chat landing kept welcome + Ask/Build/Review,
+composer empty, mode Agent, model inherited/unconfirmed, sidebar idle, 0 MCPs.
+Typing `x` hid welcome. During `.starting` the task strip said **Resuming saved
+task** while the sidebar said working. After connect, unsent draft: strip
+**Ready**, sidebar **idle**, model `Live model Grok 4.6`. Slice 3 owner.
+
+**A. Mode authority:** grok 1.0.3 still invents Agent / Plan / YOLO in
+`grok-mode-selector`. Clicking Plan flipped the picker immediately. On the live
+ready process, ACP then emitted `current_mode_update` `currentModeId=plan`
+(unlike the earlier throwaway stdio probe that saw empty success and no event).
+Send of draft `x` **did not fail-closed**. Backend
+`019ffcf6-7ebf-7411-935a-d86c4f7bbf20`, agent `grok-build-plan`, 3 model calls,
+97,671 tokens, `costUsdTicks` 1,121,540,000, `stop_reason:cancelled` after Stop.
+The frozen-intent wait succeeded because the CLI confirmed Plan. Slice 1 must
+stop inventing unadvertised modes; optimistic persist is still wrong even when
+the CLI later confirms.
+
+**B. MCP default-off (0 MCPs in the Add menu):** marker
+`GB_TOOL_MCP_DEFAULT_OFF_20260813`. Backend
+`019ffcf9-0921-73f0-891f-ac14bc5469d3`. CLI still spawned local `chrome-devtools`
+from `~/.grok` config. Model called `use_tool` with
+`tool_name=chrome-devtools__list_pages`. Permission `use_tool` **deny** in 142ms,
+tool Failed, `stop_reason:cancelled`, Turn cancelled, 16,618 tokens, 1 call,
+`costUsdTicks` 267,600,000. This wrapped `server__tool` string **did** hit the
+ACP gate. The split `serverName`+`toolName` fixture hole remains; Slice 2 still
+composes that identity before disposition.
+
+**Jimmy attached chrome-devtools on a fresh thread** (same default-off marker
+text plus GrokBuild's "Attached MCP connections requested for this turn"
+prefix). Backend `019ffcfb-aa53-7830-a1dd-8ea8e5c14080`. CLI connected
+`chrome-devtools` (29 tools). The model **did not** issue an ACP tool call. It
+printed the marker and a `<tool_call>use_tool(...)</tool_call>` blob as assistant
+text, `stop_reason:end_turn`, 16,804 tokens, 1 call, `costUsdTicks` 274,680,000.
+The CLI summary "listed Chrome pages once" is false. `list_pages` did not run.
+Do not treat this as the explicit-attachment success packet; retry that after
+Slice 2 with marker `GB_TOOL_MCP_EXPLICIT_20260813`. The system reminder listed
+other MCP servers and omitted `chrome-devtools` even though the process had
+started it.
+
+Terminal-once and discovery-only packets were not required to finish Slice 0
+truth. Do not repair CLI search tombstones, child-session delete, OpenRouter
+downstream provider, Computer Use `"ask"` → Allow, or client elapsed vs ACP
+duration in this campaign.
+
+**Ledgered prove-pass backends (delete only these after receipts):**
+
+- `019ffcf6-7ebf-7411-935a-d86c4f7bbf20` — accidental Plan Send of `x`
+- `019ffcf9-0921-73f0-891f-ac14bc5469d3` — MCP default-off
+- `019ffcfb-aa53-7830-a1dd-8ea8e5c14080` — Jimmy attached chrome-devtools text dump
+
+### ACP harmony Slice 0 receipt — 2026-08-13
 
 Re-derived live, not copied from 2026-08-08:
 
@@ -80,6 +147,122 @@ Re-derived live, not copied from 2026-08-08:
 - Warm-start leftovers from Slice 0/2 Computer Use in this repo cwd: `019ffcb3-e06d-7493-865c-7e52549f29b4` and `019ffcbf-418c-72f0-86ad-59a35a2bd92b` (no summary). Probe sessions `019ffcb0-…` and `019ffcb1-…` were already deleted.
 
 Parking lot (not this campaign): W-2 de-bubble; CLI update banner; nested ACP `modes` on `initialize` if a later CLI makes that the only advertisement; moving warm-start to Send (only if a later dump proves spawn is >10s cold).
+
+### Live balance audit receipt — 2026-08-13
+
+This was a diagnosis-and-cleanup pass only. It made no Swift/UI repair, added no
+provider fallback, and did not edit the attached plan.
+
+**Clean installed baseline before audit work:**
+
+- Canonical worktree `main` exactly matched `personal/main` at
+  `17060e91a3ea2fb67eb2b6a8dbc240f25ec43fc9`; `make ship` passed **784/784**
+  tests and installed `/Applications/GrokBuild.app` with `dirty=false`.
+- Settings → App agreed on Jimmy's repository, branch `main`, exact commit,
+  version `0.1.20`, and Grok CLI `1.0.3 (1a29d5bc12d4) [stable]`.
+- Team `DD2GCQJVB4` deep/strict signing passed, quarantine was absent, and
+  dist/installed executable SHA-256 matched at
+  `4e0d6e58a5cb835f2973e36a8b25a81edfd3cc452a1283c90e12b39ca2c0b6fa`.
+  Computer Use captured the matching installed Settings receipt. The app was
+  then quit normally and every scoped owned process was zero before probing.
+
+**Integrated no-send findings:**
+
+- Untouched New chat remained an idle landing. On the first typed draft, the
+  task strip could say `Ready` while the warm-started process still lacked an
+  effective-model confirmation and the sidebar/process surface was transitioning
+  through working. This is a real cross-surface readiness mismatch, but it is
+  secondary and must not be combined with the mode-authority repair below.
+- Stronger defect: backend `grok` 1.0.3 advertised no ACP session modes, yet
+  `GrokProcess` and `ChatStore` defaulted `availableModes` to Agent, Plan, and
+  Yolo. Selecting Plan changed the visible/persisted `ChatStore.currentMode`
+  immediately. The process remained Agent because ACP supplied no confirming
+  update. A Send would fail closed at the existing frozen-intent gate, but the
+  pre-Send UI still asserted an unconfirmed mode.
+- Existing route Details remained honest: the default route was the Grok CLI/xAI
+  lane, and the pinned custom route said OpenRouter with endpoint
+  `openrouter.ai`. No alternate GrokBuild provider or fallback surface appeared.
+  No separate Sessions aggregation, unknown-context, or unmatched-model defect
+  was combined into this receipt.
+
+**No-prompt ACP contract (`grok agent stdio`):**
+
+- `initialize`, `session/new`, and `session/load` exposed no `modes`,
+  `availableModes`, or `currentModeId`. The no-prompt audit backend was
+  `019ffcde-0c68-7ce2-aaad-dbd9c516108c`.
+- `session/set_mode` for `plan` returned an empty success result and emitted no
+  `current_mode_update`; therefore neither the response nor the event stream
+  confirms Plan. GrokBuild currently discards that response and optimistically
+  changes only the store.
+- `session/set_model` separately returned an exact effective-model readback.
+  That matches the existing model reducer's fail-closed contract and is not
+  evidence that mode switching has the same authority.
+
+**Frozen billable OpenRouter packet and receipt:**
+
+- Local tab `C95271E9-D041-47CE-92C9-F29A85288BAC`, backend
+  `019ffcdf-e741-70a2-9345-9bed10bd7ce3`, marker
+  `GB_LIVE_BALANCE_OPENROUTER_PIN_20260813T1549`.
+- Frozen request: configured pin `deepseek/deepseek-v4-flash-0731`, OpenRouter
+  route, Medium effort, one parent marker-only turn, no attached MCP, no tool
+  call, no retry, and exact-marker stop.
+- The UI showed `Live model deepseek/deepseek-v4-flash-0731, confirmed by the
+  current process`; Details showed `Route: brokered by OpenRouter`, endpoint
+  `openrouter.ai`, and the exact pin. Backend history keyed `modelUsage` to that
+  exact model and retained provider cost metadata. The CLI timing log recorded
+  one inference, one attempt, 14,990 input plus 204 output tokens
+  (**15,194 total**), zero reasoning tokens, and no tool call or extra turn.
+- Claim boundary: this proves GrokBuild's configured key/provider pin, CLI
+  launch route, ACP effective-model readback, pre-dispatch confirmation,
+  generation-bound receipt, and backend usage all agreed. It does **not** prove
+  OpenRouter's downstream serving provider or internal broker choices.
+  GrokBuild launched one CLI route and added no provider fallback.
+
+**Exact cleanup receipt:**
+
+- Closed audit tabs first. The no-send UI backend
+  `019ffcdc-6023-7a83-a465-b6a1ce7d4e47` and billable backend
+  `019ffcdf-e741-70a2-9345-9bed10bd7ce3` were already absent when exact CLI
+  deletion was attempted; the direct no-prompt backend
+  `019ffcde-0c68-7ce2-aaad-dbd9c516108c` was deleted. All three exact source
+  directories are absent, `grok sessions list` omits them, and both audit
+  markers return zero search results.
+- Exact indexed leftovers removed through `grok sessions delete`:
+  `019fea9d-f276-7553-a562-bb04fd40c0f6`,
+  `019feaa1-5059-7521-99e0-41f689ab046c`,
+  `019fc510-8eb3-7fe0-8b31-d1b687992426`, and
+  `019fc5b5-06a1-7c73-b351-d8231fcc33b8`. Their exact source directories and
+  current list rows are absent.
+- Before moving anything directly, the three authorized unindexed directories
+  were proven non-symlinks with canonical cwd and `session_kind=subagent`.
+  `019fec4a-dbdc-7d91-9a09-fc807a472c1c` and
+  `019fec4a-dbde-7d13-b73f-c6873df61c09` belonged to parent
+  `019fec4a-a6a3-75b1-bd1a-04162038b62a`;
+  `019fec52-8ded-7f11-a633-94c23179d581` belonged to parent
+  `019fec52-7910-7192-be49-b27eb13eb398`. Only those exact directories were
+  moved recoverably to `~/.Trash`, where all three are present.
+- Residual Grok CLI defect: `grok sessions search` still returns stale rows for
+  the four deleted historical indexed parents even though the authoritative
+  source directories and `sessions list` rows are gone. The private search
+  index and `prompt_history.jsonl` were not edited. Do not treat search-index
+  tombstones as live sessions or add a GrokBuild scraper/workaround.
+- Final normal quit left GrokBuild, `grok agent stdio`,
+  `GrokBuildComputerUseMCP`, and `agent-desktop` at process zero.
+
+**One bounded follow-on repair — mode authority, no new chrome:**
+
+- Owners: `GrokProcess.swift` mode defaults/request handling,
+  `ChatStore.swift` optimistic mutation/persistence, the existing
+  `ChatView.swift` selector projection, and `ACPClientContractTests.swift`.
+- Make unadvertised modes unavailable rather than inventing Plan/Yolo; send only
+  an advertised mode; do not change or persist `currentMode` until an
+  authoritative `current_mode_update` arrives. Keep the existing pre-dispatch
+  fail-closed check.
+- Regression matrix: an ACP fixture with no mode advertisement exposes no Plan;
+  an empty `session/set_mode` response without an event leaves Agent selected
+  and unpersisted; an advertised Plan plus matching update changes and persists
+  Plan. The separate premature `Ready` wording remains a later, independently
+  tested slice.
 
 ---
 
