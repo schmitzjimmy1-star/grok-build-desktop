@@ -1,4 +1,5 @@
 import XCTest
+@testable import GrokBuild
 
 /// Codex parity Slice 0 — red-baseline inventory (2026-08-07).
 ///
@@ -62,6 +63,7 @@ final class CodexShellParityTests: XCTestCase {
             "browserStatusIndicator",
             "computerUseStatusIndicator",
             "grok-mode-selector",
+            "grok-first-intent-startup-status",
             "grok-model-effort-selector",
             "MicButton(",
             "sessionActionButton",
@@ -278,6 +280,28 @@ final class CodexShellParityTests: XCTestCase {
                       "the sidebar bell routes through the single modal owner")
         XCTAssertTrue(contentView.contains("onClose: { showPreview = false }"),
                       "the review split still targets the real PreviewPane with one owner")
+        XCTAssertTrue(contentView.contains("workspaces: workspaceStore.orderedWorkspaces"),
+                      "Browse Sessions lists every GrokBuild sidebar project, not only the current cwd")
+        XCTAssertFalse(contentView.contains("workspaces: currentWorkspace.map { [$0] } ?? []"),
+                       "the current-project-only Browse Sessions wiring must not return")
+        XCTAssertFalse(contentView.contains("workspaces: workspaceStore.workspaces,"),
+                       "Browse Sessions follows sidebar order, not the unsorted storage array")
+
+        XCTAssertEqual(
+            SessionsBrowserPanel.emptyDescription(workspaceCount: 0, searchQuery: ""),
+            "Add a project to browse Grok sessions."
+        )
+        XCTAssertEqual(
+            SessionsBrowserPanel.emptyDescription(workspaceCount: 2, searchQuery: ""),
+            "No sessions in these projects."
+        )
+        XCTAssertEqual(
+            SessionsBrowserPanel.headerSubtitle(workspaces: [
+                Workspace(name: "A", path: URL(fileURLWithPath: "/tmp/a")),
+                Workspace(name: "B", path: URL(fileURLWithPath: "/tmp/b")),
+            ]),
+            "All GrokBuild projects"
+        )
 
         let chatView = try source("GrokBuild/Views/ChatView.swift")
 

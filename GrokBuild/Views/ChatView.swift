@@ -1622,6 +1622,16 @@ struct ChatView: View {
                     }
                     .accessibilityElement(children: .contain)
                     .accessibilityIdentifier("grok-pending-submit-status")
+                } else if let stage = store.firstIntentStartupStageText {
+                    HStack(spacing: 8) {
+                        ProgressView()
+                            .controlSize(.small)
+                        Text(stage)
+                            .font(.callout)
+                            .foregroundStyle(.secondary)
+                    }
+                    .accessibilityElement(children: .contain)
+                    .accessibilityIdentifier("grok-first-intent-startup-status")
                 }
 
                 VStack(alignment: .leading, spacing: 6) {
@@ -2655,7 +2665,7 @@ struct ChatView: View {
                 } label: {
                     modeMenuRow(
                         icon: iconName(for: mode),
-                        title: displayName(for: mode),
+                        title: mode.displayName,
                         isSelected: store.currentMode == mode
                     )
                 }
@@ -2665,7 +2675,7 @@ struct ChatView: View {
                 Image(systemName: iconName(for: store.currentMode))
                     .font(.caption.weight(.semibold))
                     .frame(width: 14)
-                Text(displayName(for: store.currentMode))
+                Text(store.currentMode.displayName)
                     .font(.caption.weight(.medium))
                 Image(systemName: "chevron.down")
                     .font(.system(size: 8, weight: .semibold))
@@ -2682,7 +2692,7 @@ struct ChatView: View {
         .fixedSize()
         .help("Change agent mode")
         .accessibilityLabel("Agent mode")
-        .accessibilityValue(displayName(for: store.currentMode))
+        .accessibilityValue(store.currentMode.displayName)
         .accessibilityIdentifier("grok-mode-selector")
         .accessibilityHint("Choose the agent operating mode.")
         .disabled(store.isStreaming || store.isPreparingSubmit)
@@ -2701,19 +2711,13 @@ struct ChatView: View {
         }
     }
 
-    private func displayName(for mode: AgentMode) -> String {
-        switch mode.rawValue {
-        case "plan": return "Plan"
-        case "yolo": return "YOLO"
-        default: return "Agent"
-        }
-    }
-
     private func iconName(for mode: AgentMode) -> String {
         switch mode.rawValue {
+        case "chat": return "bubble.left"
         case "plan": return "list.bullet.indent"
         case "yolo": return "bolt.fill"
-        default: return "infinity"
+        case "agent": return "infinity"
+        default: return "circle"
         }
     }
 

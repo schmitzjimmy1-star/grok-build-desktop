@@ -390,7 +390,7 @@ struct ContentView: View {
         }
         .sheet(isPresented: sessionModalBinding(.sessionBrowser)) {
             SessionBrowserView(
-                workspaces: currentWorkspace.map { [$0] } ?? [],
+                workspaces: workspaceStore.orderedWorkspaces,
                 highlightedWorkspaceID: selectedWorkspaceID,
                 liveSessionsByGrokID: liveSessionsByGrokID,
                 selectedGrokSessionID: activeStore.grokSessionId,

@@ -620,6 +620,159 @@ final class ACPClientContractTests: XCTestCase {
         )
     }
 
+    func testIdleInheritedNewChatUsesDefaultNotUnknown() {
+        XCTAssertEqual(
+            ChatStore.modelSelectorStatusLabel(
+                status: .unknown,
+                receiptIsCurrentProcess: false,
+                currentModel: "grok-4.6",
+                effectiveModelID: nil,
+                requestedModelID: nil,
+                providerFacingRequestedModel: nil,
+                requestHasIdentity: false,
+                followsInheritedDefault: true
+            ),
+            "Default"
+        )
+        XCTAssertEqual(
+            ChatStore.modelSelectorStatusLabel(
+                status: .unknown,
+                receiptIsCurrentProcess: false,
+                currentModel: "",
+                effectiveModelID: nil,
+                requestedModelID: nil,
+                providerFacingRequestedModel: nil,
+                requestHasIdentity: false,
+                followsInheritedDefault: true
+            ),
+            "Unknown"
+        )
+        XCTAssertEqual(
+            ChatStore.modelSelectorStatusLabel(
+                status: .unknown,
+                receiptIsCurrentProcess: false,
+                currentModel: "grok-4.6",
+                effectiveModelID: nil,
+                requestedModelID: nil,
+                providerFacingRequestedModel: nil,
+                requestHasIdentity: false,
+                followsInheritedDefault: false
+            ),
+            "Unknown"
+        )
+    }
+
+    func testACPModeParsingAcceptsNestedAndLoadShapesWithoutInventingChat() {
+        let nested = AgentSessionModeParsing.parse(from: [
+            "sessionId": "nested",
+            "modes": [
+                "currentModeId": "chat",
+                "availableModes": [
+                    ["id": "chat", "name": "Chat"],
+                    ["id": "agent"],
+                    ["id": "plan"],
+                    ["id": "yolo"],
+                ],
+            ],
+        ])
+        XCTAssertEqual(nested.current, .chat)
+        XCTAssertEqual(nested.available, [.chat, .agent, .plan, .yolo])
+
+        let topLevel = AgentSessionModeParsing.parse(from: [
+            "currentModeId": "plan",
+            "availableModes": ["agent", "plan", "yolo"],
+        ])
+        XCTAssertEqual(topLevel.current, .plan)
+        XCTAssertEqual(topLevel.available, [.agent, .plan, .yolo])
+
+        let effortOnly = AgentSessionModeParsing.parse(from: [
+            "sessionId": "effort",
+            "_meta": [
+                "x.ai/sessionConfig": [
+                    "options": [
+                        ["id": "high", "category": "mode", "label": "High Effort"],
+                    ],
+                ],
+            ],
+        ])
+        XCTAssertNil(effortOnly.current)
+        XCTAssertNil(effortOnly.available)
+
+        XCTAssertEqual(AgentMode.chat.displayName, "Chat")
+        XCTAssertEqual(AgentMode.agent.displayName, "Agent")
+        XCTAssertEqual(AgentMode(rawValue: "research").displayName, "research")
+        XCTAssertNotEqual(AgentMode(rawValue: "chat").displayName, "Agent")
+    }
+
+    func testFakeACPNestedChatModeAppearsInAvailableModes() async throws {
+        let fixtureRoot = FileManager.default.temporaryDirectory
+            .appendingPathComponent("grokbuild-chat-mode-fixture-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: fixtureRoot, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: fixtureRoot) }
+        let scriptURL = fixtureRoot.appendingPathComponent("fake-grok")
+        let script = """
+        #!/bin/sh
+        while IFS= read -r line; do
+          id=$(printf '%s' "$line" | sed -E 's/.*"id":([0-9]+).*/\\1/')
+          case "$line" in
+            *'"method":"initialize"'*)
+              printf '{"jsonrpc":"2.0","id":%s,"result":{}}\\n' "$id"
+              ;;
+            *'"method":"session/new"'*)
+              printf '{"jsonrpc":"2.0","id":%s,"result":{"sessionId":"chat-mode-session","models":{"currentModelId":"grok-4.5","availableModels":[]},"modes":{"currentModeId":"chat","availableModes":[{"id":"chat"},{"id":"agent"},{"id":"plan"},{"id":"yolo"}]}}}\\n' "$id"
+              ;;
+            *'"method":"session/load"'*)
+              printf '{"jsonrpc":"2.0","id":%s,"result":{"models":{"currentModelId":"grok-4.5","availableModels":[]},"modes":{"currentModeId":"chat","availableModes":[{"id":"chat"},{"id":"agent"}]}}}\\n' "$id"
+              ;;
+            *'"method":"session/set_model"'*)
+              printf '{"jsonrpc":"2.0","id":%s,"result":{"_meta":{"model":{"Ok":"grok-4.5"}}}}\\n' "$id"
+              ;;
+          esac
+        done
+        """
+        try script.write(to: scriptURL, atomically: true, encoding: .utf8)
+        try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: scriptURL.path)
+
+        GrokProcess.cliOverrideForTests = scriptURL
+        defer { GrokProcess.cliOverrideForTests = nil }
+
+        let created = GrokProcess()
+        await created.start(
+            workspace: Workspace(name: "fixture", path: fixtureRoot),
+            options: GrokLaunchOptions(localTabID: UUID(), model: "grok-4.5")
+        )
+        XCTAssertEqual(created.state, .ready)
+        XCTAssertEqual(created.currentMode, .chat)
+        XCTAssertTrue(created.availableModes.contains(.chat))
+        XCTAssertEqual(created.currentMode.displayName, "Chat")
+        await created.stop()
+
+        let loaded = GrokProcess()
+        await loaded.start(
+            workspace: Workspace(name: "fixture", path: fixtureRoot),
+            options: GrokLaunchOptions(
+                localTabID: UUID(),
+                model: "grok-4.5",
+                resumeSessionID: "chat-mode-session"
+            )
+        )
+        XCTAssertEqual(loaded.state, .ready)
+        XCTAssertEqual(loaded.currentMode, .chat)
+        XCTAssertEqual(loaded.availableModes, [.chat, .agent])
+        await loaded.stop()
+    }
+
+    @MainActor
+    func testEmptyWelcomeHidesOnceComposerDraftIsNonEmpty() async {
+        let store = ChatStore()
+        XCTAssertTrue(store.showsEmptyTranscriptWelcome)
+        store.composerDraft = "x"
+        XCTAssertFalse(store.showsEmptyTranscriptWelcome)
+        store.composerDraft = "   "
+        XCTAssertTrue(store.showsEmptyTranscriptWelcome)
+        await store.shutdownPermanently()
+    }
+
     func testLiveProcessLaunchAndRestartReceiptsTrackEffectivePermissionAndResume() async throws {
         let fixtureRoot = FileManager.default.temporaryDirectory
             .appendingPathComponent("grokbuild-acp-fixture-\(UUID().uuidString)", isDirectory: true)
