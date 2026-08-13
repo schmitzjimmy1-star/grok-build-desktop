@@ -17,6 +17,53 @@
 > User conversations, historical acceptance evidence, unnamed sessions that were not
 > created by the current slice, and unrelated browser/app state are protected.
 
+## Status — Transcript chrome, tool visibility, provider honesty (2026-08-13)
+
+Jimmy asked for a deep UI/UX and backend review, then repairs: every visible
+control wired to a real owner, tool use obvious, the GitHub-looking panel that
+appears after Send gone, and Grok / OpenRouter / OpenAI packets that do not
+leak credentials or stir idle CPU. Billable prompts and retries are authorized
+for acceptance. Same gates A–H, one PR per owner. Do not invent provider
+fallback.
+
+| Slice | Objective | Risk | Provider spend | Status |
+|---|---|---:|---:|---|
+| 0 | Code + Computer Use review of post-Send chrome, buttons, tool traces, route contract | Low | None unless needed to see the panel | Proven 2026-08-13 |
+| 1 | Remove settled Run checklist from the transcript; keep live compact row + message tool traces + opt-in Activity | Medium | One native Send to prove the panel is gone | CU passed on `6e7529e`; PR next |
+| 2 | Default-expand turns that have tools, including restored threads | Medium | Restore + one Send | Blocked on Slice 1 |
+| 3 | Delete or wire live Run Review no-op; remaining button inventory | Low | Computer Use | Blocked on Slice 2 |
+| 4 | Frozen Grok / OpenRouter / OpenAI packets; no leak; no Models-pane timer CPU | High | Frozen markers per route | Blocked on Slice 3 |
+
+**Slice 0 review.** The half-page post-Send panel is `ThreadRunSpineView.settledSummary`
+(`grok-run-spine-settled`): GitHub-checks chrome (Run, ungrouped receipts,
+checkpoint, warnings, Activity). `PreviewPane` is large but starts closed and
+is not opened by Send. Tool use already has `AssistantToolTraceView`; restored
+turns start collapsed. Live Run `onOpenReview` is `{}`. OpenRouter downstream
+serving provider stays unproven.
+
+### Slice 1 receipt — hide settled Run checklist, 2026-08-13
+
+Repair is on `fix/grokbuild-hide-settled-run-spine` at
+`6e7529e837bc3df52612017c6806825ef0a1b959`. `make test` **779/779**,
+`make ship` `dirty=false`, Team `DD2GCQJVB4`, stamp == HEAD. Dist/installed
+SHA-256 `d39f235f0976505b4fd017097dc48288db00cc966fe0556bbadcfa94f98afca4`.
+Grok CLI `1.0.3 (1a29d5bc12d4) [stable]`. Native xAI Grok 4.6.
+
+Installed Computer Use on a New chat. Warm-start copy was **Starting agent…**
+then **Connected — idle**. Frozen Send
+`Reply exactly GB_UI_NO_RUN_SPINE_20260813. Use no tools and do not retry.`
+settled with the exact marker in the answer, `Thought for 1s` expanded on the
+live turn, Activity toggle **Show activity sidebar** / `Settled: Turn completed`
+(overlay not auto-opened). AX had no `grok-run-spine-settled` and no
+`grok-run-spine-live`. Screenshot of the canvas showed the answer then empty
+space above the composer — no GitHub-style Run checklist. Backend
+`019ffd3f-386d-7de3-96f8-0c1c69084c03`, 1 call, 15,875 prompt / 59 completion
+tokens, `ok:true`.
+
+**Ledgered Slice 1 backends (deleted after this receipt):**
+
+- `019ffd3f-386d-7de3-96f8-0c1c69084c03` — native no-tools marker, panel gone
+
 ## Status — Prove then repair campaign (mode, MCP identity, readiness)
 
 The ACP harmony campaign (Slices 0–3) is merged and accepted on
@@ -32,7 +79,7 @@ fallback. Do not scrape `~/.grok/sessions`.
 | 0 | Prove pass: mode fail-closed, MCP split-name Always Approve, Ready/Resuming CU, frozen terminal/MCP packets as needed | High | Frozen packets as needed; stop on route drift | Proven 2026-08-13 |
 | 1 | Mode authority: unadvertised Plan/YOLO must not be invented or persisted | Medium | After repair, Plan control absent on grok 1.0.3 | Merged PR #53 `a8bce9fe` |
 | 2 | MCP permission identity: split `serverName`+`toolName` must still hit the per-thread gate | High | Default-off then explicit `chrome-devtools` packets | Merged PR #54 `152534a` |
-| 3 | Readiness copy: fresh start must not say Resuming saved task; unsent Ready must not contradict idle sidebar | Low | None unless a live turn later lies | CU passed on `c7cb11f`; PR next |
+| 3 | Readiness copy: fresh start must not say Resuming saved task; unsent Ready must not contradict idle sidebar | Low | None unless a live turn later lies | Merged PR #55 `fab098d` |
 
 No slice may begin until the preceding slice is merged, local `main` matches
 `personal/main`, the installed app is stamped to that merged commit, slice-created

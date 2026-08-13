@@ -112,23 +112,21 @@ enum ChatTranscriptLayout {
         case planSpine
         case liveProgress
         case answer
-        case settledRunSpine
     }
 
     /// One turn has one stable semantic order. Thinking and tool receipts may
     /// appear or settle at any point in the event stream, but neither is allowed
-    /// to migrate below the answer it explains. The plan spine (Workbench W-5)
-    /// is deliberately independent of the trace disclosure: while a run is
-    /// active the plan is the spine of the transcript, not a receipt hidden
-    /// behind a click.
+    /// to migrate below the answer it explains. The live run row (Workbench W-5)
+    /// is independent of the trace disclosure. After the answer settles, tool
+    /// receipts stay on the message; the GitHub-style settled Run checklist is
+    /// not mounted in the transcript (Activity remains the opt-in ledger).
     static func messageBlockOrder(
         containsAgentHeader: Bool,
         traceExpanded: Bool,
         containsThinking: Bool,
         containsToolActivity: Bool,
         containsLiveProgress: Bool = false,
-        containsPlanSpine: Bool = false,
-        containsSettledRunSpine: Bool = false
+        containsPlanSpine: Bool = false
     ) -> [MessageBlock] {
         var blocks: [MessageBlock] = []
         if containsAgentHeader { blocks.append(.agentHeader) }
@@ -137,7 +135,6 @@ enum ChatTranscriptLayout {
         if containsPlanSpine { blocks.append(.planSpine) }
         if containsLiveProgress { blocks.append(.liveProgress) }
         blocks.append(.answer)
-        if containsSettledRunSpine { blocks.append(.settledRunSpine) }
         return blocks
     }
 
@@ -703,13 +700,7 @@ struct ChatView: View {
                                         && store.isGrokking,
                                     containsPlanSpine: msg.role == .assistant
                                         && msg.id == store.streamingMessageID
-                                        && store.liveRunEvidenceProjection != nil,
-                                    containsSettledRunSpine: msg.role == .assistant
-                                        && (persistedTrace?.checkpoint != nil
-                                            || (msg.id == ChatTranscriptLayout.activeAssistantMessageID(
-                                                messages: store.messages,
-                                                streamingMessageID: store.streamingMessageID
-                                            ) && store.runEvidenceSnapshot != nil))
+                                        && store.liveRunEvidenceProjection != nil
                                 ),
                                 id: \.self
                             ) { block in
@@ -753,30 +744,6 @@ struct ChatView: View {
                                             : nil
                                     )
                                     .id(msg.id)
-                                case .settledRunSpine:
-                                    let ownsCurrentSnapshot = msg.id == ChatTranscriptLayout.activeAssistantMessageID(
-                                        messages: store.messages,
-                                        streamingMessageID: store.streamingMessageID
-                                    )
-                                    let snapshot = ownsCurrentSnapshot ? store.runEvidenceSnapshot : nil
-                                    if snapshot != nil || persistedTrace?.checkpoint != nil {
-                                        ThreadRunSpineView(
-                                            live: nil,
-                                            snapshot: snapshot,
-                                            checkpoint: persistedTrace?.checkpoint,
-                                            settledTools: msg.assistantTrace?.tools ?? [],
-                                            workspace: store.currentWorkspace?.path,
-                                            onOpenActivity: {
-                                                selectedActivityMessageID = msg.id
-                                                showActivitySidebar = true
-                                            },
-                                            onOpenReview: {
-                                                onOpenTurnReview()
-                                                if !isReviewVisible { onToggleReview() }
-                                            },
-                                            onRevealArtifact: onRevealArtifact
-                                        )
-                                    }
                                 }
                             }
                         }

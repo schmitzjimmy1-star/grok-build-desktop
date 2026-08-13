@@ -507,7 +507,10 @@ final class ThreadRunSpineTests: XCTestCase {
 
         XCTAssertTrue(source.contains("snapshot: activitySnapshot"))
         XCTAssertTrue(source.contains("checkpoint.restoredRunEvidenceSnapshot(settledTools: trace.tools)"))
-        XCTAssertTrue(source.contains("selectedActivityMessageID = msg.id"))
+        XCTAssertFalse(
+            source.contains("selectedActivityMessageID = msg.id"),
+            "the settled Run card was the only setter; Activity is header opt-in now"
+        )
         XCTAssertTrue(source.contains("snapshot: activitySnapshot,"))
     }
 

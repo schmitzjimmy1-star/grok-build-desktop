@@ -586,7 +586,7 @@ and reconciled child-tool outcomes, artifacts, review paths, unresolved warnings
 process generation, explicitly requested
 MCP/GUI families, model, recovery flag, and next action) into the existing local
 `AssistantTurnTrace`. Persisted tool receipts also retain only provider-reported
-duration. This lets every restored assistant turn rebuild its own settled run spine and
+duration. This lets every restored assistant turn rebuild its own tool receipts and
 lets the idle task header use the checkpoint model rather than mutable current settings.
 It gives relaunch a durable presentation checkpoint without a
 second transcript, runtime, session authority, or read of grok's private storage.
@@ -1051,10 +1051,12 @@ Used from the sidebar status row, `GitCheckoutSheet`, and the thread Review pane
 - Commit/push/PR readiness is presented separately from the explicit actions that can
   mutate or publish; no review refresh authorizes an action
 
-Settled `ThreadRunSpineView` groups parent command/test receipts and successful
+Live `ThreadRunSpineView` groups parent command/test receipts and successful
 artifact links beneath the typed plan step that was current when the ACP receipt
 first arrived. The association is a generation-bound observation, not a new
-planner. Artifacts retain exact local path, parent tool ID, optional worker ID, and
+planner. After the answer settles, those receipts stay on the assistant turn
+(`AssistantToolTraceView`); the GitHub-style settled Run checklist is not
+mounted in the transcript. Activity remains the opt-in ledger. Artifacts retain exact local path, parent tool ID, optional worker ID, and
 open through the existing explicit reveal action. Unowned evidence stays labeled
 ungrouped; unresolved receipts never acquire a guessed producing step.
 
@@ -1273,7 +1275,7 @@ The signed installed Slice 10 acceptance is complete: `make test` passed 482/482
 
 ## Visual UX Slice 10 live-progress and repeated-turn follow contracts
 
-`ThreadRunSpinePresentation` is a pure presentation of `ChatStore.liveRunEvidenceProjection` and the same `RunEvidenceSnapshot` consumed by Activity. During a turn it may name only the observed phase, completed/remaining plan steps, active workers, exact current parent tool, and successful artifact boundaries. Current Grok CLI typed plans arrive as ordinary `todo_write` tool receipts, so `GrokProcess` projects only that authoritative tool family into the existing plan event and `ChatStore` merges its stable todo IDs; GrokBuild does not create a second planner or infer steps from prose. `ChatStore` stamps a worker's owning step once, when that worker first crosses the owned lifecycle stream and an authoritative current plan step exists; it never parses worker prose or retroactively guesses. ACP does not report parent-tool duration or per-tool worker ownership, so those rows explicitly say **Duration not reported** and **Parent agent**. At settlement, the final answer is followed by the same native card projected from the authoritative snapshot plus the assistant's backward-compatible retained tool trace; it exposes checkpoint/recovery state, artifact links, and Activity/Review destinations without copying either inspector's ledger. The card has no timer, persistence, usage/budget estimate, outcome authority, or independent lifecycle state. Transcript order is thinking, expandable tool activity, active run spine, answer, then settled run spine. ACP settlement still atomically removes the live projection and installs `RunEvidenceSnapshot` as the sole settled authority.
+`ThreadRunSpinePresentation` is a pure presentation of `ChatStore.liveRunEvidenceProjection` and the same `RunEvidenceSnapshot` consumed by Activity. During a turn it may name only the observed phase, completed/remaining plan steps, active workers, exact current parent tool, and successful artifact boundaries. Current Grok CLI typed plans arrive as ordinary `todo_write` tool receipts, so `GrokProcess` projects only that authoritative tool family into the existing plan event and `ChatStore` merges its stable todo IDs; GrokBuild does not create a second planner or infer steps from prose. `ChatStore` stamps a worker's owning step once, when that worker first crosses the owned lifecycle stream and an authoritative current plan step exists; it never parses worker prose or retroactively guesses. ACP does not report parent-tool duration or per-tool worker ownership, so those rows explicitly say **Duration not reported** and **Parent agent**. At settlement the live compact row is removed with the live projection. Tool receipts remain on the assistant message; Activity holds the settled snapshot. The transcript does not mount a GitHub-style Run checklist under the answer. The live row has no timer, persistence, usage/budget estimate, outcome authority, or independent lifecycle state. Transcript order is thinking, expandable tool activity, live run row, then answer. ACP settlement still atomically removes the live projection and installs `RunEvidenceSnapshot` as the sole settled authority.
 
 The display buffer also owns a bounded fourteen-frame reveal for a large ACP message chunk. A successful completion receipt waits for that display buffer to drain before authoritative backend reconciliation, so an immediate `turnCompleted` event cannot replace a paced partial answer with the final body in one frame. The reconciled content remains byte-for-byte authoritative; this is presentation pacing, not a claim that the provider emitted token-sized chunks.
 
