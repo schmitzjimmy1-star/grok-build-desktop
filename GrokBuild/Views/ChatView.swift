@@ -120,6 +120,8 @@ enum ChatTranscriptLayout {
     /// is independent of the trace disclosure. After the answer settles, tool
     /// receipts stay on the message; the GitHub-style settled Run checklist is
     /// not mounted in the transcript (Activity remains the opt-in ledger).
+    /// Turns with tool receipts default expanded, including restored threads,
+    /// until the user collapses that turn.
     static func messageBlockOrder(
         containsAgentHeader: Bool,
         traceExpanded: Bool,
@@ -147,6 +149,20 @@ enum ChatTranscriptLayout {
             return nil
         }
         return lastTurnMessage.role == .assistant ? lastTurnMessage.id : nil
+    }
+
+    /// Tool receipts default visible. An explicit collapse wins; an explicit
+    /// expand (including a live streaming turn) also wins. Thinking-only turns
+    /// stay collapsed until the user opens them or a live stream inserts them.
+    static func isTraceExpanded(
+        messageID: UUID,
+        hasTools: Bool,
+        explicitlyExpanded: Set<UUID>,
+        explicitlyCollapsed: Set<UUID>
+    ) -> Bool {
+        if explicitlyCollapsed.contains(messageID) { return false }
+        if explicitlyExpanded.contains(messageID) { return true }
+        return hasTools
     }
 
     /// Thinking belongs to the assistant response for the active turn. During
@@ -292,6 +308,7 @@ struct ChatView: View {
     /// W-4 context strip: cached branch name (reads .git/HEAD, no subprocess).
     @State private var contextBranchName: String?
     @State private var expandedAssistantTraceIDs: Set<UUID> = []
+    @State private var collapsedAssistantTraceIDs: Set<UUID> = []
     @State private var autoScrollTask: Task<Void, Never>?
     @State private var programmaticScrollReleaseTask: Task<Void, Never>?
     @State private var isProgrammaticTranscriptScroll = false
@@ -418,7 +435,9 @@ struct ChatView: View {
         Button {
             if isExpanded {
                 expandedAssistantTraceIDs.remove(message.id)
+                collapsedAssistantTraceIDs.insert(message.id)
             } else {
+                collapsedAssistantTraceIDs.remove(message.id)
                 expandedAssistantTraceIDs.insert(message.id)
             }
         } label: {
@@ -678,7 +697,6 @@ struct ChatView: View {
                         }
 
                         ForEach(store.messages) { msg in
-                            let traceExpanded = expandedAssistantTraceIDs.contains(msg.id)
                             let persistedTrace = msg.assistantTrace
                             let hasLiveThinking = thinkingMessageID == msg.id
                             let hasLiveTools = toolActivityMessageID == msg.id
@@ -687,6 +705,12 @@ struct ChatView: View {
                             let hasPersistedTools = persistedTrace?.tools.isEmpty == false
                             let hasAnyTrace = hasLiveThinking || hasLiveTools
                                 || hasPersistedThinking || hasPersistedTools
+                            let traceExpanded = ChatTranscriptLayout.isTraceExpanded(
+                                messageID: msg.id,
+                                hasTools: hasLiveTools || hasPersistedTools,
+                                explicitlyExpanded: expandedAssistantTraceIDs,
+                                explicitlyCollapsed: collapsedAssistantTraceIDs
+                            )
                             ForEach(
                                 ChatTranscriptLayout.messageBlockOrder(
                                     containsAgentHeader: msg.role == .assistant,
@@ -1032,6 +1056,7 @@ struct ChatView: View {
             // hidden behind a disclosure. Collapsing manually still sticks
             // for the rest of the turn.
             if let id, store.isStreaming {
+                collapsedAssistantTraceIDs.remove(id)
                 expandedAssistantTraceIDs.insert(id)
             }
         }
