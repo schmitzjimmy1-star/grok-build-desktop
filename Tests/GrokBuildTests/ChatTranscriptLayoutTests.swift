@@ -150,6 +150,64 @@ final class ChatTranscriptLayoutTests: XCTestCase {
         )
     }
 
+    func testTurnsWithToolsDefaultExpandedIncludingRestoredIDs() throws {
+        let restored = UUID()
+        let live = UUID()
+        let thinkingOnly = UUID()
+        let collapsed = UUID()
+        XCTAssertTrue(
+            ChatTranscriptLayout.isTraceExpanded(
+                messageID: restored,
+                hasTools: true,
+                explicitlyExpanded: [],
+                explicitlyCollapsed: []
+            ),
+            "restored tool receipts must not wait for a live stream insert"
+        )
+        XCTAssertTrue(
+            ChatTranscriptLayout.isTraceExpanded(
+                messageID: live,
+                hasTools: false,
+                explicitlyExpanded: [live],
+                explicitlyCollapsed: []
+            ),
+            "a live streaming turn still opens even before the first tool receipt"
+        )
+        XCTAssertFalse(
+            ChatTranscriptLayout.isTraceExpanded(
+                messageID: thinkingOnly,
+                hasTools: false,
+                explicitlyExpanded: [],
+                explicitlyCollapsed: []
+            ),
+            "thinking-only turns stay collapsed until opened"
+        )
+        XCTAssertFalse(
+            ChatTranscriptLayout.isTraceExpanded(
+                messageID: collapsed,
+                hasTools: true,
+                explicitlyExpanded: [collapsed],
+                explicitlyCollapsed: [collapsed]
+            ),
+            "an explicit collapse wins over tools and a live insert"
+        )
+
+        let repositoryRoot = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        let chatSource = try String(
+            contentsOf: repositoryRoot.appendingPathComponent("GrokBuild/Views/ChatView.swift"),
+            encoding: .utf8
+        )
+        XCTAssertTrue(chatSource.contains("ChatTranscriptLayout.isTraceExpanded("))
+        XCTAssertTrue(chatSource.contains("collapsedAssistantTraceIDs"))
+        XCTAssertFalse(
+            chatSource.contains("let traceExpanded = expandedAssistantTraceIDs.contains(msg.id)"),
+            "the transcript must not treat an empty expand set as collapsed tools"
+        )
+    }
+
     /// Workbench W-5 — the plan spine formats existing generation-bound steps;
     /// it never invents progress or decides lifecycle state.
     func testPlanSpinePresentationCountsOnlySettledStepStatuses() {

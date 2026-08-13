@@ -29,8 +29,8 @@ fallback.
 | Slice | Objective | Risk | Provider spend | Status |
 |---|---|---:|---:|---|
 | 0 | Code + Computer Use review of post-Send chrome, buttons, tool traces, route contract | Low | None unless needed to see the panel | Proven 2026-08-13 |
-| 1 | Remove settled Run checklist from the transcript; keep live compact row + message tool traces + opt-in Activity | Medium | One native Send to prove the panel is gone | CU passed on `6e7529e`; PR next |
-| 2 | Default-expand turns that have tools, including restored threads | Medium | Restore + one Send | Blocked on Slice 1 |
+| 1 | Remove settled Run checklist from the transcript; keep live compact row + message tool traces + opt-in Activity | Medium | One native Send to prove the panel is gone | Merged PR #56 `8a031f6` |
+| 2 | Default-expand turns that have tools, including restored threads | Medium | Restore + one Send | In progress on `fix/grokbuild-default-expand-tool-traces` |
 | 3 | Delete or wire live Run Review no-op; remaining button inventory | Low | Computer Use | Blocked on Slice 2 |
 | 4 | Frozen Grok / OpenRouter / OpenAI packets; no leak; no Models-pane timer CPU | High | Frozen markers per route | Blocked on Slice 3 |
 
