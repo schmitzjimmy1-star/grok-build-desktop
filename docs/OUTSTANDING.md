@@ -31,8 +31,8 @@ fallback.
 | 0 | Code + Computer Use review of post-Send chrome, buttons, tool traces, route contract | Low | None unless needed to see the panel | Proven 2026-08-13 |
 | 1 | Remove settled Run checklist from the transcript; keep live compact row + message tool traces + opt-in Activity | Medium | One native Send to prove the panel is gone | Merged PR #56 `8a031f6` |
 | 2 | Default-expand turns that have tools, including restored threads | Medium | Restore + one Send | Merged PR #57 `2c38e80` |
-| 3 | Delete or wire live Run Review no-op; remaining button inventory | Low | Computer Use | CU passed on `1469d2f`; PR next |
-| 4 | Frozen Grok / OpenRouter / OpenAI packets; no leak; no Models-pane timer CPU | High | Frozen markers per route | Blocked on Slice 3 |
+| 3 | Delete or wire live Run Review no-op; remaining button inventory | Low | Computer Use | Merged PR #58 `1e3e12e` |
+| 4 | Frozen Grok / OpenRouter / OpenAI packets; no leak; no Models-pane timer CPU | High | Frozen markers per route | Proven 2026-08-13 |
 
 **Slice 0 review.** The half-page post-Send panel is `ThreadRunSpineView.settledSummary`
 (`grok-run-spine-settled`): GitHub-checks chrome (Run, ungrouped receipts,
@@ -87,7 +87,8 @@ present; no second Send. Backend
 ### Slice 3 receipt — live Run Review no-op gone, 2026-08-13
 
 Repair is on `fix/grokbuild-live-run-review-noop` at
-`1469d2f8e0686e9ea62632b8a96fde698080ae59`. `make test` **780/780**,
+`1469d2f8e0686e9ea62632b8a96fde698080ae59`. Merged as PR #58
+`1e3e12eca881162664230c9781dd8fd8499f7866`. `make test` **780/780**,
 `make ship` `dirty=false`, Team `DD2GCQJVB4`, stamp == HEAD. Dist/installed
 SHA-256 `ef12b8fc8e6820b6f8edc5fab235fc90aa17bbdae45e32430465964680dc4744`.
 No Send.
@@ -98,6 +99,56 @@ was correctly absent (`reviewFileCount` 0). AX had no live Run Review control
 and no `grok-run-spine-settled`. Remaining Git Review owners are the header
 chip (when files exist) and the inline changed-files card. Live Run Activity
 is still wired. ChatView source no longer contains `onOpenReview: {}`.
+
+### Slice 4 receipt — frozen Grok / OpenRouter / OpenAI packets, 2026-08-13
+
+Prove-only on installed `1e3e12eca881162664230c9781dd8fd8499f7866`
+(`dirty=false`, Team `DD2GCQJVB4`, Grok CLI `1.0.3 (1a29d5bc12d4) [stable]`).
+`make test` **780/780**. No Swift repair: route honesty, key masking, and the static Models timestamp
+already live in `ModelRouteContract`, `CustomModel.maskedKeyPreview`, and
+`ProviderValidationResult.checkedAtLabel` (DateFormatter medium time, not
+SwiftUI `.relative`). Tests already cover that contract
+(`ModelRouteContractTests`, `ProviderReliabilityTests`).
+
+Installed Computer Use used three New chats and three frozen no-tool Sends.
+No invented fallback. AX dumps of the chat, model menu, route submenu, and
+Settings → Models contained no `sk-` tokens. None of the three turns mounted
+`grok-run-spine-settled`. Activity stayed **Show activity sidebar** /
+`Settled: Turn completed` (not auto-opened).
+
+**OpenRouter** — selected `openai/gpt-4.1-mini`. Live process confirmation
+before Send. Marker `GB_UI_ROUTE_OPENROUTER_20260813` in the answer. Route
+submenu: `OpenRouter · model pinned`, `Route: brokered by OpenRouter.
+Endpoint: openrouter.ai.`, `Downstream serving provider is not exposed by ACP
+and is not claimed as proven.`, `Fallback: GrokBuild adds no alternate
+provider route; OpenRouter controls downstream routing.` Usage ~$0.0049.
+Backend `019ffd5c-ea59-7860-ac09-45c2daba0df3`.
+
+**Direct OpenAI** — selected `gpt-5.6-luna` (Settings lists it as OpenAI
+Responses at `https://api.openai.com/v1`). Live process confirmation before
+Send. Marker `GB_UI_ROUTE_OPENAI_20260813` in the answer. Route submenu:
+`Direct ChatGPT (OpenAI)`, `Route: direct ChatGPT (OpenAI). Endpoint:
+api.openai.com.`, `Provider model: gpt-5.6-luna. GrokBuild adds no provider
+fallback.` Backend `019ffd5e-733a-7e10-b08f-43b68a63c0d4`.
+
+**Native xAI** — inherited default Grok 4.6. Live process confirmation before
+Send. Marker `GB_UI_ROUTE_GROK_20260813` in the answer, `Thought for 1s`.
+Route submenu: `Direct xAI`, `Route: native xAI through the Grok CLI.`,
+`Fallback: GrokBuild adds no alternate provider route.` Backend
+`019ffd5f-798f-73a0-8f62-ba621a6b7b08`.
+
+**Settings → Models** — Grok Account **Signed in**; copy says GrokBuild
+stores no Grok password or session token. OpenAI / Kimi / OpenRouter rows
+show an **API key** or **OpenRouter OAuth** badge and **Not tested**, not a
+relative "ago" timer. No SecureField was expanded. With the Models pane
+open and idle, GrokBuild PID sampled **0.0% CPU** three times over six
+seconds.
+
+**Ledgered Slice 4 backends (delete after this receipt):**
+
+- `019ffd5c-ea59-7860-ac09-45c2daba0df3` — OpenRouter `openai/gpt-4.1-mini`
+- `019ffd5e-733a-7e10-b08f-43b68a63c0d4` — direct OpenAI `gpt-5.6-luna`
+- `019ffd5f-798f-73a0-8f62-ba621a6b7b08` — native xAI Grok 4.6
 
 ## Status — Prove then repair campaign (mode, MCP identity, readiness)
 
