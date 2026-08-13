@@ -753,7 +753,6 @@ struct ChatView: View {
                                             settledTools: [],
                                             workspace: store.currentWorkspace?.path,
                                             onOpenActivity: { showActivitySidebar = true },
-                                            onOpenReview: {},
                                             onRevealArtifact: onRevealArtifact
                                         )
                                     }
