@@ -189,7 +189,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMenuDele
         window.titlebarAppearsTransparent = true
         window.titlebarSeparatorStyle = .none
         window.appearance = GrokBuildAppearance.load().nsAppearance
-        window.backgroundColor = NSColor.windowBackgroundColor
+        window.backgroundColor = AppTheme.Palette.canvasNSColor
         window.delegate = self
         window.contentViewController = hosting
         // Restore the user's saved frame when one exists; fill the screen only

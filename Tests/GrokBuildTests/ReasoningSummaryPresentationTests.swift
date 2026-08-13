@@ -19,7 +19,7 @@ final class ReasoningSummaryPresentationTests: XCTestCase {
           case "$line" in
             *'"method":"initialize"'*) printf '{"jsonrpc":"2.0","id":%s,"result":{}}\\n' "$id" ;;
             *'"method":"session/new"'*) printf '{"jsonrpc":"2.0","id":%s,"result":{"sessionId":"slice-6-public-summary-fixture","models":{"currentModelId":"grok-4.5","availableModels":[]}}}\\n' "$id" ;;
-            *'"method":"session/set_model"'*) printf '{"jsonrpc":"2.0","id":%s,"result":{"_meta":{"model":{"Ok":"grok-4.5"}}}}\\n' "$id" ;;
+            *'"method":"session/set_model"'*) model=$(printf '%s' "$line" | sed -E 's/.*"modelId":"([^"]+)".*/\\1/'); printf '{"jsonrpc":"2.0","id":%s,"result":{"_meta":{"model":{"Ok":"%s"}}}}\\n' "$id" "$model" ;;
             *'"method":"session/prompt"'*)
               while IFS= read -r event; do printf '%s\\n' "$event"; done < "$fixture"
               printf '{"jsonrpc":"2.0","method":"_x.ai/session/update","params":{"sessionId":"slice-6-public-summary-fixture","update":{"sessionUpdate":"turn_completed","stop_reason":"end_turn"}}}\\n'

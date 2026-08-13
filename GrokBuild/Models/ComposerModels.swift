@@ -264,16 +264,9 @@ enum SlashAutocompleteGroups {
 }
 
 /// A plain-language starting point shown before a session's first request. Selecting one
-/// seeds an editable draft; it never sends or starts a backend by itself.
-/// Workbench W-3 (2026-08-08): a compact recent-task row for the landing.
-/// Value type only — ContentView projects it from cached titles so the landing
-/// never subscribes to live message streams.
-struct RecentSessionEntry: Identifiable, Hashable, Sendable {
-    let id: UUID
-    let title: String
-    let subtitle: String?
-}
-
+/// seeds an editable composer draft. It never sends a prompt by itself. On a fresh empty
+/// tab, filling the draft warm-starts `grok agent stdio` in the background; Send is still
+/// what talks to grok. Restored saved tasks do not warm-start from these starters.
 struct WorkbenchIntent: Identifiable, Hashable, Sendable {
     var id: String { title }
     let icon: String

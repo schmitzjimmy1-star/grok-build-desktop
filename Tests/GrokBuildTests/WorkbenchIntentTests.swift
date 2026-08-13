@@ -51,7 +51,10 @@ final class WorkbenchIntentTests: XCTestCase {
         // always-visible model menu); model choice must not reappear mid-canvas.
         XCTAssertFalse(source.contains("grok-starter-model-selector"))
         XCTAssertTrue(source.contains("TextField(\"Describe a task\""))
-        // Codex parity Slice 4: no Details shelf state survives.
+        XCTAssertTrue(source.contains("Text(\"Grok agent runs in this folder.\")"))
+        XCTAssertTrue(source.contains("Text(item.detail)"))
+        XCTAssertTrue(source.contains("private var showsTaskContextStrip"))
+        XCTAssertFalse(source.contains("Text(\"Recent tasks\")"))
         XCTAssertFalse(source.contains("showComposerDetails"))
 
         // The leading cluster is add/context then run mode; the trailing cluster

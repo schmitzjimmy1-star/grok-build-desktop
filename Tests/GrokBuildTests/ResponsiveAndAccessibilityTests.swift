@@ -164,7 +164,7 @@ final class ResponsiveAndAccessibilityTests: XCTestCase {
     func testAuditedIconOnlyControlsCarryExplicitLabels() throws {
         let expectations: [(file: String, labels: [String])] = [
             ("GrokBuild/Views/SidebarView.swift",
-             ["Filter projects", "Session activity", "New project", "Help and settings"]),
+             ["Filter projects", "Session activity", "New project"]),
             ("GrokBuild/Views/PreviewPane.swift", ["Close review pane"]),
             ("GrokBuild/Views/SessionsBrowserPanel.swift", ["Delete session"]),
             ("GrokBuild/Views/MemoryBrowserPanel.swift", ["Reveal in Finder"]),

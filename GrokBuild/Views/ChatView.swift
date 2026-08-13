@@ -262,9 +262,6 @@ struct ChatView: View {
     /// Straggler fix (2026-08-08): the inline card's Review selects the Last
     /// turn scope before the pane opens.
     var onOpenTurnReview: () -> Void = {}
-    var onSelectSession: (UUID) -> Void = { _ in }
-    /// Workbench W-3: recent tasks for this project, MRU-ordered, resume on click.
-    var recentSessions: [RecentSessionEntry] = []
     var onBrowseSessions: () -> Void = {}
     var onNewSession: () -> Void = {}
     var onAddProject: () -> Void = {}
@@ -633,7 +630,7 @@ struct ChatView: View {
             topBar
                 .disabled(isSessionRestoreInProgress)
 
-            if store.currentWorkspace != nil {
+            if showsTaskContextStrip {
                 taskContextStrip
             }
 
@@ -1011,7 +1008,7 @@ struct ChatView: View {
                     }
                 )
                 .padding(.horizontal, 12)
-            } else if store.continuityIsResuming {
+            } else if store.continuityIsResuming && !store.messages.isEmpty {
                 LaunchSessionChoices(
                     onResumeCurrent: {
                         Task { _ = await store.resumeTaskSession() }
@@ -1347,9 +1344,25 @@ struct ChatView: View {
     }
 
     /// Slice 10 expands the old one-line context strip into a compact task
-    /// contract. The collapsed row stays quiet; expansion reveals only facts
-    /// sourced from the current ACP projection, its durable local checkpoint,
-    /// the saved backend binding, and fresh selected-worktree Git state.
+    /// contract. Empty New chats and idle restored transcripts keep the header
+    /// plus composer (and Resume/Start/Browse when a saved backend is waiting).
+    /// The strip returns for a live, stalled, or recovery session.
+    private var showsTaskContextStrip: Bool {
+        guard store.currentWorkspace != nil else { return false }
+        if store.showsEmptyTranscriptWelcome { return false }
+        if store.continuityRequiresRecovery { return true }
+        if store.isStreaming || store.isPreparingSubmit { return true }
+        if store.turnStalledSince != nil { return true }
+        if store.goalState != nil { return true }
+        if store.liveRunEvidenceProjection != nil { return true }
+        switch store.connectionState {
+        case .starting, .ready, .busy:
+            return true
+        case .idle, .failed:
+            return false
+        }
+    }
+
     private var taskContextStrip: some View {
         ThreadTaskContractView(
             objective: ThreadTaskContractPresentation.objective(
@@ -1433,15 +1446,18 @@ struct ChatView: View {
                 .frame(width: 34, height: 34)
             Text("What do you want to work on?")
                 .font(.system(size: 24, weight: .semibold))
-            Text(store.currentWorkspace?.displayName ?? "Choose a project to begin")
-                .font(AppTheme.Typography.caption)
-                .foregroundStyle(.secondary)
+            VStack(spacing: 4) {
+                Text(store.currentWorkspace?.displayName ?? "Choose a project to begin")
+                    .font(AppTheme.Typography.caption)
+                    .foregroundStyle(.secondary)
+                if store.currentWorkspace != nil {
+                    Text("Grok agent runs in this folder.")
+                        .font(AppTheme.Typography.caption)
+                        .foregroundStyle(.tertiary)
+                }
+            }
 
-            Text("Start a new task")
-                .font(AppTheme.Typography.section)
-                .accessibilityIdentifier("grok-launch-start-new")
-
-            HStack(spacing: 8) {
+            HStack(alignment: .top, spacing: 8) {
                 ForEach(WorkbenchIntent.defaults) { item in
                     CodexPromptPill(item: item) {
                         input = item.prompt
@@ -1449,69 +1465,6 @@ struct ChatView: View {
                     }
                 }
             }
-
-            // Workbench W-3 (2026-08-08): the landing is a workspace overview,
-            // not a void — where you are, what changed, what you worked on last.
-            VStack(spacing: 10) {
-                HStack(spacing: 6) {
-                    if let branch = contextBranchName {
-                        Label(branch, systemImage: "arrow.triangle.branch")
-                    }
-                    if reviewFileCount > 0 {
-                        Text("·").foregroundStyle(.tertiary)
-                        Text("\(reviewFileCount) changed \(reviewFileCount == 1 ? "file" : "files")")
-                    }
-                }
-                .font(AppTheme.Typography.caption)
-                .foregroundStyle(.secondary)
-
-                if !recentSessions.isEmpty {
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text("Recent tasks")
-                            .font(AppTheme.Typography.section)
-                            .foregroundStyle(.tertiary)
-                        ForEach(recentSessions.prefix(4)) { entry in
-                            Button {
-                                onSelectSession(entry.id)
-                            } label: {
-                                HStack(spacing: 8) {
-                                    Image(systemName: "clock.arrow.circlepath")
-                                        .foregroundStyle(.tertiary)
-                                    Text(entry.title)
-                                        .lineLimit(1)
-                                        .truncationMode(.tail)
-                                    Spacer(minLength: 8)
-                                    if let subtitle = entry.subtitle {
-                                        Text(subtitle)
-                                            .foregroundStyle(.tertiary)
-                                    }
-                                }
-                                .font(AppTheme.Typography.caption)
-                                .padding(.horizontal, 10)
-                                .padding(.vertical, 6)
-                                .frame(maxWidth: .infinity, alignment: .leading)
-                                .contentShape(Rectangle())
-                            }
-                            .buttonStyle(.plain)
-                            .accessibilityLabel("Resume current task: \(entry.title)")
-                            .accessibilityHint("Loads this saved task without starting a provider turn until you explicitly resume or send.")
-                            .accessibilityIdentifier("grok-recent-task-\(entry.id.uuidString)")
-                        }
-                    }
-                    .frame(maxWidth: 480)
-                }
-
-                Button("Browse old tasks", systemImage: "clock.arrow.circlepath") {
-                    onBrowseSessions()
-                }
-                .buttonStyle(.bordered)
-                .controlSize(.small)
-                .help("Browse old tasks (Shift-Command-R)")
-                .accessibilityLabel("Browse old tasks")
-                .accessibilityHint("Opens historical Grok sessions without starting one.")
-                .accessibilityIdentifier("grok-launch-browse-old")
-            }
-            .padding(.top, 6)
         }
         .frame(maxWidth: 720)
         .frame(maxWidth: .infinity)
@@ -3084,20 +3037,31 @@ private struct CodexPromptPill: View {
 
     var body: some View {
         Button(action: onSelect) {
-            HStack(spacing: 7) {
-                Image(systemName: item.icon)
-                    .font(.system(size: 11, weight: .semibold))
-                Text(item.title)
-                    .font(AppTheme.Typography.label)
+            VStack(alignment: .leading, spacing: 4) {
+                HStack(spacing: 7) {
+                    Image(systemName: item.icon)
+                        .font(.system(size: 11, weight: .semibold))
+                    Text(item.title)
+                        .font(AppTheme.Typography.label)
+                }
+                Text(item.detail)
+                    .font(AppTheme.Typography.caption)
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.leading)
+                    .fixedSize(horizontal: false, vertical: true)
             }
             .foregroundStyle(isHovered ? Color.primary : Color.secondary)
-            .padding(.horizontal, 11)
-            .frame(height: 30)
+            .padding(.horizontal, 12)
+            .padding(.vertical, 10)
+            .frame(maxWidth: 200, alignment: .leading)
             .background(
                 isHovered ? AppTheme.Palette.surfaceHover : AppTheme.Palette.surface,
-                in: Capsule()
+                in: RoundedRectangle(cornerRadius: AppTheme.Radius.large, style: .continuous)
             )
-            .overlay(Capsule().stroke(AppTheme.Palette.glassBorder))
+            .overlay(
+                RoundedRectangle(cornerRadius: AppTheme.Radius.large, style: .continuous)
+                    .stroke(AppTheme.Palette.glassBorder)
+            )
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
