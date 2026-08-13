@@ -30,7 +30,7 @@ fallback. Do not scrape `~/.grok/sessions`.
 | Slice | Objective | Risk | Provider spend | Status |
 |---|---|---:|---:|---|
 | 0 | Prove pass: mode fail-closed, MCP split-name Always Approve, Ready/Resuming CU, frozen terminal/MCP packets as needed | High | Frozen packets as needed; stop on route drift | Proven 2026-08-13 |
-| 1 | Mode authority: unadvertised Plan/YOLO must not be invented or persisted | Medium | After repair, Plan control absent on grok 1.0.3 | In progress 2026-08-13 |
+| 1 | Mode authority: unadvertised Plan/YOLO must not be invented or persisted | Medium | After repair, Plan control absent on grok 1.0.3 | CU passed on `ac0b541`; PR next |
 | 2 | MCP permission identity: split `serverName`+`toolName` must still hit the per-thread gate | High | Default-off then explicit `chrome-devtools` packets | Blocked on Slice 1 |
 | 3 | Readiness copy: fresh start must not say Resuming saved task; unsent Ready must not contradict idle sidebar | Low | None unless a live turn later lies | Blocked on Slice 2 |
 
@@ -110,6 +110,15 @@ duration in this campaign.
 - `019ffcf6-7ebf-7411-935a-d86c4f7bbf20` — accidental Plan Send of `x`
 - `019ffcf9-0921-73f0-891f-ac14bc5469d3` — MCP default-off
 - `019ffcfb-aa53-7830-a1dd-8ea8e5c14080` — Jimmy attached chrome-devtools text dump
+
+### Slice 1 receipt — mode authority, 2026-08-13
+
+Repair is on `fix/grokbuild-mode-authority` at `ac0b54126b5bd445779920d544c321bd5ed535b3`.
+`make ship` **775/775**, `dirty=false`, Team `DD2GCQJVB4`, stamp == HEAD.
+Settings → App: `Personal • fix/grokbuild-mode-authority @ ac0b5412`.
+Installed Computer Use on a New chat: composer shows Add, Model, Voice, and Send.
+`grok-mode-selector` is absent. Find for `Plan` only hits the Build starter pill.
+No Send. Prove-pass backends already deleted.
 
 ### ACP harmony Slice 0 receipt — 2026-08-13
 
