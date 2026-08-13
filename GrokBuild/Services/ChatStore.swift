@@ -191,7 +191,7 @@ enum PermissionRequestPolicy {
         mode: GrokPermissionMode,
         isYolo: Bool,
         options: [PermissionOption],
-        mcpGatewayEnabled: Bool = true,
+        mcpGatewayEnabled: Bool = false,
         isMCPInvocation: Bool = false,
         invocationServerName: String? = nil,
         allowedMCPServerNames: Set<String> = []

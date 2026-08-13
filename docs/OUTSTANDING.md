@@ -30,8 +30,8 @@ fallback. Do not scrape `~/.grok/sessions`.
 | Slice | Objective | Risk | Provider spend | Status |
 |---|---|---:|---:|---|
 | 0 | Prove pass: mode fail-closed, MCP split-name Always Approve, Ready/Resuming CU, frozen terminal/MCP packets as needed | High | Frozen packets as needed; stop on route drift | Proven 2026-08-13 |
-| 1 | Mode authority: unadvertised Plan/YOLO must not be invented or persisted | Medium | After repair, Plan control absent on grok 1.0.3 | CU passed on `ac0b541`; PR next |
-| 2 | MCP permission identity: split `serverName`+`toolName` must still hit the per-thread gate | High | Default-off then explicit `chrome-devtools` packets | Blocked on Slice 1 |
+| 1 | Mode authority: unadvertised Plan/YOLO must not be invented or persisted | Medium | After repair, Plan control absent on grok 1.0.3 | Merged PR #53 `a8bce9fe` |
+| 2 | MCP permission identity: split `serverName`+`toolName` must still hit the per-thread gate | High | Default-off then explicit `chrome-devtools` packets | In progress on `fix/grokbuild-mcp-permission-identity` |
 | 3 | Readiness copy: fresh start must not say Resuming saved task; unsent Ready must not contradict idle sidebar | Low | None unless a live turn later lies | Blocked on Slice 2 |
 
 No slice may begin until the preceding slice is merged, local `main` matches
@@ -113,12 +113,14 @@ duration in this campaign.
 
 ### Slice 1 receipt — mode authority, 2026-08-13
 
-Repair is on `fix/grokbuild-mode-authority` at `ac0b54126b5bd445779920d544c321bd5ed535b3`.
-`make ship` **775/775**, `dirty=false`, Team `DD2GCQJVB4`, stamp == HEAD.
-Settings → App: `Personal • fix/grokbuild-mode-authority @ ac0b5412`.
+Repair is merged as PR #53 `a8bce9fe56a79d47e22efc088a90fe98c917df88`.
+Feature-branch `make ship` on `ac0b54126b5bd445779920d544c321bd5ed535b3` was **775/775**,
+`dirty=false`, Team `DD2GCQJVB4`, stamp == HEAD.
+Settings → App on that ship: `Personal • fix/grokbuild-mode-authority @ ac0b5412`.
 Installed Computer Use on a New chat: composer shows Add, Model, Voice, and Send.
 `grok-mode-selector` is absent. Find for `Plan` only hits the Build starter pill.
-No Send. Prove-pass backends already deleted.
+No Send. Prove-pass backends already deleted. Local `main` and
+`/Applications/GrokBuild.app` were restamped to the merge commit before Slice 2.
 
 ### ACP harmony Slice 0 receipt — 2026-08-13
 

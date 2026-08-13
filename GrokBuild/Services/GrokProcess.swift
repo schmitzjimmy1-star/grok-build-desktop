@@ -952,10 +952,21 @@ final class GrokProcess: @unchecked Sendable {
         if let qualified = candidates.compactMap(MCPQualifiedToolIdentity.normalized).first {
             return qualified
         }
+        let splitServer = (rawInput["serverName"] as? String)
+            ?? (rawInput["server_name"] as? String)
+        let splitTool = (rawInput["toolName"] as? String)
+            ?? (rawInput["tool_name"] as? String)
+            ?? (rawInput["name"] as? String)
+        if let composed = MCPQualifiedToolIdentity.composed(
+            serverName: splitServer,
+            toolName: splitTool
+        ) {
+            return composed
+        }
         guard let output = rawOutput as? [String: Any],
               let server = output["server_name"] as? String,
               let tool = output["tool_name"] as? String else { return nil }
-        return MCPQualifiedToolIdentity.normalized(tool.contains("__") ? tool : "\(server)__\(tool)")
+        return MCPQualifiedToolIdentity.composed(serverName: server, toolName: tool)
     }
 
     private static func discoveredQualifiedToolNames(_ rawOutput: Any?) -> [String] {
