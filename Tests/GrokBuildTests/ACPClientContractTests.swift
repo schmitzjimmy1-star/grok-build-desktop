@@ -562,6 +562,64 @@ final class ACPClientContractTests: XCTestCase {
         await store.shutdownPermanently()
     }
 
+    func testLastLiveDoesNotAttachToANewerInheritedDefault() {
+        XCTAssertEqual(
+            ChatStore.modelSelectorStatusLabel(
+                status: .confirmed,
+                receiptIsCurrentProcess: false,
+                currentModel: "grok-4.6",
+                effectiveModelID: "grok-4.5",
+                requestedModelID: "grok-4.5",
+                providerFacingRequestedModel: nil,
+                requestHasIdentity: true,
+                followsInheritedDefault: true
+            ),
+            "Default"
+        )
+        XCTAssertEqual(
+            ChatStore.modelSelectorStatusLabel(
+                status: .confirmed,
+                receiptIsCurrentProcess: false,
+                currentModel: "grok-4.5",
+                effectiveModelID: "grok-4.5",
+                requestedModelID: "grok-4.5",
+                providerFacingRequestedModel: nil,
+                requestHasIdentity: true,
+                followsInheritedDefault: true
+            ),
+            "Last live"
+        )
+        XCTAssertEqual(
+            ChatStore.modelSelectorStatusLabel(
+                status: .confirmed,
+                receiptIsCurrentProcess: false,
+                currentModel: "deepseek-deepseek-v4-flash-0731",
+                effectiveModelID: "deepseek/deepseek-v4-flash-0731",
+                requestedModelID: "deepseek-deepseek-v4-flash-0731",
+                providerFacingRequestedModel: "deepseek/deepseek-v4-flash-0731",
+                requestHasIdentity: true,
+                followsInheritedDefault: false
+            ),
+            "Last live"
+        )
+        XCTAssertTrue(
+            ChatStore.currentModelMatchesConfirmedReceipt(
+                currentModel: "deepseek-deepseek-v4-flash-0731",
+                effectiveModelID: "deepseek/deepseek-v4-flash-0731",
+                requestedModelID: "deepseek-deepseek-v4-flash-0731",
+                providerFacingRequestedModel: "deepseek/deepseek-v4-flash-0731"
+            )
+        )
+        XCTAssertFalse(
+            ChatStore.currentModelMatchesConfirmedReceipt(
+                currentModel: "grok-4.6",
+                effectiveModelID: "grok-4.5",
+                requestedModelID: "grok-4.5",
+                providerFacingRequestedModel: nil
+            )
+        )
+    }
+
     func testLiveProcessLaunchAndRestartReceiptsTrackEffectivePermissionAndResume() async throws {
         let fixtureRoot = FileManager.default.temporaryDirectory
             .appendingPathComponent("grokbuild-acp-fixture-\(UUID().uuidString)", isDirectory: true)
@@ -1401,9 +1459,11 @@ final class ACPClientContractTests: XCTestCase {
         defer { defaults.removePersistentDomain(forName: suiteName) }
 
         let models = GrokModelCatalog.cachedOrFallback(defaults: defaults)
-        XCTAssertEqual(models.map(\.id), ["grok-4.5"])
-        XCTAssertEqual(models.first?.name, "Grok 4.5")
+        XCTAssertEqual(models.map(\.id), ["grok-4.6", "grok-4.5"])
+        XCTAssertEqual(models.first?.name, "Grok 4.6")
         XCTAssertEqual(models.first?.isDefault, true)
+        XCTAssertEqual(models.last?.id, "grok-4.5")
+        XCTAssertEqual(models.last?.isDefault, false)
     }
 
     func testComposerControlsMeetMinimumPointerTarget() {

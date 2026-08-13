@@ -121,7 +121,7 @@ final class ActivityParityFixtureTests: XCTestCase {
               if [ "$new_count" -gt 1 ]; then current_backend='slice-4-fork-backend'; fi
               printf '{"jsonrpc":"2.0","id":%s,"result":{"sessionId":"%s","models":{"currentModelId":"grok-4.5","availableModels":[]}}}\\n' "$id" "$current_backend"
               ;;
-            *'"method":"session/set_model"'*) printf '{"jsonrpc":"2.0","id":%s,"result":{"_meta":{"model":{"Ok":"grok-4.5"}}}}\\n' "$id" ;;
+            *'"method":"session/set_model"'*) model=$(printf '%s' "$line" | sed -E 's/.*"modelId":"([^"]+)".*/\\1/'); printf '{"jsonrpc":"2.0","id":%s,"result":{"_meta":{"model":{"Ok":"%s"}}}}\\n' "$id" "$model" ;;
             *'"method":"session/prompt"'*)
               # grok 0.2.118 emits live private lifecycle updates through
               # _x.ai/session_notification even though updates.jsonl normalizes
@@ -211,7 +211,7 @@ final class ActivityParityFixtureTests: XCTestCase {
           case "$line" in
             *'"method":"initialize"'*) printf '{"jsonrpc":"2.0","id":%s,"result":{}}\\n' "$id" ;;
             *'"method":"session/new"'*) printf '{"jsonrpc":"2.0","id":%s,"result":{"sessionId":"\(backendID)","models":{"currentModelId":"grok-4.5","availableModels":[]}}}\\n' "$id" ;;
-            *'"method":"session/set_model"'*) printf '{"jsonrpc":"2.0","id":%s,"result":{"_meta":{"model":{"Ok":"grok-4.5"}}}}\\n' "$id" ;;
+            *'"method":"session/set_model"'*) model=$(printf '%s' "$line" | sed -E 's/.*"modelId":"([^"]+)".*/\\1/'); printf '{"jsonrpc":"2.0","id":%s,"result":{"_meta":{"model":{"Ok":"%s"}}}}\\n' "$id" "$model" ;;
           esac
         done
         """
@@ -295,7 +295,8 @@ final class ActivityParityFixtureTests: XCTestCase {
               printf '{"jsonrpc":"2.0","id":%s,"result":{"sessionId":"\(backendID)","models":{"currentModelId":"grok-4.5","availableModels":[]}}}\\n' "$id"
               ;;
             *'"method":"session/set_model"'*)
-              printf '{"jsonrpc":"2.0","id":%s,"result":{"_meta":{"model":{"Ok":"grok-4.5"}}}}\\n' "$id"
+              model=$(printf '%s' "$line" | sed -E 's/.*"modelId":"([^"]+)".*/\\1/')
+              printf '{"jsonrpc":"2.0","id":%s,"result":{"_meta":{"model":{"Ok":"%s"}}}}\\n' "$id" "$model"
               ;;
           esac
         done
