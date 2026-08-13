@@ -611,7 +611,6 @@ struct ThreadRunSpineView: View {
     let settledTools: [AssistantTurnTrace.Tool]
     let workspace: URL?
     let onOpenActivity: () -> Void
-    let onOpenReview: () -> Void
     let onRevealArtifact: (ChatStore.RunArtifact) -> Void
 
     @State private var receiptsExpanded = false
@@ -830,11 +829,6 @@ struct ThreadRunSpineView: View {
             HStack(spacing: 14) {
                 Button("Activity", action: onOpenActivity)
                     .buttonStyle(.link)
-                let reviewFiles = snapshot?.gitReviewFiles ?? checkpoint?.gitReviewFiles ?? []
-                if !reviewFiles.isEmpty {
-                    Button("Review \(reviewFiles.count) changed", action: onOpenReview)
-                        .buttonStyle(.link)
-                }
             }
             .font(AppTheme.Typography.caption)
         }

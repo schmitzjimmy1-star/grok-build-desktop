@@ -1057,7 +1057,9 @@ first arrived. The association is a generation-bound observation, not a new
 planner. After the answer settles, those receipts stay on the assistant turn
 (`AssistantToolTraceView`); the GitHub-style settled Run checklist is not
 mounted in the transcript. Turns with tool receipts default expanded, including
-after restore, until the user collapses that turn. Activity remains the opt-in ledger. Artifacts retain exact local path, parent tool ID, optional worker ID, and
+after restore, until the user collapses that turn. Git review stays on the header
+Review chip and the inline changed-files card; the live Run row's Activity control
+is wired, and it has no Review no-op. Activity remains the opt-in ledger. Artifacts retain exact local path, parent tool ID, optional worker ID, and
 open through the existing explicit reveal action. Unowned evidence stays labeled
 ungrouped; unresolved receipts never acquire a guessed producing step.
 

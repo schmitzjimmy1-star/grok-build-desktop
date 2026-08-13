@@ -30,15 +30,15 @@ fallback.
 |---|---|---:|---:|---|
 | 0 | Code + Computer Use review of post-Send chrome, buttons, tool traces, route contract | Low | None unless needed to see the panel | Proven 2026-08-13 |
 | 1 | Remove settled Run checklist from the transcript; keep live compact row + message tool traces + opt-in Activity | Medium | One native Send to prove the panel is gone | Merged PR #56 `8a031f6` |
-| 2 | Default-expand turns that have tools, including restored threads | Medium | Restore + one Send | CU passed on `9cf3b8a`; PR next |
-| 3 | Delete or wire live Run Review no-op; remaining button inventory | Low | Computer Use | Blocked on Slice 2 |
+| 2 | Default-expand turns that have tools, including restored threads | Medium | Restore + one Send | Merged PR #57 `2c38e80` |
+| 3 | Delete or wire live Run Review no-op; remaining button inventory | Low | Computer Use | CU passed on `1469d2f`; PR next |
 | 4 | Frozen Grok / OpenRouter / OpenAI packets; no leak; no Models-pane timer CPU | High | Frozen markers per route | Blocked on Slice 3 |
 
 **Slice 0 review.** The half-page post-Send panel is `ThreadRunSpineView.settledSummary`
 (`grok-run-spine-settled`): GitHub-checks chrome (Run, ungrouped receipts,
 checkpoint, warnings, Activity). `PreviewPane` is large but starts closed and
 is not opened by Send. Tool use already has `AssistantToolTraceView`; restored
-turns start collapsed. Live Run `onOpenReview` is `{}`. OpenRouter downstream
+turns start collapsed. Live Run `onOpenReview` was `{}` (Slice 3 deletes that no-op). OpenRouter downstream
 serving provider stays unproven.
 
 ### Slice 1 receipt — hide settled Run checklist, 2026-08-13
@@ -83,6 +83,21 @@ present; no second Send. Backend
 **Ledgered Slice 2 backends (deleted after this receipt):**
 
 - `019ffd4b-e274-78a2-9a95-0f6d91dcb92c` — native file-read + restore proof
+
+### Slice 3 receipt — live Run Review no-op gone, 2026-08-13
+
+Repair is on `fix/grokbuild-live-run-review-noop` at
+`1469d2f8e0686e9ea62632b8a96fde698080ae59`. `make test` **780/780**,
+`make ship` `dirty=false`, Team `DD2GCQJVB4`, stamp == HEAD. Dist/installed
+SHA-256 `ef12b8fc8e6820b6f8edc5fab235fc90aa17bbdae45e32430465964680dc4744`.
+No Send.
+
+Installed Computer Use on New chat: header Activity opened
+`grok-activity-sidebar` with **Hide activity inspector**. Header Git Review
+was correctly absent (`reviewFileCount` 0). AX had no live Run Review control
+and no `grok-run-spine-settled`. Remaining Git Review owners are the header
+chip (when files exist) and the inline changed-files card. Live Run Activity
+is still wired. ChatView source no longer contains `onOpenReview: {}`.
 
 ## Status — Prove then repair campaign (mode, MCP identity, readiness)
 

@@ -512,6 +512,16 @@ final class ThreadRunSpineTests: XCTestCase {
             "the settled Run card was the only setter; Activity is header opt-in now"
         )
         XCTAssertTrue(source.contains("snapshot: activitySnapshot,"))
+        XCTAssertFalse(
+            source.contains("onOpenReview: {}"),
+            "the live Run row must not keep a dead Review handler"
+        )
+        let spineSource = try String(
+            contentsOf: repositoryRoot.appendingPathComponent("GrokBuild/Views/LivePlanSpine.swift"),
+            encoding: .utf8
+        )
+        XCTAssertFalse(spineSource.contains("let onOpenReview"))
+        XCTAssertFalse(spineSource.contains("Review \\(reviewFiles.count) changed"))
     }
 
     func testTaskHeaderUsesPersistedModelOnlyWhenNoProcessIsRunning() {
