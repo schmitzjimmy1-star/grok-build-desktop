@@ -30,7 +30,7 @@ fallback.
 |---|---|---:|---:|---|
 | 0 | Code + Computer Use review of post-Send chrome, buttons, tool traces, route contract | Low | None unless needed to see the panel | Proven 2026-08-13 |
 | 1 | Remove settled Run checklist from the transcript; keep live compact row + message tool traces + opt-in Activity | Medium | One native Send to prove the panel is gone | Merged PR #56 `8a031f6` |
-| 2 | Default-expand turns that have tools, including restored threads | Medium | Restore + one Send | In progress on `fix/grokbuild-default-expand-tool-traces` |
+| 2 | Default-expand turns that have tools, including restored threads | Medium | Restore + one Send | CU passed on `9cf3b8a`; PR next |
 | 3 | Delete or wire live Run Review no-op; remaining button inventory | Low | Computer Use | Blocked on Slice 2 |
 | 4 | Frozen Grok / OpenRouter / OpenAI packets; no leak; no Models-pane timer CPU | High | Frozen markers per route | Blocked on Slice 3 |
 
@@ -63,6 +63,26 @@ tokens, `ok:true`.
 **Ledgered Slice 1 backends (deleted after this receipt):**
 
 - `019ffd3f-386d-7de3-96f8-0c1c69084c03` — native no-tools marker, panel gone
+
+### Slice 2 receipt — default-expand tool traces, 2026-08-13
+
+Repair is on `fix/grokbuild-default-expand-tool-traces` at
+`9cf3b8a0cf32abec9ef4bb1f81f31dbfdab8f8a6`. `make test` **780/780**,
+`make ship` `dirty=false`, Team `DD2GCQJVB4`, stamp == HEAD. Dist/installed
+SHA-256 `4d34b4a6f9aede489eff9bfbfb25b7fb68486c81f78c83f8879403d6f85b3410`.
+Native xAI Grok 4.6. Frozen Send asked for one file-read of `VERSION`.
+
+Live settle: header **Thinking and tool use expanded**,
+`grok-assistant-tool-details` named `Read …/VERSION` **Succeeded**, answer
+`0.1.20 GB_UI_TOOLS_VISIBLE_20260813`. No `grok-run-spine-settled`. Activity
+stayed **Show activity sidebar**. Quit/relaunch restored the same local
+transcript with tools still expanded and no header click. Launch choices were
+present; no second Send. Backend
+`019ffd4b-e274-78a2-9a95-0f6d91dcb92c`.
+
+**Ledgered Slice 2 backends (deleted after this receipt):**
+
+- `019ffd4b-e274-78a2-9a95-0f6d91dcb92c` — native file-read + restore proof
 
 ## Status — Prove then repair campaign (mode, MCP identity, readiness)
 
