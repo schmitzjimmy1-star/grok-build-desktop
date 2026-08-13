@@ -570,7 +570,7 @@ final class ChatStore {
     /// These are derived from the GrokProcess launch boundary, not Settings drafts.
     private(set) var mcpServerStatuses: [MCPServerStatus] = []
     private(set) var currentMode: AgentMode = .agent
-    private(set) var availableModes: [AgentMode] = [.agent, .plan, .yolo]
+    private(set) var availableModes: [AgentMode] = []
     private(set) var pendingPermissions: [PermissionRequest] = []
     private(set) var pendingExitPlan: ExitPlanRequest?
     private(set) var pendingQuestions: [QuestionRequest] = []
@@ -2156,6 +2156,9 @@ final class ChatStore {
         connectionWatchdogTask?.cancel()
         usedContextTokens = nil
         connectionState = .starting
+        availableModes = []
+        currentMode = .agent
+        isYolo = false
         lastError = nil
         startConnectionWatchdog()
         applyBuiltInModelCatalog(await GrokModelCatalog.shared.models())
@@ -3483,11 +3486,8 @@ final class ChatStore {
 
     func setMode(_ mode: AgentMode) {
         guard !isPreparingSubmit else { return }
+        guard availableModes.contains(mode) else { return }
         process.setMode(mode)
-        // Optimistically update; will be confirmed by modeChanged event
-        currentMode = mode
-        isYolo = (mode == .yolo)
-        saveCurrentSessionSelection()
     }
 
     /// Convenience for the three common modes
@@ -4269,7 +4269,8 @@ final class ChatStore {
             }
         case .modeChanged(let mode):
             currentMode = mode
-            availableModes = process.availableModes // keep in sync
+            isYolo = (mode == .yolo)
+            availableModes = process.availableModes
             saveCurrentSessionSelection()
         case .contextUsage(let totalTokens):
             usedContextTokens = totalTokens
@@ -5260,16 +5261,8 @@ final class ChatStore {
             currentModel = availableModels.first ?? currentModel
         }
 
-        let selectedMode = selection?.mode.map(AgentMode.init(rawValue:)) ?? process.currentMode
-        if availableModes.contains(selectedMode) {
-            currentMode = selectedMode
-        } else {
-            currentMode = availableModes.first ?? .agent
-        }
+        currentMode = process.currentMode
         isYolo = (currentMode == .yolo)
-        if currentMode != process.currentMode {
-            process.setMode(currentMode)
-        }
     }
 
     private func saveCurrentSessionSelection() {

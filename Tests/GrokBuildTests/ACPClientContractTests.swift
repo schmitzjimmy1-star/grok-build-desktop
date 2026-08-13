@@ -762,6 +762,241 @@ final class ACPClientContractTests: XCTestCase {
         await loaded.stop()
     }
 
+    func testNoModesSessionNewDoesNotInventPlanOrYolo() async throws {
+        let fixtureRoot = FileManager.default.temporaryDirectory
+            .appendingPathComponent("grokbuild-no-modes-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: fixtureRoot, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: fixtureRoot) }
+        let rpcLogURL = fixtureRoot.appendingPathComponent("rpc.log")
+        let scriptURL = fixtureRoot.appendingPathComponent("fake-grok")
+        let script = """
+        #!/bin/sh
+        while IFS= read -r line; do
+          printf '%s\\n' "$line" >> '\(rpcLogURL.path)'
+          id=$(printf '%s' "$line" | sed -E 's/.*"id":([0-9]+).*/\\1/')
+          case "$line" in
+            *'"method":"initialize"'*)
+              printf '{"jsonrpc":"2.0","id":%s,"result":{}}\\n' "$id"
+              ;;
+            *'"method":"session/new"'*)
+              printf '{"jsonrpc":"2.0","id":%s,"result":{"sessionId":"no-modes-session","models":{"currentModelId":"grok-4.5","availableModels":[]}}}\\n' "$id"
+              ;;
+            *'"method":"session/set_model"'*)
+              printf '{"jsonrpc":"2.0","id":%s,"result":{"_meta":{"model":{"Ok":"grok-4.5"}}}}\\n' "$id"
+              ;;
+          esac
+        done
+        """
+        try script.write(to: scriptURL, atomically: true, encoding: .utf8)
+        try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: scriptURL.path)
+
+        GrokProcess.cliOverrideForTests = scriptURL
+        defer { GrokProcess.cliOverrideForTests = nil }
+
+        let process = GrokProcess()
+        await process.start(
+            workspace: Workspace(name: "fixture", path: fixtureRoot),
+            options: GrokLaunchOptions(localTabID: UUID(), model: "grok-4.5")
+        )
+        XCTAssertEqual(process.state, .ready)
+        XCTAssertEqual(process.currentMode, .agent)
+        XCTAssertEqual(process.availableModes, [])
+        XCTAssertFalse(process.availableModes.contains(.plan))
+        XCTAssertFalse(process.availableModes.contains(.yolo))
+        process.setMode(.plan)
+        try await Task.sleep(for: .milliseconds(80))
+        let rpc = try String(contentsOf: rpcLogURL, encoding: .utf8)
+        XCTAssertFalse(rpc.contains("session/set_mode"))
+        XCTAssertEqual(process.currentMode, .agent)
+        await process.stop()
+    }
+
+    @MainActor
+    func testEmptySetModeWithoutEventLeavesAgentUnpersisted() async throws {
+        let fixtureRoot = FileManager.default.temporaryDirectory
+            .appendingPathComponent("grokbuild-empty-set-mode-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: fixtureRoot, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: fixtureRoot) }
+        let rpcLogURL = fixtureRoot.appendingPathComponent("rpc.log")
+        let scriptURL = fixtureRoot.appendingPathComponent("fake-grok")
+        let script = """
+        #!/bin/sh
+        while IFS= read -r line; do
+          printf '%s\\n' "$line" >> '\(rpcLogURL.path)'
+          id=$(printf '%s' "$line" | sed -E 's/.*"id":([0-9]+).*/\\1/')
+          case "$line" in
+            *'"method":"initialize"'*)
+              printf '{"jsonrpc":"2.0","id":%s,"result":{}}\\n' "$id"
+              ;;
+            *'"method":"session/new"'*)
+              printf '{"jsonrpc":"2.0","id":%s,"result":{"sessionId":"advertised-modes","models":{"currentModelId":"grok-4.5","availableModels":[]},"modes":{"currentModeId":"agent","availableModes":[{"id":"agent"},{"id":"plan"}]}}}\\n' "$id"
+              ;;
+            *'"method":"session/set_model"'*)
+              printf '{"jsonrpc":"2.0","id":%s,"result":{"_meta":{"model":{"Ok":"grok-4.5"}}}}\\n' "$id"
+              ;;
+            *'"method":"session/set_mode"'*)
+              printf '{"jsonrpc":"2.0","id":%s,"result":{}}\\n' "$id"
+              ;;
+          esac
+        done
+        """
+        try script.write(to: scriptURL, atomically: true, encoding: .utf8)
+        try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: scriptURL.path)
+
+        GrokProcess.cliOverrideForTests = scriptURL
+        defer { GrokProcess.cliOverrideForTests = nil }
+
+        let store = ChatStore()
+        store.bindTabSession(UUID(), savedModel: "grok-4.5")
+        await store.start(workspace: Workspace(name: "empty-set-mode", path: fixtureRoot))
+        XCTAssertEqual(store.process.state, .ready)
+        XCTAssertEqual(store.availableModes, [.agent, .plan])
+        XCTAssertEqual(store.currentMode, .agent)
+        store.setMode(.plan)
+        for _ in 0..<40 {
+            let rpc = (try? String(contentsOf: rpcLogURL, encoding: .utf8)) ?? ""
+            if rpc.contains("session/set_mode") { break }
+            try await Task.sleep(for: .milliseconds(20))
+        }
+        try await Task.sleep(for: .milliseconds(80))
+        XCTAssertEqual(store.currentMode, .agent)
+        XCTAssertFalse(store.isYolo)
+        let rpc = try String(contentsOf: rpcLogURL, encoding: .utf8)
+        XCTAssertTrue(rpc.contains("session/set_mode"))
+        await store.shutdownPermanently()
+    }
+
+    @MainActor
+    func testAdvertisedPlanPersistsOnlyAfterCurrentModeUpdate() async throws {
+        let fixtureRoot = FileManager.default.temporaryDirectory
+            .appendingPathComponent("grokbuild-plan-update-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: fixtureRoot, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: fixtureRoot) }
+        let scriptURL = fixtureRoot.appendingPathComponent("fake-grok")
+        let script = """
+        #!/bin/sh
+        while IFS= read -r line; do
+          id=$(printf '%s' "$line" | sed -E 's/.*"id":([0-9]+).*/\\1/')
+          case "$line" in
+            *'"method":"initialize"'*)
+              printf '{"jsonrpc":"2.0","id":%s,"result":{}}\\n' "$id"
+              ;;
+            *'"method":"session/new"'*)
+              printf '{"jsonrpc":"2.0","id":%s,"result":{"sessionId":"plan-confirm","models":{"currentModelId":"grok-4.5","availableModels":[]},"modes":{"currentModeId":"agent","availableModes":[{"id":"agent"},{"id":"plan"}]}}}\\n' "$id"
+              ;;
+            *'"method":"session/set_model"'*)
+              printf '{"jsonrpc":"2.0","id":%s,"result":{"_meta":{"model":{"Ok":"grok-4.5"}}}}\\n' "$id"
+              ;;
+            *'"method":"session/set_mode"'*)
+              printf '{"jsonrpc":"2.0","id":%s,"result":{}}\\n' "$id"
+              printf '{"jsonrpc":"2.0","method":"session/update","params":{"sessionId":"plan-confirm","update":{"sessionUpdate":"current_mode_update","currentModeId":"plan"}}}\\n'
+              ;;
+          esac
+        done
+        """
+        try script.write(to: scriptURL, atomically: true, encoding: .utf8)
+        try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: scriptURL.path)
+
+        GrokProcess.cliOverrideForTests = scriptURL
+        defer { GrokProcess.cliOverrideForTests = nil }
+
+        let store = ChatStore()
+        store.bindTabSession(UUID(), savedModel: "grok-4.5")
+        await store.start(workspace: Workspace(name: "plan-confirm", path: fixtureRoot))
+        XCTAssertEqual(store.process.state, .ready)
+        XCTAssertEqual(store.currentMode, .agent)
+        store.setMode(.plan)
+        for _ in 0..<80 where store.currentMode != .plan {
+            try await Task.sleep(for: .milliseconds(20))
+        }
+        XCTAssertEqual(store.currentMode, .plan)
+        XCTAssertFalse(store.isYolo)
+        await store.shutdownPermanently()
+    }
+
+    func testNextGenerationWithoutAdvertisementClearsPriorModeList() async throws {
+        let fixtureRoot = FileManager.default.temporaryDirectory
+            .appendingPathComponent("grokbuild-mode-gen-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: fixtureRoot, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: fixtureRoot) }
+        let advertisedURL = fixtureRoot.appendingPathComponent("fake-grok-a")
+        let emptyURL = fixtureRoot.appendingPathComponent("fake-grok-b")
+        let advertised = """
+        #!/bin/sh
+        while IFS= read -r line; do
+          id=$(printf '%s' "$line" | sed -E 's/.*"id":([0-9]+).*/\\1/')
+          case "$line" in
+            *'"method":"initialize"'*)
+              printf '{"jsonrpc":"2.0","id":%s,"result":{}}\\n' "$id"
+              ;;
+            *'"method":"session/new"'*)
+              printf '{"jsonrpc":"2.0","id":%s,"result":{"sessionId":"gen-a","models":{"currentModelId":"grok-4.5","availableModels":[]},"modes":{"currentModeId":"plan","availableModes":[{"id":"agent"},{"id":"plan"},{"id":"yolo"}]}}}\\n' "$id"
+              ;;
+            *'"method":"session/set_model"'*)
+              printf '{"jsonrpc":"2.0","id":%s,"result":{"_meta":{"model":{"Ok":"grok-4.5"}}}}\\n' "$id"
+              ;;
+          esac
+        done
+        """
+        let empty = """
+        #!/bin/sh
+        while IFS= read -r line; do
+          id=$(printf '%s' "$line" | sed -E 's/.*"id":([0-9]+).*/\\1/')
+          case "$line" in
+            *'"method":"initialize"'*)
+              printf '{"jsonrpc":"2.0","id":%s,"result":{}}\\n' "$id"
+              ;;
+            *'"method":"session/new"'*)
+              printf '{"jsonrpc":"2.0","id":%s,"result":{"sessionId":"gen-b","models":{"currentModelId":"grok-4.5","availableModels":[]}}}\\n' "$id"
+              ;;
+            *'"method":"session/set_model"'*)
+              printf '{"jsonrpc":"2.0","id":%s,"result":{"_meta":{"model":{"Ok":"grok-4.5"}}}}\\n' "$id"
+              ;;
+          esac
+        done
+        """
+        try advertised.write(to: advertisedURL, atomically: true, encoding: .utf8)
+        try empty.write(to: emptyURL, atomically: true, encoding: .utf8)
+        try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: advertisedURL.path)
+        try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: emptyURL.path)
+
+        GrokProcess.cliOverrideForTests = advertisedURL
+        defer { GrokProcess.cliOverrideForTests = nil }
+
+        let process = GrokProcess()
+        await process.start(
+            workspace: Workspace(name: "fixture", path: fixtureRoot),
+            options: GrokLaunchOptions(localTabID: UUID(), model: "grok-4.5")
+        )
+        XCTAssertEqual(process.state, .ready)
+        XCTAssertEqual(process.availableModes, [.agent, .plan, .yolo])
+        XCTAssertEqual(process.currentMode, .plan)
+        await process.stop()
+
+        GrokProcess.cliOverrideForTests = emptyURL
+        await process.start(
+            workspace: Workspace(name: "fixture", path: fixtureRoot),
+            options: GrokLaunchOptions(localTabID: UUID(), model: "grok-4.5")
+        )
+        XCTAssertEqual(process.state, .ready)
+        XCTAssertEqual(process.availableModes, [])
+        XCTAssertEqual(process.currentMode, .agent)
+        XCTAssertFalse(process.availableModes.contains(.plan))
+        XCTAssertFalse(process.availableModes.contains(.yolo))
+        await process.stop()
+    }
+
+    @MainActor
+    func testSetModeDoesNotPersistUnadvertisedPlan() async {
+        let store = ChatStore()
+        XCTAssertEqual(store.availableModes, [])
+        XCTAssertEqual(store.currentMode, .agent)
+        store.setMode(.plan)
+        XCTAssertEqual(store.currentMode, .agent)
+        XCTAssertFalse(store.isYolo)
+        await store.shutdownPermanently()
+    }
+
     @MainActor
     func testEmptyWelcomeHidesOnceComposerDraftIsNonEmpty() async {
         let store = ChatStore()

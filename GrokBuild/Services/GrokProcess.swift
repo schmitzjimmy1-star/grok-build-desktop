@@ -776,7 +776,7 @@ final class GrokProcess: @unchecked Sendable {
     private(set) var sessionLoadStartedFreshFallback = false
     private(set) var staleResumeSessionID: String?
     private(set) var currentMode: AgentMode = .agent
-    private(set) var availableModes: [AgentMode] = [.agent, .plan, .yolo]
+    private(set) var availableModes: [AgentMode] = []
     private(set) var currentModelId: String?
     private(set) var modelExecutionState: ModelExecutionState = .unknown
     /// Set when a model switch fails or times out; the UI can surface and then clear it.
@@ -1188,6 +1188,8 @@ final class GrokProcess: @unchecked Sendable {
         launchReceipt = nil
         sessionLoadStartedFreshFallback = false
         staleResumeSessionID = nil
+        currentMode = .agent
+        availableModes = []
         currentModelId = nil
         modelExecutionState = ModelExecutionReducer.launch(
             requestedModelID: options.model,
@@ -1650,12 +1652,29 @@ final class GrokProcess: @unchecked Sendable {
 
     func setMode(_ mode: AgentMode) {
         guard let sid = sessionId else { return }
+        guard availableModes.contains(mode) else { return }
         Task {
-            _ = try? await sendRequest(method: "session/set_mode", params: [
-                "sessionId": sid,
-                "modeId": mode.rawValue
-            ])
+            await confirmSetMode(mode, sessionId: sid)
         }
+    }
+
+    /// Sends `session/set_mode` only for an advertised id. Empty success is not
+    /// confirmation; persist only from `currentModeId` on the result or a later
+    /// `current_mode_update`.
+    private func confirmSetMode(_ mode: AgentMode, sessionId: String) async {
+        let result = try? await sendRequestWithTimeout(method: "session/set_mode", params: [
+            "sessionId": sessionId,
+            "modeId": mode.rawValue
+        ])
+        applyAuthoritativeModeResult(result)
+    }
+
+    private func applyAuthoritativeModeResult(_ result: Any?) {
+        guard let dict = result as? [String: Any] else { return }
+        let snapshot = AgentSessionModeParsing.parse(from: dict)
+        guard let current = snapshot.current else { return }
+        currentMode = current
+        acpEventContinuation?.yield(.modeChanged(mode: current))
     }
 
     func setMode(_ modeId: String) {
@@ -2044,11 +2063,15 @@ final class GrokProcess: @unchecked Sendable {
 
     private func applySessionModes(from result: [String: Any]?) {
         let snapshot = AgentSessionModeParsing.parse(from: result)
+        if let available = snapshot.available {
+            availableModes = available
+        } else {
+            availableModes = []
+        }
         if let current = snapshot.current {
             currentMode = current
-        }
-        if let available = snapshot.available, !available.isEmpty {
-            availableModes = available
+        } else {
+            currentMode = .agent
         }
     }
 
