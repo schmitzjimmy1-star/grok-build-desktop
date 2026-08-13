@@ -17,37 +17,69 @@
 > User conversations, historical acceptance evidence, unnamed sessions that were not
 > created by the current slice, and unrelated browser/app state are protected.
 
-## Status — all clear
+## Status — ACP harmony campaign (chat mode, warmup, all projects)
 
-The installed-app audit on 2026-08-08 verified the canonical repository and
-installed application, then exposed seven bounded repair areas. They are ordered
-below so truth and lifecycle contracts land before presentation and optimization.
+The 2026-08-08 audit campaign and thread-native Slices 7–12 are merged and
+accepted. This is a new four-slice campaign after that all-clear. Same gates
+A–H, one PR per slice, `make test` + `make ship` + Computer Use. No second grok
+runtime: GrokBuild still launches only `grok agent stdio`. Chat vs Agent, if it
+exists, is `session/set_mode`. Ask/Build/Review remain prompt seeds.
 
 | Slice | Objective | Risk | Provider spend | Status |
 |---|---|---:|---:|---|
-| 0 | Freeze the audit baseline and remove the four audit-only threads | Low | None; control slice creates no product behavior | Merged and accepted |
-| 1 | Stop Activity from claiming task success from transport completion | High | 4 prompts; up to 220K tokens | Merged and accepted |
-| 2 | Separate browser process readiness, catalog capability, requested use, and proven use | High | 5 prompts; up to 320K tokens | Merged and accepted |
-| 3 | Replace Browser Settings false-negative startup flicker with an unresolved/checking state | Medium | 3 prompts; up to 5,000,000 tokens | Merged and accepted |
-| 4 | Replace raw Computer Use self-test JSON with a compact parsed receipt | Medium | 4 prompts; up to 240K tokens | Merged and accepted |
-| 5 | Repair navigation-rail accessibility selection semantics | Medium | 3 prompts; up to 200K tokens | Merged and accepted |
-| 6 | Reduce tiny-turn context cost and guarantee zero owned processes at slice close | High | 6 prompts; up to 480K tokens | Merged and accepted |
+| 0 | Live grok ACP mode dump, first-intent warmup Computer Use, Browse Sessions scope receipt | Low | None; control slice creates no product behavior | Receipt captured 2026-08-13 |
+| 1 | Parse nested/load ACP `availableModes`; label Chat/unknown honestly; fake-ACP `chat` fixture | Medium | None; fake ACP only | Implemented in this campaign pass |
+| 2 | Idle inherited New chat says Default; hide welcome on draft; show starting while warm-start runs | Medium | None; no Send | Implemented in this campaign pass |
+| 3 | Pass every GrokBuild sidebar workspace into Browse Sessions; Resume stays cwd-bound | Low | None | Implemented in this campaign pass |
 
 No slice may begin until the preceding slice is merged, local `main` matches
 `personal/main`, the installed app is stamped to that merged commit, slice-created
 threads are gone, and the process-zero gate is green.
 
-All seven audit slices in that campaign and all six thread-native product-refinement
-Slices 7 through 12 are merged and accepted. No product slice remains authorized or
-open. The historical thread-native scope, token ceilings, provider requirements, and
-close gates remain preserved in
+Historical audit Slices 0–6 and thread-native Slices 7–12 remain merged and
+accepted. Their token ceilings and close gates stay in
 `docs/THREAD_NATIVE_PRODUCT_REFINEMENT_SLICES_2026-08-09.md`.
 
-The only retained unresolved limitation is the upstream Grok CLI parent/child session
-visibility and deletion gap recorded in the receipts below. It is not an open
-GrokBuild repair: do not add a private-storage scraper, wrapper, daemon, broad cleanup,
-or synthetic deletion proof. Reassess it only after a supported Grok CLI update exposes
-authoritative session enumeration/deletion behavior.
+The upstream Grok CLI parent/child session visibility and deletion gap remains a
+retained CLI limitation, not a GrokBuild repair: do not scrape `~/.grok/sessions`
+for folders that are not GrokBuild projects.
+
+### Slice 0 receipt — 2026-08-13
+
+Re-derived live, not copied from 2026-08-08:
+
+| Identity | Live value |
+|---|---|
+| Worktree | `/Users/jimmyschmitz/Desktop/Projects/MCP Servers/Grok Build/grok-build-desktop` |
+| Branch | `main` tracking `personal/main` (`+0/-0`, clean at dump time) |
+| HEAD | `4b634a743b8cec2839fc2cd55e740456e3575d17` |
+| Installed stamp | `personal • main @ 4b634a743b8cec2839fc2cd55e740456e3575d17`, `dirty=false` |
+| App version | `0.1.20` |
+| Grok CLI | `1.0.3 (1a29d5bc12d4) [stable]` |
+| Signing team | `DD2GCQJVB4` |
+
+**ACP wire shape (throwaway `grok agent stdio`, no `session/prompt`):**
+
+- `initialize` top keys: `_meta`, `agentCapabilities`, `authMethods`, `protocolVersion`. No `modes`, `availableModes`, or `currentModeId`.
+- `session/new` top keys: `_meta`, `models`, `sessionId`. No spec ACP mode fields. `models.currentModelId` = `grok-4.6`.
+- `session/load` of existing weather backend `019fede3-ddc9-71c2-9904-5de502523b16`: top keys `_meta`, `models`. No `modes` / `availableModes` / `currentModeId`.
+- `_meta["x.ai/sessionConfig"].options` includes `category: "mode"` rows, but those are **effort** (`xhigh` / `high` / `medium` / `low`), not Chat vs Agent. Do not treat them as ACP session modes.
+- grok 1.0.3 does **not** currently advertise a `"chat"` ACP session mode on initialize, new, or load. Slice 1 still repairs parser + labeling so a future CLI id is not renamed Agent. Do not invent a Chat row from effort options.
+
+**First-intent warmup Computer Use (installed `/Applications/GrokBuild.app`, no Send):**
+
+- Empty New chat: welcome heading + Ask/Build/Review present; composer empty; model accessibility `Current backend model is unknown.`; sidebar `New chat, Grok 4.6, idle`.
+- After typing into the composer (no Send): welcome pills still visible (`What do you want to work on?`); composer label `Grok 4.6 · Unknown`; sidebar `New chat, Grok 4.6, working`. Warm-start spawned `grok agent stdio` while chrome still looked like an idle landing plus a silent working dot.
+
+**Browse Sessions Computer Use (two sidebar projects: this repo and `Grok Git`):**
+
+- Sheet listed only `grok-build-desktop` grok history (weather, Chrome DevTools, Jimmy Codebase Query, plus the warmup leftover). No `Grok Git` group. `grok sessions list` has no `--all`; it is cwd-scoped. “All projects” means every GrokBuild sidebar workspace, not `~/.grok/sessions` for folders that are not projects.
+
+**Slice-created leftover (exact IDs only; deleted after the installed CU pass):**
+
+- Warm-start leftovers from Slice 0/2 Computer Use in this repo cwd: `019ffcb3-e06d-7493-865c-7e52549f29b4` and `019ffcbf-418c-72f0-86ad-59a35a2bd92b` (no summary). Probe sessions `019ffcb0-…` and `019ffcb1-…` were already deleted.
+
+Parking lot (not this campaign): W-2 de-bubble; CLI update banner; nested ACP `modes` on `initialize` if a later CLI makes that the only advertisement; moving warm-start to Send (only if a later dump proves spawn is >10s cold).
 
 ---
 

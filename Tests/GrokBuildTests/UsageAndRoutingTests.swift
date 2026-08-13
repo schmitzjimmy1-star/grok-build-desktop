@@ -288,6 +288,10 @@ final class UsageAndRoutingTests: XCTestCase {
         )
         XCTAssertTrue(storeSource.contains("didSet { warmStartOnFirstIntentIfNeeded(previousDraft: oldValue) }"),
                       "the composer draft's empty-to-nonempty transition triggers the warm start")
+        XCTAssertTrue(storeSource.contains("var firstIntentStartupStageText: String?"),
+                      "first-intent spawn must expose starting copy, not only a silent sidebar working dot")
+        XCTAssertTrue(storeSource.contains("composerDraft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty"),
+                      "welcome pills hide once the composer draft owns the task")
         for guardClause in [
             "connectionState == .idle",
             "messages.isEmpty",

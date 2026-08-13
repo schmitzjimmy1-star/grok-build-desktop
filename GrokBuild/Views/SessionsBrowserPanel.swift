@@ -185,19 +185,38 @@ struct SessionsBrowserPanel: View {
     }
 
     private var emptyDescription: String {
-        query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-            ? "No recent sessions for this project."
-            : "No sessions matched your search."
+        Self.emptyDescription(
+            workspaceCount: workspaces.count,
+            searchQuery: query
+        )
+    }
+
+    /// Distinguishes “add a project” from “these GrokBuild projects have no grok history.”
+    static func emptyDescription(workspaceCount: Int, searchQuery: String) -> String {
+        if !searchQuery.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            return "No sessions matched your search."
+        }
+        if workspaceCount == 0 {
+            return "Add a project to browse Grok sessions."
+        }
+        if workspaceCount == 1 {
+            return "No recent sessions for this project."
+        }
+        return "No sessions in these projects."
     }
 
     private var headerSubtitle: String {
+        Self.headerSubtitle(workspaces: workspaces)
+    }
+
+    static func headerSubtitle(workspaces: [Workspace]) -> String {
+        if workspaces.isEmpty {
+            return "Add a project to list matching sessions."
+        }
         if let workspace = workspaces.first, workspaces.count == 1 {
             return workspace.path.path
         }
-        if workspaces.isEmpty {
-            return "Select a project to list matching sessions."
-        }
-        return "Selected projects"
+        return "All GrokBuild projects"
     }
 
     private func projectHeader(_ workspace: Workspace) -> some View {
@@ -306,9 +325,7 @@ struct SessionsBrowserPanel: View {
                         sessions = try await service.searchSessions(query: trimmedQuery, limit: 50, cwd: workspace.path)
                     }
                     let unique = sessions.filter { seenSessionIDs.insert($0.id).inserted }
-                    if !unique.isEmpty {
-                        loaded.append(ProjectSessionsGroup(workspace: workspace, sessions: unique))
-                    }
+                    loaded.append(ProjectSessionsGroup(workspace: workspace, sessions: unique))
                 }
             }
             groups = loaded

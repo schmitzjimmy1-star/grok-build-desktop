@@ -216,10 +216,83 @@ struct AgentMode: RawRepresentable, Sendable, Hashable, Equatable {
     let rawValue: String
     init(rawValue: String) { self.rawValue = rawValue }
 
-    // Grok CLI modes for the bottom selector (Agent / Plan / Yolo)
+    // Known ACP session-mode ids. The menu only lists what the CLI advertised;
+    // GrokBuild does not invent a Chat row when the backend omits it.
+    static let chat  = AgentMode(rawValue: "chat")
     static let agent = AgentMode(rawValue: "agent")
     static let plan  = AgentMode(rawValue: "plan")
     static let yolo  = AgentMode(rawValue: "yolo")
+
+    /// Known ids get stable labels. Unknown ids keep the CLI name and are never
+    /// silently renamed Agent.
+    var displayName: String {
+        switch rawValue {
+        case "chat": return "Chat"
+        case "agent": return "Agent"
+        case "plan": return "Plan"
+        case "yolo": return "YOLO"
+        default:
+            let trimmed = rawValue.trimmingCharacters(in: .whitespacesAndNewlines)
+            return trimmed.isEmpty ? "Agent" : trimmed
+        }
+    }
+}
+
+/// Parses ACP session-mode advertisements. Spec-nested
+/// `modes: { currentModeId, availableModes }` and top-level `modes` /
+/// `availableModes` / `currentModeId` are accepted. `_meta` effort options
+/// (`category: "mode"`) are not session modes.
+enum AgentSessionModeParsing {
+    struct Snapshot: Equatable {
+        var current: AgentMode?
+        var available: [AgentMode]?
+    }
+
+    static func parse(from result: [String: Any]?) -> Snapshot {
+        guard let result else { return Snapshot() }
+
+        var current: AgentMode?
+        var available: [AgentMode]?
+
+        if let nested = result["modes"] as? [String: Any] {
+            current = modeID(from: nested)
+            available = modeList(from: nested["availableModes"]) ?? modeList(from: nested["modes"])
+        }
+
+        if available == nil {
+            available = modeList(from: result["availableModes"]) ?? modeList(from: result["modes"])
+        }
+        if current == nil {
+            current = modeID(from: result)
+        }
+
+        return Snapshot(current: current, available: available)
+    }
+
+    private static func modeID(from object: [String: Any]) -> AgentMode? {
+        let raw = (object["currentModeId"] as? String) ?? (object["mode"] as? String)
+        let trimmed = raw?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        return trimmed.isEmpty ? nil : AgentMode(rawValue: trimmed)
+    }
+
+    private static func modeList(from value: Any?) -> [AgentMode]? {
+        if let ids = value as? [String] {
+            let modes = ids
+                .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+                .filter { !$0.isEmpty }
+                .map { AgentMode(rawValue: $0) }
+            return modes.isEmpty ? nil : modes
+        }
+        if let infos = value as? [[String: Any]] {
+            let modes = infos.compactMap { info -> AgentMode? in
+                let raw = (info["id"] as? String) ?? (info["modeId"] as? String)
+                let trimmed = raw?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+                return trimmed.isEmpty ? nil : AgentMode(rawValue: trimmed)
+            }
+            return modes.isEmpty ? nil : modes
+        }
+        return nil
+    }
 }
 
 enum ToolCallTerminalStatus: String, Codable, Sendable, Hashable {
@@ -1955,17 +2028,7 @@ final class GrokProcess: @unchecked Sendable {
         ]) as? [String: Any]
         sessionId = res?["sessionId"] as? String
         updateModels(from: res?["models"] as? [String: Any])
-
-        if let mode = res?["currentModeId"] as? String ?? res?["mode"] as? String {
-            currentMode = AgentMode(rawValue: mode)
-        }
-
-        // Expose available modes if provided by the CLI
-        if let modes = res?["modes"] as? [String] {
-            availableModes = modes.map { AgentMode(rawValue: $0) }
-        } else if let modeInfos = res?["availableModes"] as? [[String: Any]] {
-            availableModes = modeInfos.compactMap { $0["id"] as? String }.map { AgentMode(rawValue: $0) }
-        }
+        applySessionModes(from: res)
     }
 
     private func loadSession(id: String, workspace: Workspace, mcpServers: [MCPServerConfig]) async throws {
@@ -1976,8 +2039,16 @@ final class GrokProcess: @unchecked Sendable {
         ]) as? [String: Any]
         sessionId = id
         updateModels(from: res?["models"] as? [String: Any])
-        if let mode = res?["currentModeId"] as? String ?? res?["mode"] as? String {
-            currentMode = AgentMode(rawValue: mode)
+        applySessionModes(from: res)
+    }
+
+    private func applySessionModes(from result: [String: Any]?) {
+        let snapshot = AgentSessionModeParsing.parse(from: result)
+        if let current = snapshot.current {
+            currentMode = current
+        }
+        if let available = snapshot.available, !available.isEmpty {
+            availableModes = available
         }
     }
 

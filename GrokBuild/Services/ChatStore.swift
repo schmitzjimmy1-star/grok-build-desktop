@@ -283,11 +283,12 @@ final class ChatStore {
     }
 
     /// An empty transcript shows the welcome/intent cards unless the tab is hard-blocked
-    /// on continuity recovery. A warm-started fresh session has a live backend but zero
-    /// messages — that is still a blank canvas, not a "resumed" conversation (the old
-    /// `isResumedSessionTab` gate left warm sessions staring at a void).
+    /// on continuity recovery or the composer already holds a draft. Once typing (or a
+    /// starter pill) owns the task, the landing pills are the wrong chrome.
     var showsEmptyTranscriptWelcome: Bool {
-        messages.isEmpty && !continuityRequiresRecovery
+        messages.isEmpty
+            && !continuityRequiresRecovery
+            && composerDraft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
     func clearMessages() {
@@ -837,6 +838,19 @@ final class ChatStore {
             return "Preparing selected connections…"
         }
         return connectionState == .ready ? "Dispatching task…" : "Preparing task…"
+    }
+
+    /// First-intent warm-start is not a Send. Show starting copy so the sidebar
+    /// working dot is not the only signal while `session/new` is still in flight.
+    var firstIntentStartupStageText: String? {
+        guard pendingSubmitIntent == nil else { return nil }
+        guard connectionState == .starting else { return nil }
+        guard messages.isEmpty, savedGrokSessionID == nil else { return nil }
+        return ConnectionStatusPresentation.subtitle(
+            state: .starting,
+            isResumedSession: false,
+            hasWorkspace: currentWorkspace != nil
+        )
     }
 
     /// Cancels only the not-yet-dispatched intent. Backend preparation may finish and
@@ -3756,6 +3770,10 @@ final class ChatStore {
         case .rejected:
             return "Rejected"
         case .unknown:
+            if followsInheritedDefault,
+               !currentModel.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                return "Default"
+            }
             return "Unknown"
         }
     }
@@ -3784,6 +3802,10 @@ final class ChatStore {
             let fallback = effective.map { " The last confirmed model is \($0)." } ?? ""
             return "Model request for \(requested ?? "unknown") was rejected.\(fallback)"
         case .unknown:
+            if case .inheritProjectDefault = tabModelIntent,
+               !currentModel.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                return "Inherited default \(modelDisplayName(currentModel)); no live process confirmation yet."
+            }
             return "Current backend model is unknown."
         }
     }
