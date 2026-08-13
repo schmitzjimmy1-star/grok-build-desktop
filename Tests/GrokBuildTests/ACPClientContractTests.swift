@@ -1665,6 +1665,26 @@ final class ACPClientContractTests: XCTestCase {
 
         XCTAssertEqual(parsed?.rawInput?["serverName"] as? String, "chrome-devtools")
         XCTAssertEqual(parsed?.rawInput?["toolName"] as? String, "list_pages")
+        XCTAssertEqual(parsed?.qualifiedToolName, "chrome-devtools__list_pages")
+        XCTAssertEqual(
+            MCPQualifiedToolIdentity.serverName(from: parsed?.qualifiedToolName),
+            "chrome-devtools"
+        )
+    }
+
+    func testSnakeCaseSplitMCPFieldsComposeQualifiedNameWithoutRawOutput() {
+        let parsed = GrokProcess().parseToolCall(from: [
+            "sessionUpdate": "tool_call",
+            "toolCallId": "mcp-call-snake",
+            "tool_name": "list_pages",
+            "server_name": "chrome-devtools",
+            "title": "List pages",
+            "status": "pending",
+        ])
+
+        XCTAssertEqual(parsed?.qualifiedToolName, "chrome-devtools__list_pages")
+        XCTAssertEqual(parsed?.rawInput?["serverName"] as? String, "chrome-devtools")
+        XCTAssertEqual(parsed?.rawInput?["toolName"] as? String, "list_pages")
     }
 
     func testSearchToolParsesAsDiscoveryWithBoundedQualifiedCatalog() {

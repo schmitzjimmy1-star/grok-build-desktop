@@ -188,6 +188,53 @@ final class AgentsAndCapabilitiesTests: XCTestCase {
         XCTAssertEqual(
             PermissionRequestPolicy.disposition(
                 mode: .alwaysApprove,
+                isYolo: false,
+                options: options,
+                isMCPInvocation: true,
+                invocationServerName: "chrome-devtools"
+            ),
+            .deny(optionID: "reject-once"),
+            "MCP gateway must default off so omitted receipts cannot auto-allow"
+        )
+        let splitCall = GrokProcess().parseToolCall(from: [
+            "toolCallId": "split-permission",
+            "toolName": "list_pages",
+            "serverName": "chrome-devtools",
+            "title": "List pages",
+            "status": "pending",
+        ])
+        XCTAssertEqual(splitCall?.qualifiedToolName, "chrome-devtools__list_pages")
+        XCTAssertEqual(
+            PermissionRequestPolicy.disposition(
+                mode: .alwaysApprove,
+                isYolo: true,
+                options: options,
+                isMCPInvocation: splitCall?.qualifiedToolName != nil,
+                invocationServerName: MCPQualifiedToolIdentity.serverName(
+                    from: splitCall?.qualifiedToolName
+                )
+            ),
+            .deny(optionID: "reject-once"),
+            "split serverName+toolName Always Approve must still deny when the gateway is off"
+        )
+        XCTAssertEqual(
+            PermissionRequestPolicy.disposition(
+                mode: .alwaysApprove,
+                isYolo: true,
+                options: options,
+                mcpGatewayEnabled: true,
+                isMCPInvocation: splitCall?.qualifiedToolName != nil,
+                invocationServerName: MCPQualifiedToolIdentity.serverName(
+                    from: splitCall?.qualifiedToolName
+                ),
+                allowedMCPServerNames: ["chrome-devtools"]
+            ),
+            .allow(optionID: "allow-once"),
+            "an explicit chrome-devtools attachment must still authorize that server"
+        )
+        XCTAssertEqual(
+            PermissionRequestPolicy.disposition(
+                mode: .alwaysApprove,
                 isYolo: true,
                 options: options,
                 mcpGatewayEnabled: true,

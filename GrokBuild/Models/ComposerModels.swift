@@ -377,6 +377,19 @@ enum MCPQualifiedToolIdentity {
               let separator = qualified.range(of: "__") else { return nil }
         return String(qualified[..<separator.lowerBound])
     }
+
+    /// Permission requests arrive before `rawOutput`. A split ACP
+    /// `serverName` + `toolName` pair must still compose into `server__tool`
+    /// so the per-thread MCP gate can see the invocation.
+    static func composed(serverName: String?, toolName: String?) -> String? {
+        if let qualified = normalized(toolName) {
+            return qualified
+        }
+        let server = serverName?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        let tool = toolName?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        guard !server.isEmpty, !tool.isEmpty, !tool.contains("__") else { return nil }
+        return normalized("\(server)__\(tool)")
+    }
 }
 
 enum PromptMCPInventoryCatalog {
