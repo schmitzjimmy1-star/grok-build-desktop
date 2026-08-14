@@ -68,6 +68,86 @@ final class RunHistoryTests: XCTestCase {
         XCTAssertTrue(markdown.contains("Artifacts: not retained"))
     }
 
+    func testProjectionUsesOnlyTheBoundedNewestMessageWindow() throws {
+        let dropped = message(backend: "dropped-before-window", timestamp: 0, outcome: .completed)
+        let retained = (0..<RunHistory.maximumSourceMessages).map { index in
+            message(backend: "retained-tail", timestamp: TimeInterval(index + 1), outcome: .completed)
+        }
+
+        let records = RunHistory.records(from: [dropped] + retained)
+
+        XCTAssertEqual(records.count, 1)
+        XCTAssertEqual(records.first?.backendSessionID, "retained-tail")
+        XCTAssertEqual(records.first?.turns.count, RunHistory.maximumTurnsPerRun)
+        XCTAssertEqual(records.first?.turns.first?.timestamp, retained.suffix(RunHistory.maximumTurnsPerRun).first?.timestamp)
+        let record = try XCTUnwrap(records.first)
+        XCTAssertTrue(record.sourceWindowWasTruncated)
+        XCTAssertEqual(record.sourceMessageCount, RunHistory.maximumSourceMessages + 1)
+        XCTAssertTrue(RunHistory.markdown(for: record).contains("newest 1024 of 1025 local messages retained"))
+    }
+
+    func testExportCapsCollectionsAndDisclosesObservedCounts() throws {
+        let workers = (0...RunHistory.maximumWorkersPerTurn).map { index in
+            RunEvidenceSnapshot.Worker(
+                id: "worker-\(index)",
+                title: "worker \(index)",
+                status: "completed",
+                childID: index == RunHistory.maximumWorkersPerTurn ? "sk-omitted-worker" : "child-\(index)",
+                durationMilliseconds: nil,
+                toolCallCount: 0,
+                redactedError: nil
+            )
+        }
+        let artifacts = (0...RunHistory.maximumArtifactsPerTurn).map { index in
+            ChatStore.RunArtifact(
+                toolCallID: "artifact-\(index)",
+                path: "/private/raw/\(index)",
+                status: index == RunHistory.maximumArtifactsPerTurn ? "Bearer omitted-artifact" : "succeeded",
+                location: .external,
+                owningPlanStepID: nil,
+                workerID: nil
+            )
+        }
+        let tools = (0...RunHistory.maximumToolsPerTurn).map { index in
+            AssistantTurnTrace.Tool(
+                id: "tool-\(index)",
+                title: index == RunHistory.maximumToolsPerTurn ? "sk-omitted-tool" : "tool \(index)",
+                kind: "execute",
+                status: "Succeeded",
+                mcpServerName: nil
+            )
+        }
+        let checkpoint = AssistantTurnCheckpoint(
+            snapshot: snapshot(backend: "bounded", outcome: .completed, workers: workers, artifacts: artifacts),
+            requestedToolFamilies: []
+        )
+        let message = Message(
+            role: .assistant,
+            content: "unexported transcript prose",
+            timestamp: Date(timeIntervalSince1970: 20),
+            assistantTrace: .init(reasoningSummaryChunks: [], thinkingDuration: nil, tools: tools, checkpoint: checkpoint)
+        )
+        let record = try XCTUnwrap(RunHistory.records(from: [message]).first)
+        let json = try XCTUnwrap(String(data: RunHistory.jsonData(for: record), encoding: .utf8))
+        let markdown = RunHistory.markdown(for: record)
+        let object = try XCTUnwrap(JSONSerialization.jsonObject(with: Data(json.utf8)) as? [String: Any])
+        let turn = try XCTUnwrap((object["turns"] as? [[String: Any]])?.first)
+
+        XCTAssertEqual(object["sourceWindow"] as? String, "all 1 local messages considered")
+        XCTAssertEqual((turn["workers"] as? [[String: Any]])?.count, RunHistory.maximumWorkersPerTurn)
+        XCTAssertEqual(turn["workersObserved"] as? Int, workers.count)
+        XCTAssertEqual(turn["workersRetained"] as? Int, RunHistory.maximumWorkersPerTurn)
+        XCTAssertEqual((turn["artifacts"] as? [[String: Any]])?.count, RunHistory.maximumArtifactsPerTurn)
+        XCTAssertEqual(turn["artifactsObserved"] as? Int, artifacts.count)
+        XCTAssertEqual((turn["toolSequence"] as? [[String: Any]])?.count, RunHistory.maximumToolsPerTurn)
+        XCTAssertEqual(turn["toolSequenceObserved"] as? Int, tools.count)
+        XCTAssertTrue(markdown.contains("24 of 25 retained"))
+        for forbidden in ["sk-omitted", "Bearer omitted", "/private/raw", "unexported transcript prose"] {
+            XCTAssertFalse(json.localizedCaseInsensitiveContains(forbidden), "JSON leaked \(forbidden)")
+            XCTAssertFalse(markdown.localizedCaseInsensitiveContains(forbidden), "Markdown leaked \(forbidden)")
+        }
+    }
+
     private func message(backend: String, timestamp: TimeInterval, outcome: ChatStore.TurnOutcome) -> Message {
         Message(
             role: .assistant,
@@ -85,15 +165,17 @@ final class RunHistoryTests: XCTestCase {
     private func snapshot(
         backend: String,
         outcome: ChatStore.TurnOutcome,
-        model: String = "grok-4.6"
+        model: String = "grok-4.6",
+        workers: [RunEvidenceSnapshot.Worker]? = nil,
+        artifacts: [ChatStore.RunArtifact]? = nil
     ) -> RunEvidenceSnapshot {
         RunEvidenceSnapshot(
             binding: .init(localTabID: UUID(), workspaceID: UUID(), backendSessionID: backend, processGeneration: 7, requestID: "request-1", isSettled: true),
             goalSummary: "do not export this objective",
             plan: [],
-            workers: [.init(id: "worker", title: "sk-worker-secret", status: "completed", childID: "child", durationMilliseconds: 20, toolCallCount: 0, redactedError: nil, childToolReceipts: [])],
+            workers: workers ?? [.init(id: "worker", title: "sk-worker-secret", status: "completed", childID: "child", durationMilliseconds: 20, toolCallCount: 0, redactedError: nil, childToolReceipts: [])],
             tools: .init(succeeded: 1, failed: 0, cancelled: 0, unknown: 0),
-            artifacts: [.init(toolCallID: "tool", path: "/private/raw/path.txt", status: "succeeded", location: .external, owningPlanStepID: nil, workerID: nil)],
+            artifacts: artifacts ?? [.init(toolCallID: "tool", path: "/private/raw/path.txt", status: "succeeded", location: .external, owningPlanStepID: nil, workerID: nil)],
             gitReviewFiles: ["secret-path"],
             process: .init(state: "ready", model: model, mcps: []),
             continuity: .init(status: "bound", reason: "fresh", provenance: "hidden", requiresRecoveryAction: false),

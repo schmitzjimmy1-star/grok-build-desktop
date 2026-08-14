@@ -4196,12 +4196,14 @@ final class ChatStore {
                 pendingExitPlan = plan
             }
         case .exitPlanRequest(let req):
+            guard !process.isStopDraining else { break }
             guard ACPInteractionRequestIdentity.ownsActiveSession(
                 req.sessionId,
                 activeSessionID: process.sessionId
             ) else { break }
             pendingExitPlan = ExitPlanRequest.merging(req, into: pendingExitPlan)
         case .questionRequest(let req):
+            guard !process.isStopDraining else { break }
             guard ACPInteractionRequestIdentity.ownsActiveSession(
                 req.sessionId,
                 activeSessionID: process.sessionId
@@ -4238,6 +4240,13 @@ final class ChatStore {
             backgroundActivities = backgroundTaskTracker.activities
             recordCurrentTurnWorkerChanges(since: previousActivities)
         case .turnCompleted(let completion):
+            // Stop owns the parent outcome. The bounded process drain may still
+            // deliver an authoritative terminal event, but it must not reopen the
+            // UI, replace the userStopped checkpoint, or provoke a second cancel.
+            guard !process.isStopDraining else {
+                process.acknowledgeTurnCompletionBridge(authoritative: false)
+                break
+            }
             guard ownsActiveCompletionEvent(completion.identity) else {
                 process.rejectTurnCompletionBridge(
                     reason: completionOwnershipFailureReason(for: completion.identity)
@@ -4279,6 +4288,7 @@ final class ChatStore {
             } else {
                 .failed
             }
+            clearPendingInteractions(for: completion.identity.backendSessionID)
             if latestTurnOutcome == .failed {
                 lastError = completion.redactedError ?? "Grok reported that this turn ended with an error."
             }
@@ -4336,6 +4346,7 @@ final class ChatStore {
             requestGitRefresh()
             process.acknowledgeTurnCompletionBridge(authoritative: false)
         case .permissionRequest(let req):
+            guard !process.isStopDraining else { break }
             guard ACPInteractionRequestIdentity.ownsActiveSession(
                 req.sessionId,
                 activeSessionID: process.sessionId
@@ -4407,6 +4418,14 @@ final class ChatStore {
             backendSessionID: process.sessionId,
             processGeneration: process.activeProcessGeneration
         )
+    }
+
+    private func clearPendingInteractions(for backendSessionID: String) {
+        pendingPermissions.removeAll { $0.sessionId == backendSessionID }
+        if pendingExitPlan?.sessionId == backendSessionID {
+            pendingExitPlan = nil
+        }
+        pendingQuestions.removeAll { $0.sessionId == backendSessionID }
     }
 
     private func recordCurrentTurnWorkerChanges(since previous: [BackgroundActivity]) {

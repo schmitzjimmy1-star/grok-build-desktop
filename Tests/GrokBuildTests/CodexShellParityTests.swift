@@ -276,8 +276,10 @@ final class CodexShellParityTests: XCTestCase {
                        "the old independent dashboard Boolean must not return")
         XCTAssertTrue(contentView.contains(".sheet(isPresented: sessionModalBinding(.sessionBrowser))"))
         XCTAssertTrue(contentView.contains(".sheet(isPresented: sessionModalBinding(.activityDashboard))"))
-        XCTAssertTrue(contentView.contains("onOpenActivity: { sessionModal = .activityDashboard }"),
-                      "the sidebar bell routes through the single modal owner")
+        XCTAssertTrue(contentView.contains("onOpenActivity: { openActivityDashboard() }"),
+                      "the sidebar bell snapshots historical receipts before routing through the single modal owner")
+        XCTAssertTrue(contentView.contains("sessionModal = .activityDashboard"),
+                      "the dashboard helper still uses the single modal owner")
         XCTAssertTrue(contentView.contains("onClose: { showPreview = false }"),
                       "the review split still targets the real PreviewPane with one owner")
         XCTAssertTrue(contentView.contains("workspaces: workspaceStore.orderedWorkspaces"),

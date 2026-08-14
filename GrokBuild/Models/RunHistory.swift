@@ -7,6 +7,12 @@ import Foundation
 enum RunHistory {
     static let maximumRuns = 24
     static let maximumTurnsPerRun = 24
+    /// Only the newest local messages can contribute to an on-demand history
+    /// snapshot. This caps restored/imported transcripts before grouping work.
+    static let maximumSourceMessages = 1_024
+    static let maximumWorkersPerTurn = 24
+    static let maximumArtifactsPerTurn = 24
+    static let maximumToolsPerTurn = 12
     static let maximumTextLength = 180
 
     struct Turn: Identifiable, Hashable, Sendable {
@@ -36,6 +42,8 @@ enum RunHistory {
     struct Record: Identifiable, Hashable, Sendable {
         let id: String
         let turns: [Turn]
+        let sourceMessageCount: Int
+        let sourceWindowWasTruncated: Bool
 
         var latest: Turn? { turns.last }
         var backendSessionID: String? { latest?.checkpoint.parentBackendSessionID }
@@ -52,7 +60,8 @@ enum RunHistory {
     }
 
     static func records(from messages: [Message]) -> [Record] {
-        let turns = messages.compactMap { message -> Turn? in
+        let sourceWindowWasTruncated = messages.count > maximumSourceMessages
+        let turns = messages.suffix(maximumSourceMessages).compactMap { message -> Turn? in
             guard message.role == .assistant, let checkpoint = message.assistantTrace?.checkpoint else { return nil }
             return Turn(
                 id: message.id,
@@ -61,19 +70,32 @@ enum RunHistory {
                 toolSequence: message.assistantTrace?.tools ?? []
             )
         }
-        var records: [Record] = []
+        var turnsByRecordID: [String: [Turn]] = [:]
+        var recordOrder: [String] = []
         for turn in turns {
             let key = turn.checkpoint.parentBackendSessionID.map { "backend:\($0)" }
                 ?? "historical:\(turn.id.uuidString.lowercased())"
-            if let index = records.firstIndex(where: { $0.id == key }) {
-                var updated = records[index].turns
+            if var updated = turnsByRecordID[key] {
                 updated.append(turn)
-                records[index] = Record(id: key, turns: Array(updated.suffix(maximumTurnsPerRun)))
+                if updated.count > maximumTurnsPerRun {
+                    updated.removeFirst(updated.count - maximumTurnsPerRun)
+                }
+                turnsByRecordID[key] = updated
             } else {
-                records.append(Record(id: key, turns: [turn]))
+                recordOrder.append(key)
+                turnsByRecordID[key] = [turn]
             }
         }
-        return Array(records.suffix(maximumRuns).reversed())
+        return recordOrder.suffix(maximumRuns).reversed().compactMap { key in
+            turnsByRecordID[key].map {
+                Record(
+                    id: key,
+                    turns: $0,
+                    sourceMessageCount: messages.count,
+                    sourceWindowWasTruncated: sourceWindowWasTruncated
+                )
+            }
+        }
     }
 
     /// A stable, redacted receipt intended for sharing. Its schema purposefully
@@ -92,6 +114,7 @@ enum RunHistory {
             "- Historical: yes (saved checkpoint; not current Live state)",
             "- Run: \(safeText(record.id))",
             "- Turns: \(record.turns.count)",
+            "- Source window: \(sourceWindowLine(record))",
             "- Stop/resume boundary: \(record.hasStopResumeBoundary ? "observed" : "not retained")",
             "- Last authoritative continuation point: \(record.lastAuthoritativeContinuationPoint)",
             ""
@@ -106,7 +129,7 @@ enum RunHistory {
                 "- Model: \(turn.model)",
                 "- Route: \(turn.route)",
                 "- Tools: \(tool.map { "\($0.succeeded) succeeded, \($0.failed) failed, \($0.cancelled) cancelled, \($0.unknown) unknown" } ?? "not retained")",
-                "- Workers: \(turn.workerCount)",
+                "- Workers: \(retainedCountLine(observed: turn.workerCount, retained: min(turn.workerCount, maximumWorkersPerTurn)))",
                 "- Usage: \(usageLine(checkpoint.usageReceipt))",
                 "- Artifacts: \(artifactLine(checkpoint.artifacts))",
                 "- Unresolved evidence: \(unresolvedLine(checkpoint))",
@@ -159,9 +182,15 @@ enum RunHistory {
             let route: String
             let toolCounts: ToolCounts?
             let workers: [Worker]
+            let workersObserved: Int
+            let workersRetained: Int
             let usage: Usage?
             let artifacts: [Artifact]
+            let artifactsObserved: Int
+            let artifactsRetained: Int
             let toolSequence: [Tool]
+            let toolSequenceObserved: Int
+            let toolSequenceRetained: Int
             let unresolvedEvidenceCount: Int
             let parentChildTopology: String
             let continuityStatus: String?
@@ -173,6 +202,7 @@ enum RunHistory {
         let schemaVersion: Int
         let historical: Bool
         let runID: String
+        let sourceWindow: String
         let stopResumeBoundary: String
         let turns: [ExportTurn]
 
@@ -180,6 +210,7 @@ enum RunHistory {
             schemaVersion = 1
             historical = true
             runID = RunHistory.safeText(record.id)
+            sourceWindow = RunHistory.sourceWindowLine(record)
             stopResumeBoundary = record.hasStopResumeBoundary ? "observed" : "not retained"
             turns = record.turns.map { turn in
                 let checkpoint = turn.checkpoint
@@ -189,7 +220,8 @@ enum RunHistory {
                 let usage = checkpoint.usageReceipt.map {
                     ExportTurn.Usage(totalTokens: $0.totalTokens, modelCalls: $0.modelCalls, turnCount: $0.turnCount, apiDurationMilliseconds: $0.apiDurationMilliseconds, costUsdTicks: $0.costUsdTicks)
                 }
-                let workers = (checkpoint.workerReceipts ?? []).map {
+                let observedWorkers = checkpoint.workerReceipts ?? []
+                let workers = observedWorkers.prefix(RunHistory.maximumWorkersPerTurn).map {
                     ExportTurn.Worker(
                         status: RunHistory.safeText($0.status),
                         childBackendSessionID: $0.childBackendSessionID.map(RunHistory.safeText),
@@ -197,10 +229,12 @@ enum RunHistory {
                         ledgerState: $0.childToolReceipts == nil ? "not retained" : "retained"
                     )
                 }
-                let artifacts = (checkpoint.artifacts ?? []).map {
+                let observedArtifacts = checkpoint.artifacts ?? []
+                let artifacts = observedArtifacts.prefix(RunHistory.maximumArtifactsPerTurn).map {
                     ExportTurn.Artifact(status: RunHistory.safeText($0.status), location: RunHistory.safeText($0.location))
                 }
-                let toolSequence = turn.toolSequence.map {
+                let observedToolSequence = turn.toolSequence
+                let toolSequence = observedToolSequence.prefix(RunHistory.maximumToolsPerTurn).map {
                     ExportTurn.Tool(
                         operation: RunHistory.safeText($0.title),
                         kind: $0.kind.map(RunHistory.safeText),
@@ -215,9 +249,15 @@ enum RunHistory {
                     route: turn.route,
                     toolCounts: tools,
                     workers: workers,
+                    workersObserved: observedWorkers.count,
+                    workersRetained: workers.count,
                     usage: usage,
                     artifacts: artifacts,
+                    artifactsObserved: observedArtifacts.count,
+                    artifactsRetained: artifacts.count,
                     toolSequence: toolSequence,
+                    toolSequenceObserved: observedToolSequence.count,
+                    toolSequenceRetained: toolSequence.count,
                     unresolvedEvidenceCount: (checkpoint.unresolvedErrors ?? []).count,
                     parentChildTopology: turn.topology,
                     continuityStatus: checkpoint.continuityReceipt.map { RunHistory.safeText($0.status) },
@@ -241,7 +281,11 @@ enum RunHistory {
     private static func artifactLine(_ artifacts: [AssistantTurnCheckpoint.Artifact]?) -> String {
         guard let artifacts else { return "not retained" }
         guard !artifacts.isEmpty else { return "none reported" }
-        return artifacts.map { "\(safeText($0.location)) \(safeText($0.status))" }.sorted().joined(separator: "; ")
+        let retained = artifacts.prefix(maximumArtifactsPerTurn)
+            .map { "\(safeText($0.location)) \(safeText($0.status))" }
+            .sorted()
+            .joined(separator: "; ")
+        return "\(retainedCountLine(observed: artifacts.count, retained: min(artifacts.count, maximumArtifactsPerTurn))): \(retained)"
     }
 
     private static func unresolvedLine(_ checkpoint: AssistantTurnCheckpoint) -> String {
@@ -252,9 +296,21 @@ enum RunHistory {
 
     private static func toolSequenceLine(_ tools: [AssistantTurnTrace.Tool]) -> String {
         guard !tools.isEmpty else { return "none retained" }
-        return tools.prefix(12).map {
+        let retained = tools.prefix(maximumToolsPerTurn).map {
             "\(safeText($0.title)) (\(safeText($0.status)))"
         }.joined(separator: " → ")
+        return "\(retainedCountLine(observed: tools.count, retained: min(tools.count, maximumToolsPerTurn))): \(retained)"
+    }
+
+    private static func retainedCountLine(observed: Int, retained: Int) -> String {
+        retained == observed ? "\(retained) retained" : "\(retained) of \(observed) retained"
+    }
+
+    private static func sourceWindowLine(_ record: Record) -> String {
+        if record.sourceWindowWasTruncated {
+            return "newest \(maximumSourceMessages) of \(record.sourceMessageCount) local messages retained"
+        }
+        return "all \(record.sourceMessageCount) local messages considered"
     }
 
     private static func continuityLine(_ continuity: AssistantTurnCheckpoint.ContinuityReceipt?) -> String {
