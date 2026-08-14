@@ -16,9 +16,28 @@ struct ModelRouteContract: Equatable, Sendable {
     let kind: Kind
     let providerName: String
     let endpointHost: String?
+    let endpointRouteIdentity: String?
     let providerModelID: String
     let modelIsPinned: Bool
     let servingProviderIsProven: Bool
+
+    init(
+        kind: Kind,
+        providerName: String,
+        endpointHost: String?,
+        endpointRouteIdentity: String? = nil,
+        providerModelID: String,
+        modelIsPinned: Bool,
+        servingProviderIsProven: Bool
+    ) {
+        self.kind = kind
+        self.providerName = providerName
+        self.endpointHost = endpointHost
+        self.endpointRouteIdentity = endpointRouteIdentity
+        self.providerModelID = providerModelID
+        self.modelIsPinned = modelIsPinned
+        self.servingProviderIsProven = servingProviderIsProven
+    }
 
     static func resolve(selectedModelID: String, customModel: CustomModel?) -> ModelRouteContract {
         guard let customModel else {
@@ -34,6 +53,7 @@ struct ModelRouteContract: Equatable, Sendable {
 
         let host = URL(string: customModel.baseURL.trimmingCharacters(in: .whitespacesAndNewlines))?
             .host?.lowercased()
+        let endpointRouteIdentity = sanitizedEndpointIdentity(customModel.baseURL)
         let providerID = customModel.providerID?.lowercased()
         let isOpenRouter = providerID == ProviderPreset.openrouter.id
             || host == "openrouter.ai"
@@ -46,6 +66,7 @@ struct ModelRouteContract: Equatable, Sendable {
                 kind: .localEndpoint,
                 providerName: displayProvider,
                 endpointHost: host,
+                endpointRouteIdentity: endpointRouteIdentity,
                 providerModelID: providerModelID,
                 modelIsPinned: !providerModelID.isEmpty,
                 servingProviderIsProven: true
@@ -57,6 +78,7 @@ struct ModelRouteContract: Equatable, Sendable {
                 kind: .brokeredOpenRouter,
                 providerName: "OpenRouter",
                 endpointHost: host,
+                endpointRouteIdentity: endpointRouteIdentity,
                 providerModelID: providerModelID,
                 modelIsPinned: !providerModelID.isEmpty && providerModelID != "openrouter/auto",
                 // ACP confirms the model id, not OpenRouter's downstream provider choice.
@@ -68,6 +90,7 @@ struct ModelRouteContract: Equatable, Sendable {
             kind: .directProvider,
             providerName: displayProvider,
             endpointHost: host,
+            endpointRouteIdentity: endpointRouteIdentity,
             providerModelID: providerModelID,
             modelIsPinned: !providerModelID.isEmpty,
             servingProviderIsProven: true
@@ -132,5 +155,22 @@ struct ModelRouteContract: Equatable, Sendable {
         }
         if let providerID, !providerID.isEmpty { return providerID }
         return host ?? "custom provider"
+    }
+
+    private static func sanitizedEndpointIdentity(_ rawValue: String) -> String? {
+        guard var components = URLComponents(
+            string: rawValue.trimmingCharacters(in: .whitespacesAndNewlines)
+        ), let host = components.host?.lowercased(), !host.isEmpty else {
+            return nil
+        }
+        components.scheme = components.scheme?.lowercased()
+        components.host = host
+        components.user = nil
+        components.password = nil
+        components.query = nil
+        components.fragment = nil
+        let path = components.percentEncodedPath == "/" ? "" : components.percentEncodedPath
+        components.percentEncodedPath = path.hasSuffix("/") ? String(path.dropLast()) : path
+        return components.string
     }
 }

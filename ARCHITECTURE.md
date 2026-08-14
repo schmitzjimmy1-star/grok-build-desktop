@@ -298,6 +298,41 @@ Pipe readers capture the process generation that created them. `_x.ai/session/up
 
 The terminal completion receipt retains Grok's authoritative input/output/total/cached/reasoning token splits, API duration, exact `costUsdTicks`, and per-model `modelUsage` map. The session ledger uses that map instead of assigning all tokens to the main route; provider-reported cost is labeled as such and outranks catalog estimates. Tool duration follows the same rule: `duration_ms`/`elapsed_ms` from the ACP receipt is formatted, while absence stays **Duration not reported**—no client stopwatch is presented as backend fact.
 
+**Observed model performance:** `ModelPerformanceObservationStore` writes one bounded
+local UserDefaults record only after the owned `turn_completed` barrier creates its
+settled `RunEvidenceSnapshot`. It pairs that receipt with the locally measured
+dispatch-to-first-text-chunk interval when available and the exact process-generation
+`ModelRouteContract`; missing fields stay nil. Cohorts are exact model + stable route
+identity (kind, provider, sanitized endpoint scheme/host/port/URL path, provider model,
+and pinning) + comparable
+workload class (no-tool, ordered or observed-overlap parallel multi-tool, exactly
+two-child coordination, durable same-backend conversation continuation, or explicit
+retry recovery). Continuation uses the greater truth available from durable completed
+checkpoints for that backend and ACP's exact-session, non-replay, zero-based backend
+user-prompt index, so reopening the backend in a new local tab does not reset its
+workload class. A later same-backend prompt remains a continuation even when an earlier
+attempt stopped or failed because that context still exists; provider `turnCount`
+measures internal model cycles and never defines conversation continuation.
+For native xAI the cohort model is the confirmed effective process model; custom
+direct, local, and brokered routes use the frozen provider-facing model ID, falling
+back to the confirmed process model only when that route field is absent. Usage
+matching still considers both the confirmed selector/effective ID and provider model,
+so canonical display never changes receipt attribution.
+Unsupported one-tool, one-child, and three-or-more-child turns are ignored rather than
+averaged into an “other” score. Multi-model turns use only the authoritative matching
+`modelUsage` row. Native xAI's observed `-build` usage alias may match its exact base
+model; otherwise, if no unique parent-model receipt exists, usage stays missing instead
+of being charged to the parent route. Recovery succeeds only when every failed parent
+tool has a typed successful retry correlation, never because the parent answer happened
+to complete. Any failed child-tool receipt creates a recovery opportunity but remains
+unrecovered because ACP does not yet retain child retry linkage. Settings → Models shows
+**Observed on this Mac** with bounded
+medians/ranges and rates; pinned OpenRouter and `openrouter/auto` are separate and both
+keep downstream serving identity unproven. The store retains at most 40 rows per cohort
+and 240 total, contains no prompt, response, tool payload, filesystem path, credential,
+or private reasoning, performs no network or model selection, and clears only its one versioned
+UserDefaults key after explicit confirmation.
+
 ### ACP events (`AcpEvent`)
 
 Consumed by `ChatStore.consumeOutput()`:

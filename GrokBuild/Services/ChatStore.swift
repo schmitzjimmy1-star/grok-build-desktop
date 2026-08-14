@@ -1082,6 +1082,13 @@ final class ChatStore {
     /// Otherwise one large final ACP chunk bypasses the paced reveal and snaps in.
     private var pendingCompletionReconciliation = false
     private var firstChunkInterval: GrokBuildPerformanceInterval?
+    /// Local monotonic latency paired with the exact authoritative completion
+    /// receipt before it enters the bounded model-observation store.
+    private var currentTurnDispatchUptimeNanoseconds: UInt64?
+    private var currentTurnFirstChunkLatencyMilliseconds: Int?
+    /// True only when two parent tool receipts were simultaneously nonterminal.
+    /// It classifies a comparable workload; it does not schedule or infer tools.
+    private var currentTurnObservedParallelToolExecution = false
 
     init(process: GrokProcess? = nil, continuityKeyOverride: Data? = nil) {
         self.process = process ?? GrokProcess()
@@ -2988,6 +2995,7 @@ final class ChatStore {
         connectionState = .busy
 
         let payload = trimmed
+        currentTurnDispatchUptimeNanoseconds = DispatchTime.now().uptimeNanoseconds
         GrokBuildPerformance.mark(.dispatch)
 
         if waitForCompletion {
@@ -3127,6 +3135,9 @@ final class ChatStore {
     func clearTurnState() {
         firstChunkInterval?.end()
         firstChunkInterval = nil
+        currentTurnDispatchUptimeNanoseconds = nil
+        currentTurnFirstChunkLatencyMilliseconds = nil
+        currentTurnObservedParallelToolExecution = false
         cancelStreamingTextFlush()
         invalidateTurnSettlement()
         isGrokking = false
@@ -4163,6 +4174,7 @@ final class ChatStore {
             if !liveToolCalls.contains(where: { $0.id == tc.id }) {
                 liveToolCalls.append(liveToolCall(from: tc))
             }
+            observeParallelParentToolExecution()
             observeArtifactReceipt(tc)
         case .toolCallUpdate(let tc):
             recordCurrentTurnToolPlanStep(tc.id)
@@ -4171,6 +4183,7 @@ final class ChatStore {
             } else {
                 liveToolCalls.append(liveToolCall(from: tc))
             }
+            observeParallelParentToolExecution()
             observeArtifactReceipt(tc)
         case .subagentSpawned(let event):
             guard ownsActiveLifecycleEvent(event.identity),
@@ -4302,6 +4315,14 @@ final class ChatStore {
             )
             let settledSnapshot = makeRunEvidenceSnapshot(completion: completion)
             runEvidenceSnapshot = settledSnapshot
+            let priorConversationCheckpoints = messages.compactMap {
+                $0.assistantTrace?.checkpoint
+            }
+            let conversationTurnOrdinal = ModelPerformanceConversationOrdinal.value(
+                priorCheckpoints: priorConversationCheckpoints,
+                backendSessionID: completion.identity.backendSessionID,
+                backendPromptIndex: completion.backendPromptIndex
+            )
             attachTaskCheckpoint(to: streamingMessageID, snapshot: settledSnapshot)
             // turn_completed is the lifecycle authority. Observed live 2026-08-03
             // (gpt-5.6-terra): the usage receipt settled while the prompt's JSON-RPC
@@ -4315,6 +4336,22 @@ final class ChatStore {
                let stuckAssistantID = streamingMessageID ?? closedTurnAssistantID {
                 finishPromptNow(assistantID: stuckAssistantID, ok: turnSucceeded)
             }
+            let observationRoute = settledSnapshot.binding.processGeneration.flatMap {
+                routeContractsByProcessGeneration[$0]
+            } ?? currentRouteContract
+            let recoveryEvidence = ModelPerformanceRecoveryEvidence.make(
+                parentTools: parentLiveToolCalls(),
+                workers: settledSnapshot.workers
+            )
+            ModelPerformanceObservationStore.record(
+                snapshot: settledSnapshot,
+                route: observationRoute,
+                firstChunkLatencyMilliseconds: currentTurnFirstChunkLatencyMilliseconds,
+                observedParallelToolExecution: currentTurnObservedParallelToolExecution,
+                recoveryOpportunityObserved: recoveryEvidence.opportunityObserved,
+                recoverySucceeded: recoveryEvidence.succeeded,
+                conversationTurnOrdinal: conversationTurnOrdinal
+            )
             requestGitRefresh()
             process.acknowledgeTurnCompletionBridge(authoritative: true)
             applyTurnSettlementDecision(turnSettlement.recordCompletionConsumed(ok: turnSucceeded))
@@ -4899,6 +4936,13 @@ final class ChatStore {
         return liveToolCalls.filter { parentIDs.contains($0.id) }
     }
 
+    private func observeParallelParentToolExecution() {
+        let activeParentTools = parentLiveToolCalls().filter { $0.terminalStatus == nil }.count
+        if activeParentTools >= 2 {
+            currentTurnObservedParallelToolExecution = true
+        }
+    }
+
     nonisolated static func parentToolCallIDs(
         observedIDs: [String],
         childReceipts: [ChildToolReceipt]
@@ -5003,6 +5047,13 @@ final class ChatStore {
         if !clean.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || !messages[idx].content.isEmpty {
             if firstChunkInterval != nil {
                 GrokBuildPerformance.mark(.firstChunk)
+            }
+            if currentTurnFirstChunkLatencyMilliseconds == nil,
+               let dispatch = currentTurnDispatchUptimeNanoseconds {
+                let elapsed = DispatchTime.now().uptimeNanoseconds &- dispatch
+                currentTurnFirstChunkLatencyMilliseconds = Int(
+                    min(elapsed / 1_000_000, UInt64(Int.max))
+                )
             }
             firstChunkInterval?.end()
             firstChunkInterval = nil

@@ -601,6 +601,10 @@ struct TurnCompletionReceipt: Sendable, Equatable {
     let totalTokens: Int?
     let modelCalls: Int?
     let turnCount: Int?
+    /// Zero-based user prompt index emitted by the backend's authoritative
+    /// `user_message_chunk`. Unlike usage `numTurns`, this counts conversation
+    /// prompts rather than internal model/tool cycles.
+    let backendPromptIndex: Int?
     let inputTokens: Int?
     let outputTokens: Int?
     let cachedReadTokens: Int?
@@ -617,6 +621,7 @@ struct TurnCompletionReceipt: Sendable, Equatable {
         totalTokens: Int?,
         modelCalls: Int?,
         turnCount: Int?,
+        backendPromptIndex: Int? = nil,
         inputTokens: Int? = nil,
         outputTokens: Int? = nil,
         cachedReadTokens: Int? = nil,
@@ -632,6 +637,7 @@ struct TurnCompletionReceipt: Sendable, Equatable {
         self.totalTokens = totalTokens
         self.modelCalls = modelCalls
         self.turnCount = turnCount
+        self.backendPromptIndex = backendPromptIndex
         self.inputTokens = inputTokens
         self.outputTokens = outputTokens
         self.cachedReadTokens = cachedReadTokens
@@ -764,6 +770,10 @@ final class GrokProcess: @unchecked Sendable {
     private var turnCompletionResult: Bool?
     private var turnCompletionObservedAtProcessBoundary = false
     private var turnCompletionFailureReason: String?
+    /// Latest zero-based prompt index for the active backend generation. This is
+    /// captured from a live user-message receipt and consumed by turn completion;
+    /// replayed load events never populate it.
+    private var activeBackendPromptIndex: Int?
     private(set) var sessionId: String?
     private(set) var launchReceipt: GrokLaunchReceipt?
     private(set) var mcpServerStatuses: [MCPServerStatus] = []
@@ -1203,6 +1213,7 @@ final class GrokProcess: @unchecked Sendable {
         state = .starting
         currentWorkspace = workspace
         sessionId = nil
+        activeBackendPromptIndex = nil
         launchReceipt = nil
         sessionLoadStartedFreshFallback = false
         staleResumeSessionID = nil
@@ -1473,6 +1484,7 @@ final class GrokProcess: @unchecked Sendable {
         stdout = nil
         stderr = nil
         sessionId = nil
+        activeBackendPromptIndex = nil
         if launchReceipt?.outcome != .failed {
             updateLaunchReceipt(outcome: .stopped, backendSessionID: launchReceipt?.backendSessionID)
         }
@@ -2222,6 +2234,15 @@ final class GrokProcess: @unchecked Sendable {
                     updateSessionID,
                     currentSessionID: sessionId
                 )
+                let isReplay = GrokSessionReplay.isReplaySessionUpdate(params: params, update: update)
+                if let promptIndex = Self.backendPromptIndex(
+                    eventSessionID: updateSessionID,
+                    currentSessionID: sessionId,
+                    isReplay: isReplay,
+                    update: update
+                ) {
+                    activeBackendPromptIndex = promptIndex
+                }
                 if belongsToCurrentSession, let total = totalTokens(from: params) {
                     acpEventContinuation?.yield(.contextUsage(totalTokens: total))
                 }
@@ -2235,14 +2256,15 @@ final class GrokProcess: @unchecked Sendable {
                           ) else { return }
                     // Replay completion belongs to the historical load stream, not the
                     // live turn currently owned by ChatStore.
-                    guard !GrokSessionReplay.isReplaySessionUpdate(params: params, update: update) else {
+                    guard !isReplay else {
                         return
                     }
                     recordTurnCompletionObservedAtProcessBoundary()
                     acpEventContinuation?.yield(.turnCompleted(receipt))
+                    activeBackendPromptIndex = nil
                     return
                 }
-                if !GrokSessionReplay.isReplaySessionUpdate(params: params, update: update),
+                if !isReplay,
                    let u = update {
                     routeUpdate(
                         u,
@@ -2408,6 +2430,7 @@ final class GrokProcess: @unchecked Sendable {
             totalTokens: Self.integer(usage["totalTokens"]),
             modelCalls: Self.integer(usage["modelCalls"]),
             turnCount: Self.integer(usage["numTurns"]),
+            backendPromptIndex: activeBackendPromptIndex,
             inputTokens: Self.integer(usage["inputTokens"]),
             outputTokens: Self.integer(usage["outputTokens"]),
             cachedReadTokens: Self.integer(usage["cachedReadTokens"]),
@@ -2687,6 +2710,31 @@ final class GrokProcess: @unchecked Sendable {
     private static func integer(_ value: Any?) -> Int? {
         if let value = value as? Int { return value }
         return (value as? NSNumber)?.intValue
+    }
+
+    static func backendPromptIndex(
+        eventSessionID: String?,
+        currentSessionID: String?,
+        isReplay: Bool,
+        update: [String: Any]?
+    ) -> Int? {
+        guard !isReplay,
+              let eventSessionID,
+              let currentSessionID,
+              eventSessionID == currentSessionID,
+              update?["sessionUpdate"] as? String == "user_message_chunk",
+              let updateMeta = update?["_meta"] as? [String: Any],
+              let promptIndex = strictInteger(updateMeta["promptIndex"]),
+              promptIndex >= 0,
+              promptIndex < Int.max else { return nil }
+        return promptIndex
+    }
+
+    private static func strictInteger(_ value: Any?) -> Int? {
+        guard let number = value as? NSNumber,
+              CFGetTypeID(number) != CFBooleanGetTypeID()
+        else { return nil }
+        return Int(number.stringValue)
     }
 
     private static func lifecycleError(from update: [String: Any]) -> String? {

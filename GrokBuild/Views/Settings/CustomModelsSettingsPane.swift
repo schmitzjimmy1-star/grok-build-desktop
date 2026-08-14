@@ -52,6 +52,8 @@ struct CustomModelsSettingsPane: View {
     @State private var modelPendingRemoval: CustomModel?
     @State private var showProviderRemovalConfirmation = false
     @State private var providerPendingRemoval: Provider?
+    @State private var showObservationClearConfirmation = false
+    @State private var observationRevision = 0
 
     private var providers: [Provider] {
         get { viewModel.providers }
@@ -196,6 +198,7 @@ struct CustomModelsSettingsPane: View {
                         migrationIssueCard
                     }
                     defaultModelCard
+                    observedPerformanceCard
                     providerTemplatesCard
                     if showingProviderEditor {
                         providerEditorCard
@@ -253,6 +256,9 @@ struct CustomModelsSettingsPane: View {
                 receipt?.freshness == .live ? receipt?.requestedModelID : nil
             )
         }
+        .onReceive(NotificationCenter.default.publisher(for: .modelPerformanceObservationsChanged)) { _ in
+            observationRevision &+= 1
+        }
         .alert("Remove Model?", isPresented: $showModelRemovalConfirmation) {
             Button("Cancel", role: .cancel) {
                 modelPendingRemoval = nil
@@ -283,6 +289,15 @@ struct CustomModelsSettingsPane: View {
             if let provider = providerPendingRemoval {
                 Text("Remove \(provider.name) from your providers? This cannot be undone.")
             }
+        }
+        .alert("Clear Local Model Observations?", isPresented: $showObservationClearConfirmation) {
+            Button("Cancel", role: .cancel) {}
+            Button("Clear Local Observations", role: .destructive) {
+                ModelPerformanceObservationStore.clear()
+                observationRevision &+= 1
+            }
+        } message: {
+            Text("This removes only GrokBuild's bounded model-performance observations from this Mac. Provider credentials, model configuration, Grok history, and transcripts are unchanged.")
         }
     }
 
@@ -400,6 +415,110 @@ struct CustomModelsSettingsPane: View {
                 SettingsReceiptDisclosure(receipt: valueState.lastOperationReceipt)
             }
         }
+    }
+
+    private var modelPerformanceSummaries: [ModelPerformanceObservationSummary] {
+        _ = observationRevision
+        return ModelPerformanceObservationStore.summaries()
+    }
+
+    private var observedPerformanceCard: some View {
+        settingsCard(title: "Observed on this Mac", systemImage: "chart.xyaxis.line") {
+            let summaries = modelPerformanceSummaries
+            VStack(alignment: .leading, spacing: 12) {
+                Text("Local completion receipts grouped by exact model, route, and comparable workload class. These observations never choose a model, claim a best model, or turn unlike work into a quality score.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+
+                if summaries.isEmpty {
+                    Text("No comparable completed-turn observations are stored.")
+                        .font(.callout)
+                        .foregroundStyle(.secondary)
+                } else {
+                    ForEach(summaries) { summary in
+                        modelPerformanceRow(summary)
+                        if summary.id != summaries.last?.id {
+                            Divider()
+                        }
+                    }
+                }
+
+                HStack {
+                    Text("Missing measurements stay missing; absent prices never become $0.")
+                        .font(.caption2)
+                        .foregroundStyle(.tertiary)
+                    Spacer()
+                    Button("Clear local observations", role: .destructive) {
+                        showObservationClearConfirmation = true
+                    }
+                    .controlSize(.small)
+                    .disabled(summaries.isEmpty)
+                    .accessibilityIdentifier("grok-clear-model-performance-observations")
+                }
+            }
+        }
+        .accessibilityIdentifier("grok-observed-model-performance")
+    }
+
+    private func modelPerformanceRow(_ summary: ModelPerformanceObservationSummary) -> some View {
+        VStack(alignment: .leading, spacing: 5) {
+            HStack(alignment: .firstTextBaseline) {
+                Text(summary.modelID)
+                    .font(.subheadline.weight(.semibold))
+                    .textSelection(.enabled)
+                Text(summary.routeKind.displayName)
+                    .font(.caption2.weight(.semibold))
+                    .foregroundStyle(.secondary)
+                Spacer()
+                Text("\(summary.sampleCount) \(summary.sampleCount == 1 ? "sample" : "samples")")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            Text(summary.workloadClass.displayName)
+                .font(.caption.weight(.semibold))
+            Text("First chunk \(metricText(summary.firstChunkLatency, format: durationText)); provider API \(metricText(summary.providerAPIDuration, format: durationText)).")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            Text("Tokens total \(metricText(summary.totalTokens, format: SessionUsageLedger.compactTokens)); input \(metricText(summary.inputTokens, format: SessionUsageLedger.compactTokens)); output \(metricText(summary.outputTokens, format: SessionUsageLedger.compactTokens)); cached \(metricText(summary.cachedReadTokens, format: SessionUsageLedger.compactTokens)); reasoning \(metricText(summary.reasoningTokens, format: SessionUsageLedger.compactTokens)).")
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+            Text("Calls \(metricText(summary.modelCalls, format: String.init)); cost \(metricText(summary.costUsdTicks, format: costText)).")
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+            let completion = percentage(summary.completionRate)
+            let recovery = summary.recoveryRate.map(percentage) ?? "not observed"
+            Text("Completion \(completion); explicit-retry recovery \(recovery); unresolved workers \(percentage(summary.unresolvedWorkerRate)).")
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+            Text("Last route: \(summary.lastObservedRoute). \(summary.servingProviderIsProven ? "Serving provider proven by this route." : "Downstream serving provider unproven.")")
+                .font(.caption2)
+                .foregroundStyle(.tertiary)
+        }
+    }
+
+    private func metricText(
+        _ metric: ModelPerformanceObservationSummary.IntegerMetric?,
+        format: (Int) -> String
+    ) -> String {
+        guard let metric else { return "not measured" }
+        let median = format(metric.median)
+        let range = metric.minimum == metric.maximum
+            ? format(metric.minimum)
+            : "\(format(metric.minimum))–\(format(metric.maximum))"
+        return "median \(median), range \(range) (\(metric.sampleCount))"
+    }
+
+    private func durationText(_ milliseconds: Int) -> String {
+        if milliseconds < 1_000 { return "\(milliseconds) ms" }
+        return "\((Double(milliseconds) / 1_000).formatted(.number.precision(.fractionLength(1)))) s"
+    }
+
+    private func costText(_ ticks: Int) -> String {
+        SessionUsageLedger.dollars(Double(ticks) / 1_000_000_000) + " provider-reported"
+    }
+
+    private func percentage(_ rate: Double) -> String {
+        rate.formatted(.percent.precision(.fractionLength(0)))
     }
 
     // MARK: - Provider templates (catalog)
@@ -2007,4 +2126,3 @@ struct CustomModelsSettingsPane: View {
         NSPasteboard.general.setString(text, forType: .string)
     }
 }
-

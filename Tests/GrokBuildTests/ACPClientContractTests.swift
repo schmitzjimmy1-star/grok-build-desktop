@@ -1452,6 +1452,73 @@ final class ACPClientContractTests: XCTestCase {
         XCTAssertFalse(cancelled.isFailure)
     }
 
+    func testBackendConversationPromptIndexIsTypedAndSeparateFromUsageTurns() {
+        XCTAssertEqual(
+            GrokProcess.backendPromptIndex(
+                eventSessionID: "backend",
+                currentSessionID: "backend",
+                isReplay: false,
+                update: [
+                    "sessionUpdate": "user_message_chunk",
+                    "_meta": ["promptIndex": 4],
+                ]
+            ),
+            4
+        )
+        let liveUpdate: [String: Any] = [
+            "sessionUpdate": "user_message_chunk",
+            "_meta": ["promptIndex": 4],
+        ]
+        XCTAssertNil(GrokProcess.backendPromptIndex(
+            eventSessionID: nil,
+            currentSessionID: "backend",
+            isReplay: false,
+            update: liveUpdate
+        ))
+        XCTAssertNil(GrokProcess.backendPromptIndex(
+            eventSessionID: "other",
+            currentSessionID: "backend",
+            isReplay: false,
+            update: liveUpdate
+        ))
+        XCTAssertNil(GrokProcess.backendPromptIndex(
+            eventSessionID: "backend",
+            currentSessionID: "backend",
+            isReplay: true,
+            update: liveUpdate
+        ))
+        XCTAssertNil(GrokProcess.backendPromptIndex(
+            eventSessionID: "backend",
+            currentSessionID: "backend",
+            isReplay: false,
+            update: ["sessionUpdate": "turn_completed", "_meta": ["promptIndex": 4]]
+        ))
+        XCTAssertNil(GrokProcess.backendPromptIndex(
+            eventSessionID: "backend",
+            currentSessionID: "backend",
+            isReplay: false,
+            update: ["sessionUpdate": "user_message_chunk", "_meta": ["promptIndex": -1]]
+        ))
+        XCTAssertNil(GrokProcess.backendPromptIndex(
+            eventSessionID: "backend",
+            currentSessionID: "backend",
+            isReplay: false,
+            update: ["sessionUpdate": "user_message_chunk", "_meta": ["promptIndex": Int.max]]
+        ))
+        XCTAssertNil(GrokProcess.backendPromptIndex(
+            eventSessionID: "backend",
+            currentSessionID: "backend",
+            isReplay: false,
+            update: ["sessionUpdate": "user_message_chunk", "_meta": ["promptIndex": true]]
+        ))
+        XCTAssertNil(GrokProcess.backendPromptIndex(
+            eventSessionID: "backend",
+            currentSessionID: "backend",
+            isReplay: false,
+            update: ["sessionUpdate": "user_message_chunk", "_meta": ["promptIndex": 1.5]]
+        ))
+    }
+
     func testCustomLaunchAcceptsOnlyItsDeclaredProviderModelReadback() async throws {
         let fixtureRoot = FileManager.default.temporaryDirectory
             .appendingPathComponent("grokbuild-custom-alias-fixture-\(UUID().uuidString)", isDirectory: true)

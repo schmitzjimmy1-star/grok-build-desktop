@@ -1,6 +1,6 @@
 # GrokBuild agentic-performance verification and forward slices — 2026-08-13
 
-Status: **Slices 0–2 complete; Slice 3 is not authorized.**
+Status: **Slices 0–3 complete; Slice 4 is authorized and in progress.**
 
 This plan follows the canonical identity and Gates A–H in
 [`CANONICAL_WORKTREE.md`](../CANONICAL_WORKTREE.md) and
@@ -566,10 +566,10 @@ ships.
 - Calling gratuitous tool calls, child spam, or token burn “agentic performance.”
 - Ending any checkpoint without the exact three-sentence copy/paste handoff.
 
-## Recommended next authorization
+## Current authorized slice
 
-Authorize **Slice 0 only** first. It is zero-token, isolates the one confirmed release
-process defect, and gives every later billable enhancement an actual remote gate.
-After Slice 0 is merged and proven, authorize Slice 1 as the first product-code slice
-and the first serious agentic-performance packet. That task must end each checkpoint
-update—and its final merged-main closeout—with the mandatory three-sentence handoff.
+Execute **Slice 4 only** from clean merged `personal/main` at `6b98cbb`. Slice 3 is
+closed by PR #71 and its corrective receipt in `docs/OUTSTANDING.md`; Slice 4 must
+end each checkpoint update—and its final merged-main closeout—with the mandatory
+three-sentence handoff. Do not begin Slice 5 until Slice 4 is merged, reinstalled,
+cleaned, and proven at process zero.

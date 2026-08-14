@@ -17,6 +17,624 @@
 > User conversations, historical acceptance evidence, unnamed sessions that were not
 > created by the current slice, and unrelated browser/app state are protected.
 
+## Slice 4 — observed agentic model-performance ledger (in progress, 2026-08-14)
+
+Authorized scope is the local-only observation ledger in
+`docs/GROKBUILD_VERIFICATION_AND_FORWARD_SLICES_2026-08-13.md`. Gate A began from
+clean canonical `main == personal/main == 6b98cbb95b70bae853719cb7b4790c7c63188cd6`
+(tree `55646673b01b92316d33b2c6f6b3f4a14469cd31`), installed stamp equal to that
+commit with `dirty=false`, signed Team `DD2GCQJVB4`, and matching dist/installed
+SHA-256 `465159a3fc6d4a3fc73dcb811c9646f4769c0f2822d6832439832454a23d2d79`.
+Grok CLI is `1.0.3 (1a29d5bc12d4) [stable]`; two preflight samples were process-zero.
+The versioned observation key did not exist before implementation, so there are no
+protected pre-Slice-4 observation records and a later exact Clear can target only
+this slice's acceptance rows.
+
+Frozen implementation paths are
+`GrokBuild/Models/ModelPerformanceObservations.swift`,
+`GrokBuild/Models/ModelRouteContract.swift`,
+`GrokBuild/Services/ChatStore.swift`,
+`GrokBuild/Services/GrokProcess.swift`,
+`GrokBuild/Views/Settings/CustomModelsSettingsPane.swift`,
+`Tests/GrokBuildTests/ModelPerformanceObservationTests.swift`,
+`Tests/GrokBuildTests/ACPClientContractTests.swift`, `ARCHITECTURE.md`, `README.md`,
+this ledger, and the forward-slices plan. The process/parser paths were added only
+after installed acceptance exposed the missing restored-tab prompt ordinal; their
+bounded change retains a strict exact-session, live, non-replay backend prompt index
+without changing provider, model, or launch behavior. The product records only an
+owned settled completion receipt plus measured first-chunk time, exact route, and
+observed workload evidence; it neither changes nor selects models and never touches
+provider credentials, `~/.grok/config.toml`, Grok history, transcripts, releases,
+tags, or `origin`.
+
+The route-contract file was added to the frozen list before its Slice 4 edit after
+skeptical review proved that the existing host-only receipt could merge local routes
+with different schemes, ports, or paths. Its only authorized change is a
+credential-free normalized endpoint identity for observation cohorting; provider,
+model, credential, and configuration behavior remain untouched.
+
+The candidate billable matrix remains the exact three lanes × four fresh-session
+packets named in Slice 4: Grok 4.6, direct `gpt-5.6-luna`, and pinned OpenRouter
+`openai/gpt-4.1-mini`, each with no-tool control, ordered three-tool, parallel
+two-child, and three-turn recovery/continuation. Exact prompts, markers, tool bounds,
+evidence key, thread IDs, usage, and cleanup receipt must be added here before Gate D;
+the 1.5m actual-token ceiling is an anomaly breaker. Slice 5 remains forbidden.
+
+### Slice 4 frozen candidate matrix — `20260814T183453Z`
+
+This freeze happened before the first candidate Send. The installed candidate starts
+with no observations and no matching markers, the exact sentinel
+`/private/tmp/grokbuild-s4-20260814T183453Z-must-not-exist` is absent, and the protected
+`~/.grok/config.toml` baseline is mode `0600`, size 2,900 bytes, SHA-256
+`0a372b8a59c5853439e22a8f55d6d605cbce7fb5e7dc0bff9fe933deca95c5f0` (content never
+printed). Every packet uses a fresh installed-app chat, Build, default parent agent,
+Low effort, no attachments, no MCP/Browser/Computer Use, no model switching, no
+fallback, and no resend; stop before Send on picker, route, or effective-model drift.
+
+The lanes and base markers are:
+
+- native Grok 4.6 / native xAI / `GB-S4-CAND-NAT46-{CTRL|ORD3|CH2|CONT}-20260814T183453Z`;
+- direct `gpt-5.6-luna` / `api.openai.com` / `GB-S4-CAND-LUNA-{CTRL|ORD3|CH2|CONT}-20260814T183453Z`;
+- pinned OpenRouter `openai/gpt-4.1-mini` / downstream provider unproven /
+  `GB-S4-CAND-OR41-{CTRL|ORD3|CH2|CONT}-20260814T183453Z`.
+
+Substitute only the lane's base marker for `<M>` in these byte-frozen templates:
+
+1. CTRL: `Acceptance packet. Do not call any tool. Reply with exactly the following marker and nothing else: <M>. No retry.` One parent turn, zero tools/workers, maximum one model call.
+2. ORD3: `Acceptance packet. Call the terminal exactly three times, sequentially, using these exact commands as three separate calls: (1) /usr/bin/printf 'ONE\n' (2) /usr/bin/printf 'TWO\n' (3) /usr/bin/printf 'THREE\n'. Do not combine calls, use workers, or use any other tool. If any call fails or another tool is needed, stop without retry. After three exit-0 receipts, reply exactly: <M> ONE|TWO|THREE` One parent turn, exactly three ordered terminal calls, maximum four model calls.
+3. CH2: `Acceptance packet. Spawn exactly two general-purpose children concurrently in the background. LEFT child prompt: Use terminal exactly once with /usr/bin/printf 'LEFT\n'; then reply exactly <M>-LEFT. No other tool, worker, or retry. RIGHT child prompt: Use terminal exactly once with /usr/bin/printf 'RIGHT\n'; then reply exactly <M>-RIGHT. After both spawns, use exactly one wait_all collection. The parent must not use terminal or any other tool. If either child lacks an exact identity and terminal lifecycle, or calls an extra tool, stop without retry. Otherwise reply exactly: <M>-PARENT LEFT+RIGHT` Exactly two children, two parent spawns and one collection, one terminal call per child, maximum seven total model calls.
+4. CONT T1: `Acceptance packet, turn 1 of 3. Do not call any tool. Remember the secret token KITE-17. Reply exactly: <M>-T1 KITE-17`
+5. CONT T2: `Acceptance packet, turn 2 of 3. Call terminal exactly twice in order. First call /usr/bin/test -e '/private/tmp/grokbuild-s4-20260814T183453Z-must-not-exist'; it must fail with exit 1. Then treat the second call as the single retry of that failed existence check, correct only the path, and call /usr/bin/test -e '/Applications/GrokBuild.app'; it must succeed with exit 0. Use no other tool or retry. Reply exactly: <M>-T2 RECOVERED`
+6. CONT T3 after the one shared quit/process-zero/relaunch boundary: `Acceptance packet, turn 3 of 3 after relaunch. Do not call any tool. After the literal prefix <M>-T3 and one space, append the secret token from turn 1, then a vertical bar, then the single status word you emitted in turn 2. No extra text.` CONT has exactly three parent turns, no children, terminal only in T2, and maximum five model calls.
+
+Only `terminal`, `spawn_subagent`, and `wait_all` are allowed exactly where named.
+Search/MCP/web/browser/Computer Use/read/write/edit/Git/workflow/scheduler/image/config,
+extra tools/workers, combined commands, substitution, and automatic retry are forbidden.
+First unexpected call/order/worker fails the packet; Stop once if still live and do not
+resend. Timeouts are 90 seconds to first chunk, five minutes to settle, and eight
+minutes for CH2; settled cumulative actual tokens above 1.5m stop the matrix.
+
+The evidence key is exact final text, exact call order/count/output, exact two-child
+identity/topology/concurrency, typed retry correlation, T3 continuity, settled
+model/route/usage, observation class, and no extras. Expected candidate aggregation is
+18 observations, six per lane: no-tool `n=2`, ordered `n=1`, two-child `n=1`, recovery
+`n=1`, and long-horizon `n=1`; recovery is 100% only with typed retry proof, two-child
+unresolved-worker rate is zero, missing metrics remain missing, and the OpenRouter
+downstream provider remains unproven. After receipt capture, Clear local observations
+must remove only these 18 rows and remain empty after relaunch; exact test tabs, parent
+backends, child directories, and tool fixtures are then ledgered and cleaned while
+config, credentials, unrelated history/transcripts, prompt history, and Slice 3 Trash
+remnants remain untouched.
+
+Post-merge Gate E uses a new `GB-S4-MAIN-*` run ID and only OR41 ORD3, NAT46 CH2, and
+LUNA CONT T1–T3 with the same relaunch boundary: three fresh sessions, five parent turns,
+two children, and five expected observations across all three route kinds. It reuses
+the exact templates, limits, hard stops, evidence key, UI Clear, exact thread/child
+cleanup, and final process-zero gate; failure stops closeout and never broadens into
+Slice 5.
+
+The first candidate run ID was aborted after its first and only Send, before any second
+packet. Native CTRL marker `GB-S4-CAND-NAT46-CTRL-20260814T183453Z` completed exactly in
+local tab `4B3D7A34-41C7-4D1F-AA70-8A48A7FD11C3`, parent backend
+`01a00190-2f7a-79f1-b791-2a9cd748af91`, generation 1, effective `grok-4.6`, native xAI,
+with no tools/workers, first chunk 1,978 ms, one model call, 15,974 input / 58 output /
+16,032 total / 0 cached / 34 reasoning tokens, 1,990 ms provider duration, and
+provider-reported cost ticks 54,903,200. The upstream receipt's only `modelUsage` key
+was `grok-4.6-build`; the conservative candidate therefore stored the usage fields as
+missing instead of mischarging them. The implementation paused, this exact diagnostic
+is excluded from acceptance aggregation, and a new run ID will be frozen only after the
+sole-model/native-alias attribution repair passes focused/full/signed gates; the exact
+tab, backend, observation row `29FA2686-B4FF-4FBA-BC95-594D1927E35C`, and marker remain
+ledgered for exact closeout cleanup.
+
+### Slice 4 frozen candidate matrix restart — `20260814T184547Z`
+
+After the scoped native-usage alias repair passed 15 focused tests, 841 full tests,
+`git diff --check`, no-findings skeptical review, and a fresh signed `make ship`, the
+acceptance matrix restarts once with run ID `20260814T184547Z`. The observation key is
+absent, `/private/tmp/grokbuild-s4-20260814T184547Z-must-not-exist` is absent, and the
+protected config SHA-256 remains
+`0a372b8a59c5853439e22a8f55d6d605cbce7fb5e7dc0bff9fe933deca95c5f0`.
+Every lane, template, allow/deny list, model-call/turn/child maximum, timeout, evidence
+key, aggregation expectation, relaunch boundary, and hard stop above is byte-identical
+except that all candidate markers and the CONT T2 sentinel substitute the new run ID.
+The aborted `20260814T183453Z` diagnostic is never reused or counted.
+
+Gate D stopped on the restarted matrix's first packet. Native CTRL marker
+`GB-S4-CAND-NAT46-CTRL-20260814T184547Z` used local tab
+`D5781EFE-2571-4BE3-9FC1-5BEF44F53583`, parent backend
+`01a00199-510d-72c2-9892-3d103598f5d3`, generation 1, effective `grok-4.6`, native xAI,
+and returned the exact final marker, but it also made one forbidden successful
+`update_plan` call. The settled receipt reported two provider-internal model calls,
+32,330 input / 130 output / 32,460 total / 12,032 cached / 103 reasoning tokens,
+20,785 ms provider duration, and 80,566,400 cost ticks; workers remained zero. Per the
+freeze this packet failed, was not resent, no second packet or other lane started, and
+Gate D/closeout stopped.
+
+That same receipt exposed a second implementation truth bug before handoff: provider
+`turnCount=2` meant two internal model cycles for this one user turn, yet the candidate
+had treated it as conversation continuation and wrote observation
+`E27670AB-A35D-450A-8346-5E6B6F0C5372` as `longHorizonContinuation`. The repair now
+derives the ordinal only from unique, durable, completed checkpoints sharing the exact
+parent backend and scopes a reused request ID by process generation; stopped, failed,
+cancelled, duplicated, and different-backend checkpoints cannot invent continuation,
+and the provider's internal turn count cannot classify workload. The final bounded
+review found no remaining actionable issue; 51 focused tests and the complete
+**843/843** test suite passed with zero failures, and `git diff --check` is clean. This
+post-failure repair is not a Gate D acceptance substitute: no additional provider call,
+signed candidate, commit, push, PR, merge, or main update followed the hard stop.
+
+Across the aborted diagnostic and the failed restarted packet, the only billable lane
+was native Grok 4.6: three provider model calls used 48,304 input / 188 output / 48,492
+total / 12,032 cached-read / 137 reasoning tokens, 22,775 ms provider duration, and
+135,469,600 provider cost ticks ($0.1354696). Direct `gpt-5.6-luna` and pinned
+OpenRouter made zero calls. Both exact Slice 4 observation rows were cleared and the
+versioned key is absent; the protected config remains mode `0600`, size 2,900 bytes,
+SHA-256 `0a372b8a59c5853439e22a8f55d6d605cbce7fb5e7dc0bff9fe933deca95c5f0`.
+
+The two exact local test sessions and parents remain solely for confirmation-gated
+permanent cleanup: tab `4B3D7A34-41C7-4D1F-AA70-8A48A7FD11C3` / backend
+`01a00190-2f7a-79f1-b791-2a9cd748af91`, and tab
+`D5781EFE-2571-4BE3-9FC1-5BEF44F53583` / backend
+`01a00199-510d-72c2-9892-3d103598f5d3`. Neither session has a child or tool-created
+fixture. Their exact transcripts/backends must be removed through the bounded cleanup
+path only after the required permanent-delete confirmation; unrelated sessions,
+`prompt_history.jsonl`, Slice 3 Trash remnants, and all other local history are
+protected. That attempt remained blocked at Gate D until the renewed authority below;
+Slice 5 is not authorized or started.
+
+The installed app has been restored from an exact clean `6b98cbb…` worktree rather
+than left on the failed candidate. Its receipt is repository
+`schmitzjimmy1-star/grok-build-desktop`, branch `main`, commit `6b98cbb…`,
+`dirty=false`, channel `personal`, Team `DD2GCQJVB4`, deep/strict valid, and no
+quarantine; the producing dist and `/Applications/GrokBuild.app` were full-bundle
+identical with executable SHA-256
+`c71cabb00819140db0eb5b2d5fd2a3f3e56f8ff743956aacee540fd8c10fcc91` before the
+exact temporary worktree was removed. Process-zero samples at
+`2026-08-14T14:06:16-0500` and `2026-08-14T14:06:21-0500` found no GrokBuild, Grok
+CLI, Computer Use helper, agent-desktop, owned browser, or matching LaunchAgent
+process. The Slice 4 branch and uncommitted patch remained recoverable; publication
+and Gate D stayed stopped until the renewed authority below.
+
+### Slice 4 renewed repair and billable authority — 2026-08-14
+
+Jimmy has now authorized continued Slice 4 changes and fresh billable attempts until
+the documented issues are remedied. The three prior run IDs and the pre-ID user-sent
+transport canary remain failed diagnostics, their rows remain excluded from acceptance,
+and their 254,034 actual tokens remain charged against the 1.5m anomaly breaker, leaving
+1,245,966 before the breaker. Every
+new attempt must use one wholly new UTC run ID allocated only after focused/full/diff,
+skeptical review, signed candidate, exact old-thread cleanup, empty observation key,
+unchanged config hash, process-zero, and sentinel-absence preflight; any Send retires
+that ID permanently, and any packet failure restarts the complete matrix under another
+new ID after exact cleanup and any demonstrated repair.
+
+The renewed no-tool prompts explicitly exclude the planning tool that invalidated the
+prior attempt. CTRL is byte-frozen as `Acceptance packet. This is a no-tool latency
+control, not a planning task. Do not call update_plan or any other tool. Reply with
+exactly the following marker and nothing else: <M>. No retry.` CONT T1 is byte-frozen
+as `Acceptance packet, turn 1 of 3. This is not a planning task. Do not call
+update_plan or any other tool. Remember the secret token KITE-17. Reply exactly:
+<M>-T1 KITE-17`; CONT T3 is byte-frozen as `Acceptance packet, turn 3 of 3 after
+relaunch. This is not a planning task. Do not call update_plan or any other tool.
+After the literal prefix <M>-T3 and one space, append the secret token from turn 1,
+then a vertical bar, then the single status word you emitted in turn 2. No extra
+text.` Attempt 4 replaces only the escape-bearing ORD3 and CH2 templates with the
+one-line `/bin/echo` variants frozen below; CONT T2 retains the previous exact template
+with only marker/run ID substitution, and `update_plan` remains an explicitly forbidden
+extra tool in every packet.
+
+The next valid attempt runs workload-interleaved in this exact order: NAT46/LUNA/OR41
+CTRL, then NAT46/LUNA/OR41 ORD3, then NAT46/LUNA/OR41 CH2, then all three CONT T1 and
+T2 turns, one normal quit/process-zero/relaunch boundary, and all three CONT T3 turns.
+Gate D requires all 18 Sends in one run, 18 accepted rows across 15 exact cohorts,
+truthful usage/recovery/worker/route receipts, persistence and exact UI Clear, cleanup
+of all current and prior Slice 4 sessions, protected-state parity, candidate
+process-zero, and one exact-head reviewed/CI-green normal merge to `personal/main`.
+The first unexpected tool (including `update_plan`), extra/reordered call or worker,
+fallback, wrong text/class/identity, missing typed retry, timeout, state mutation, or
+owned survivor hard-stops that run with no resend. Gate E–H still follow; `origin`,
+tags, releases, force pushes, branch deletion, and Slice 5 remain forbidden.
+
+The renewed review also caught and repaired one pre-Send exact-route defect: the
+credential-sanitized endpoint path was being lowercased after URL normalization, which
+could merge distinct case-sensitive deployments. Route identity now preserves the
+sanitized path exactly and lowercases only a host-only fallback; the path-case
+regression plus the focused model-performance/route suite pass 24/24, with no remaining
+review finding and clean `git diff --check`. A new full/signed candidate gate is still
+required before allocating the next run ID.
+
+Renewed preflight then permanently closed the two exact prior local tabs through their
+native `Close Session` actions and removed only their two exact parent backends through
+the Sessions browser. Both transcript/metadata pairs, both layout records, both CLI
+list entries, and both backend directories are absent. The unrelated backend-ID digest
+remains `fab099d84054ca49264167177db197f96316ab22ffd239a6ccb2179209e3c1db`, the
+unrelated transcript-filename digest remains
+`3657c058c80a5b2bd21c92fc4a3af0ab819efd6f15b07e014ebed291e8d2088c`, and
+`prompt_history.jsonl` remains SHA-256
+`f3aa6c8185b6a9576dd30c42da7da8abd5f98728b56f42f19742cd29e7399613`, size 97,866,
+mode `0644`, mtime `2026-08-14T13:47:01-0500`; config and the absent observation key
+also remain unchanged. Process-zero samples at `2026-08-14T14:19:52-0500` and
+`2026-08-14T14:19:57-0500` passed. No child, fixture, unrelated history, or Slice 3
+Trash remnant was touched.
+
+### Slice 4 frozen candidate matrix attempt 3 — `20260814T192322Z`
+
+This run ID was allocated once after the renewed repairs passed 24/24 focused tests,
+the complete signed-candidate gate passed **844/844**, `git diff --check` was clean,
+and the final skeptical review found no issue. Installed candidate identity is branch
+`codex/grokbuild-audit-s4-model-performance`, base commit `6b98cbb…`, `dirty=true`,
+channel `personal`, Team `DD2GCQJVB4`, deep/strict valid, no quarantine, and full-bundle
+dist/install parity with executable SHA-256
+`58565c7409219f0682b1995b2cf6631eeab5f2c2026c82d11dd1e666860ac18a`.
+The protected config hash is still `0a372b8a…`, the observation key is absent, both
+prior diagnostic sessions are absent, process-zero samples at
+`2026-08-14T14:23:11-0500` and `2026-08-14T14:23:16-0500` passed, and exact sentinel
+`/private/tmp/grokbuild-s4-20260814T192322Z-must-not-exist` is absent.
+
+Attempt-3 markers are
+`GB-S4-CAND-{NAT46|LUNA|OR41}-{CTRL|ORD3|CH2|CONT}-20260814T192322Z` and use the
+renewed byte-frozen prompts, interleaved order, evidence key, timeouts, no-resend rule,
+and hard stops above. Campaign usage enters this run at 48,492 actual tokens, leaving
+1,451,508 before the 1.5m breaker. No Attempt-3 Send had occurred when this freeze was
+written.
+
+**Attempt-3 diagnostic closeout checkpoint.** Run `20260814T192322Z` is retired after
+three exact CTRL passes and one invalid NAT46 ORD3 transmission: Computer Use converted
+the intended literal `\\n` characters in the frozen prompt into Return keystrokes, sent
+the request after command 1, and therefore failed the byte-exact prompt boundary even
+though the model later made three successful terminal calls; no result from this run is
+accepted or reusable.
+Live state is clean with observation key absent, config SHA-256 `0a372b8a…`, unrelated
+backend digest `fab099d…`, unrelated transcript digest `3657c05…`, and exact-cleaned
+tabs/backends `9B07E619-9041-4944-A1CB-EEED3D1E27E1` /
+`01a001bc-fe01-7e23-a650-5a3db5b6a8b8`,
+`57C27992-6009-4AEF-986D-A189C99450F1` /
+`01a001bf-ad8f-7063-8d3b-48ce23c0893f`,
+`3C282F58-79D5-4FC3-A3F7-49B6A706B2FC` /
+`01a001c1-6cca-7d01-ab24-4ef707e00962`, and
+`79DD89AC-452B-48BB-ACF1-173A74E7AE54` /
+`01a001c3-044c-7b91-8c55-99da6ccf4cfd`; usage is 40,634 tokens for the three controls
+plus 67,532 tokens for the invalid packet, Attempt-3 subtotal 108,166, campaign
+cumulative 156,658, prompt history legitimately advanced to SHA-256 `52b44c4…`, and
+cleanup risk is `none`.
+Next action is to add a pre-type assertion that the runtime prompt contains literal
+backslash-plus-`n` pairs and no newline characters, repeat the focused/full/review/signed
+candidate gates, allocate a wholly new run ID only after process-zero and protected-state
+preflight, and hard-stop before any Send if that guard or any frozen boundary fails.
+
+### Slice 4 Attempt-4 transport guard — pre-allocation
+
+Attempt 4 has no run ID and zero Sends: it supersedes the earlier proposed backslash
+assertion because the external Computer Use failure is removed at the source by using
+only one-line ASCII prompts with zero CR, LF, TAB, or backslash bytes, while the three
+retired diagnostic IDs and their 156,658 tokens remain excluded from acceptance but
+charged to the campaign.
+Live state is observation-key absent, config SHA-256 `0a372b8a…`, prompt-history
+SHA-256 `52b44c4…` at 99,183 bytes, unrelated backend/transcript digests unchanged,
+cleanup risk `none`, and the two replacement templates are byte-frozen as `Acceptance
+packet. Call the terminal exactly three times, sequentially, using these exact commands
+as three separate calls: (1) /bin/echo ONE (2) /bin/echo TWO (3) /bin/echo THREE. Do
+not combine calls, use workers, call update_plan, or use any other tool. If any call
+fails or another tool is needed, stop without retry. After three exit-0 receipts, reply
+exactly: <M> ONE|TWO|THREE` and `Acceptance packet. Spawn exactly two general-purpose
+children concurrently in the background. LEFT child prompt: Use terminal exactly once
+with /bin/echo LEFT; then reply exactly <M>-LEFT. No other tool, worker, update_plan, or
+retry. RIGHT child prompt: Use terminal exactly once with /bin/echo RIGHT; then reply
+exactly <M>-RIGHT. No other tool, worker, update_plan, or retry. After both spawns, use
+exactly one wait_all collection. The parent must not use terminal, update_plan, or any
+other tool. If either child lacks an exact identity and terminal lifecycle, or calls an
+extra tool, stop without retry. Otherwise reply exactly: <M>-PARENT LEFT+RIGHT`.
+Next action is a zero-Send disposable composer canary that atomically enters and AX-reads
+both replacement prompts with marker `GB-S4-ENTRY-CANARY`, proves exact UTF-8 byte/hash/
+length equality, marker counts, zero control/backslash bytes, and no backend/transcript/
+observation/model process before clearing and closing it; only after repeated focused/
+full/diff/review/signed gates, two process-zero samples, protected-state parity, and
+sentinel absence may one new UTC ID and every concrete prompt hash be appended, and any
+pre-Send mismatch retires that ID unused while any post-Send mismatch hard-stops the
+whole run with no resend.
+
+**Pre-ID canary diagnostic checkpoint.** The first escape-free canary never allocated a
+run ID: the 398-byte ORD3 draft passed SHA-256 `220b6ca9…`, one marker, and zero forbidden
+bytes without sending, while the 700-byte CH2 draft passed SHA-256 `49d4d11d…`, three
+markers, and zero forbidden bytes but was then intentionally sent by Jimmy while my
+copy check had left the draft highlighted, so its result is diagnostic only.
+The user-sent native Grok 4.6 packet used tab/backend
+`59C9EA33-2EDB-4D0D-8330-96F8949604BB` /
+`01a001d1-2cb3-7f90-9d51-75686c6c5141`, children
+`01a001d1-45e9-79c0-89c1-7f69b2b813e8` and
+`01a001d1-45ec-78e2-9574-dfe06211cd4e`, observation
+`4BD21840-F364-4BC5-81FB-EBD98F078412`, and 97,376 authoritative parent tokens for a
+campaign cumulative 254,034; the exact tab/parent/observation are absent, the two
+CLI-invisible child directories are recoverable in
+`~/.Trash/GrokBuild-Slice4-canary-20260814T194900Z`, config and unrelated-name digests
+match, prompt history legitimately advanced to SHA-256 `4932441…` at 100,007 bytes,
+process-zero passed at `2026-08-14T14:51:39-0500` and `14:51:44-0500`, and cleanup risk
+is `none`.
+Next action is to rerun the zero-Send canary on the exact installed bundle with each
+select-copy-delete sequence atomic inside one Computer Use action so no highlighted
+draft remains available for manual Send; the same no-ID/no-provider boundary and hard
+stop apply until both drafts are empty and process-zero is re-proven.
+
+**Superseding zero-Send canary pass.** Exact installed
+`/Applications/GrokBuild.app` atomically entered, selected, copied, and deleted the
+398-byte ORD3 draft and 700-byte CH2 draft without ever clicking Send; clipboard
+SHA-256 values were exactly `220b6ca9…` and `49d4d11d…`, marker counts were 1 and 3,
+forbidden-byte counts were zero, both composers returned immediately to empty/Send
+disabled, and no user turn appeared.
+Disposable tab `2148C835-D3D4-4FCD-973E-B312626EA418` had no backend binding,
+transcript, metadata, observation, model process, or prompt-history write and was closed
+natively; config and the `4932441…` prompt-history boundary remain unchanged,
+process-zero passed at `2026-08-14T14:54:11-0500` and `14:54:16-0500`, and risk is
+`none`.
+Next action is to repeat diff/focused/full/skeptical/signed gates over this final frozen
+tree, verify installed stamp/hash/signing/parity and protected state, then allocate one
+new UTC run ID plus every concrete prompt hash before the first separate Send; any
+mismatch still hard-stops without reuse or resend.
+
+### Slice 4 frozen candidate matrix Attempt 4 — `20260814T195756Z`
+
+Attempt 4 is allocated exactly once with zero Sends on branch
+`codex/grokbuild-audit-s4-model-performance` at base `6b98cbb…`: the final tree passed
+24/24 focused tests, 844/844 full tests and signed `make ship`, clean diff and skeptical
+review, installed/dist full-bundle parity, Team `DD2GCQJVB4`, no quarantine, executable
+SHA-256 `ac3add589d87482d9261b68838332947679b4433b412bf09062b19c15ef392ca`, and absent
+sentinel `/private/tmp/grokbuild-s4-20260814T195756Z-must-not-exist`.
+Live state is observation-key absent, config SHA-256
+`0a372b8a59c5853439e22a8f55d6d605cbce7fb5e7dc0bff9fe933deca95c5f0`, prompt-history
+SHA-256 `4932441397b6ee45f90e05abb0453da4e4457fd7f81986d42d91199c07b51275`
+at 100,007 bytes/mode `0644`, unrelated backend/transcript digests `fab099d…` /
+`3657c05…`, only the two named canary children preserved recoverably in
+`~/.Trash/GrokBuild-Slice4-canary-20260814T194900Z`, process-zero at
+`2026-08-14T14:57:32-0500` and `14:57:37-0500`, usage prior/subtotal/cumulative
+`254,034 / 0 / 254,034` with 1,245,966 before the breaker, no thread IDs, cleanup risk
+`none`, and the frozen prompt receipts are NAT46 CTRL `225 / 468eee90622349526e7befdf8c940a6b2f87140290758779c0677647e2f8e2cd / 1`, ORD3
+`418 / 40750bdd0c2809f627b7b1ab6b73a6c88b6058d6feb407f75f6f98731650e8c1 / 1`, CH2
+`757 / d9ae74c124036f4406595edf0905dc832ddafdc8b3568d6d2d667993e69bcfbc / 3`, CONT T1
+`203 / f05c0fe4408b4cb64b96de80978fe6d6e62c82bd705b5f0cc04ac882f985cc5d / 1`, CONT T2
+`467 / 68ba945022ba8c28972c11fc60465f2f08cfcd6d9f4ce01feb752be618691e48 / 1`, CONT T3
+`324 / 06d95e9f1518f8b743aeddbf0d45c77994ddc0fb73b98818539596366b1abae7 / 1`; LUNA CTRL
+`224 / 8d79fe1757e2f33fefadca4b6e7d081a347c1f9e17cbc395cef887e3799d80ea / 1`, ORD3
+`417 / 74e8001dfd72ee31d9f8ecc0e03609c1784d6876ac48c75abd9084b0c58525c5 / 1`, CH2
+`754 / acc3a5be400ee41bb26cd1dc59c2647fcf970a8e7833ba1267ec360eab50fa44 / 3`, CONT T1
+`202 / 727dac75b9b61aaec2b7e012751a476b086958c45d788927dac4c7d66e0a24d5 / 1`, CONT T2
+`466 / 1185abc24d1b31876de5a427e0d76c1b190c08e70551270f0eba42db8e8c8273 / 1`, CONT T3
+`323 / 430a1168c19a8269ddf2228f96b040add151e23ac0315b582a344f37f687cc34 / 1`; OR41 CTRL
+`224 / 5a10d22b3c09054d5eb36d26565077d3cfa3d3ea116c27b552ea481d3cf3ce68 / 1`, ORD3
+`417 / 85a44dfe7bf30c28802f45c28caa258fc55762deec37420f8697d9433f9d83db / 1`, CH2
+`754 / 33b0f399748b69f13c1e756aacb909ab39bd6ad7212c37485d7c4c123a06304a / 3`, CONT T1
+`202 / 7c86f1cb9b9dd325db04a499aa667294dba0346088e8407bef7db2b6b0fda098 / 1`, CONT T2
+`466 / b184617a5f1e947cf1d32f403ed79e1923f31ce507480380a77b1a5fcc313389 / 1`, and CONT T3
+`323 / e583bffd8066874b66a817f294a84660736e9c798f872df021023e416e06ecd5 / 1`, each tuple meaning UTF-8 bytes / SHA-256 / marker count with zero CR/LF/TAB/backslash bytes.
+Next action is the fixed order NAT46/LUNA/OR41 CTRL, NAT46/LUNA/OR41 ORD3,
+NAT46/LUNA/OR41 CH2, NAT46/LUNA/OR41 CONT T1, NAT46/LUNA/OR41 CONT T2, one normal
+quit/two-sample process-zero/relaunch, then NAT46/LUNA/OR41 CONT T3, with atomic
+entry/select-copy-delete verification followed by clean re-entry and a separate Send;
+any pre-Send mismatch retires this ID unused, while any post-Send route/model/prompt/
+tool/worker/text/class/identity/recovery/timeout/protected-state/process mismatch
+hard-stops the entire run with no resend and no borrowed row.
+
+### Slice 4 selective failed-packet retry — `20260814T202737Z`
+
+Attempt 4 settled nine packets before the first evidence-key failure: all three CTRL,
+all three ORD3, NAT46 CH2, and LUNA CH2 passed, while OR41 CH2 used exactly two
+concurrent children with one successful LEFT/RIGHT terminal receipt each but added
+explanatory prose before its required exact parent marker; Jimmy explicitly accepted
+the eight passing packets and superseded the whole-matrix restart rule with a
+failed-packet-only retry, so the failed completion remains an honest diagnostic local
+observation and its accepted predecessors are not rerun.
+Live state is nine observations, exact failed tab
+`B68CF6EB-244D-4BF6-8B3B-8A10DDE0CD41` and parent
+`01a001f3-2da5-7141-9304-bb487a79fd16` absent, its exact children
+`01a001f3-4203-71c3-9890-b71aa80e71d4` and
+`01a001f3-4205-7692-9561-cb8123a5532b` preserved recoverably in
+`~/.Trash/GrokBuild-Slice4-run-20260814T195756Z-OR41-CH2`, config SHA-256 still
+`0a372b8a59c5853439e22a8f55d6d605cbce7fb5e7dc0bff9fe933deca95c5f0`, usage
+prior/subtotal/cumulative `254,034 / 438,113 / 692,147` with 807,853 before the
+breaker, risk `none`, and retry marker `GB-S4-CAND-OR41-CH2-RETRY-20260814T202737Z`
+has prompt receipt `862 / 9b079c195d43f5227513cf5eec6575383053685a3e43fa21d43587ab284d191a / 3`
+(UTF-8 bytes / SHA-256 / marker count, zero CR/LF/TAB/backslash bytes).
+Next action is one fresh pinned-OpenRouter CH2 retry whose entire final answer is
+required to be the exact parent marker with no explanation, followed only on pass by
+the still-unrun continuation packets; any prompt/model/route/tool/worker/identity/
+terminal/final-text mismatch hard-stops this retry with no resend.
+
+**Selective retry and continuation hard stop.** OR41 CH2 retry
+`20260814T202737Z` passed with exact parent/child markers, two concurrent children,
+one successful LEFT/RIGHT terminal result each, and zero unresolved identities; all
+three CONT T1 turns then passed exact no-tool `KITE-17` recall, but NAT46 CONT T2 used
+the frozen quoted-path commands and both terminal calls returned exit 127, so that
+failed recovery receipt is preserved and only the failed turn was queued for a
+quote-free retry under Jimmy's explicit selective-retry waiver.
+Live state is 14 observations with continuation tabs/backends NAT46
+`ECA3E684-4CF4-40B4-B726-5CDBB8F67769` / `01a001f8-eb3f-7840-8eff-1163db3c0607`,
+LUNA `662734FC-C4EA-40EE-BB8D-DFD36CEF740D` /
+`01a001fa-6237-7e63-8c47-b3abc8df9fa6`, and OR41
+`675FC2C6-0C8F-4BEF-90C0-84E4AFA39C0C` /
+`01a001fb-6f83-77e1-928f-eeb03326d65c` retained, usage campaign cumulative
+845,870 with 654,130 before the breaker, process-zero at
+`2026-08-14T15:37:49-0500` and `15:37:54-0500`, risk `protected-state drift`, and
+unused retry ID `20260814T203608Z` retired at zero tokens because the pre-Send guard
+found Grok CLI auto-update `1.0.3 (1a29d5bc12d4)` → `1.0.4 (d846eb93d94d)` had
+simultaneously changed protected config SHA/size `0a372b8a… / 2,900` →
+`2cb4dcda… / 2,894` at `2026-08-14T15:35:55-0500`.
+Next action is a read-only classification of that updater/config mutation and an
+explicit authority decision before any further Send or config/CLI restoration; the
+hard stop forbids provider calls, config edits, rollback, acceptance continuation,
+publication, merge, or Slice 5 work meanwhile.
+
+**Authorized mixed-runtime continuation.** Jimmy subsequently authorized continued
+implementation changes and billable confirmation prompts until every Slice 4 issue is
+closed, while retaining his narrower instruction that passed packets must not be
+rerun. The retained `1.0.3` binary is intact, but no byte-exact pre-update config
+preimage exists; read-only inspection found updater-managed binary/symlink/config
+writes and no contemporaneous auth or credential-file write, so the honest path is to
+freeze Grok CLI `1.0.4 (d846eb93d94d)` with protected config SHA-256
+`2cb4dcdaf0f1841aab54fb2ae10586381ca78b560eb9fc0477efb521e92140ae`, 2,894
+bytes, mode `0600`, as a new mixed-runtime boundary rather than pretending the earlier
+`1.0.3` receipts were homogeneous.
+The accepted `1.0.3` packets remain stratified and banked; only failed NAT46 CONT T2
+may receive a fresh quote-free retry, followed by the never-run LUNA/OR41 CONT T2 and
+all three CONT T3 turns after the required quit/process-zero/relaunch boundary. Any
+new row must ledger CLI/config generation explicitly, the retired failed NAT46 T2
+remains diagnostic, campaign carry starts at 845,870 tokens with 654,130 before the
+1.5m circuit breaker, and no provider/model/credential/catalog substitution is
+authorized or needed.
+
+The selective NAT46 recovery retry is frozen as run ID `20260814T205708Z`, marker
+`GB-S4-CAND-NAT46-CONT-T2-RETRY-20260814T205708Z`, and quote-free prompt receipt
+`513 / b797e4625ef27d6b8d13c606c476968b96b79e9826236da2e2b4bbf46d9bc513 / 1`
+(UTF-8 bytes / SHA-256 / marker count, zero CR/LF/TAB/backslash bytes). Immediately
+before allocation, the 24 focused and 844 full tests passed, `git diff --check` was
+clean, signed `make ship` passed 844/844, installed/dist executable SHA-256 was
+`941db075edaff8699c55a0db0d5d5efc403f4718ec59ecc1479317f2700f955d`, config
+remained `2cb4dcda…`, all three continuation transcripts were present, observation
+count was 14, and the run-specific sentinel was absent.
+
+The first quote-free retry settled diagnostic-only with the same two exit-127
+terminal receipts because macOS does not provide `/usr/bin/test`; the authoritative
+host check confirmed `/bin/test` exists and succeeds against the installed app while
+`/usr/bin/test` is absent. Observation
+`1B010466-80CA-42A3-B0D2-355D8F20ECA2` retained 52,814 actual tokens, three calls,
+recovery opportunity true and success false, so campaign cumulative is 898,684 with
+601,316 before the breaker; no passing packet was rerun.
+The corrected failed-only retry is frozen as run ID `20260814T210009Z`, marker
+`GB-S4-CAND-NAT46-CONT-T2-RETRY2-20260814T210009Z`, and `/bin/test` prompt receipt
+`506 / b0d232796e2698bc394e13454a2c497c2e690873863e02e2545372b80b3e153f / 1`
+(UTF-8 bytes / SHA-256 / marker count, zero CR/LF/TAB/backslash bytes); the same NAT46
+backend must remain exact, the first call must exit 1, the typed retry must exit 0,
+and any further mismatch stops before LUNA/OR41.
+
+NAT46 retry 2 then passed the executable evidence key: exact marker-only final,
+`/bin/test` exit 1 followed by `/bin/test` exit 0, no extra tool or worker, 54,372
+tokens / three calls, observation `7EF3204F-333C-4031-901D-60229901275F`, and
+campaign cumulative 953,056 with 546,944 before the breaker. Exact backend event
+inspection proves Grok CLI 1.0.3 emits independent tool-call IDs but no `retryOf` or
+equivalent correlation on either call; GrokBuild therefore truthfully records a
+recovery opportunity with `recoverySucceeded=false` rather than manufacturing an
+explicit retry, and the UI's explicit-retry rate remains intentionally unproven.
+The never-run LUNA/OR41 T2 turns are frozen together under `20260814T210413Z` with
+the same `/bin/test` evidence key: LUNA marker
+`GB-S4-CAND-LUNA-CONT-T2-20260814T210413Z`, prompt receipt
+`497 / 0c831de4f5acbfc785bf8ca50c066197bc87ba3525b3a93903b7855ab1cf79da / 1`;
+OR41 marker `GB-S4-CAND-OR41-CONT-T2-20260814T210413Z`, prompt receipt
+`497 / 04ad12e469d2c6cad44cb3ce51097a667ae126d502605f35e232e4ecd215f209 / 1`.
+Both must remain on their exact retained backends/routes, use two terminal calls only,
+and preserve missing typed retry correlation as unproven rather than false success.
+
+Both never-run T2 turns passed: LUNA observation
+`B8A583ED-7548-43BE-99A2-71D80DC716D4` retained direct `gpt-5.6-luna`, exact
+marker-only final, exit 1 then exit 0, 38,052 tokens / three calls; OR41 observation
+`733ACE14-DA44-46EE-8BA0-CA3AC9E9596C` retained pinned OpenRouter
+`openai-gpt-4.1-mini`, exact marker-only final, exit 1 then exit 0, 25,421 tokens /
+two calls, with downstream provider still unproven. Both recovery opportunities are
+truthfully explicit-retry-unproven, the observation store now has 18 rows including
+the three diagnostic failures, and campaign cumulative is 1,016,529 with 483,471
+before the breaker.
+
+**Selective T3 continuation checkpoint.** The required quit/process-zero/relaunch
+boundary preserved all 18 rows, and OR41 T3 passed exact continuity with observation
+`C0F3D21D-5F76-4775-9672-E8B2C903C613` classified long-horizon at 12,810 tokens;
+NAT46 and LUNA also recalled their exact `KITE-17|RECOVERED` evidence but observations
+`E96DC917-3AFC-4C77-B954-A875B953D860` and
+`6993C9D8-B4A3-4250-A7BB-E881D6EAB855` were misclassified no-tool because Browse
+Sessions restored each exact backend into a new local tab whose imported messages did
+not carry the prior local completion checkpoints. Live state is 21 observations, app
+state remains available for exact cleanup after repair, those two misclassified rows
+are diagnostic, campaign usage is 1,060,662 tokens with 439,338 before the breaker,
+cleanup is none, and risk is limited to the demonstrated restored-tab ordinal reset.
+The next action is to validate and install the bounded repair that retains ACP's live
+zero-based `_meta.promptIndex` from the authoritative `user_message_chunk`, combines it
+conservatively with durable completed-checkpoint truth, and then reruns only NAT46 and
+LUNA T3 under fresh markers; hard stop remains on rerunning OR41 or any other passing
+packet, unrelated changes, publication before gates, origin, releases, tags, force
+pushes, credentials/providers/models/configuration, and Slice 5.
+
+**Selective T3 retry allocation checkpoint.** The canonical branch remains
+`codex/grokbuild-audit-s4-model-performance` at base `6b98cbb`, the bounded
+exact-session/non-replay/strict-integer prompt-index repair passed 97 focused and 845
+full tests plus clean diff and skeptical review, and signed installed/dist candidate
+SHA-256 `c9c8ec43d0dd6ce1f252975d34016360cc43176b6b3b2f12bea4ffd724735dce`
+is byte-identical, Team `DD2GCQJVB4`, quarantine-free, and stamped dirty=true from
+the expected Slice 4 branch. Live state is CLI `1.0.3`, protected config SHA-256
+`2cb4dcdaf0f1841aab54fb2ae10586381ca78b560eb9fc0477efb521e92140ae`,
+21 observations, retained exact NAT46/LUNA backends, process-zero at
+`2026-08-14T16:21:17-0500` and `16:21:22-0500`, cleanup none, campaign carry
+1,060,662 tokens with 439,338 before the breaker, and run ID `20260814T213032Z`
+freezes NAT46 prompt `349 / bdc0835f6b064aaeb53eb3bb79532fe28eb72d0529c379fcd6acf51e1f36d24f / 1`
+and LUNA prompt `348 / 5d90a756b38bcbae18fc0d242706b430e129537c5f7423bc1800803416acaa29 / 1`,
+both with zero CR/LF/TAB/backslash bytes. The next action is to restore only those two
+exact backends in the signed installed candidate and Send each atomic prompt after
+byte-identical composer verification, requiring marker-only `KITE-17|RECOVERED`, zero
+tools/workers, exact route, and a `longHorizonContinuation` row; hard stop forbids any
+other packet, resend, model/config/provider change, publication before receipt, origin,
+release/tag/force push, unrelated cleanup, or Slice 5.
+
+**Selective T3 result and installed-UI checkpoint.** LUNA observation
+`7089BCCE-554A-4434-A6C8-D316BD313E93` and NAT46 observation
+`382A9687-F3F5-4BBD-8BB2-1C7605240B12` each passed exact marker-only
+`KITE-17|RECOVERED`, zero tools/workers, exact retained backend and route, and
+`longHorizonContinuation`, using 13,041 and 18,654 tokens respectively; no other
+packet was rerun, so the store contains 23 rows representing exactly 18 accepted plus
+five diagnostic rows and campaign cumulative is 1,092,357 with 407,643 before the
+breaker. Live Settings → Models then exposed one final display/cohort defect without
+another Send: the same pinned OpenRouter route appeared as local selector
+`openai-gpt-4.1-mini` for T2/T3 but provider model `openai/gpt-4.1-mini` for earlier
+packets, despite one stable route identity, so cleanup remains none and risk is limited
+to that demonstrated canonical-model split. The next action is a nonbillable bounded
+repair that uses the frozen provider-facing model ID for custom cohort display and
+retention while keeping native effective identity and selector-aware usage matching,
+followed by focused/full/review/signed installed UI confirmation only; hard stop
+forbids every further provider packet, rerun, unrelated change, publication before
+receipt, origin, release/tag/force push, broad cleanup, or Slice 5.
+
+**Canonical-model repair and signed installed checkpoint.** The canonical Slice 4
+branch at base `6b98cbb` passed 20 model-observation tests, 26 combined observation/
+route tests, 847/847 full tests, clean diff and skeptical review before signed
+`make ship`; installed/dist executable SHA-256
+`07f903cd60ac8a0c66cd189abc2a0b9a6c6d94cbb1afbf0172460cbbf734f88a` is
+byte-identical, Team `DD2GCQJVB4`, quarantine-free, and Settings → Models now groups
+every pinned OpenRouter row under provider model `openai/gpt-4.1-mini` while keeping
+downstream provider unproven, native effective identity intact, and absent prices
+missing. Live state is CLI `1.0.3`, protected config SHA-256
+`2cb4dcdaf0f1841aab54fb2ae10586381ca78b560eb9fc0477efb521e92140ae`, 23 raw
+observations representing 18 accepted plus five diagnostics, campaign total
+1,092,357 with 407,643 before the breaker, nine exact local tabs bound only to parents
+`01a001f8-eb3f-7840-8eff-1163db3c0607`,
+`01a001fa-6237-7e63-8c47-b3abc8df9fa6`, and
+`01a001fb-6f83-77e1-928f-eeb03326d65c`, prompt-history SHA-256
+`40acee352d7d1a622e9523a997e34a91e74e29574d3f3deab37d007c56d6fa7a`, unchanged
+unrelated backend/transcript digests `fab099d…` / `3657c05…`, preserved canary/OR41
+child Trash bundles, process-zero at `2026-08-14T16:45:16-0500` and
+`16:45:21-0500`, cleanup pending exact action-time confirmation, and risk `none`.
+The next action is confirmation-gated UI Clear Local Observations plus native closure
+of only the nine ledgered tabs and exact CLI deletion of only those three parents,
+followed by protected-state parity, final gates, ordinary personal-remote PR/CI/
+exact-head merge and merged-main reinstall; hard stop forbids further provider Sends,
+unrelated deletion, origin, releases/tags, force push, branch deletion, or Slice 5.
+
+**Exact cleanup and Slice 5 readiness checkpoint.** With Jimmy's action-time
+confirmation, the signed installed candidate cleared all 23 local observation rows
+through its exact confirmation, showed an empty disabled observation surface both
+immediately and after quit/relaunch, and native Close Session removed only the nine
+ledgered Slice 4 tab/transcript pairs plus their three exact parent backends without a
+CLI fallback. Live state is observation key absent, all nine layout/transcript IDs and
+parents `01a001f8-eb3f-7840-8eff-1163db3c0607`,
+`01a001fa-6237-7e63-8c47-b3abc8df9fa6`, and
+`01a001fb-6f83-77e1-928f-eeb03326d65c` absent from live storage and cwd-scoped CLI,
+config SHA-256 `2cb4dcdaf0f1841aab54fb2ae10586381ca78b560eb9fc0477efb521e92140ae`,
+prompt-history SHA-256
+`40acee352d7d1a622e9523a997e34a91e74e29574d3f3deab37d007c56d6fa7a` at 112,665
+bytes/mode `0644`, unrelated backend/transcript digests `fab099d…` / `3657c05…`, both
+named recoverable Slice 4 child-remnant Trash bundles preserved, campaign usage still
+1,092,357, process-zero at `2026-08-14T16:51:09-0500` and
+`16:51:14-0500`, cleanup complete, and risk `none`.
+The next action is final focused/full/diff review, ordinary commit/push/PR to personal,
+exact-head CI-green normal merge, clean merged-main reinstall and nonbillable empty-
+ledger/process-zero verification before handing off Slice 5 only; hard stop forbids
+provider reruns, unrelated cleanup, origin, releases/tags, force push, branch deletion,
+or beginning Slice 5 in this session.
+
 ## Slice 3 — Run history/export corrective closeout (2026-08-14)
 
 Jimmy accepted the incomplete historical live packet as a documented waiver after
