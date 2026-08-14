@@ -4844,10 +4844,13 @@ final class ChatStore {
               let index = messages.firstIndex(where: { $0.id == messageID && $0.role == .assistant }) else {
             return
         }
+        let routeContract = snapshot.binding.processGeneration.flatMap { routeContractsByProcessGeneration[$0] }
+            ?? currentRouteContract
         let checkpoint = AssistantTurnCheckpoint(
             snapshot: snapshot,
             requestedToolFamilies: currentTurnRequestedMCPNames,
-            attachmentNames: currentTurnAttachmentNames
+            attachmentNames: currentTurnAttachmentNames,
+            routeReceipt: routeContract.detailLines.first
         )
         if var trace = messages[index].assistantTrace {
             trace.checkpoint = checkpoint

@@ -409,6 +409,9 @@ struct ContentView: View {
             SessionDashboardPanel(
                 entries: dashboardEntries,
                 selectedSessionID: selectedSessionID,
+                runHistoryBySessionID: Dictionary(uniqueKeysWithValues: liveSessions.map { session in
+                    (session.id, RunHistory.records(from: session.store.messages))
+                }),
                 softCapExcess: runtimeRetentionDecision.softCapExcess
             ) { sessionID in
                 sessionModal = .none
