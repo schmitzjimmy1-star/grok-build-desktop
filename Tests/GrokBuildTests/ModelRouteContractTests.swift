@@ -68,6 +68,20 @@ final class ModelRouteContractTests: XCTestCase {
 
         XCTAssertEqual(route.kind, .localEndpoint)
         XCTAssertEqual(route.compactLabel, "Local endpoint")
+        XCTAssertEqual(route.endpointRouteIdentity, "http://127.0.0.1:11434/v1")
         XCTAssertTrue(route.detailLines.joined().contains("no remote fallback"))
+    }
+
+    func testObservationEndpointIdentityKeepsRouteBoundariesAndDropsCredentials() throws {
+        let model = CustomModel(
+            id: "custom",
+            model: "same-model",
+            baseURL: "https://user:password@example.test:8443/proxy/v1/?api_key=secret#fragment"
+        )
+        let route = ModelRouteContract.resolve(selectedModelID: model.id, customModel: model)
+
+        XCTAssertEqual(route.endpointRouteIdentity, "https://example.test:8443/proxy/v1")
+        XCTAssertFalse(try XCTUnwrap(route.endpointRouteIdentity).contains("password"))
+        XCTAssertFalse(try XCTUnwrap(route.endpointRouteIdentity).contains("secret"))
     }
 }
