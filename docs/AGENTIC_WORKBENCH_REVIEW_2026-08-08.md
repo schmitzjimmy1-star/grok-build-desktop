@@ -74,8 +74,8 @@ projection into the transcript flow while a run is active (the data already
 exists for the inspector); settled turns keep today's compact trace.
 
 **W-6 — Dock the inspector when wide.** At ≥1,500 pt content width, the
-overlay becomes a docked third column (respects the existing responsive
-order: it still hides first when narrow).
+  overlay becomes a docked third column (respects the existing responsive
+  order: collapsed strip when narrow).
 
 Suggested order: W-1 now (answers "reduce the sidebar"), then W-3 + W-4
 (biggest chatbot-feel killers), then W-2, W-5, W-6.
@@ -100,6 +100,6 @@ Suggested order: W-1 now (answers "reduce the sidebar"), then W-3 + W-4
   copy in the inspector); settled turns keep the compact trace. W-6: at
   ≥1,500-pt chat-area width the open inspector mounts as a docked 260-pt
   third column instead of the top-trailing overlay — same panel and state,
-  no overlap — while the hide-first responsive order below 900 pt is
-  unchanged.
+  no overlap — while the live responsive order below 900 pt is a collapsed
+  strip (open state preserved), not a hide.
 - PR #16 merged 2026-08-08.

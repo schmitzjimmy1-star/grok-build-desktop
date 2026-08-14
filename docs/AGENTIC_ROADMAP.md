@@ -1,5 +1,8 @@
 # GrokBuild → Agentic Workbench — Ten-Slice Roadmap
 
+> Historical 2026-08-03 roadmap. Live chrome is **Run inspector**, spawn-on-Send,
+> collapsed strip below 900 pt. Open work lives in `docs/OUTSTANDING.md`.
+
 *Deep-dive synthesis (2026-08-03) from a four-agent read of backend, providers, frontend/sidebar, and performance. Read-only analysis; nothing here is implemented yet.*
 
 ## The vision, honestly stated

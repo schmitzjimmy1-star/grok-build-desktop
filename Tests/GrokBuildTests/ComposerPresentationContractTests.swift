@@ -78,7 +78,7 @@ final class ComposerPresentationContractTests: XCTestCase {
 
         // Header: Review state and the inspector toggle (Slice 2 homes).
         XCTAssertTrue(chatView.contains("grok-header-review-toggle"))
-        XCTAssertTrue(chatView.contains("grok-activity-sidebar-toggle"))
+        XCTAssertTrue(chatView.contains("grok-run-inspector-toggle"))
 
         // Conversation: the inline changed-files card (Slice 3 home).
         XCTAssertTrue(chatView.contains("ChangedFilesSummaryCard("))

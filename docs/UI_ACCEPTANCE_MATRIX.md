@@ -3,6 +3,12 @@
 Date: 2026-07-31
 Target: `/Applications/GrokBuild.app`
 
+> **Historical receipt.** Live chrome is in `ARCHITECTURE.md`, `README.md`, and
+> `CANONICAL_WORKTREE.md` → Live chrome: **Run inspector**, spawn-on-Send,
+> collapsed strip below 900 pt (open state preserved), **Describe a task**.
+> Rows below that say Activity drawer, New-chat warm-start, or “inspector hides
+> first” are what that pass recorded, not current product copy.
+
 “Single click” means one pointer activation with no second click needed to unstick focus. The live-result column is completed against the installed application, not a SwiftUI preview.
 
 | Route/control | Expected single-click result | Busy/disabled behavior | Keyboard route | Live result |

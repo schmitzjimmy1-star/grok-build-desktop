@@ -86,7 +86,7 @@ struct SessionDashboardPanel: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             HStack {
-                Text("Session Dashboard")
+                Text("Session dashboard")
                     .font(.title2.weight(.semibold))
                 Spacer()
                 Button("Done") { dismiss() }

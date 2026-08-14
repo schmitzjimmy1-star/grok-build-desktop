@@ -699,7 +699,7 @@ struct ChatView: View {
         .accessibilityLabel("Run inspector collapsed")
         .accessibilityValue(activityEvidenceAccessibilityValue)
         .accessibilityHint("Widen the window to restore the full run inspector.")
-        .accessibilityIdentifier("grok-activity-sidebar-collapsed")
+                    .accessibilityIdentifier("grok-run-inspector-collapsed")
         .transition(.move(edge: .trailing).combined(with: .opacity))
     }
 
@@ -1160,13 +1160,13 @@ struct ChatView: View {
             }
             let announcement = switch outcome {
             case .failed:
-                "Turn failed. Activity opened with the provider or CLI error."
+                "Turn failed. Run inspector opened with the provider or CLI error."
             case .cancelled:
-                "Turn cancelled. Activity opened with the preserved cancellation and tool receipts."
+                "Turn cancelled. Run inspector opened with the preserved cancellation and tool receipts."
             case .userStopped:
-                "Stopped by you. Activity opened with the local stop outcome and next action."
+                "Stopped by you. Run inspector opened with the local stop outcome and next action."
             case .completionReceiptMissing:
-                "Completion receipt missing. Activity opened with the preserved run evidence."
+                "Completion receipt missing. Run inspector opened with the preserved run evidence."
             case .completed:
                 "Turn completed."
             }
@@ -1410,7 +1410,7 @@ struct ChatView: View {
     /// Slice 10 expands the old one-line context strip into a compact task
     /// contract. Empty New chats and idle restored transcripts keep the header
     /// plus composer (and Resume/Start/Browse when a saved backend is waiting).
-    /// The strip returns for a live, stalled, recovery, first-intent start, or
+    /// The strip returns for a live, stalled, recovery, Send-owned start, or
     /// connected-idle draft. `.ready` is connected with no turn — copy says
     /// Connected — idle, matching the sidebar, not a live task.
     private var showsTaskContextStrip: Bool {
@@ -1689,7 +1689,7 @@ struct ChatView: View {
                     }
                     .accessibilityElement(children: .contain)
                     .accessibilityIdentifier("grok-pending-submit-status")
-                } else if let stage = store.firstIntentStartupStageText {
+                } else if let stage = store.sendOwnedStartupStageText {
                     HStack(spacing: 8) {
                         ProgressView()
                             .controlSize(.small)
@@ -1698,7 +1698,7 @@ struct ChatView: View {
                             .foregroundStyle(.secondary)
                     }
                     .accessibilityElement(children: .contain)
-                    .accessibilityIdentifier("grok-first-intent-startup-status")
+                    .accessibilityIdentifier("grok-send-startup-status")
                 }
 
                 VStack(alignment: .leading, spacing: 6) {
@@ -2012,7 +2012,7 @@ struct ChatView: View {
         .accessibilityLabel(showActivitySidebar ? "Hide run inspector" : "Show run inspector")
         .accessibilityValue(activityEvidenceAccessibilityValue)
         .accessibilityHint("Shows live generation-bound receipts during a turn and authoritative receipts after settlement.")
-        .accessibilityIdentifier("grok-activity-sidebar-toggle")
+        .accessibilityIdentifier("grok-run-inspector-toggle")
     }
 
     /// MCP servers actually evidenced by tool receipts: the live projection's
@@ -2368,7 +2368,10 @@ struct ChatView: View {
 
     @ViewBuilder
     private func unboundSpawnMenu(_ event: SubagentSpawnedEvent) -> some View {
-        let worker = RunEvidenceSnapshot.unboundWorker(from: event)
+        let worker = RunEvidenceSnapshot.unboundWorker(
+            from: event,
+            rolesByName: store.subagentRoleModelsByName
+        )
         Menu("\(worker.title) · No final report") {
             if let model = event.modelID, !model.isEmpty {
                 Text("Model: \(model)")

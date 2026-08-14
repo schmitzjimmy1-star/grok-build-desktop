@@ -6,6 +6,9 @@ audited: 2026-08-02
 
 # GrokBuild frontend and backend parity repair slices
 
+> Historical 2026-08-02 execution map. Live chrome is **Run inspector**;
+> open work lives in `docs/OUTSTANDING.md`.
+
 ## Purpose
 
 This document is the execution map for making GrokBuild's native frontend tell
