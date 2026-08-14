@@ -12,12 +12,14 @@ enum ResponsiveLayoutPolicy {
     /// preserved and the panel returns when the window widens.
     static let inspectorMinimumChatWidth: Double = 900
 
-    /// Workbench W-6 (2026-08-08): at this chat-area width the open inspector
-    /// stops overlaying the reading column and docks as a real third column.
-    /// 1,500 − ~284 (260-pt panel + padding) leaves ≥1,200 pt of transcript,
-    /// comfortably above the readable minimum. The hide-first order is
-    /// unchanged: below 900 the inspector still hides before anything else.
-    static let inspectorDockMinimumChatWidth: Double = 1500
+    /// Workbench W-6 (2026-08-08), audit Slice 4 (2026-08-13): at this chat-area
+    /// width the open inspector stops overlaying the reading column and docks as
+    /// a real third column. 1,100 − ~284 (260-pt panel + padding) leaves ≥816 pt
+    /// of transcript, above the readable minimum. The default 1440×900 window
+    /// (chat area ≈1,200 pt with the sidebar visible) therefore docks. Below 900
+    /// the inspector collapses to a trailing strip; overlay remains only for
+    /// 900..<1,100.
+    static let inspectorDockMinimumChatWidth: Double = 1100
 
     /// The transcript's readable minimum: the 760-pt reading column plus its
     /// 26-pt horizontal padding on each side.

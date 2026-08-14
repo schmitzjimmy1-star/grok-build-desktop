@@ -478,7 +478,7 @@ final class ActivitySidebarTests: XCTestCase {
                       "the unavailable copy is owned by the typed projection, not hard-coded outcome prose")
         XCTAssertTrue(sidebar.contains(".accessibilityElement(children: .ignore)"))
         XCTAssertFalse(sidebar.contains(".regularMaterial"))
-        XCTAssertTrue(chat.contains("Text(\"Activity\")"))
+        XCTAssertTrue(chat.contains("Text(\"Run inspector\")"))
         XCTAssertTrue(chat.contains("grok-live-progress"))
         XCTAssertTrue(chat.contains("LiveProgressPresentation.make"))
         XCTAssertTrue(chat.contains("outcome == .completionReceiptMissing"))

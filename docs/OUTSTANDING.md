@@ -31,8 +31,8 @@ Do not scrape `~/.grok/sessions`. Do not translate cross-provider history.
 | 0 | Prove leaks, 3-route honesty, multi-tool, 2-child subagent, horizon clear | High | Frozen packets; stop at 400k tokens | Proven 2026-08-13 |
 | 1 | Process ownership: cancel warm-start task, 5s quit, stderr redaction, external CDP PID | High | CU plus one Send only if needed | Merged PR #61 `f6f648d` |
 | 2 | Spawn on Send; Connecting/Default copy; idle sidebar until Send | Medium | One native no-tool after Send spawn | Merged PR #62 `18a9f3e` |
-| 3 | Transcript `resultDetail` + per-tool AX | Medium | 3-route tool packets | Proven 2026-08-13 |
-| 4 | Inspector at default 1440 + per-turn worker clear | Medium | One Grok 4.6 horizon | Blocked on 3 |
+| 3 | Transcript `resultDetail` + per-tool AX | Medium | 3-route tool packets | Merged PR #63 `f837f60` |
+| 4 | Inspector at default 1440 + per-turn worker clear | Medium | One Grok 4.6 horizon | In progress — `codex/grokbuild-audit-s4-inspector-clear` |
 | 5 | Subagent Stop/unbound/ledger + publication matrix | High | 3-route closeout; stop at 400k | Blocked on 4 |
 
 ### Slice 0 receipt — live prove, 2026-08-13
@@ -226,6 +226,14 @@ kept `browser-use --cli-mcp` helper (PID 26494), not a GrokBuild child.
 
 **Repair owners still live:** inspector overlays the canvas at default 1440;
 long-horizon Tasks pill can keep prior-turn workers.
+
+### Slice 3 Gate E — merged-main acceptance, 2026-08-13
+
+Installed restamp `f837f60` `dirty=false`, SHA-256
+`7ed6e07b695adf1222c941fb43e7354bff1cfd7e7e9c6300433e2dc626a5ef89`, marker
+`GB-S3-GATE-E-20260813T2026`, 32.1k / 2 calls, Direct xAI. Backend
+`019ffde1-1fa5-73e3-9b5c-e8926346e249` deleted; unledgered
+`019ffdad-0d4f-7f42-a429-7ac12ad8198d` not deleted. Python 26494 kept.
 
 ## Status — Transcript chrome, tool visibility, provider honesty (2026-08-13)
 

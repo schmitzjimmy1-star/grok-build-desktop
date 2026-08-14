@@ -395,6 +395,26 @@ struct BackgroundTaskTracker {
         }
     }
 
+    /// Prunes live workers and other non-scheduled activities at the start of a
+    /// new user turn. Scheduled tasks and their tracker state survive; settled
+    /// worker receipts remain on the message checkpoint, not in this mirror.
+    mutating func beginUserTurn() {
+        let removed = activities.filter { $0.kind != .scheduled }
+        guard !removed.isEmpty else { return }
+
+        let removedActivityIDs = Set(removed.map(\.id))
+        let removedChildIDs = Set(removed.compactMap(\.childID))
+        let removedToolCallIDs = Set(removed.compactMap(\.toolCallID))
+
+        activities.removeAll { $0.kind != .scheduled }
+
+        pendingInputs = pendingInputs.filter { key, _ in
+            !removedActivityIDs.contains(key) && !removedToolCallIDs.contains(key)
+        }
+        pendingSpawnedEvents = pendingSpawnedEvents.filter { !removedChildIDs.contains($0.key) }
+        pendingFinishedEvents = pendingFinishedEvents.filter { !removedChildIDs.contains($0.key) }
+    }
+
     mutating func reset() {
         activities = []
         scheduledTracker = ScheduledTaskTracker()

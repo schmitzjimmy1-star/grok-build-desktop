@@ -300,4 +300,40 @@ final class BackgroundTaskTests: XCTestCase {
         XCTAssertEqual(tracker.activities.count, 1)
         XCTAssertEqual(tracker.activities.first?.status, "stopped")
     }
+
+    func testBeginUserTurnDropsPriorWorkersButKeepsScheduled() {
+        var tracker = BackgroundTaskTracker()
+        tracker.apply(update: [
+            "toolCallId": "prior-worker",
+            "_meta": ["x.ai/tool": ["name": "spawn_subagent"]],
+            "rawInput": ["name": "reviewer", "prompt": "Prior turn work"]
+        ])
+        tracker.apply(update: [
+            "rawOutput": [
+                "type": "SchedulerList",
+                "tasks": [[
+                    "id": "t1",
+                    "prompt": "ping",
+                    "intervalHuman": "5m",
+                    "recurring": true
+                ]]
+            ]
+        ])
+
+        tracker.beginUserTurn()
+
+        XCTAssertEqual(tracker.activities.count, 1)
+        XCTAssertEqual(tracker.activities.first?.kind, .scheduled)
+        XCTAssertEqual(tracker.activities.first?.scheduledTask?.prompt, "ping")
+
+        tracker.apply(update: [
+            "toolCallId": "current-worker",
+            "_meta": ["x.ai/tool": ["name": "spawn_subagent"]],
+            "rawInput": ["name": "mapper", "prompt": "Current turn only"]
+        ])
+
+        XCTAssertEqual(tracker.activities.count, 2)
+        XCTAssertEqual(tracker.activities.filter { $0.kind == .subagent }.count, 1)
+        XCTAssertEqual(tracker.activities.first(where: { $0.kind == .subagent })?.id, "current-worker")
+    }
 }

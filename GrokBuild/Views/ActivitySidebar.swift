@@ -196,6 +196,8 @@ struct ActivitySidebar: View {
     /// Codex parity Slice 5: the compact grouped presentation (Subagents,
     /// Computer Use, Sources, Run details) built by `ContextInspectorProjection`.
     var inspector: ContextInspectorProjection.Model = .empty
+    /// When true the panel mounts as a workbench column, not a floating overlay.
+    var docked: Bool = false
 
     @State private var confirmsContinueAsNew = false
     /// The run-evidence ledger opens in view by default (owner decision,
@@ -274,14 +276,9 @@ struct ActivitySidebar: View {
         .frame(minWidth: 240, idealWidth: 260, maxWidth: 300)
         .fixedSize(horizontal: false, vertical: true)
         .background(AppTheme.Palette.sidebar)
-        .clipShape(RoundedRectangle(cornerRadius: AppTheme.Radius.composer, style: .continuous))
-        .overlay {
-            RoundedRectangle(cornerRadius: AppTheme.Radius.composer, style: .continuous)
-                .stroke(AppTheme.Palette.glassBorder)
-        }
-        .shadow(color: AppTheme.Palette.shadow, radius: 12, y: 4)
+        .modifier(ActivitySidebarChrome(docked: docked))
         .accessibilityElement(children: .contain)
-        .accessibilityLabel("Activity sidebar")
+        .accessibilityLabel("Run inspector")
         .accessibilityIdentifier("grok-activity-sidebar")
         .confirmationDialog("Continue this transcript as a new conversation?", isPresented: $confirmsContinueAsNew) {
             Button("Continue as New", role: .destructive, action: onContinueAsNew)
@@ -450,7 +447,7 @@ struct ActivitySidebar: View {
         HStack(spacing: 8) {
             VStack(alignment: .leading, spacing: 2) {
                 HStack(spacing: 7) {
-                    Text("Activity").font(AppTheme.Typography.heading)
+                    Text("Run inspector").font(AppTheme.Typography.heading)
                     if snapshot != nil {
                         evidencePhaseBadge("Finished", color: .secondary)
                     } else if liveProjection != nil {
@@ -470,7 +467,7 @@ struct ActivitySidebar: View {
                     .contentShape(Rectangle())
             }
             .buttonStyle(.plain).foregroundStyle(.secondary)
-            .help("Hide activity inspector").accessibilityLabel("Hide activity inspector")
+            .help("Hide run inspector").accessibilityLabel("Hide run inspector")
         }
         .padding(.horizontal, 14).padding(.vertical, 11)
     }
@@ -966,5 +963,27 @@ struct ActivitySidebar: View {
 
     private func emptyState(_ text: String) -> some View {
         Text(text).font(AppTheme.Typography.caption).foregroundStyle(.secondary)
+    }
+}
+
+/// Overlay chrome reads as a floating card; docked chrome reads as a column.
+private struct ActivitySidebarChrome: ViewModifier {
+    let docked: Bool
+
+    func body(content: Content) -> some View {
+        if docked {
+            content
+                .overlay(alignment: .leading) {
+                    Divider()
+                }
+        } else {
+            content
+                .clipShape(RoundedRectangle(cornerRadius: AppTheme.Radius.composer, style: .continuous))
+                .overlay {
+                    RoundedRectangle(cornerRadius: AppTheme.Radius.composer, style: .continuous)
+                        .stroke(AppTheme.Palette.glassBorder)
+                }
+                .shadow(color: AppTheme.Palette.shadow, radius: 12, y: 4)
+        }
     }
 }

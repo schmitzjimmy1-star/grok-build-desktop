@@ -599,10 +599,10 @@ struct ChatView: View {
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
-            .help("Open the Activity evidence for this live run")
+            .help("Open the Run inspector evidence for this live run")
             .accessibilityLabel("Live progress")
             .accessibilityValue(presentation.accessibilityValue)
-            .accessibilityHint("Opens the generation-bound workers, tools, and receipts in Activity.")
+            .accessibilityHint("Opens the generation-bound workers, tools, and receipts in the Run inspector.")
             .accessibilityIdentifier("grok-live-progress")
         } else if store.isGrokking {
             GrokkingIndicator(startedAt: store.turnStartedAt)
@@ -610,9 +610,9 @@ struct ChatView: View {
         }
     }
 
-    /// The one Activity inspector instance. Workbench W-6 mounts it either as
-    /// the top-trailing overlay (the Slice 2 default) or, when the chat area
-    /// is wide enough, as a docked third column — same panel, same state.
+    /// The one Run inspector instance. Workbench W-6 mounts it as a top-trailing
+    /// overlay in the mid band, a docked third column when wide enough, or a
+    /// collapsed trailing strip below the fit threshold — same panel and state.
     private func activityInspector(docked: Bool) -> some View {
         ActivitySidebar(
             snapshot: activitySnapshot,
@@ -635,22 +635,78 @@ struct ChatView: View {
                 Task { await store.reviewRecoveryCandidates() }
             },
             onRevealArtifact: onRevealArtifact,
-            inspector: contextInspectorModel
+            inspector: contextInspectorModel,
+            docked: docked
         )
         .frame(width: docked ? 260 : nil)
         .padding(.top, 12)
-        .padding(.trailing, 12)
+        .padding(.trailing, docked ? 0 : 12)
         .padding(.bottom, 12)
         .frame(maxHeight: .infinity, alignment: .top)
         .transition(.move(edge: .trailing).combined(with: .opacity))
     }
 
+    /// Below the inspector fit threshold the open panel stays mounted as a narrow
+    /// trailing strip so run evidence is not fully hidden and widening restores
+    /// the full inspector without resetting `showActivitySidebar`.
+    private func activityInspectorCollapsedStrip() -> some View {
+        VStack(spacing: 10) {
+            Button {
+                if reduceMotion {
+                    showActivitySidebar = false
+                } else {
+                    withAnimation(.easeInOut(duration: 0.18)) {
+                        showActivitySidebar = false
+                    }
+                }
+            } label: {
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 12, weight: .semibold))
+                    .frame(width: 28, height: 28)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(GrokChromeButtonStyle())
+            .help("Hide run inspector")
+            .accessibilityLabel("Hide run inspector")
+
+            if store.liveRunEvidenceProjection != nil {
+                Circle()
+                    .fill(Color.accentColor)
+                    .frame(width: 8, height: 8)
+                    .accessibilityHidden(true)
+            } else if activitySnapshot != nil {
+                Circle()
+                    .fill(activitySnapshot?.outcome == .completionReceiptMissing ? Color.orange : Color.secondary)
+                    .frame(width: 8, height: 8)
+                    .accessibilityHidden(true)
+            }
+
+            Text("Run")
+                .font(AppTheme.Typography.captionStrong)
+                .foregroundStyle(.secondary)
+                .rotationEffect(.degrees(-90))
+                .fixedSize()
+                .accessibilityHidden(true)
+
+            Spacer(minLength: 0)
+        }
+        .frame(width: 40)
+        .padding(.vertical, 12)
+        .frame(maxHeight: .infinity)
+        .background(AppTheme.Palette.sidebar)
+        .overlay(alignment: .leading) { Divider() }
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("Run inspector collapsed")
+        .accessibilityValue(activityEvidenceAccessibilityValue)
+        .accessibilityHint("Widen the window to restore the full run inspector.")
+        .accessibilityIdentifier("grok-activity-sidebar-collapsed")
+        .transition(.move(edge: .trailing).combined(with: .opacity))
+    }
+
     var body: some View {
-        // Codex parity Slice 2: the contextual Activity inspector overlays the
-        // top-trailing corner so opening it never compresses the conversation's
-        // reading width. Workbench W-6 (2026-08-08): once the chat area can
-        // host both surfaces at full width, the same panel docks as a real
-        // third column; the hide-first responsive order is unchanged.
+        // Codex parity Slice 2 / audit Slice 4: the Run inspector overlays only in
+        // the mid band (900..<1,100 pt chat area). At ≥1,100 pt it docks as a
+        // real third column; below 900 an open panel collapses to a trailing strip.
         HStack(alignment: .top, spacing: 0) {
         ZStack(alignment: .topTrailing) {
             VStack(spacing: 0) {
@@ -1025,9 +1081,9 @@ struct ChatView: View {
                 .focusSection()
             }
 
-            // Slice 7 responsive order: the inspector hides first when the chat
-            // area cannot host the overlay without covering the reading column.
-            // `showActivitySidebar` is preserved so widening restores the panel.
+            // Slice 7 responsive order: below 900 the inspector collapses to a
+            // trailing strip; 900..<1,100 overlays; ≥1,100 docks. The user's
+            // open state is preserved so widening restores the full panel.
             if showActivitySidebar,
                ResponsiveLayoutPolicy.inspectorFits(chatAreaWidth: chatAreaWidth),
                !ResponsiveLayoutPolicy.inspectorDocks(chatAreaWidth: chatAreaWidth) {
@@ -1035,16 +1091,22 @@ struct ChatView: View {
             }
         }
 
-        // Workbench W-6: at ≥1,500 pt the open inspector is a real third
-        // column — same panel and state, no overlap with the transcript.
+        // Workbench W-6 / audit Slice 4: at ≥1,100 pt the open inspector is a
+        // real third column — same panel and state, no overlap with the transcript.
         if showActivitySidebar,
            ResponsiveLayoutPolicy.inspectorDocks(chatAreaWidth: chatAreaWidth) {
             activityInspector(docked: true)
         }
+
+        // Below 900 pt keep a compact collapsed strip instead of hiding evidence.
+        if showActivitySidebar,
+           !ResponsiveLayoutPolicy.inspectorFits(chatAreaWidth: chatAreaWidth) {
+            activityInspectorCollapsedStrip()
+        }
         }
         // W-6: the measurement wraps the whole chat area including the docked
         // column — measuring only the transcript stack would shrink the width
-        // at the moment of docking and oscillate across the 1,500-pt threshold.
+        // at the moment of docking and oscillate across the 1,100-pt threshold.
         .onGeometryChange(for: Double.self) { proxy in
             proxy.size.width
         } action: { width in
@@ -1926,7 +1988,7 @@ struct ChatView: View {
             HStack(spacing: 6) {
                 Image(systemName: showActivitySidebar ? "chevron.right" : "sidebar.right")
                     .font(.system(size: 12, weight: .semibold))
-                Text("Activity")
+                Text("Run inspector")
                     .font(AppTheme.Typography.label)
                 if let snapshot = activitySnapshot {
                     Circle()
@@ -1946,8 +2008,8 @@ struct ChatView: View {
         }
         .buttonStyle(GrokChromeButtonStyle())
         .foregroundStyle(.secondary)
-        .help(showActivitySidebar ? "Hide activity sidebar" : "Show activity sidebar")
-        .accessibilityLabel(showActivitySidebar ? "Hide activity sidebar" : "Show activity sidebar")
+        .help(showActivitySidebar ? "Hide run inspector" : "Show run inspector")
+        .accessibilityLabel(showActivitySidebar ? "Hide run inspector" : "Show run inspector")
         .accessibilityValue(activityEvidenceAccessibilityValue)
         .accessibilityHint("Shows live generation-bound receipts during a turn and authoritative receipts after settlement.")
         .accessibilityIdentifier("grok-activity-sidebar-toggle")
