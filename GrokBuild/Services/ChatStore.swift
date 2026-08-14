@@ -815,6 +815,8 @@ final class ChatStore {
         didSet { warmStartOnFirstIntentIfNeeded(previousDraft: oldValue) }
     }
     private var firstIntentWarmStartTask: Task<Void, Never>?
+    /// Once `shutdownPermanently()` runs, this store must not spawn grok again.
+    private var isPermanentlyShutdown = false
     private(set) var pendingSubmitIntent: PendingSubmitIntent?
 
     var isPreparingSubmit: Bool { pendingSubmitIntent != nil }
@@ -914,6 +916,7 @@ final class ChatStore {
     /// live process is never touched.
     private func warmStartOnFirstIntentIfNeeded(previousDraft: String) {
         guard previousDraft.isEmpty, !composerDraft.isEmpty else { return }
+        guard !isPermanentlyShutdown else { return }
         guard currentWorkspace != nil,
               connectionState == .idle,
               process.sessionId == nil,
@@ -924,9 +927,18 @@ final class ChatStore {
               firstIntentWarmStartTask == nil else { return }
         firstIntentWarmStartTask = Task { [weak self] in
             guard let self else { return }
+            guard !Task.isCancelled, !self.isPermanentlyShutdown else {
+                self.firstIntentWarmStartTask = nil
+                return
+            }
             await self.startNewSession()
             self.firstIntentWarmStartTask = nil
         }
+    }
+
+    private func cancelFirstIntentWarmStart() {
+        firstIntentWarmStartTask?.cancel()
+        firstIntentWarmStartTask = nil
     }
 
     // MARK: - /btw aside panel
@@ -943,6 +955,15 @@ final class ChatStore {
         isStreaming = value
         activeTurnBackendSessionID = value ? process.sessionId : nil
     }
+
+    /// Test-only: a long-lived warm-start stand-in that must cancel on teardown.
+    func beginSyntheticWarmStartForTests() {
+        firstIntentWarmStartTask = Task { try? await Task.sleep(for: .seconds(30)) }
+    }
+
+    var firstIntentWarmStartIsRunningForTests: Bool { firstIntentWarmStartTask != nil }
+
+    var isPermanentlyShutdownForTests: Bool { isPermanentlyShutdown }
 
     /// Test-only: force a continuity status so the Send-gate predicates can be exercised
     /// without staging a full backend verification round trip.
@@ -2025,6 +2046,7 @@ final class ChatStore {
     }
 
     func startNewSession(resetThreadTools: Bool = false) async {
+        guard !isPermanentlyShutdown else { return }
         let predecessorBackendID = durableGrokSessionID
         let localMessagesAtFork = messages
         messages.removeAll()
@@ -2117,6 +2139,7 @@ final class ChatStore {
         forceFreshStart: Bool = false,
         freshStartPredecessorBackendID: String? = nil
     ) async {
+        guard !isPermanentlyShutdown else { return }
         guard let ws = currentWorkspace else { return }
         // A populated restored tab always belongs to its saved backend session. Several
         // asynchronous launch paths can request a restart without carrying that id; resolving
@@ -2259,8 +2282,19 @@ final class ChatStore {
                 enabledBuiltInToolNames: enabledBuiltInToolNames
             )
         )
+        guard !isPermanentlyShutdown else {
+            connectionWatchdogTask?.cancel()
+            connectionState = .idle
+            return
+        }
         let spawnInterval = GrokBuildPerformance.begin(.processSpawnToACPReady)
         await process.start(workspace: ws, options: opts)
+        if isPermanentlyShutdown {
+            spawnInterval.end()
+            await process.shutdown()
+            connectionState = .idle
+            return
+        }
         spawnInterval.end()
         if let generation = process.launchReceipt?.processGeneration {
             routeContractsByProcessGeneration[generation] = routeContractForLaunch
@@ -3140,6 +3174,7 @@ final class ChatStore {
         )
         firstChunkInterval?.end()
         firstChunkInterval = nil
+        cancelFirstIntentWarmStart()
         cancelStreamingTextFlush()
         attachCurrentTurnTrace(to: stoppedAssistantID)
         invalidateTurnSettlement()
@@ -3188,6 +3223,7 @@ final class ChatStore {
         pendingSubmitIntent = nil
         firstChunkInterval?.end()
         firstChunkInterval = nil
+        cancelFirstIntentWarmStart()
         cancelStreamingTextFlush()
         invalidateTurnSettlement()
         connectionWatchdogTask?.cancel()
@@ -3221,9 +3257,11 @@ final class ChatStore {
     /// process's ACP event stream, which terminates `consumeOutput()` and lets the
     /// store/process pair deallocate. A store must not reconnect after this.
     func shutdownPermanently() async {
+        isPermanentlyShutdown = true
         pendingSubmitIntent = nil
         firstChunkInterval?.end()
         firstChunkInterval = nil
+        cancelFirstIntentWarmStart()
         cancelStreamingTextFlush()
         invalidateTurnSettlement()
         connectionWatchdogTask?.cancel()

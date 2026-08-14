@@ -801,6 +801,9 @@ struct ContentView: View {
         SessionMessageStore.remove(for: id)
         Task {
             await store.shutdownPermanently()
+            if await MainActor.run(body: { liveSessions.isEmpty }) {
+                AgentBrowserService.terminateAutoStartedExternalBrowsers()
+            }
             guard deleteBackend, case .exact(let backendID) = cleanupPlan else { return }
             do {
                 try await GrokCLIService().deleteSession(id: backendID, cwd: closing.workspace.path)
@@ -2019,6 +2022,7 @@ private struct ContentViewNotificationHandlers: ViewModifier {
                     }
                 }
             }
+            AgentBrowserService.terminateAutoStartedExternalBrowsers()
             // AppDelegate holds termination open (bounded) until this arrives. Posting
             // from the main actor keeps its completion flag main-thread confined; the
             // previous background-thread post raced the poll loop and could burn the

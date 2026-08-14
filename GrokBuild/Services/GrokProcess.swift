@@ -1363,7 +1363,7 @@ final class GrokProcess: @unchecked Sendable {
             state = .ready
         } catch {
             guard activeProcessGeneration == launchGeneration else { return }
-            let stderrDetails = startupStderrSnapshot()
+            let stderrDetails = Self.redactedStartupStderr(startupStderrSnapshot())
             let suffix = stderrDetails.isEmpty ? "" : "\n\(stderrDetails)"
             state = .failed("ACP startup failed: \(error.localizedDescription)\(suffix)")
             await cleanupProcess(setIdle: false)
@@ -2030,6 +2030,12 @@ final class GrokProcess: @unchecked Sendable {
         ioLock.lock()
         defer { ioLock.unlock() }
         return startupStderr.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    static func redactedStartupStderr(_ text: String) -> String {
+        let redacted = GrokMCPRedactor.redact(text)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        return String(redacted.prefix(2_000))
     }
 
     private func initializeACP() async throws {

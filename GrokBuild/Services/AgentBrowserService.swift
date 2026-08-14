@@ -315,6 +315,10 @@ enum AgentBrowserService {
         process.standardOutput = Pipe()
         process.standardError = Pipe()
         try process.run()
+        recordAutoStartedExternalBrowserPID(process.processIdentifier)
+        process.terminationHandler = { finished in
+            forgetAutoStartedExternalBrowserPID(finished.processIdentifier)
+        }
 
         return try await waitForExternalBrowser(settings: settings)
     }
@@ -488,5 +492,46 @@ enum AgentBrowserService {
             code: Int(outcome.status),
             userInfo: [NSLocalizedDescriptionKey: output]
         )
+    }
+
+    private static let autoStartedPIDLock = NSLock()
+    private static var autoStartedExternalBrowserPIDs: Set<pid_t> = []
+
+    static func recordAutoStartedExternalBrowserPID(_ pid: Int32) {
+        guard pid > 1 else { return }
+        autoStartedPIDLock.lock()
+        autoStartedExternalBrowserPIDs.insert(pid)
+        autoStartedPIDLock.unlock()
+    }
+
+    static func forgetAutoStartedExternalBrowserPID(_ pid: Int32) {
+        autoStartedPIDLock.lock()
+        autoStartedExternalBrowserPIDs.remove(pid)
+        autoStartedPIDLock.unlock()
+    }
+
+    static func recordedAutoStartedExternalBrowserPIDsForTests() -> Set<Int32> {
+        autoStartedPIDLock.lock()
+        defer { autoStartedPIDLock.unlock() }
+        return autoStartedExternalBrowserPIDs
+    }
+
+    /// Ends Chromium processes GrokBuild auto-started into
+    /// `~/Library/Application Support/GrokBuild/BrowserProfiles/`. Ordinary
+    /// user Chrome is never recorded here and must not be killed.
+    static func terminateAutoStartedExternalBrowsers() {
+        autoStartedPIDLock.lock()
+        let pids = autoStartedExternalBrowserPIDs
+        autoStartedExternalBrowserPIDs.removeAll()
+        autoStartedPIDLock.unlock()
+        for pid in pids {
+            kill(pid, SIGTERM)
+        }
+        if !pids.isEmpty {
+            Thread.sleep(forTimeInterval: 0.4)
+        }
+        for pid in pids {
+            kill(pid, SIGKILL)
+        }
     }
 }
