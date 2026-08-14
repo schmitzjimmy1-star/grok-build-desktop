@@ -556,6 +556,29 @@ final class ActivitySidebarTests: XCTestCase {
         )
     }
 
+    func testCoordinationMetricsRenderOnlyAuthoritativeReportedFields() {
+        let metrics = RunEvidenceSnapshot.CoordinationMetrics(
+            requestedChildCount: 2,
+            spawnedChildCount: 2,
+            finishedChildCount: 1,
+            maximumUsefulConcurrency: 2,
+            childToolCallCount: 3,
+            unresolvedIdentityCount: 1,
+            stopToSettleMilliseconds: 275,
+            parentTotalTokens: 20_000,
+            childTotalTokens: 8_000
+        )
+
+        XCTAssertEqual(
+            ActivitySidebarPresentation.coordinationSummary(metrics),
+            "2 requested • 2 spawned • 1 finished • max 2 concurrent"
+        )
+        XCTAssertEqual(
+            ActivitySidebarPresentation.coordinationUsage(metrics),
+            "20,000 parent tokens • 8,000 child tokens • 3 child tool calls"
+        )
+    }
+
     private func makeWorker(status: String) -> RunEvidenceSnapshot.Worker {
         .init(
             id: "worker-\(status)",

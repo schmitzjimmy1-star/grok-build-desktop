@@ -235,11 +235,43 @@ struct BackgroundTaskTracker {
     private var pendingInputs: [String: [String: Any]] = [:]
     private var pendingSpawnedEvents: [String: SubagentSpawnedEvent] = [:]
     private var pendingFinishedEvents: [String: SubagentFinishedEvent] = [:]
+    private var observedSpawnedChildIDs: Set<String> = []
+    private var observedFinishedEvents: [String: SubagentFinishedEvent] = [:]
+    private var activeSpawnedChildIDs: Set<String> = []
+    private var maximumUsefulConcurrency = 0
+    private var stopToSettleMilliseconds: Int?
     private var anonymousWorkerSequence = 0
 
     /// Spawned lifecycle receipts that never bound to a spawn tool row.
     var unboundSpawnedEvents: [SubagentSpawnedEvent] {
         Array(pendingSpawnedEvents.values)
+    }
+
+    /// Typed, per-turn observations for the settled Run receipt. This reducer
+    /// owns correlation only; the parent usage value still comes from the
+    /// authoritative parent `turn_completed` receipt supplied by ChatStore.
+    func coordinationMetrics(parentTotalTokens: Int?) -> RunEvidenceSnapshot.CoordinationMetrics {
+        let requestedRows = activities.filter { $0.kind == .subagent }
+        let boundChildIDs = Set(requestedRows.compactMap(\.childID))
+        let unboundLifecycleIDs = observedSpawnedChildIDs.subtracting(boundChildIDs)
+        let childToolCounts = observedFinishedEvents.values.compactMap(\.toolCallCount)
+        let childTokenCounts = observedFinishedEvents.values.compactMap(\.tokenCount)
+        return RunEvidenceSnapshot.CoordinationMetrics(
+            requestedChildCount: requestedRows.count,
+            spawnedChildCount: observedSpawnedChildIDs.count,
+            finishedChildCount: observedFinishedEvents.count,
+            maximumUsefulConcurrency: maximumUsefulConcurrency,
+            childToolCallCount: childToolCounts.isEmpty ? nil : childToolCounts.reduce(0, +),
+            unresolvedIdentityCount: requestedRows.filter { $0.childID == nil }.count
+                + unboundLifecycleIDs.count,
+            stopToSettleMilliseconds: stopToSettleMilliseconds,
+            parentTotalTokens: parentTotalTokens,
+            childTotalTokens: childTokenCounts.isEmpty ? nil : childTokenCounts.reduce(0, +)
+        )
+    }
+
+    mutating func recordStopToSettle(milliseconds: Int) {
+        stopToSettleMilliseconds = max(0, milliseconds)
     }
 
     mutating func apply(update: [String: Any]) {
@@ -310,6 +342,16 @@ struct BackgroundTaskTracker {
     /// missing spawn call is evidence of an unmatched/orphaned receipt, not a
     /// reason to invent a worker.
     mutating func apply(spawned event: SubagentSpawnedEvent) {
+        recordSpawnedLifecycle(event)
+        guard bindSpawnedLifecycle(event) else {
+            pendingSpawnedEvents[event.childID] = event
+            return
+        }
+    }
+
+    /// Binds one typed spawn receipt without changing the lifecycle counters.
+    /// Returning false preserves the receipt for a later tool row to reconcile.
+    private mutating func bindSpawnedLifecycle(_ event: SubagentSpawnedEvent) -> Bool {
         let exactTitle = event.description?
             .trimmingCharacters(in: .whitespacesAndNewlines)
             .lowercased()
@@ -329,8 +371,7 @@ struct BackgroundTaskTracker {
         // backend description exactly matches its title. A missing or ambiguous
         // match remains pending rather than inventing a worker identity.
         guard let index = workerIndex(childID: event.childID) ?? descriptionMatchedIndex else {
-            pendingSpawnedEvents[event.childID] = event
-            return
+            return false
         }
         var activity = activities[index]
         activity.childID = event.childID
@@ -346,27 +387,36 @@ struct BackgroundTaskTracker {
             activity.detail = event.description ?? ""
         }
         activities[index] = activity
+        pendingSpawnedEvents[event.childID] = nil
+        reconcilePendingFinished(for: event.childID)
+        return true
     }
 
     /// Applies only the terminal facts carried by the typed lifecycle receipt.
     /// A prose answer or a completed spawn tool call cannot reach this method and
     /// therefore cannot mark a worker successful.
     mutating func apply(finished event: SubagentFinishedEvent) {
+        let effectiveEvent = observedFinishedEvents[event.childID]
+            .map { mergedFinishedEvent($0, with: event) }
+            ?? event
+        observedFinishedEvents[event.childID] = effectiveEvent
+        activeSpawnedChildIDs.remove(event.childID)
         guard let index = workerIndex(childID: event.childID) else {
-            pendingFinishedEvents[event.childID] = event
+            pendingFinishedEvents[event.childID] = effectiveEvent
             return
         }
         var activity = activities[index]
-        activity.childID = event.childID
-        activity.status = BackgroundActivityStatusPolicy.canonicalWorkerTerminalStatus(event.status)
-        activity.durationMilliseconds = event.durationMilliseconds
-        activity.turns = event.turns
-        activity.toolCallCount = event.toolCallCount
-        activity.tokenCount = event.tokenCount
-        activity.redactedError = event.redactedError
-        activity.childToolReceipts = event.childToolReceipts
-        activity.childLedgerReadOutcome = ChildLedgerReadOutcome.from(receipts: event.childToolReceipts)
+        activity.childID = effectiveEvent.childID
+        activity.status = BackgroundActivityStatusPolicy.canonicalWorkerTerminalStatus(effectiveEvent.status)
+        activity.durationMilliseconds = effectiveEvent.durationMilliseconds
+        activity.turns = effectiveEvent.turns
+        activity.toolCallCount = effectiveEvent.toolCallCount
+        activity.tokenCount = effectiveEvent.tokenCount
+        activity.redactedError = effectiveEvent.redactedError
+        activity.childToolReceipts = effectiveEvent.childToolReceipts
+        activity.childLedgerReadOutcome = ChildLedgerReadOutcome.from(receipts: effectiveEvent.childToolReceipts)
         activities[index] = activity
+        pendingFinishedEvents[event.childID] = nil
     }
 
     /// Rechecks an already-bound child ledger at the parent completion barrier.
@@ -424,6 +474,11 @@ struct BackgroundTaskTracker {
         }
         pendingSpawnedEvents = [:]
         pendingFinishedEvents = [:]
+        observedSpawnedChildIDs = []
+        observedFinishedEvents = [:]
+        activeSpawnedChildIDs = []
+        maximumUsefulConcurrency = 0
+        stopToSettleMilliseconds = nil
     }
 
     mutating func reset() {
@@ -432,6 +487,11 @@ struct BackgroundTaskTracker {
         pendingInputs = [:]
         pendingSpawnedEvents = [:]
         pendingFinishedEvents = [:]
+        observedSpawnedChildIDs = []
+        observedFinishedEvents = [:]
+        activeSpawnedChildIDs = []
+        maximumUsefulConcurrency = 0
+        stopToSettleMilliseconds = nil
         anonymousWorkerSequence = 0
     }
 
@@ -533,6 +593,8 @@ struct BackgroundTaskTracker {
 
         if let childID {
             reconcilePendingLifecycle(for: childID)
+        } else {
+            reconcilePendingSpawnedEvents()
         }
     }
 
@@ -586,11 +648,70 @@ struct BackgroundTaskTracker {
 
     private mutating func reconcilePendingLifecycle(for childID: String) {
         if let spawned = pendingSpawnedEvents.removeValue(forKey: childID) {
-            apply(spawned: spawned)
+            if !bindSpawnedLifecycle(spawned) {
+                pendingSpawnedEvents[childID] = spawned
+            }
         }
+        reconcilePendingFinished(for: childID)
+    }
+
+    private mutating func reconcilePendingSpawnedEvents() {
+        for childID in pendingSpawnedEvents.keys.sorted() {
+            guard let event = pendingSpawnedEvents[childID] else { continue }
+            if bindSpawnedLifecycle(event) {
+                pendingSpawnedEvents[childID] = nil
+            }
+        }
+    }
+
+    private mutating func reconcilePendingFinished(for childID: String) {
         if let finished = pendingFinishedEvents.removeValue(forKey: childID) {
             apply(finished: finished)
         }
+    }
+
+    private mutating func recordSpawnedLifecycle(_ event: SubagentSpawnedEvent) {
+        guard observedSpawnedChildIDs.insert(event.childID).inserted else { return }
+        activeSpawnedChildIDs.insert(event.childID)
+        maximumUsefulConcurrency = max(maximumUsefulConcurrency, activeSpawnedChildIDs.count)
+        if observedFinishedEvents[event.childID] != nil {
+            activeSpawnedChildIDs.remove(event.childID)
+        }
+    }
+
+    /// Lifecycle delivery is at-least-once. Keep the richer terminal receipt so
+    /// a sparse replay cannot erase usage or child-ledger evidence already seen.
+    private func mergedFinishedEvent(
+        _ existing: SubagentFinishedEvent,
+        with incoming: SubagentFinishedEvent
+    ) -> SubagentFinishedEvent {
+        let existingCanonical = BackgroundActivityStatusPolicy.canonicalWorkerTerminalStatus(existing.status)
+        let incomingCanonical = BackgroundActivityStatusPolicy.canonicalWorkerTerminalStatus(incoming.status)
+        let status = incomingCanonical == "unknown" && existingCanonical != "unknown"
+            ? existing.status
+            : incoming.status
+        let receipts: [ChildToolReceipt]?
+        switch (existing.childToolReceipts, incoming.childToolReceipts) {
+        case let (current?, replay?):
+            receipts = replay.count >= current.count ? replay : current
+        case let (current?, nil):
+            receipts = current
+        case let (nil, replay?):
+            receipts = replay
+        case (nil, nil):
+            receipts = nil
+        }
+        return SubagentFinishedEvent(
+            identity: incoming.identity,
+            childID: incoming.childID,
+            status: status,
+            durationMilliseconds: incoming.durationMilliseconds ?? existing.durationMilliseconds,
+            turns: incoming.turns ?? existing.turns,
+            toolCallCount: incoming.toolCallCount ?? existing.toolCallCount,
+            tokenCount: incoming.tokenCount ?? existing.tokenCount,
+            redactedError: incoming.redactedError ?? existing.redactedError,
+            childToolReceipts: receipts
+        )
     }
 
     private func mergedInput(_ previous: [String: Any]?, with current: [String: Any]) -> [String: Any] {

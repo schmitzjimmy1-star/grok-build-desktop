@@ -17,6 +17,21 @@ enum ChildLedgerReadOutcome: String, Sendable, Equatable, Codable {
 /// single parent turn. It intentionally contains receipts, not mutable runtime
 /// controls: Grok remains the lifecycle and tool executor.
 struct RunEvidenceSnapshot: Equatable, Sendable {
+    /// Per-parent-turn coordination observations. Counts come only from typed
+    /// spawn tool rows and generation-bound ACP lifecycle receipts; missing
+    /// backend usage remains nil instead of being presented as zero.
+    struct CoordinationMetrics: Equatable, Sendable, Codable, Hashable {
+        let requestedChildCount: Int
+        let spawnedChildCount: Int
+        let finishedChildCount: Int
+        let maximumUsefulConcurrency: Int
+        let childToolCallCount: Int?
+        let unresolvedIdentityCount: Int
+        let stopToSettleMilliseconds: Int?
+        let parentTotalTokens: Int?
+        let childTotalTokens: Int?
+    }
+
     struct Binding: Equatable, Sendable {
         let localTabID: UUID?
         let workspaceID: UUID?
@@ -195,6 +210,8 @@ struct RunEvidenceSnapshot: Equatable, Sendable {
     let goalSummary: String?
     let plan: [PlanStep]
     let workers: [Worker]
+    /// Optional for compatibility with checkpoints written before Slice 1.
+    var coordination: CoordinationMetrics? = nil
     let tools: ToolSummary
     let artifacts: [ChatStore.RunArtifact]
     /// Git is a distinct authority from tool-write artifacts. It is refreshed
@@ -252,6 +269,7 @@ struct RunEvidenceSnapshot: Equatable, Sendable {
             goalSummary: goalSummary,
             plan: plan,
             workers: workers,
+            coordination: coordination,
             tools: tools,
             artifacts: artifacts,
             gitReviewFiles: paths,

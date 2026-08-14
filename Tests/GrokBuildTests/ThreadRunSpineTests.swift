@@ -489,6 +489,7 @@ final class ThreadRunSpineTests: XCTestCase {
         XCTAssertEqual(restored.process, original.process)
         XCTAssertEqual(restored.continuity, original.continuity)
         XCTAssertEqual(restored.usage, original.usage)
+        XCTAssertEqual(restored.coordination, original.coordination)
         XCTAssertEqual(restored.outcome, original.outcome)
         XCTAssertEqual(restored.artifacts, original.artifacts)
         XCTAssertEqual(restored.gitReviewFiles, original.gitReviewFiles)
@@ -506,7 +507,8 @@ final class ThreadRunSpineTests: XCTestCase {
         )
         for key in [
             "workspaceID", "requestID", "outcomeCode", "toolSummaryReceipt",
-            "processReceipt", "continuityReceipt", "usageReceipt", "attachmentNames",
+            "processReceipt", "continuityReceipt", "usageReceipt", "coordinationReceipt",
+            "attachmentNames",
         ] {
             object.removeValue(forKey: key)
         }
@@ -521,6 +523,7 @@ final class ThreadRunSpineTests: XCTestCase {
 
         XCTAssertEqual(restored.tools.succeeded, 1)
         XCTAssertNil(restored.usage.totalTokens)
+        XCTAssertNil(restored.coordination)
         XCTAssertNil(restored.usage.costUsdTicks)
         XCTAssertTrue(restored.process.state.contains("prior state not retained"))
         XCTAssertTrue(restored.continuity.reason.contains("not retained"))
@@ -644,6 +647,17 @@ final class ThreadRunSpineTests: XCTestCase {
                 runtimeModelID: "grok-4.5-build",
                 routedModel: "gpt-5.6-terra"
             )],
+            coordination: .init(
+                requestedChildCount: 1,
+                spawnedChildCount: 1,
+                finishedChildCount: 1,
+                maximumUsefulConcurrency: 1,
+                childToolCallCount: 1,
+                unresolvedIdentityCount: 0,
+                stopToSettleMilliseconds: nil,
+                parentTotalTokens: 15_329,
+                childTotalTokens: 4_000
+            ),
             tools: .init(succeeded: 2, failed: 1, cancelled: 1, unknown: 1),
             artifacts: [.init(
                 toolCallID: "tool",
