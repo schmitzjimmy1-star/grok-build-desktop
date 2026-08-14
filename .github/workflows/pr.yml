@@ -4,7 +4,15 @@ on:
   pull_request:
     branches:
       - main
+  # GitHub does not deliver pull_request events to fork repositories. Run the
+  # same exact-head check for every non-main branch in Jimmy's maintained fork.
+  push:
+    branches-ignore:
+      - main
   workflow_dispatch:
+
+permissions:
+  contents: read
 
 concurrency:
   group: pr-checks-${{ github.ref }}

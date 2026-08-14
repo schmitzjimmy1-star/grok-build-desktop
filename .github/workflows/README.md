@@ -4,7 +4,7 @@ CI/CD for GrokBuild on `macos-latest`. See [BUILDING.md](../../BUILDING.md#githu
 
 | Workflow | File | When it runs |
 |----------|------|--------------|
-| **PR Checks** | [`pr.yml`](pr.yml) | Pull requests to `main`; manual dispatch |
+| **PR Checks** | [`pr.yml`](pr.yml) | Pull requests to `main`; non-`main` branch pushes; manual dispatch |
 | **Release** | [`release.yml`](release.yml) | Manual dispatch only (tag push trigger is disabled) |
 
 ---
@@ -16,7 +16,13 @@ Validates that the project builds and tests pass on macOS before merge.
 ### Triggers
 
 - **`pull_request`** → branch `main`
+- **`push`** → every non-`main` branch, providing exact-head checks in the
+  maintained public fork where GitHub does not deliver `pull_request` events
 - **`workflow_dispatch`** — run manually from **Actions → PR Checks → Run workflow**
+
+The workflow token is explicitly read-only (`contents: read`). The branch-push
+fallback exists because [GitHub sends pull-request events to the base repository,
+not the fork](https://docs.github.com/en/actions/reference/workflows-and-actions/events-that-trigger-workflows#pull-request-events-for-forked-repositories).
 
 ### Concurrency
 
@@ -50,7 +56,8 @@ make app
 
 ### Merge-gate contract
 
-The `Test and Build App` job is a required check on the personal fork's `main`
+The `Test and Build App` job from the GitHub Actions app is a required check on
+the personal fork's `main`
 branch. GitHub must run it against the exact pull-request head SHA, and the pull
 request must remain blocked while that check is pending or failing. A successful
 run permits the merge; it does not replace merged-main packaging, signing, or
