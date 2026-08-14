@@ -660,6 +660,20 @@ final class ACPClientContractTests: XCTestCase {
             ),
             "Unknown"
         )
+        XCTAssertEqual(
+            ChatStore.modelSelectorStatusLabel(
+                status: .unknown,
+                receiptIsCurrentProcess: false,
+                currentModel: "grok-4.6",
+                effectiveModelID: nil,
+                requestedModelID: nil,
+                providerFacingRequestedModel: nil,
+                requestHasIdentity: false,
+                followsInheritedDefault: true,
+                isConnecting: true
+            ),
+            "Connecting"
+        )
     }
 
     func testACPModeParsingAcceptsNestedAndLoadShapesWithoutInventingChat() {

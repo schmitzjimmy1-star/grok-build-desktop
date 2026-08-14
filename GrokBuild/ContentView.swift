@@ -1737,13 +1737,8 @@ struct ContentView: View {
         // blanked the Agents hub and Connections lane until the next workspace switch.
         // Both loads are guarded and read-only.
         //
-        // The warm start no longer lives here: launching grok (plus its browser and
-        // computer-use MCP children, and a possible external Chromium) for every New
-        // chat left one full helper set per empty tab and stole frontmost during
-        // launch flows. First user intent — the first keystroke into the composer —
-        // now triggers it instead (`ChatStore.composerDraft`), which still hides the
-        // process launch behind typing time for real work while an untouched tab
-        // spawns nothing.
+        // Creating a tab still spawns nothing. Send / `deliverPrompt` is the
+        // launch gate; a draft-only New chat stays idle.
         Task {
             await store.loadDiscoveredAgentsIfNeeded()
             await store.refreshPromptMCPOptions()

@@ -265,8 +265,8 @@ enum SlashAutocompleteGroups {
 
 /// A plain-language starting point shown before a session's first request. Selecting one
 /// seeds an editable composer draft. It never sends a prompt by itself. On a fresh empty
-/// tab, filling the draft warm-starts `grok agent stdio` in the background; Send is still
-/// what talks to grok. Restored saved tasks do not warm-start from these starters.
+/// tab, filling the draft hides the welcome pills but does not spawn grok; Send remains
+/// the launch gate. Restored saved tasks still wait for an explicit resume or Send.
 struct WorkbenchIntent: Identifiable, Hashable, Sendable {
     var id: String { title }
     let icon: String
