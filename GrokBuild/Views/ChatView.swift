@@ -1350,6 +1350,8 @@ struct ChatView: View {
             .help("More actions")
             .accessibilityLabel("More actions")
 
+            tasksStatusPill
+
             Spacer()
 
             headerReviewToggle
@@ -2271,6 +2273,23 @@ struct ChatView: View {
         let title = count > 0 ? "Tasks (\(count))" : "Tasks"
 
         return Menu {
+            Section("Runtime") {
+                if let lease = store.runtimeLease {
+                    Text("Runtime pinned — \(lease.activeScheduleCount) active schedule\(lease.activeScheduleCount == 1 ? "" : "s") keep this session connected")
+                    Text("Backend \(lease.backendSessionID) • generation \(lease.processGeneration)")
+                    Text("Last scheduler receipt: \(lease.lastSchedulerReceiptAt.formatted(date: .abbreviated, time: .shortened))")
+                    if let next = lease.nextScheduledCheckpointAt {
+                        Text("Next checkpoint: \(next.formatted(date: .abbreviated, time: .shortened))")
+                    }
+                    Text(lease.isTurnActive
+                        ? "Stop releases this lease; closing or quitting stops scheduled work."
+                        : "Cancel schedules before closing; schedules require this app process.")
+                } else {
+                    Text("Not runtime pinned — no live schedule inventory is retaining this process.")
+                    Text("Restored or cached task metadata cannot create a lease; refresh against the live backend.")
+                }
+            }
+
             if activities.isEmpty && unboundSpawns.isEmpty {
                 Button("No background tasks") {}
                     .disabled(true)
@@ -2330,9 +2349,11 @@ struct ChatView: View {
         .fixedSize()
         .disabled(store.currentWorkspace == nil)
         .help(available
-            ? "Background tasks observed in this session (scheduled, shells, monitors, subagents)."
-            : "Background tasks mirror — refresh to query grok.")
-        .accessibilityLabel("Background tasks")
+            ? "Background tasks observed in this session; active schedules visibly pin their exact live runtime."
+            : "Background tasks mirror — refresh to query grok; cached metadata never pins runtime.")
+        .accessibilityLabel(store.runtimeLease == nil
+            ? "Background tasks, runtime not pinned"
+            : "Background tasks, runtime pinned")
     }
 
     @ViewBuilder

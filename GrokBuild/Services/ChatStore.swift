@@ -595,6 +595,21 @@ final class ChatStore {
     var latestTaskCheckpoint: AssistantTurnCheckpoint? {
         messages.reversed().compactMap { $0.assistantTrace?.checkpoint }.first
     }
+    var latestTaskCheckpointTimestamp: Date? {
+        messages.reversed().first(where: { $0.assistantTrace?.checkpoint != nil })?.timestamp
+    }
+    var hasLiveProcess: Bool { process.activeProcessGeneration != nil }
+    var runtimeLease: SessionRuntimeLease? {
+        SessionRuntimeLease.authoritative(
+            tasks: scheduledTasks,
+            receipt: scheduledTaskInventoryReceipt,
+            localTabID: tabSessionID,
+            backendSessionID: process.sessionId,
+            processGeneration: process.activeProcessGeneration,
+            connectionState: connectionState,
+            lastSettledCheckpointAt: latestTaskCheckpointTimestamp
+        )
+    }
     var persistedPendingRecoveryIntent: SessionPendingRecoveryIntent? { pendingRecoveryIntent }
     var effectiveLaunchReceipt: GrokLaunchReceipt? { process.launchReceipt }
     var effectiveSessionReceipt: EffectiveSessionReceipt? {
@@ -764,6 +779,7 @@ final class ChatStore {
     /// Tasks grok has scheduled, mirrored from observed `scheduler_*` tool activity in this session.
     private(set) var scheduledTasks: [ScheduledTask] = []
     private var scheduledTaskTracker = ScheduledTaskTracker()
+    private(set) var scheduledTaskInventoryReceipt: ScheduledTaskInventoryReceipt?
 
     // MARK: - Background activity (scheduled + background shells, monitors, subagents)
     private(set) var backgroundActivities: [BackgroundActivity] = []
@@ -1727,6 +1743,7 @@ final class ChatStore {
         currentTurnAttachmentNames.removeAll()
         goalState = nil
         clearWorkflowRunState()
+        clearScheduledTaskRuntimeState()
         clearBackgroundTaskState()
         clearSubagentLifecycleState()
         promptQueue.removeAll()
@@ -2093,6 +2110,16 @@ final class ChatStore {
         workflowRuns = []
     }
 
+    private func clearScheduledTaskRuntimeState(notify: Bool = true) {
+        let hadRuntimeState = !scheduledTasks.isEmpty || scheduledTaskInventoryReceipt != nil
+        scheduledTaskTracker.reset()
+        scheduledTasks = []
+        scheduledTaskInventoryReceipt = nil
+        if notify && hadRuntimeState {
+            NotificationCenter.default.post(name: .runtimeRetentionChanged, object: self)
+        }
+    }
+
     private func clearBackgroundTaskState() {
         backgroundTaskTracker.reset()
         backgroundActivities = []
@@ -2111,6 +2138,10 @@ final class ChatStore {
     ) async {
         guard !isPermanentlyShutdown else { return }
         guard let ws = currentWorkspace else { return }
+        // A runtime lease belongs to one exact backend/process generation. A
+        // reconnect must re-observe scheduler inventory before it can pin runtime.
+        clearScheduledTaskRuntimeState(notify: false)
+        clearBackgroundTaskState()
         // A populated restored tab always belongs to its saved backend session. Several
         // asynchronous launch paths can request a restart without carrying that id; resolving
         // it centrally prevents any of them from silently replacing the visible conversation
@@ -3013,6 +3044,7 @@ final class ChatStore {
         }
         if ok {
             connectionState = .ready
+            NotificationCenter.default.post(name: .runtimeRetentionChanged, object: self)
             notifyMessagesChanged()
             activeTurnBackendSessionID = nil
             authoritativeTailAssistantID = nil
@@ -3046,6 +3078,7 @@ final class ChatStore {
         connectionState = hasAuthoritativeCompletion && process.sessionId != nil
             ? .ready
             : process.state
+        NotificationCenter.default.post(name: .runtimeRetentionChanged, object: self)
         if let idx = messages.firstIndex(where: { $0.id == assistantID }),
            messages[idx].content.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             messages.remove(at: idx)
@@ -3175,6 +3208,7 @@ final class ChatStore {
         backgroundActivities = backgroundTaskTracker.activities
         mcpServerStatuses = MCPReadinessPolicy.stoppedStatuses(for: mcpServerStatuses.map(\.name))
         connectionState = .idle
+        clearScheduledTaskRuntimeState()
         guard wasActiveTurn else { return }
         latestTurnOutcome = .userStopped
         forcedFreshStartAfterUserStop = continuationDecision == .startFresh
@@ -3214,6 +3248,7 @@ final class ChatStore {
         await process.stop()
         mcpServerStatuses = MCPReadinessPolicy.stoppedStatuses(for: mcpServerStatuses.map(\.name))
         connectionState = .idle
+        clearScheduledTaskRuntimeState()
     }
 
     /// LRU teardown may stop a mismatched process for safety, but it can adopt only
@@ -3252,6 +3287,7 @@ final class ChatStore {
         await process.shutdown()
         mcpServerStatuses = MCPReadinessPolicy.stoppedStatuses(for: mcpServerStatuses.map(\.name))
         connectionState = .idle
+        clearScheduledTaskRuntimeState()
     }
 
     func respondToExitPlan(_ request: ExitPlanRequest, verdict: ExitPlanRequest.PlanVerdict) {
@@ -4174,10 +4210,25 @@ final class ChatStore {
         case .availableCommands(let commands):
             applyAvailableSlashCommands(commands)
         case .schedulerActivity(let payload):
+            let previousObservation = scheduledTaskTracker.lastAuthoritativeObservationAt
             scheduledTaskTracker.apply(update: payload)
             scheduledTasks = scheduledTaskTracker.tasks
+            if scheduledTaskTracker.lastAuthoritativeObservationAt != previousObservation,
+               let observedAt = scheduledTaskTracker.lastAuthoritativeObservationAt,
+               let localTabID = tabSessionID,
+               let backendSessionID = process.sessionId,
+               let processGeneration = process.activeProcessGeneration {
+                scheduledTaskInventoryReceipt = ScheduledTaskInventoryReceipt(
+                    localTabID: localTabID,
+                    backendSessionID: backendSessionID,
+                    processGeneration: processGeneration,
+                    observedAt: observedAt,
+                    taskCount: scheduledTasks.count
+                )
+            }
             backgroundTaskTracker.apply(update: payload)
             backgroundActivities = backgroundTaskTracker.activities
+            NotificationCenter.default.post(name: .runtimeRetentionChanged, object: self)
         case .workflowActivity(let payload):
             workflowRunTracker.apply(update: payload)
             workflowRuns = workflowRunTracker.runs
@@ -4186,7 +4237,6 @@ final class ChatStore {
             backgroundTaskTracker.apply(update: payload)
             backgroundActivities = backgroundTaskTracker.activities
             recordCurrentTurnWorkerChanges(since: previousActivities)
-            scheduledTasks = backgroundTaskTracker.activities.compactMap(\.scheduledTask)
         case .turnCompleted(let completion):
             guard ownsActiveCompletionEvent(completion.identity) else {
                 process.rejectTurnCompletionBridge(

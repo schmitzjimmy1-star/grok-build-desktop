@@ -372,6 +372,10 @@ struct ContentView: View {
         .onReceive(NotificationCenter.default.publisher(for: .subagentRolesChanged)) { _ in
             refreshWorkspaceAgentInventories()
         }
+        .onReceive(NotificationCenter.default.publisher(for: .runtimeRetentionChanged)) { _ in
+            sessionListRevision &+= 1
+            Task { await enforceConnectionCap() }
+        }
         .onReceive(NotificationCenter.default.publisher(for: NSApplication.willTerminateNotification)) { _ in
             flushTranscriptsForTermination()
         }
@@ -404,7 +408,8 @@ struct ContentView: View {
         .sheet(isPresented: sessionModalBinding(.activityDashboard)) {
             SessionDashboardPanel(
                 entries: dashboardEntries,
-                selectedSessionID: selectedSessionID
+                selectedSessionID: selectedSessionID,
+                softCapExcess: runtimeRetentionDecision.softCapExcess
             ) { sessionID in
                 sessionModal = .none
                 selectSession(sessionID)
@@ -604,6 +609,7 @@ struct ContentView: View {
 
     private var dashboardEntries: [SessionDashboardEntry] {
         _ = sessionListRevision
+        let retention = runtimeRetentionDecision
         return liveSessions.map { session in
             let store = session.store
             let pending = store.pendingPermissions.count
@@ -630,7 +636,9 @@ struct ContentView: View {
                 modelName: store.modelDisplayName(store.currentModel),
                 pendingCount: pending,
                 lastActivationOrdinal: sessionLayout.records.first(where: { $0.id == session.id })?
-                    .lastActivationOrdinal ?? 0
+                    .lastActivationOrdinal ?? 0,
+                runtimeLease: store.runtimeLease,
+                runtimeProtectionReasons: retention.protectionReasonsBySessionID[session.id] ?? []
             ) }
             return SessionDashboardEntry(
                 id: session.id,
@@ -640,9 +648,28 @@ struct ContentView: View {
                 modelName: store.modelDisplayName(store.currentModel),
                 pendingCount: pending,
                 lastActivationOrdinal: sessionLayout.records.first(where: { $0.id == session.id })?
-                    .lastActivationOrdinal ?? 0
+                    .lastActivationOrdinal ?? 0,
+                runtimeLease: store.runtimeLease,
+                runtimeProtectionReasons: retention.protectionReasonsBySessionID[session.id] ?? []
             )
         }
+    }
+
+    private var runtimeRetentionDecision: SessionRuntimeRetentionDecision {
+        return SessionRuntimeRetentionPolicy.decision(
+            candidates: liveSessions.map { session in
+                SessionRuntimeRetentionCandidate(
+                    id: session.id,
+                    connectionState: session.store.connectionState,
+                    hasLiveProcess: session.store.hasLiveProcess,
+                    isSelected: session.id == selectedSessionID,
+                    lastActivationOrdinal: sessionLayout.records.first(where: { $0.id == session.id })?
+                        .lastActivationOrdinal ?? 0,
+                    hasAuthoritativeActiveSchedule: session.store.runtimeLease != nil
+                )
+            },
+            normalCap: maxConnectedSessions
+        )
     }
 
     private func forkCurrentSession() async {
@@ -1668,17 +1695,15 @@ struct ContentView: View {
     }
 
     /// Tear down grok processes for sessions beyond the MRU cap so the resident footprint
-    /// stays bounded. The selected/most-recent sessions and any actively-working session are kept.
+    /// stays bounded. Exact busy/starting state and generation-bound schedule leases may
+    /// exceed that soft cap rather than silently losing active or recurring work.
     private func enforceConnectionCap() async {
-        let keep = Set(recentSessionOrder.prefix(maxConnectedSessions))
-        let evictionCandidates = liveSessions.map(\.id).filter { !keep.contains($0) }
-        for id in evictionCandidates {
+        let retention = runtimeRetentionDecision
+        for id in retention.evictionCandidateIDs {
             guard let index = liveSessions.firstIndex(where: { $0.id == id }) else { continue }
             let session = liveSessions[index]
-            if keep.contains(session.id) || session.id == selectedSessionID { continue }
-            // Skip sessions with no live process, and never interrupt one mid-turn.
-            guard session.store.connectionState != .idle,
-                  session.store.connectionState != .busy else { continue }
+            guard !retention.retainedSessionIDs.contains(session.id),
+                  session.store.hasLiveProcess else { continue }
             let decision = await session.store.shutdownForLRUEviction(
                 expectedTabID: session.id,
                 persistedBackendID: session.grokSessionID
@@ -1897,6 +1922,7 @@ extension Notification.Name {
     static let liveSessionMessagesChanged = Notification.Name("liveSessionMessagesChanged")
     static let liveSessionModelChanged = Notification.Name("liveSessionModelChanged")
     static let liveSessionAgentChanged = Notification.Name("liveSessionAgentChanged")
+    static let runtimeRetentionChanged = Notification.Name("runtimeRetentionChanged")
     static let workspaceAgentSettingsChanged = Notification.Name("workspaceAgentSettingsChanged")
     static let subagentRolesChanged = Notification.Name("subagentRolesChanged")
     static let grokBuildUpdateAvailable = Notification.Name("grokBuildUpdateAvailable")

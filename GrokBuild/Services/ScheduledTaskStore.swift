@@ -14,6 +14,61 @@ struct ScheduledTask: Identifiable, Equatable, Codable {
     var recurring: Bool
 }
 
+struct ScheduledTaskInventoryReceipt: Equatable, Hashable, Sendable {
+    let localTabID: UUID
+    let backendSessionID: String
+    let processGeneration: UInt64
+    let observedAt: Date
+    let taskCount: Int
+}
+
+struct SessionRuntimeLease: Equatable, Hashable, Sendable {
+    let localTabID: UUID
+    let backendSessionID: String
+    let processGeneration: UInt64
+    let activeScheduleCount: Int
+    let lastSchedulerReceiptAt: Date
+    let lastSettledCheckpointAt: Date?
+    let nextScheduledCheckpointAt: Date?
+    let isTurnActive: Bool
+
+    static func authoritative(
+        tasks: [ScheduledTask],
+        receipt: ScheduledTaskInventoryReceipt?,
+        localTabID: UUID?,
+        backendSessionID: String?,
+        processGeneration: UInt64?,
+        connectionState: GrokProcessState,
+        lastSettledCheckpointAt: Date?
+    ) -> SessionRuntimeLease? {
+        guard !tasks.isEmpty,
+              let receipt,
+              let localTabID,
+              let backendSessionID,
+              let processGeneration,
+              receipt.localTabID == localTabID,
+              receipt.backendSessionID == backendSessionID,
+              receipt.processGeneration == processGeneration,
+              receipt.taskCount == tasks.count else { return nil }
+        switch connectionState {
+        case .ready, .busy:
+            break
+        case .idle, .starting, .failed:
+            return nil
+        }
+        return SessionRuntimeLease(
+            localTabID: localTabID,
+            backendSessionID: backendSessionID,
+            processGeneration: processGeneration,
+            activeScheduleCount: tasks.count,
+            lastSchedulerReceiptAt: receipt.observedAt,
+            lastSettledCheckpointAt: lastSettledCheckpointAt,
+            nextScheduledCheckpointAt: tasks.compactMap(\.nextFireAt).min(),
+            isTurnActive: connectionState == .busy
+        )
+    }
+}
+
 /// Detects and parses grok `scheduler_*` tool activity from ACP `session/update` payloads.
 ///
 /// Pure and side-effect-free so it can be unit-tested without a live grok process. grok's wire
@@ -92,10 +147,11 @@ enum SchedulerToolParsing {
 /// appears with its prompt even before the next `scheduler_list` refresh.
 struct ScheduledTaskTracker {
     private(set) var tasks: [ScheduledTask] = []
+    private(set) var lastAuthoritativeObservationAt: Date?
     /// `rawInput` captured at `tool_call`, keyed by toolCallId, merged in at completion.
     private var pendingInputs: [String: [String: Any]] = [:]
 
-    mutating func apply(update: [String: Any]) {
+    mutating func apply(update: [String: Any], observedAt: Date = Date()) {
         let callId = SchedulerToolParsing.toolCallId(inUpdate: update)
         if let callId, let input = SchedulerToolParsing.rawInput(inUpdate: update), !input.isEmpty {
             pendingInputs[callId] = input
@@ -107,12 +163,15 @@ struct ScheduledTaskTracker {
 
         let input = callId.flatMap { pendingInputs[$0] } ?? [:]
         // grok emits CamelCase variants (`SchedulerList`) on rawOutput.type; normalize.
+        let recognizedAuthoritativeOutput: Bool
         switch type.lowercased() {
         case "schedulerlist", "scheduler_list":
+            recognizedAuthoritativeOutput = true
             if let list = out["tasks"] as? [[String: Any]] {
                 tasks = list.compactMap(SchedulerToolParsing.task(from:))
             }
         case "schedulercreate", "scheduler_create":
+            recognizedAuthoritativeOutput = true
             if let id = out["id"] as? String {
                 let interval = (out["humanSchedule"] as? String)
                     ?? (out["humanschedule"] as? String)
@@ -124,15 +183,26 @@ struct ScheduledTaskTracker {
                 upsert(ScheduledTask(id: id, prompt: prompt, intervalHuman: interval, nextFireAt: nil, recurring: recurring))
             }
         case "schedulerdelete", "scheduler_delete":
+            recognizedAuthoritativeOutput = true
             let id = (out["id"] as? String)
                 ?? (input["id"] as? String)
                 ?? (input["task_id"] as? String)
             if let id { tasks.removeAll { $0.id == id } }
         default:
-            break
+            recognizedAuthoritativeOutput = false
+        }
+
+        if recognizedAuthoritativeOutput {
+            lastAuthoritativeObservationAt = observedAt
         }
 
         if let callId { pendingInputs[callId] = nil }
+    }
+
+    mutating func reset() {
+        tasks = []
+        pendingInputs = [:]
+        lastAuthoritativeObservationAt = nil
     }
 
     private mutating func upsert(_ task: ScheduledTask) {
