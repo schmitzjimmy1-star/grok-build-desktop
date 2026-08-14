@@ -17,6 +17,77 @@
 > User conversations, historical acceptance evidence, unnamed sessions that were not
 > created by the current slice, and unrelated browser/app state are protected.
 
+## Status — Long-horizon truth, process hygiene, publication (2026-08-13)
+
+Jimmy authorized a prove-then-repair campaign: backend leaks, three-route
+billable multi-turn and subagent packets (Grok 4.6, direct OpenAI, OpenRouter),
+long-horizon settle, and remaining workbench UI honesty. Same gates A–H, one PR
+per owner. Spawn `grok agent stdio` on Send only, and cancel leftover
+first-intent warm-start on Stop / close / Quit. Do not invent provider fallback.
+Do not scrape `~/.grok/sessions`. Do not translate cross-provider history.
+
+| Slice | Objective | Risk | Provider spend | Status |
+|---|---|---:|---:|---|
+| 0 | Prove leaks, 3-route honesty, multi-tool, 2-child subagent, horizon clear | High | Frozen packets; stop at 400k tokens | Proven 2026-08-13 |
+| 1 | Process ownership: cancel warm-start task, 5s quit, stderr redaction, external CDP PID | High | CU plus one Send only if needed | Next |
+| 2 | Spawn on Send; Connecting/Default copy; idle sidebar until Send | Medium | One native no-tool after Send spawn | Blocked on 1 |
+| 3 | Transcript `resultDetail` + per-tool AX | Medium | 3-route tool packets | Blocked on 2 |
+| 4 | Inspector at default 1440 + per-turn worker clear | Medium | One Grok 4.6 horizon | Blocked on 3 |
+| 5 | Subagent Stop/unbound/ledger + publication matrix | High | 3-route closeout; stop at 400k | Blocked on 4 |
+
+### Slice 0 receipt — live prove, 2026-08-13
+
+Installed `/Applications/GrokBuild.app` at `fbc708114924474af7a179db88fb193e4a1f389a`,
+`dirty=false`, Team `DD2GCQJVB4`, dist/installed SHA-256
+`962abcd2b4c39a98dd5d53453a2f3baeafcfb3c9eabb075191efc8ae1b81911d`. Grok CLI
+`1.0.3 (1a29d5bc12d4) [stable]`. Worktree `main` = `personal/main` `+0/-0`.
+Computer Use via `agent-desktop` session `run-1786663764113-99238-0`. No Swift.
+
+**Leaks**
+
+- First keystroke on New chat **does** spawn `grok agent stdio` (PID 99460, then
+  99918 / 290 / 812). Cold Live confirmation ~2s after type. AX value during
+  connect: `Inherited default Grok 4.6; no live process confirmation yet.`
+- Close Session **after** a live process left zero `grok`. Fast close-during-start
+  also left zero leftover this timing; source still does not cancel
+  `firstIntentWarmStartTask` (`guard let self` keeps the store alive through
+  `startNewSession`). Defect remains a code hazard.
+- `osascript` Quit with a live child: Gate G zero (GrokBuild, grok,
+  GrokBuildComputerUseMCP, agent-desktop, no BrowserProfiles). 3s quit race not
+  reproduced under this load.
+- Close Session removed most prove backends from `grok sessions list` before the
+  explicit delete step. Search still returned a tombstone for parent
+  `019ffd79-ec8a-7720-89b8-a67486289dd8` after list absence (retained CLI limit).
+
+**Billable matrix (actual usage; no fallback)**
+
+| Packet | Route | Backend | Tokens / calls | Result |
+|---|---|---|---|---|
+| GROK-NOTOOL | native Grok 4.6 | `019ffd77-64a7-7ca0-87c0-ba996fcec86f` | 15.9k / 1 | Marker in answer; Direct xAI; no settled Run spine. Prompt had a leading `q` from the quit-probe draft (clear failed). |
+| GROK-MULTI | native Grok 4.6 | `019ffd78-a926-7260-9942-1ce48d7572cf` | 49.4k / 3 | Ordered `pwd` then Read `VERSION`; titles+Succeeded only in transcript tool rows; outputs in the assistant answer. **Defect 6 live.** |
+| GROK-SUB + HORIZON T2/T3 | native Grok 4.6 | `019ffd79-ec8a-7720-89b8-a67486289dd8` | 109.8k / 7 / 3 turns | Two child markers + parent marker; T2/T3 exact no-tool markers; live spine gone; child traces stayed on turn 1. Tasks pill AX name `Background tasks` was not in the compact tree. $1.25 provider-reported. |
+| SWITCH-BLOCK | after GROK-MULTI | n/a | none | Picking `gpt-5.6-luna` showed replay-unsafe history copy and **Start New Session**. No silent send. |
+| OPENAI-NOTOOL | `gpt-5.6-luna` direct | `019ffd8d-da13-7450-ae7f-cc5b9a1d8732` | 12.2k / 1 | Live luna; Route `direct ChatGPT (OpenAI)` `api.openai.com`. Model pick before type did not spawn (`Saved model … no active process`). |
+| OPENAI-TOOL | `gpt-5.6-luna` direct | closed with tab; list gone | 24.5k / 2 | `Execute /bin/pwd` Succeeded; output not in the tool row. |
+| OR-NOTOOL | `openai/gpt-4.1-mini` | closed with tab; list gone | 12.1k / 1 | Pin confirmed; downstream serving unproven; no GrokBuild fallback. ≈$0.0049 est. |
+| OR-TOOL | `openai/gpt-4.1-mini` | `019ffd8f-4cc4-7272-9e63-b5d0e3fd9263` | 24.5k / 2 | Same title-only tool row; pwd in the answer. ≈$0.0099 est. |
+
+Charged **~248k** actual tokens, under the 400k ceiling. OpenRouter downstream
+serving provider stays unproven.
+
+**Repair owners confirmed live:** warm-start spawn-on-keystroke; transcript tool
+rows omit `resultDetail`; Activity inspector overlays at default width; Send-on-spawn
+and Connecting copy still needed. Soft LRU and unredacted stderr were not
+exercised this pass and remain code-backed for Slice 1.
+
+**Ledgered backends (deleted or already absent after Close Session):**
+
+- `019ffd77-64a7-7ca0-87c0-ba996fcec86f` — GROK-NOTOOL (absent at delete)
+- `019ffd78-a926-7260-9942-1ce48d7572cf` — GROK-MULTI (absent at delete)
+- `019ffd79-ec8a-7720-89b8-a67486289dd8` — GROK-SUB/HORIZON (absent at delete; search tombstone retained)
+- `019ffd8d-da13-7450-ae7f-cc5b9a1d8732` — OPENAI-NOTOOL (absent at delete)
+- `019ffd8f-4cc4-7272-9e63-b5d0e3fd9263` — OR-TOOL (deleted)
+
 ## Status — Transcript chrome, tool visibility, provider honesty (2026-08-13)
 
 Jimmy asked for a deep UI/UX and backend review, then repairs: every visible
