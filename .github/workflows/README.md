@@ -61,6 +61,17 @@ installed-app acceptance when a product slice requires those gates.
 
 `release.yml` remains manual and is not part of this required pull-request check.
 
+### Activation receipt — 2026-08-14 UTC
+
+- Repository Actions: enabled, all actions allowed; `PR Checks` active.
+- Automatic events resumed after an explicit repository-level Actions disable/enable
+  transition; the earlier enabled/active API state had produced zero runs.
+- Required branch check: `Test and Build App`, GitHub Actions app ID `15368`, strict
+  and enforced for administrators on the personal fork's `main`.
+- PR #68 head `031747d3c3ee0115128dc93f75ea5bff71439cd9` passed `make test`
+  (802/802), `make app`, and bundled `agent-desktop version` in
+  [run 31770647721](https://github.com/schmitzjimmy1-star/grok-build-desktop/actions/runs/31770647721).
+
 ---
 
 ## Release (`release.yml`)
