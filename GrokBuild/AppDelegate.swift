@@ -113,13 +113,14 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMenuDele
         // children were left to die on stdin EOF instead.
         // A quit that arrives while one is already in flight must keep waiting on the
         // same reply — the old `.terminateNow` here silently skipped the teardown gate
-        // for every quit after the first.
+        // for every quit after the first. The deadline matches Gate G's five-second
+        // graceful window.
         guard !terminationReplyPending else { return .terminateLater }
         terminationReplyPending = true
         sessionTeardownComplete = false
         NotificationCenter.default.post(name: .grokBuildPrepareForShutdown, object: nil)
         Task { @MainActor in
-            let deadline = ContinuousClock.now.advanced(by: .seconds(3))
+            let deadline = ContinuousClock.now.advanced(by: .seconds(5))
             while !sessionTeardownComplete, ContinuousClock.now < deadline {
                 try? await Task.sleep(for: .milliseconds(50))
             }

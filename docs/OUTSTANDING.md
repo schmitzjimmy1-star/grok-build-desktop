@@ -29,7 +29,7 @@ Do not scrape `~/.grok/sessions`. Do not translate cross-provider history.
 | Slice | Objective | Risk | Provider spend | Status |
 |---|---|---:|---:|---|
 | 0 | Prove leaks, 3-route honesty, multi-tool, 2-child subagent, horizon clear | High | Frozen packets; stop at 400k tokens | Proven 2026-08-13 |
-| 1 | Process ownership: cancel warm-start task, 5s quit, stderr redaction, external CDP PID | High | CU plus one Send only if needed | Next |
+| 1 | Process ownership: cancel warm-start task, 5s quit, stderr redaction, external CDP PID | High | CU plus one Send only if needed | Proven 2026-08-13 |
 | 2 | Spawn on Send; Connecting/Default copy; idle sidebar until Send | Medium | One native no-tool after Send spawn | Blocked on 1 |
 | 3 | Transcript `resultDetail` + per-tool AX | Medium | 3-route tool packets | Blocked on 2 |
 | 4 | Inspector at default 1440 + per-turn worker clear | Medium | One Grok 4.6 horizon | Blocked on 3 |
@@ -74,6 +74,47 @@ Computer Use via `agent-desktop` session `run-1786663764113-99238-0`. No Swift.
 
 Charged **~248k** actual tokens, under the 400k ceiling. OpenRouter downstream
 serving provider stays unproven.
+
+### Slice 1 receipt — process ownership, 2026-08-13
+
+Repair is on `codex/grokbuild-audit-s1-process-leaks`. Candidate Computer Use ran
+on `/Applications/GrokBuild.app` stamped `683b4e5c70c9cee801b242bdd439750253defc4b`
+(`dirty=true`, branch `codex/grokbuild-audit-s1-process-leaks`), Team `DD2GCQJVB4`,
+dist/installed SHA-256
+`5f39656dee1ae50dbe6eadc881d22befc34545716da676507fd821ca53a5ebd3`. `make test`
+**784/784**. No billable Send; actual tokens **0**. Computer Use via `agent-desktop`
+session `run-1786666414551-8695-0`.
+
+**Code**
+
+- `stop` / `shutdown` / `shutdownPermanently` cancel `firstIntentWarmStartTask`.
+- `shutdownPermanently` sets `isPermanentlyShutdown` first; `startNewSession` and
+  `restartProcess` refuse respawn, including a second check immediately before
+  `process.start`.
+- Quit deadline is **5 s** (Gate G). Last-tab close and Quit terminate auto-started
+  GrokBuild-profile CDP PIDs; ordinary user Chrome is never recorded.
+- ACP startup stderr is redacted through `GrokMCPRedactor` before `lastError`.
+- Soft LRU still skips `.busy` tabs; documented in `ARCHITECTURE.md`, unchanged.
+
+**LEAK-CLOSE.** New chat, type `x` (no Send). Sidebar went **working** /
+**Starting agent…**; grok PID **9403** (`grok agent stdio`, Grok 4.6) as a child of
+GrokBuild **8721**. Close Session after Live confirmation: PID 9403 gone, no
+`GrokBuildComputerUseMCP`, no `BrowserProfiles`. The in-flight warm-start task is
+cancelled; a closed tab cannot `restartProcess`.
+
+**LEAK-QUIT.** Fresh New chat, type `q` (no Send). Live model Grok 4.6 in **1.5 s**.
+grok PID **9789**. `osascript` `tell application "GrokBuild" to quit`: GrokBuild
+exited in **1.07 s**. Gate G zero: GrokBuild, grok, GrokBuildComputerUseMCP,
+agent-desktop, no BrowserProfiles.
+
+**Ledgered backends**
+
+- `019ffda0-15e7-7720-9ece-e39cb0a6fd46` — LEAK-QUIT warm-start, no summary, no
+  Send (deleted after this receipt). LEAK-CLOSE's backend was already absent from
+  `grok sessions list` after Close Session.
+
+Soft LRU under many `.busy` tabs was not live-exercised; the skip-busy policy is
+intentional this slice.
 
 **Repair owners confirmed live:** warm-start spawn-on-keystroke; transcript tool
 rows omit `resultDetail`; Activity inspector overlays at default width; Send-on-spawn

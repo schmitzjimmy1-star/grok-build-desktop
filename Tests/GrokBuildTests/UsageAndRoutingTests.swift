@@ -288,6 +288,10 @@ final class UsageAndRoutingTests: XCTestCase {
         )
         XCTAssertTrue(storeSource.contains("didSet { warmStartOnFirstIntentIfNeeded(previousDraft: oldValue) }"),
                       "the composer draft's empty-to-nonempty transition triggers the warm start")
+        XCTAssertTrue(storeSource.contains("cancelFirstIntentWarmStart()"),
+                      "Stop, shutdown, and Close Session must cancel an in-flight first-intent spawn")
+        XCTAssertTrue(storeSource.contains("isPermanentlyShutdown"),
+                      "a closed tab must refuse restartProcess after shutdownPermanently")
         XCTAssertTrue(storeSource.contains("var firstIntentStartupStageText: String?"),
                       "first-intent spawn must expose starting copy, not only a silent sidebar working dot")
         XCTAssertTrue(storeSource.contains("composerDraft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty"),

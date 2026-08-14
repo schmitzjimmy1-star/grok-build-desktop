@@ -779,4 +779,75 @@ final class SubprocessHygieneTests: XCTestCase {
         XCTAssertEqual(store.messages.filter { $0.role == .user }.first?.content, "local prompt")
         await store.shutdownPermanently()
     }
+
+    @MainActor
+    func testPermanentShutdownCancelsWarmStartAndRefusesRestart() async {
+        let store = ChatStore()
+        store.beginSyntheticWarmStartForTests()
+        XCTAssertTrue(store.firstIntentWarmStartIsRunningForTests)
+        await store.shutdownPermanently()
+        XCTAssertFalse(store.firstIntentWarmStartIsRunningForTests)
+        XCTAssertTrue(store.isPermanentlyShutdownForTests)
+
+        store.prepare(workspace: Workspace(name: "demo", path: URL(fileURLWithPath: "/tmp/demo-perm-shutdown")))
+        await store.startNewSession()
+        XCTAssertEqual(store.connectionState, .idle)
+        XCTAssertNil(store.process.sessionId, "a permanently shut down tab must not spawn grok again")
+    }
+
+    func testStartupStderrRedactsAPIKeysBeforeUI() {
+        let raw = "ACP init failed api_key=sk-secret-value token=abc123"
+        let redacted = GrokProcess.redactedStartupStderr(raw)
+        XCTAssertFalse(redacted.contains("sk-secret-value"))
+        XCTAssertFalse(redacted.contains("abc123"))
+        XCTAssertTrue(redacted.contains("<redacted>"))
+    }
+
+    func testAutoStartedExternalBrowserLedgerTerminatesRecordedPID() throws {
+        let proc = Process()
+        proc.executableURL = URL(fileURLWithPath: "/bin/sleep")
+        proc.arguments = ["30"]
+        try proc.run()
+        let pid = proc.processIdentifier
+        AgentBrowserService.recordAutoStartedExternalBrowserPID(pid)
+        XCTAssertTrue(AgentBrowserService.recordedAutoStartedExternalBrowserPIDsForTests().contains(pid))
+        AgentBrowserService.terminateAutoStartedExternalBrowsers()
+        XCTAssertTrue(AgentBrowserService.recordedAutoStartedExternalBrowserPIDsForTests().isEmpty)
+        let deadline = Date().addingTimeInterval(2)
+        while proc.isRunning && Date() < deadline {
+            Thread.sleep(forTimeInterval: 0.05)
+        }
+        XCTAssertFalse(proc.isRunning, "recorded auto-started PIDs must be terminated; user Chrome is never recorded")
+    }
+
+    func testQuitDeadlineAndExternalBrowserTeardownAreWired() throws {
+        let repositoryRoot = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        let appDelegate = try String(
+            contentsOf: repositoryRoot.appendingPathComponent("GrokBuild/AppDelegate.swift"),
+            encoding: .utf8
+        )
+        XCTAssertTrue(
+            appDelegate.contains("ContinuousClock.now.advanced(by: .seconds(5))"),
+            "quit must wait Gate G's five-second graceful window"
+        )
+        let content = try String(
+            contentsOf: repositoryRoot.appendingPathComponent("GrokBuild/ContentView.swift"),
+            encoding: .utf8
+        )
+        XCTAssertTrue(
+            content.contains("AgentBrowserService.terminateAutoStartedExternalBrowsers()"),
+            "Quit and last-tab close must tear down auto-started GrokBuild-profile browsers"
+        )
+        let process = try String(
+            contentsOf: repositoryRoot.appendingPathComponent("GrokBuild/Services/GrokProcess.swift"),
+            encoding: .utf8
+        )
+        XCTAssertTrue(
+            process.contains("Self.redactedStartupStderr(startupStderrSnapshot())"),
+            "startup stderr must be redacted before it reaches lastError"
+        )
+    }
 }
