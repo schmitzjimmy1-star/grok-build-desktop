@@ -761,6 +761,9 @@ struct ChatView: View {
                                 welcomeState
                                     .disabled(isSessionRestoreInProgress)
                             }
+                        } else if store.messages.isEmpty && store.isResumedSessionTab {
+                            restoredEmptyState
+                                .disabled(isSessionRestoreInProgress)
                         }
 
                         ForEach(store.messages) { msg in
@@ -1065,7 +1068,7 @@ struct ChatView: View {
                     }
                 )
                 .padding(.horizontal, 12)
-            } else if store.continuityIsResuming && !store.messages.isEmpty {
+            } else if store.continuityIsResuming && store.isResumedSessionTab {
                 LaunchSessionChoices(
                     onResumeCurrent: {
                         Task { _ = await store.resumeTaskSession() }
@@ -1507,6 +1510,17 @@ struct ChatView: View {
         contextBranchName = store.currentWorkspace.flatMap {
             GitService.currentBranch(in: $0.path)
         }
+    }
+
+    private var restoredEmptyState: some View {
+        Text("Loading saved conversation…")
+            .font(.system(size: 20, weight: .semibold))
+            .frame(maxWidth: 520)
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 48)
+            .padding(.horizontal, 32)
+            .accessibilityLabel("Loading saved conversation")
+            .accessibilityIdentifier("grok-restored-conversation-loading")
     }
 
     private var welcomeState: some View {

@@ -22,6 +22,8 @@ from harness.driver import (
     launch_installed,
     new_chat,
     quit_installed,
+    restore_continuation,
+    resume_saved_task,
     select_model,
     send_prompt,
     wait_for_marker,
@@ -123,6 +125,9 @@ def _billable(args: argparse.Namespace) -> int:
             if start_new:
                 new_chat()
                 select_model(packet["model"])
+            elif continuation and continuation.get("resumeAfterQuit"):
+                restore_continuation(marker=receipts[-1]["marker"])
+                resume_saved_task()
             send_prompt(packet["prompt"])
             timeout = 480 if packet["childTopology"] else 300
             wait_for_marker(packet["marker"], timeout_seconds=timeout)

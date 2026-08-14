@@ -39,7 +39,11 @@ def _tool_name(entry: dict[str, Any]) -> tuple[str, str | None]:
         identity = "THREE"
     if "wait_all" in blob or "wait all" in blob:
         return "wait_all", identity
-    if "spawn" in blob or "subagent" in blob:
+    if (
+        "spawn" in blob
+        or "subagent" in blob
+        or (identity in {"LEFT", "RIGHT"} and "echo" not in blob and "/bin/" not in blob)
+    ):
         return "spawn_subagent", identity
     if "terminal" in blob or "bash" in blob or "shell" in blob or "execute" in blob or "/bin/" in blob:
         return "terminal", identity
@@ -59,7 +63,7 @@ def extract_receipt(
     if not path.exists():
         raise DriverError(f"transcript missing for tab {tab_id}")
     envelope = json.loads(path.read_text(encoding="utf-8"))
-    messages = envelope.get("messages") or []
+    messages = _turn_messages(envelope.get("messages") or [], packet["marker"])
     tools: list[dict[str, Any]] = []
     workers: list[dict[str, Any]] = []
     retries: list[dict[str, Any]] = []
@@ -96,6 +100,8 @@ def extract_receipt(
             generation = int(checkpoint["processGeneration"])
         if checkpoint.get("modelID"):
             model = str(checkpoint["modelID"])
+        if checkpoint.get("parentBackendSessionID"):
+            identities["backendId"] = str(checkpoint["parentBackendSessionID"])
         usage_receipt = checkpoint.get("usageReceipt") or {}
         if usage_receipt.get("totalTokens") is not None:
             usage = {
@@ -146,3 +152,26 @@ def extract_receipt(
         "evidencePath": str(path),
         "cleanupResult": "none",
     }
+
+
+def _turn_messages(messages: list[Any], marker: str) -> list[dict[str, Any]]:
+    """Keep only the user/assistant pair whose prompt contains this packet marker."""
+    start = None
+    for index, message in enumerate(messages):
+        if not isinstance(message, dict):
+            continue
+        role = str(message.get("role") or "").lower()
+        content = message.get("content")
+        if role in {"user", "human"} and isinstance(content, str) and marker in content:
+            start = index
+    if start is None:
+        return [message for message in messages if isinstance(message, dict)]
+    selected: list[dict[str, Any]] = []
+    for message in messages[start:]:
+        if not isinstance(message, dict):
+            continue
+        role = str(message.get("role") or "").lower()
+        if selected and role in {"user", "human"}:
+            break
+        selected.append(message)
+    return selected

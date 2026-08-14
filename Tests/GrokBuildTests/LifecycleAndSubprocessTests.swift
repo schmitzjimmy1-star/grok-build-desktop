@@ -773,8 +773,8 @@ final class SubprocessHygieneTests: XCTestCase {
         )
         XCTAssertTrue(chatViewSource.contains("if store.continuityRequiresRecovery {"),
                       "recovery note must be gated on the hard-block predicate")
-        XCTAssertTrue(chatViewSource.contains("} else if store.continuityIsResuming && !store.messages.isEmpty {"),
-                      "quiet launch choices belong on restored transcripts, not empty New chat")
+        XCTAssertTrue(chatViewSource.contains("} else if store.continuityIsResuming && store.isResumedSessionTab {"),
+                      "quiet launch choices belong on restored tabs, including empty-hydrate, not empty New chat")
         XCTAssertTrue(chatViewSource.contains("ContinuityStatusBanner("),
                       "the inline continuity note must be composed above the composer")
         XCTAssertTrue(chatViewSource.contains("LaunchSessionChoices("),
@@ -782,7 +782,7 @@ final class SubprocessHygieneTests: XCTestCase {
         let recoveryStart = try XCTUnwrap(chatViewSource.range(of: "kind: .needsRecovery"))
         let recoveryEnd = try XCTUnwrap(
             chatViewSource.range(
-                of: "} else if store.continuityIsResuming && !store.messages.isEmpty {",
+                of: "} else if store.continuityIsResuming && store.isResumedSessionTab {",
                 range: recoveryStart.upperBound..<chatViewSource.endIndex
             )
         )
@@ -804,6 +804,49 @@ final class SubprocessHygieneTests: XCTestCase {
                       "deliverPrompt must still branch on the hard-block predicate")
         XCTAssertTrue(delivery.contains("await continueAsNew()"),
                       "a hard-blocked send must auto-fork via continueAsNew, not dead-end")
+    }
+
+    @MainActor
+    func testResumeChromeShowsForEmptyResumedTabAndStaysHiddenOnNewChat() async throws {
+        let repositoryRoot = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        let chatViewSource = try String(
+            contentsOf: repositoryRoot.appendingPathComponent("GrokBuild/Views/ChatView.swift"),
+            encoding: .utf8
+        )
+        XCTAssertTrue(
+            chatViewSource.contains("store.messages.isEmpty && store.isResumedSessionTab"),
+            "empty restored tabs must show restored-empty chrome instead of Ask/Build/Review"
+        )
+        XCTAssertTrue(
+            chatViewSource.contains("Loading saved conversation…"),
+            "hydrate-in-flight copy must not reuse the New chat headline"
+        )
+        XCTAssertTrue(chatViewSource.contains("grok-restored-conversation-loading"))
+        XCTAssertTrue(
+            chatViewSource.contains("store.continuityIsResuming && store.isResumedSessionTab"),
+            "Resume current task must be available before transcript hydrate finishes"
+        )
+
+        let fresh = ChatStore()
+        XCTAssertTrue(fresh.messages.isEmpty)
+        XCTAssertFalse(fresh.isResumedSessionTab)
+        XCTAssertTrue(fresh.showsEmptyTranscriptWelcome)
+        await fresh.shutdownPermanently()
+
+        let restored = ChatStore()
+        restored.bindTabSession(
+            UUID(),
+            savedModel: "openai/gpt-4.1-mini",
+            savedGrokSessionID: "01a00281-3092-7540-9c04-1c6c100f413e"
+        )
+        XCTAssertTrue(restored.messages.isEmpty)
+        XCTAssertTrue(restored.isResumedSessionTab)
+        XCTAssertFalse(restored.showsEmptyTranscriptWelcome)
+        XCTAssertTrue(restored.continuityIsResuming)
+        await restored.shutdownPermanently()
     }
 
     func testExplicitTaskResumeUsesNativeExactSessionLoadWithoutSending() throws {

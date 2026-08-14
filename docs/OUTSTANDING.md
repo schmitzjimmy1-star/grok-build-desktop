@@ -19,6 +19,26 @@
 
 ## Slice 5 — first-class agentic acceptance harness (in progress, 2026-08-14)
 
+Installed three-route run `20260814T225910Z` on stamped `e92885d` / `dirty=false`
+evaluated five accepted packets, 197,960 actual tokens, OpenRouter CONT T3 after
+quit/relaunch/Resume-then-Send on local tab
+`5C7E0CC0-6437-4F6D-BFBC-88EE94CC8DEF` / backend
+`01a00281-3092-7540-9c04-1c6c100f413e` (same as T1/T2, process generation 1,
+12,862 / 30 / 12,892 tokens). Exact Close Session removed the three ledgered
+tabs; parent backends were already absent; leftover child dirs
+`01a00280-9c71-7230-8cd5-3f499ef720a0` and
+`01a00280-9c74-7710-8984-1a5fef4f9c14` were removed by those exact IDs. Slice 4
+Trash bundles remain. Protected config SHA-256
+`2cb4dcdaf0f1841aab54fb2ae10586381ca78b560eb9fc0477efb521e92140ae` (2,894 bytes,
+mode `0600`) is unchanged; cwd-scoped `prompt_history.jsonl` grew with composer
+residue only (post-T3 SHA-256
+`0686ebf78ff3beb9a65a222cd3aa618bb0935775c717084c24445fd05c7f5851`, 115,477 bytes,
+mode `0644`). That T3 pass is harness evidence on `e92885d`, not merged-main
+closeout. Gate D is authorized: product resume honesty
+(welcome/LaunchSessionChoices gated on `isResumedSessionTab`) ships with this
+branch. The signed closeout three-route must use a **new UTC run ID** and must
+not reuse `20260814T225910Z` markers.
+
 Authorized scope is the documented harness in
 `docs/GROKBUILD_VERIFICATION_AND_FORWARD_SLICES_2026-08-13.md`. Gate A started from
 clean canonical `main == personal/main == bbff38345935cbf8c7d39f7c46bf1605e3fc9339`
@@ -37,9 +57,13 @@ Recoverable Slice 4 Trash bundles
 `~/.Trash/GrokBuild-Slice4-run-20260814T195756Z-OR41-CH2` are preserved.
 
 Frozen implementation paths are `scripts/acceptance/`,
-`Tests/GrokBuildTests/AcceptanceHarnessTests.swift`, `ARCHITECTURE.md`,
+`Tests/GrokBuildTests/AcceptanceHarnessTests.swift`,
+`GrokBuild/Services/ChatStore.swift`, `GrokBuild/Views/ChatView.swift`,
+`Tests/GrokBuildTests/ACPClientContractTests.swift`,
+`Tests/GrokBuildTests/LifecycleAndSubprocessTests.swift`, `ARCHITECTURE.md`,
 `scripts/README.md`, this ledger, the forward-slices current-slice line,
-`.cursor/skills/grokbuild-dev/SKILL.md`, and `.gitignore`. Dry-run is default;
+`.cursor/skills/grokbuild-dev/SKILL.md`,
+`.cursor/skills/grokbuild-grok-cli/SKILL.md`, and `.gitignore`. Dry-run is default;
 `--billable` is required for any fresh provider Send; cleanup refuses guessed IDs;
 the harness never bypasses the installed UI or fakes ACP. Slice 6, Slice 7,
 releases, tags, origin, force-push, branch deletion, and configuration changes

@@ -23,7 +23,11 @@ cost. Fresh provider Sends require explicit `--billable` plus a UTC `--run-id`
 after installed stamp/signing/hash, CLI version, model availability, process-zero,
 marker uniqueness, and a clean test ledger. Cleanup accepts only exact IDs from
 `--ids-from-ledger` and refuses guessed identities. The harness never bypasses
-`/Applications/GrokBuild.app` or fakes ACP authority.
+`/Applications/GrokBuild.app` or fakes ACP authority. Live driving opens that
+installed bundle only and refuses `.build` or `dist` copies if they are running.
+After quit/relaunch, continuation packets click **Resume current task** (ACP
+`session/load`, no prompt) then Send, which may be labeled **Send and resume
+session** while continuity is verifying.
 
 ```bash
 python3 scripts/acceptance/run.py

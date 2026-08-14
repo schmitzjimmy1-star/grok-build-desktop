@@ -53,6 +53,22 @@ final class AcceptanceHarnessTests: XCTestCase {
         }
     }
 
+    func testInstalledDriverUsesResumeThenSendAndRefusesBuildCopies() throws {
+        let driver = try String(
+            contentsOf: Self.repoRoot.appendingPathComponent("scripts/acceptance/harness/driver.py"),
+            encoding: .utf8
+        )
+        XCTAssertTrue(driver.contains("Send and resume session"))
+        XCTAssertTrue(driver.contains("def resume_saved_task()"))
+        XCTAssertTrue(driver.contains("Resume current task"))
+        XCTAssertTrue(driver.contains("refusing to drive a non-installed GrokBuild"))
+        XCTAssertTrue(driver.contains("INSTALLED_EXEC = APP_PATH / \"Contents/MacOS/GrokBuild\""))
+
+        let runScript = try String(contentsOf: Self.runScript, encoding: .utf8)
+        XCTAssertTrue(runScript.contains("resume_saved_task()"))
+        XCTAssertTrue(runScript.contains("resumeAfterQuit"))
+    }
+
     private func runHarness(_ arguments: [String]) throws -> (exitCode: Int32, stdout: String, stderr: String, output: String) {
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/usr/bin/python3")

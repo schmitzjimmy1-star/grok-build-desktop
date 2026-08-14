@@ -132,7 +132,8 @@ def available_models() -> list[str]:
 
 def require_models(needed: list[str]) -> None:
     available = available_models()
-    missing = [model for model in needed if model not in available]
+    normalized = {item.replace("/", "-") for item in available}
+    missing = [model for model in needed if model.replace("/", "-") not in normalized]
     if missing:
         raise PreflightError(f"configured models unavailable: {missing}")
 

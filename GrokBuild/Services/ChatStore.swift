@@ -282,11 +282,14 @@ final class ChatStore {
         grokSessionId != nil || savedGrokSessionID != nil
     }
 
-    /// An empty transcript shows the welcome/intent cards unless the tab is hard-blocked
-    /// on continuity recovery or the composer already holds a draft. Once typing (or a
-    /// starter pill) owns the task, the landing pills are the wrong chrome.
+    /// An empty transcript shows the welcome/intent cards unless this tab already owns a
+    /// saved or live backend, continuity recovery is blocking, or the composer already
+    /// holds a draft. A restored tab must not look startable as a fresh Ask/Build/Review
+    /// task while its transcript is still hydrating. Genuine New chat
+    /// (`savedGrokSessionID == nil`, no live session, empty messages) still gets the pills.
     var showsEmptyTranscriptWelcome: Bool {
         messages.isEmpty
+            && !isResumedSessionTab
             && !continuityRequiresRecovery
             && composerDraft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
@@ -1710,11 +1713,6 @@ final class ChatStore {
     /// Reload per-project reasoning effort only (model stays per tab).
     func syncWorkspaceReasoningEffortFromStorage() {
         loadWorkspaceReasoningEffort()
-    }
-
-    /// @deprecated Use `syncWorkspaceReasoningEffortFromStorage()` — model is per tab now.
-    func syncWorkspaceAgentSettingsFromStorage() {
-        syncWorkspaceReasoningEffortFromStorage()
     }
 
     /// Refresh this tab from its own live receipt when switching tabs. Process launch

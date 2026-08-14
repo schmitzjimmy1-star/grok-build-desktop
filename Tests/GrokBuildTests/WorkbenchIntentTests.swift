@@ -45,6 +45,8 @@ final class WorkbenchIntentTests: XCTestCase {
         )
 
         XCTAssertTrue(source.contains("Text(\"What do you want to work on?\")"))
+        XCTAssertTrue(source.contains("Text(\"Loading saved conversation…\")"))
+        XCTAssertTrue(source.contains("private var restoredEmptyState"))
         XCTAssertTrue(source.contains("private struct CodexPromptPill"))
         XCTAssertTrue(source.contains("ForEach(WorkbenchIntent.defaults)"))
         // The welcome model pill was removed 2026-08-03 (redundant with the composer's
