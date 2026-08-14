@@ -1,6 +1,6 @@
 # GrokBuild agentic-performance verification and forward slices — 2026-08-13
 
-Status: **Slice 0 merged and proven; Slice 1 implementation active on 2026-08-14.**
+Status: **Slices 0–1 complete; Slice 2 is not authorized.**
 
 This plan follows the canonical identity and Gates A–H in
 [`CANONICAL_WORKTREE.md`](../CANONICAL_WORKTREE.md) and
@@ -229,6 +229,56 @@ explicit unresolved state. The parent can complete a multi-turn synthesis withou
 losing child attribution, and Stop settles truthfully without ghost workers or
 cross-turn leakage. The exact test threads are deleted, Gate G ends at process zero,
 and the checkpoint update ends with the mandatory three-sentence handoff.
+
+### Slice 1 acceptance receipt — 2026-08-14
+
+- **Code and deterministic proof:** the single-owner reducer, optional durable
+  coordination receipt, and Run-details presentation are frozen at code commit
+  `3e4fd2575276a4437881de6bfe3938821eeb1bdf` on
+  `codex/slice-1-subagent-coordination` in PR #69. The table-driven suite covers
+  all six tool/spawn/finish orders plus duplicate replay, ambiguity, missing
+  identity, generation ownership, Stop, and next-turn clearing. Focused tests
+  passed 85/85 and `make ship` passed 807/807 with installed stamp equal to that
+  code commit, `dirty=false`, dist/install binary parity, Team `DD2GCQJVB4`, a
+  strict deep signature, no quarantine, and both bundled helpers present.
+- **Two-child native Grok 4.6 packet:** parent
+  `019ffeb7-3a49-7a00-aa20-78c54af04512` used marker
+  `GB-S1-COORD-20260814T002000Z`; child A
+  `019ffeb7-618a-7a80-9e91-7d1fbe8ec42a` used one Read receipt, and child B
+  `019ffeb7-618c-7110-9fd6-90bd858e5a53` used one terminal receipt. Live UI
+  showed both children concurrently and then one running/one done. Settlement
+  reported `2 requested • 2 spawned • 2 finished • max 2 concurrent`, two child
+  tool calls, 93,178 parent tokens, 24,675 child tokens, seven model calls,
+  provider API time 27.7 seconds, provider-reported cost $1.53, zero failures,
+  and no artifacts. The second-turn marker
+  `GB-S1-COORD-T2-20260814T002100Z` stayed on the same parent, repeated both
+  child IDs and the exact 777-line result, used zero tools/children, and reported
+  18,615 parent tokens plus $0.11 provider-reported cost.
+- **Stop and continuity packet:** parent
+  `019ffeb8-719e-7d03-bd68-260081051573`, marker
+  `GB-S1-STOP-20260814T002200Z`, spawned exact child
+  `019ffeb8-894e-7222-8056-e9b5fe9fc30e`. User Stop settled the app receipt in
+  462 ms as `1 requested • 1 spawned • 0 finished • max 1 concurrent`, with the
+  worker explicitly orphaned/no-final-report and usage unavailable rather than
+  invented. The backend later recorded that child `cancelled` after 7,669 ms
+  with zero reported tool calls/tokens; no retry was sent. The next marker
+  `GB-S1-STOP-CONT-20260814T002300Z` continued as new backend
+  `019ffeb9-150f-76a3-9a16-f3163bebbc6b`, generation 2, and settled as Recovery
+  fork with `0 requested • 0 spawned • 0 finished • max 0 concurrent`, zero
+  tools, 16,047 parent tokens, and $0.27 provider-reported cost. Thus no prior
+  worker leaked into the fresh turn; reported costs across accepted turns total
+  $1.91, and the separately reported token fields remain below the 500k anomaly
+  ceiling without guessing whether parent totals already aggregate child usage.
+- **Cleanup and closeout:** GrokBuild closed both exact local test tasks; CLI
+  searches for all three markers return zero, and all six ledgered IDs are absent
+  from the live session root. The CLI did not index the three child directories
+  independently, so their handle-free residual directories were moved intact to
+  recoverable Trash at
+  `/Users/jimmyschmitz/.Trash/GrokBuild-Slice1-child-residue.198mJ0`; historical
+  prompt-history entries were not rewritten. Two post-quit process samples found
+  no GrokBuild, helper, `agent-desktop`, or `grok agent` process. No OpenRouter,
+  provider/configuration/credential/release/upstream change, automatic retry, or
+  Slice 2 work occurred.
 
 ## Slice 2 — give long-horizon and scheduled tasks an explicit runtime lease
 
