@@ -41,6 +41,35 @@ final class SessionDashboardNavigationTests: XCTestCase {
         )
     }
 
+    func testDashboardAccessibilityNamesRuntimeLeaseOwnership() {
+        let id = UUID()
+        let observedAt = Date(timeIntervalSince1970: 1_900_000_000)
+        let entry = SessionDashboardEntry(
+            id: id,
+            title: "Scheduled audit",
+            workspaceName: "Grok Build",
+            group: .idle,
+            modelName: "Grok 4.6",
+            pendingCount: 0,
+            lastActivationOrdinal: 2,
+            runtimeLease: SessionRuntimeLease(
+                localTabID: id,
+                backendSessionID: "backend-1",
+                processGeneration: 9,
+                activeScheduleCount: 1,
+                lastSchedulerReceiptAt: observedAt,
+                lastSettledCheckpointAt: observedAt,
+                nextScheduledCheckpointAt: observedAt.addingTimeInterval(60),
+                isTurnActive: false
+            ),
+            runtimeProtectionReasons: [.activeSchedule]
+        )
+
+        let label = SessionDashboardPresentation.accessibilityLabel(for: entry, isSelected: false)
+        XCTAssertTrue(label.contains("Runtime pinned for 1 active schedule"))
+        XCTAssertTrue(label.contains("Process generation 9"))
+    }
+
     func testDashboardRowsAndSelectionKeepOneOwnerAndDoNotStartBackend() throws {
         let repositoryRoot = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent()
@@ -69,6 +98,24 @@ final class SessionDashboardNavigationTests: XCTestCase {
         XCTAssertTrue(selection.contains("sessionSelectionGeneration == selectionGeneration"))
         XCTAssertFalse(selection.contains("ensureSessionStarted"))
         XCTAssertFalse(selection.contains("session.store.start"))
+    }
+
+    func testTasksRuntimeMenuIsMountedInTheWorkbenchHeader() throws {
+        let repositoryRoot = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        let chatView = try String(
+            contentsOf: repositoryRoot.appendingPathComponent("GrokBuild/Views/ChatView.swift"),
+            encoding: .utf8
+        )
+        let topBarStart = try XCTUnwrap(chatView.range(of: "private var topBar: some View"))
+        let topBarEnd = try XCTUnwrap(
+            chatView.range(of: "private func openInButton", range: topBarStart.upperBound..<chatView.endIndex)
+        )
+        let topBar = String(chatView[topBarStart.lowerBound..<topBarEnd.lowerBound])
+
+        XCTAssertTrue(topBar.contains("tasksStatusPill"), "the runtime lease menu must be mounted, not dead SwiftUI code")
     }
 
     private func entry(
