@@ -33,7 +33,7 @@ Do not scrape `~/.grok/sessions`. Do not translate cross-provider history.
 | 2 | Spawn on Send; Connecting/Default copy; idle sidebar until Send | Medium | One native no-tool after Send spawn | Merged PR #62 `18a9f3e` |
 | 3 | Transcript `resultDetail` + per-tool AX | Medium | 3-route tool packets | Merged PR #63 `f837f60` |
 | 4 | Inspector at default 1440 + per-turn worker clear | Medium | One Grok 4.6 horizon | Merged PR #64 `0c97cff` |
-| 5 | Subagent Stop/unbound/ledger + publication matrix | High | 3-route closeout; stop at 400k | In progress on `codex/grokbuild-audit-s5-subagent-truth` |
+| 5 | Subagent Stop/unbound/ledger + publication matrix | High | 3-route closeout; stop at 400k | Proven 2026-08-13 — `codex/grokbuild-audit-s5-subagent-truth` `3cda5aa` |
 
 ### Slice 0 receipt — live prove, 2026-08-13
 
@@ -270,14 +270,47 @@ no-tool markers `GB-S4-HORIZON-T2-20260813T2048` /
 `codex/grokbuild-audit-s5-subagent-truth`:** Stop mid-child → orphaned/cancelled;
 unbound `subagent_spawned` surfaced; child ledger nil vs `[]` distinguished.
 
-### Slice 5 — subagent Stop / unbound / ledger (in progress), 2026-08-13
+### Slice 5 receipt — subagent Stop / unbound / ledger, 2026-08-13
 
-Branch `codex/grokbuild-audit-s5-subagent-truth` from merged PR #64 at `0c97cff`.
-Code repairs: `markActiveSubagentsStoppedByUser()` (orphaned/cancelled, not
-`stopped`); `unboundSpawnedEvents` + synthetic projection rows; `ChildLedgerReadOutcome`
-for nil vs `[]` vs receipts; `beginUserTurn()` drops unbound pending spawn/finish
-receipts so they cannot leak into the next send. Parent owns Computer Use and
-publication matrix.
+Repair is on `codex/grokbuild-audit-s5-subagent-truth` at `3cda5aa`. Candidate
+Computer Use ran on `/Applications/GrokBuild.app` stamped `3cda5aa` (`dirty=false`),
+Team `DD2GCQJVB4`, SHA-256
+`f0ca036243275f682a79d76c5ed9b7854514f6137846ac2cbba6715bf7a55e7c`.
+`make test` **801/801**. Computer Use via `agent-desktop` session
+`run-1786673718906-56590-0`. Grok CLI `1.0.3 (1a29d5bc12d4) [stable]`.
+Ceiling **400k**; captured usage **129.2k** (T1 + OpenAI + OpenRouter) plus
+unmetered T2 / Stop / false packets, still under the ceiling. Python 26494 kept.
+
+**Code**
+
+- User Stop marks bound mid-child subagents **orphaned** and spawn rows with no
+  `childID` **cancelled**; non-subagent background commands still use `"stopped"`.
+- Unbound `subagent_spawned` receipts surface as synthetic inspector/Tasks rows
+  without inventing a `BackgroundActivity`.
+- `ChildLedgerReadOutcome` distinguishes unreadable (`nil`) from empty (`[]`).
+- `beginUserTurn()` drops pending unbound spawn/finish receipts so they cannot
+  leak into the next send. ChatStore `clearTurnState` prunes `backgroundActivities`.
+
+**Publication matrix (fresh tabs; live model confirmed; no fallback)**
+
+| Packet | Route | Backend | Tokens / calls | Result |
+|---|---|---|---|---|
+| GROK-SUB T1 | native Grok 4.6, Direct xAI | `019ffe0e-4d7e-7173-88d1-cb1462e4d616` | 74.7k / 5 / 1 turn / $1.09 | Live Grok 4.6. Inspector `grok-inspector-subagents` **2 done**. Markers `GB-S5-LANE-A/B/PARENT-20260813T2114`. |
+| GROK-SUB T2 | same tab | same | not re-read after tab leave | Marker `GB-S5-GROK-T2-20260813T2114`. Inspector had **no** `grok-inspector-subagents` row. |
+| GROK-STOP | native Grok 4.6 | `019ffe0f-8c0d-7972-b7c5-7b6f74aa178b` | unmetered (aborted) | Stopped while inspector showed **1 running**. After Stop: **Settled: Stopped by you**, inspector **1 no final report** (not done / not fake success). |
+| OPENAI | `gpt-5.6-luna` Direct ChatGPT `api.openai.com` | `019ffe10-389b-7e42-acb9-97ba7b4cc668` | 29.8k / 3 / 1 | Live luna. Parent marker `GB-S5-OPENAI-PARENT-20260813T2114`. One Succeeded tool, **no** inspector worker row; recorded as parent-only, not an invented child finish. |
+| OR-TOOL | `openai/gpt-4.1-mini` OpenRouter pinned | `019ffe11-4a66-7090-9259-a1c7e949b44f` | 24.7k / 2 / 1 · ≈$0.010 | Live pin. `Execute /bin/pwd` Succeeded with workspace path in the tool row. Downstream serving **unproven**. |
+| FALSE | native Grok 4.6 | `019ffe11-d716-7602-b9c7-24e9942d7837` | unmetered | `Execute /usr/bin/false` **Failed**, status 1, one call, no retry. Parent completed with `GB-S5-FALSE-20260813T2114`. |
+
+Unbound `subagent_spawned` (no matching spawn row) **did not occur** on these
+packets; the code path is covered by tests.
+
+**Close / Gates F–G.** Close Session removed the five ledgered parent backends
+from `grok sessions list` before an explicit delete. Two leftover Slice 3 pwd
+sidebar tabs matched the same prompt prefix and were also closed; they were not
+`019ffdad-…`. `osascript` Quit: Gate G zero (GrokBuild, grok agent,
+GrokBuildComputerUseMCP, BrowserProfiles). Python 26494 kept. Unledgered
+`019ffdad-0d4f-7f42-a429-7ac12ad8198d` not deleted.
 
 ## Status — Transcript chrome, tool visibility, provider honesty (2026-08-13)
 
