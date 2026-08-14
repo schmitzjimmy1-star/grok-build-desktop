@@ -795,6 +795,18 @@ final class SubprocessHygieneTests: XCTestCase {
         XCTAssertNil(store.process.sessionId, "a permanently shut down tab must not spawn grok again")
     }
 
+    @MainActor
+    func testComposerDraftWithoutSendLeavesProcessIdle() async {
+        let store = ChatStore()
+        store.prepare(workspace: Workspace(name: "demo", path: URL(fileURLWithPath: "/tmp/demo-send-spawn")))
+        store.composerDraft = "x"
+        XCTAssertEqual(store.connectionState, .idle)
+        XCTAssertNil(store.process.sessionId)
+        XCTAssertFalse(store.firstIntentWarmStartIsRunningForTests)
+        XCTAssertFalse(SidebarSessionActivity.isWorking(connectionState: store.connectionState, isStreaming: store.isStreaming))
+        await store.shutdownPermanently()
+    }
+
     func testStartupStderrRedactsAPIKeysBeforeUI() {
         let raw = "ACP init failed api_key=sk-secret-value token=abc123"
         let redacted = GrokProcess.redactedStartupStderr(raw)

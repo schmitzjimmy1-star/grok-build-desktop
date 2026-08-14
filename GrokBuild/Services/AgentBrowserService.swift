@@ -280,9 +280,9 @@ enum AgentBrowserService {
             "--no-default-browser-check",
             // OUTSTANDING O-1 (2026-08-08): the auto-started CDP browser must not
             // open a startup window and steal frontmost while the user is typing
-            // (the first-intent warm start can launch it mid-keystroke). Browser
-            // tools create their own pages over CDP; a visible window appears
-            // only when a page is actually driven.
+            // Browser tools create their own pages over CDP; a visible window appears
+            // only when a page is actually driven. Auto-start used to race first-intent
+            // typing; Send is now the launch gate, and Quit still tears these PIDs down.
             "--no-startup-window"
         ]
     }

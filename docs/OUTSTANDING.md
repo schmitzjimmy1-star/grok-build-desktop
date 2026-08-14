@@ -29,8 +29,8 @@ Do not scrape `~/.grok/sessions`. Do not translate cross-provider history.
 | Slice | Objective | Risk | Provider spend | Status |
 |---|---|---:|---:|---|
 | 0 | Prove leaks, 3-route honesty, multi-tool, 2-child subagent, horizon clear | High | Frozen packets; stop at 400k tokens | Proven 2026-08-13 |
-| 1 | Process ownership: cancel warm-start task, 5s quit, stderr redaction, external CDP PID | High | CU plus one Send only if needed | Proven 2026-08-13 |
-| 2 | Spawn on Send; Connecting/Default copy; idle sidebar until Send | Medium | One native no-tool after Send spawn | Blocked on 1 |
+| 1 | Process ownership: cancel warm-start task, 5s quit, stderr redaction, external CDP PID | High | CU plus one Send only if needed | Merged PR #61 `f6f648d` |
+| 2 | Spawn on Send; Connecting/Default copy; idle sidebar until Send | Medium | One native no-tool after Send spawn | Proven 2026-08-13 |
 | 3 | Transcript `resultDetail` + per-tool AX | Medium | 3-route tool packets | Blocked on 2 |
 | 4 | Inspector at default 1440 + per-turn worker clear | Medium | One Grok 4.6 horizon | Blocked on 3 |
 | 5 | Subagent Stop/unbound/ledger + publication matrix | High | 3-route closeout; stop at 400k | Blocked on 4 |
@@ -128,6 +128,59 @@ exercised this pass and remain code-backed for Slice 1.
 - `019ffd79-ec8a-7720-89b8-a67486289dd8` — GROK-SUB/HORIZON (absent at delete; search tombstone retained)
 - `019ffd8d-da13-7450-ae7f-cc5b9a1d8732` — OPENAI-NOTOOL (absent at delete)
 - `019ffd8f-4cc4-7272-9e63-b5d0e3fd9263` — OR-TOOL (deleted)
+
+### Slice 2 receipt — spawn on Send, 2026-08-13
+
+Repair is on `codex/grokbuild-audit-s2-spawn-on-send`. Candidate Computer Use ran
+on `/Applications/GrokBuild.app` stamped `f6f648dcbff4077426ba9241bc24616404baca28`
+(`dirty=true`, branch `codex/grokbuild-audit-s2-spawn-on-send`), Team `DD2GCQJVB4`.
+`make test` **785/785**. Computer Use via `agent-desktop` session
+`run-1786668091870-18089-0`. Ceiling **80k**; charged **16.1k** actual tokens.
+
+**Code**
+
+- `ChatStore.warmStartOnFirstIntentIfNeeded` is a no-op. `composerDraft` still
+  calls it so Slice 1 cancel remains belt-and-suspenders. `deliverPrompt` / Send
+  is the only launch gate.
+- Idle inherited New chat labels the catalog model **Default**, not Unknown.
+  While `connectionState == .starting`, the picker and session receipt say
+  **Connecting**. Unknown stays for an empty picker or a receipt conflict.
+- Sidebar stays **idle** for an unsent draft (`SidebarSessionActivity.isWorking`
+  is false until Send).
+
+**Draft without Send.** New chat, type `x`. AX: `Session: New chat, Grok 4.6,
+idle, new session`. Picker name `Grok 4.6 · Default` / `Inherited default Grok
+4.6; no live process confirmation yet.` Composer `1 characters`. Welcome pills
+gone. Zero `grok agent stdio`.
+
+**Send spawn.** Frozen no-tool native Grok 4.6, retry off, marker
+`GB-S2-SEND-SPAWN-20260813T194343`. Prompt had no leftover draft prefix (headed
+select-all paste). Send clicked with picker still Default / idle / no grok.
+Spawned exactly one child: PID **19172**, `grok agent stdio`, `--model grok-4.6`,
+parent GrokBuild **18092**. First good AX after Send already showed
+`Grok 4.6 · Live` / `Live model Grok 4.6, confirmed by the current process.`,
+answer group `GB-S2-SEND-SPAWN-20260813T194343`, sidebar idle on the prompt
+title. Model menu: `Usage: 16.1k tokens · 1 calls · 1 turn · $0.24
+provider-reported`, `Direct xAI`, `Route: native xAI through the Grok CLI.`,
+`Fallback: GrokBuild adds no alternate provider route.` No GrokBuild fallback.
+Connecting during `.starting` was not sampled in AX (the first live poller
+crashed; settle beat the retry). Unit tests pin Connecting for `.starting` +
+inherited. Cold connect was not painful; keystroke spawn stays off.
+
+**Ledgered backends**
+
+- `019ffdba-ae18-7ff1-accf-5548b565ecc2` — Slice 2 native no-tool (deleted).
+  Search for the marker returned 0 (no tombstone this time).
+
+`019ffdad-0d4f-7f42-a429-7ac12ad8198d` (no summary) was already on `grok
+sessions list` and was not created by this packet; not deleted.
+
+**Close / Gate G.** Close Session left no `grok agent stdio`. `osascript` quit
+in **0.27 s**. Gate G zero: GrokBuild, grok agent, GrokBuildComputerUseMCP, no
+BrowserProfiles.
+
+**Repair owners still live for later slices:** transcript tool rows omit
+`resultDetail`; Activity inspector overlays the canvas at default 1440.
 
 ## Status — Transcript chrome, tool visibility, provider honesty (2026-08-13)
 

@@ -277,37 +277,30 @@ final class UsageAndRoutingTests: XCTestCase {
             contentSource.range(of: "private func switchBranch", range: createStart.upperBound..<contentSource.endIndex)
         )
         let create = String(contentSource[createStart.lowerBound..<createEnd.lowerBound])
-        // The warm start moved to first user intent: creating a tab must spawn
-        // nothing (one full helper set per untouched New chat was the P2), and
-        // the first keystroke into the composer launches the process instead.
+        // Creating a tab must spawn nothing. Send, not the first keystroke, owns launch.
         XCTAssertFalse(create.contains("await store.startNewSession()"),
-                       "tab creation must not spawn a grok process; first intent owns the warm start")
+                       "tab creation must not spawn a grok process; Send owns the first launch")
         let storeSource = try String(
             contentsOf: repositoryRoot.appendingPathComponent("GrokBuild/Services/ChatStore.swift"),
             encoding: .utf8
         )
-        XCTAssertTrue(storeSource.contains("didSet { warmStartOnFirstIntentIfNeeded(previousDraft: oldValue) }"),
-                      "the composer draft's empty-to-nonempty transition triggers the warm start")
+        let warmStartRange = try XCTUnwrap(storeSource.range(of: "private func warmStartOnFirstIntentIfNeeded"))
+        let cancelRange = try XCTUnwrap(
+            storeSource.range(of: "private func cancelFirstIntentWarmStart", range: warmStartRange.upperBound..<storeSource.endIndex)
+        )
+        let warmStartBody = String(storeSource[warmStartRange.lowerBound..<cancelRange.lowerBound])
+        XCTAssertFalse(warmStartBody.contains("startNewSession"),
+                       "first keystroke must not spawn grok; Send remains the launch gate")
+        XCTAssertFalse(warmStartBody.contains("restartProcess"),
+                       "first keystroke must not spawn grok; Send remains the launch gate")
         XCTAssertTrue(storeSource.contains("cancelFirstIntentWarmStart()"),
                       "Stop, shutdown, and Close Session must cancel an in-flight first-intent spawn")
         XCTAssertTrue(storeSource.contains("isPermanentlyShutdown"),
                       "a closed tab must refuse restartProcess after shutdownPermanently")
         XCTAssertTrue(storeSource.contains("var firstIntentStartupStageText: String?"),
-                      "first-intent spawn must expose starting copy, not only a silent sidebar working dot")
+                      "Send-owned spawn must expose starting copy, not only a silent sidebar working dot")
         XCTAssertTrue(storeSource.contains("composerDraft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty"),
                       "welcome pills hide once the composer draft owns the task")
-        for guardClause in [
-            "connectionState == .idle",
-            "messages.isEmpty",
-            "savedGrokSessionID == nil",
-            "continuityBackendID == nil",
-            "persistedPendingRecoveryIntent == nil"
-        ] {
-            XCTAssertTrue(
-                storeSource.contains(guardClause),
-                "first-intent warm start must stay narrow: missing guard \(guardClause)"
-            )
-        }
     }
 
     // MARK: - Source contracts

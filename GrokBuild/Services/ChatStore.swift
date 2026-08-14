@@ -807,10 +807,9 @@ final class ChatStore {
     /// (`.id(tabSessionID)` resets scroll identity), so the draft lives here to
     /// survive switching away and back. In-memory only — not persisted.
     ///
-    /// The empty → non-empty transition is also the warm-start trigger: the first
-    /// keystroke is the first real intent to work, so the grok process (session/new,
-    /// MCP wiring, model readback) launches then — never at tab creation, which
-    /// left one full helper set per untouched New chat.
+    /// The empty → non-empty draft transition used to warm-start grok. Send is
+    /// now the launch gate; this didSet stays so teardown can still cancel a
+    /// leftover task from tests or older builds.
     var composerDraft: String = "" {
         didSet { warmStartOnFirstIntentIfNeeded(previousDraft: oldValue) }
     }
@@ -842,9 +841,8 @@ final class ChatStore {
         return connectionState == .ready ? "Dispatching task…" : "Preparing task…"
     }
 
-    /// First-intent warm-start is not a Send. Show starting copy so the sidebar
-    /// working dot is not the only signal while `session/new` is still in flight.
-    /// Same wording as the task strip for a fresh `.starting` process.
+    /// Starting copy while `session/new` is in flight after Send. Same wording as
+    /// the task strip for a fresh `.starting` process.
     var firstIntentStartupStageText: String? {
         guard pendingSubmitIntent == nil else { return nil }
         guard connectionState == .starting else { return nil }
@@ -909,31 +907,10 @@ final class ChatStore {
         )
     }
 
-    /// Launch the backend for a brand-new tab on first typing. Deliberately narrow:
-    /// only a truly fresh local-only tab qualifies — restored tabs, tabs with any
-    /// transcript, saved backend bindings, or pending recovery intents keep their
-    /// continuity-gated lazy start in `deliverPrompt`, and an already starting or
-    /// live process is never touched.
+    /// First-intent keystroke used to warm-start grok. Send is the launch gate now;
+    /// this hook stays as a no-op so teardown can still cancel a leftover task.
     private func warmStartOnFirstIntentIfNeeded(previousDraft: String) {
-        guard previousDraft.isEmpty, !composerDraft.isEmpty else { return }
-        guard !isPermanentlyShutdown else { return }
-        guard currentWorkspace != nil,
-              connectionState == .idle,
-              process.sessionId == nil,
-              messages.isEmpty,
-              savedGrokSessionID == nil,
-              continuityBackendID == nil,
-              persistedPendingRecoveryIntent == nil,
-              firstIntentWarmStartTask == nil else { return }
-        firstIntentWarmStartTask = Task { [weak self] in
-            guard let self else { return }
-            guard !Task.isCancelled, !self.isPermanentlyShutdown else {
-                self.firstIntentWarmStartTask = nil
-                return
-            }
-            await self.startNewSession()
-            self.firstIntentWarmStartTask = nil
-        }
+        _ = previousDraft
     }
 
     private func cancelFirstIntentWarmStart() {
@@ -3760,7 +3737,8 @@ final class ChatStore {
             followsInheritedDefault: {
                 if case .inheritProjectDefault = tabModelIntent { return true }
                 return false
-            }()
+            }(),
+            isConnecting: connectionState == .starting
         )
     }
 
@@ -3793,8 +3771,19 @@ final class ChatStore {
         requestedModelID: String?,
         providerFacingRequestedModel: String?,
         requestHasIdentity: Bool,
-        followsInheritedDefault: Bool
+        followsInheritedDefault: Bool,
+        isConnecting: Bool = false
     ) -> String {
+        if isConnecting {
+            switch status {
+            case .confirmed:
+                break
+            case .rejected:
+                return "Rejected"
+            case .unknown, .requested, .pending:
+                return "Connecting"
+            }
+        }
         switch status {
         case .confirmed:
             let matchesReceipt = currentModelMatchesConfirmedReceipt(
@@ -3827,6 +3816,13 @@ final class ChatStore {
     }
 
     var modelAccessibilityValue: String {
+        if connectionState == .starting, modelExecutionState.status != .confirmed, modelExecutionState.status != .rejected {
+            let name = modelDisplayName(currentModel)
+            if name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                return "Connecting; live model not confirmed yet."
+            }
+            return "Connecting to \(name); live model not confirmed yet."
+        }
         let requested = modelExecutionState.requestedModelID.map(modelDisplayName)
         let effective = modelExecutionState.effectiveModelID.map(modelDisplayName)
         switch modelExecutionState.status {
@@ -3867,6 +3863,9 @@ final class ChatStore {
         case .confirmed:
             return "Last model receipt"
         case .unknown:
+            if connectionState == .starting {
+                return "Connecting"
+            }
             return process.activeProcessGeneration == nil ? "No active process" : "Model unknown"
         }
     }
