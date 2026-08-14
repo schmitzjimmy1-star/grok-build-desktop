@@ -509,7 +509,7 @@ final class ActivitySidebarTests: XCTestCase {
         XCTAssertTrue(chat.contains("outcome == .completionReceiptMissing"))
         XCTAssertTrue(chat.contains(".userStopped"))
         XCTAssertTrue(chat.contains("local stop outcome and next action"))
-        XCTAssertTrue(chat.contains("Activity opened with the preserved run evidence"))
+        XCTAssertTrue(chat.contains("Run inspector opened with the preserved run evidence"))
         XCTAssertTrue(chat.contains("Turn finished. \\(outcome)."))
         XCTAssertEqual(chat.components(separatedBy: "Turn finished").count - 1, 1)
     }

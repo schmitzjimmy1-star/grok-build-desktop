@@ -23,7 +23,7 @@ Jimmy authorized a prove-then-repair campaign: backend leaks, three-route
 billable multi-turn and subagent packets (Grok 4.6, direct OpenAI, OpenRouter),
 long-horizon settle, and remaining workbench UI honesty. Same gates A–H, one PR
 per owner. Spawn `grok agent stdio` on Send only, and cancel leftover
-first-intent warm-start on Stop / close / Quit. Do not invent provider fallback.
+warm-start on Stop / close / Quit. Do not invent provider fallback.
 Do not scrape `~/.grok/sessions`. Do not translate cross-provider history.
 
 | Slice | Objective | Risk | Provider spend | Status |
@@ -33,7 +33,47 @@ Do not scrape `~/.grok/sessions`. Do not translate cross-provider history.
 | 2 | Spawn on Send; Connecting/Default copy; idle sidebar until Send | Medium | One native no-tool after Send spawn | Merged PR #62 `18a9f3e` |
 | 3 | Transcript `resultDetail` + per-tool AX | Medium | 3-route tool packets | Merged PR #63 `f837f60` |
 | 4 | Inspector at default 1440 + per-turn worker clear | Medium | One Grok 4.6 horizon | Merged PR #64 `0c97cff` |
-| 5 | Subagent Stop/unbound/ledger + publication matrix | High | 3-route closeout; stop at 400k | Proven 2026-08-13 — `codex/grokbuild-audit-s5-subagent-truth` `3cda5aa` |
+| 5 | Subagent Stop/unbound/ledger + publication matrix | High | 3-route closeout; stop at 400k | Merged PR #65 `005ed72` |
+| wrap | Live chrome names/ids, leftover warm-start hook gone | Low | Two native Grok 4.6 turns | Proven 2026-08-13; this PR |
+
+**Live chrome after this campaign:** **Run inspector** (`grok-run-inspector`),
+**Session dashboard**, composer **Describe a task**, spawn-on-Send, leftover
+warm-start cancel on teardown only. Dated slice receipts below keep the names
+and ids they captured. Campaign slices 0–5 plus this wrap-up are the closeout;
+GitHub `main` should not keep an open hygiene PR after merge.
+
+### Bow-tie chrome wrap-up — live pass, 2026-08-13
+
+Worktree branch `codex/grokbuild-bowtie-chrome` from `005ed72`. Computer Use via
+`agent-desktop` session `run-1786676127270-68777-0` against
+`.build/GrokBuild.app`. `make test` 802/802 before the prompt pass. Grok CLI
+`1.0.3 (1a29d5bc12d4) [stable]`.
+
+**Idle / spawn-on-Send.** New chat showed **What do you want to work on?**,
+`grok-run-inspector-toggle`, zero `grok-activity-sidebar*` ids, and
+`Inherited default Grok 4.6; no live process confirmation yet.` Typing the
+64-character T1 prompt spawned no `grok agent stdio`. Send immediately showed
+Connecting, then Live Grok 4.6, with PID 68925.
+
+**T1** native no-tool. Marker `GB-BOWTIE-T1-20260814T0255` exact in the
+assistant reply. Run inspector opened (`grok-run-inspector`); toggle Settled
+after the turn.
+
+**T2** Execute `/bin/pwd` plus marker `GB-BOWTIE-T2-20260814T0255`. Transcript
+tool row showed Execute `/bin/pwd`, Succeeded, and the workspace path. Inspector: Run
+outcome Turn completed; Fresh backend bound; 1 succeeded • 0 failed;
+`grok-4.6-build` 33,194 tokens / 2 model calls. Backend
+`019ffe32-836c-7e90-ab7e-75dc6c19edc9`. Close Session removed the tab and that
+backend from `grok sessions list` and left zero `grok agent`. Unledgered
+`019ffdad-0d4f-7f42-a429-7ac12ad8198d` untouched.
+
+**Quit / Gate G.** `osascript` quit; no GrokBuild binary, no `grok agent`, no
+`GrokBuildComputerUseMCP`. Python 26494 (`browser-use --cli-mcp`) kept.
+
+No product defects. VoiceOver “Run inspector opened…”, session sheet
+**Session dashboard**, leftover `warmStartOnFirstIntentIfNeeded` removed,
+Stop drain still treats ACP `subagent_finished` during `await process.stop()`
+as completed.
 
 ### Slice 0 receipt — live prove, 2026-08-13
 
@@ -646,7 +686,7 @@ Re-derived live, not copied from 2026-08-08:
 
 - Warm-start leftovers from Slice 0/2 Computer Use in this repo cwd: `019ffcb3-e06d-7493-865c-7e52549f29b4` and `019ffcbf-418c-72f0-86ad-59a35a2bd92b` (no summary). Probe sessions `019ffcb0-…` and `019ffcb1-…` were already deleted.
 
-Parking lot (not this campaign): W-2 de-bubble; CLI update banner; nested ACP `modes` on `initialize` if a later CLI makes that the only advertisement; moving warm-start to Send (only if a later dump proves spawn is >10s cold).
+Parking lot (not this campaign): W-2 de-bubble; CLI update banner; nested ACP `modes` on `initialize` if a later CLI makes that the only advertisement. Spawn-on-Send already shipped in campaign Slice 2.
 
 ### Live balance audit receipt — 2026-08-13
 

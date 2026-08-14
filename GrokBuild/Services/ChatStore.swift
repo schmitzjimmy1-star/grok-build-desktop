@@ -792,13 +792,11 @@ final class ChatStore {
     /// (`.id(tabSessionID)` resets scroll identity), so the draft lives here to
     /// survive switching away and back. In-memory only — not persisted.
     ///
-    /// The empty → non-empty draft transition used to warm-start grok. Send is
-    /// now the launch gate; this didSet stays so teardown can still cancel a
-    /// leftover task from tests or older builds.
-    var composerDraft: String = "" {
-        didSet { warmStartOnFirstIntentIfNeeded(previousDraft: oldValue) }
-    }
-    private var firstIntentWarmStartTask: Task<Void, Never>?
+    /// Unsent draft only. Typing here must not spawn grok; Send is the launch
+    /// gate. Stop / Close / Quit still cancel a leftover synthetic warm-start
+    /// task from tests.
+    var composerDraft: String = ""
+    private var leftoverWarmStartTask: Task<Void, Never>?
     /// Once `shutdownPermanently()` runs, this store must not spawn grok again.
     private var isPermanentlyShutdown = false
     private(set) var pendingSubmitIntent: PendingSubmitIntent?
@@ -828,7 +826,7 @@ final class ChatStore {
 
     /// Starting copy while `session/new` is in flight after Send. Same wording as
     /// the task strip for a fresh `.starting` process.
-    var firstIntentStartupStageText: String? {
+    var sendOwnedStartupStageText: String? {
         guard pendingSubmitIntent == nil else { return nil }
         guard connectionState == .starting else { return nil }
         guard messages.isEmpty, savedGrokSessionID == nil else { return nil }
@@ -892,15 +890,9 @@ final class ChatStore {
         )
     }
 
-    /// First-intent keystroke used to warm-start grok. Send is the launch gate now;
-    /// this hook stays as a no-op so teardown can still cancel a leftover task.
-    private func warmStartOnFirstIntentIfNeeded(previousDraft: String) {
-        _ = previousDraft
-    }
-
-    private func cancelFirstIntentWarmStart() {
-        firstIntentWarmStartTask?.cancel()
-        firstIntentWarmStartTask = nil
+    private func cancelLeftoverWarmStart() {
+        leftoverWarmStartTask?.cancel()
+        leftoverWarmStartTask = nil
     }
 
     // MARK: - /btw aside panel
@@ -936,10 +928,10 @@ final class ChatStore {
 
     /// Test-only: a long-lived warm-start stand-in that must cancel on teardown.
     func beginSyntheticWarmStartForTests() {
-        firstIntentWarmStartTask = Task { try? await Task.sleep(for: .seconds(30)) }
+        leftoverWarmStartTask = Task { try? await Task.sleep(for: .seconds(30)) }
     }
 
-    var firstIntentWarmStartIsRunningForTests: Bool { firstIntentWarmStartTask != nil }
+    var leftoverWarmStartIsRunningForTests: Bool { leftoverWarmStartTask != nil }
 
     var isPermanentlyShutdownForTests: Bool { isPermanentlyShutdown }
 
@@ -2776,7 +2768,7 @@ final class ChatStore {
             return false
         }
         if preparedIntentID != nil || (connectionState != .ready &&
-            (firstIntentWarmStartTask != nil || connectionState == .starting)) {
+            (leftoverWarmStartTask != nil || connectionState == .starting)) {
             let intent: PendingSubmitIntent
             if let preparedIntentID {
                 guard let pendingSubmitIntent, pendingSubmitIntent.id == preparedIntentID else {
@@ -2796,7 +2788,7 @@ final class ChatStore {
                 pendingSubmitIntent = intent
             }
             claimedPendingIntent = intent
-            if let warmStart = firstIntentWarmStartTask {
+            if let warmStart = leftoverWarmStartTask {
                 await warmStart.value
             } else {
                 if connectionState != .ready,
@@ -3154,7 +3146,7 @@ final class ChatStore {
         )
         firstChunkInterval?.end()
         firstChunkInterval = nil
-        cancelFirstIntentWarmStart()
+        cancelLeftoverWarmStart()
         cancelStreamingTextFlush()
         attachCurrentTurnTrace(to: stoppedAssistantID)
         invalidateTurnSettlement()
@@ -3166,10 +3158,11 @@ final class ChatStore {
         pendingPermissions.removeAll()
         pendingExitPlan = nil
         pendingQuestions.removeAll()
-        // Cancelling the parent ACP turn is not enough for Grok's background
-        // workers: they can keep running after the visible answer stops. Tear
-        // down this exact session so Stop is a real stop, then lazily restart
-        // it on the next send.
+        // Drain ACP during process.stop() before marking leftovers. A
+        // subagent_finished that arrives in that window is a real terminal
+        // receipt and stays completed under the parent userStopped outcome.
+        // markActiveSubagentsStoppedByUser then orphans/cancels only workers
+        // that never finished.
         await process.stop()
         backgroundTaskTracker.markActiveSubagentsStoppedByUser()
         backgroundTaskTracker.markActiveActivitiesStopped()
@@ -3204,7 +3197,7 @@ final class ChatStore {
         pendingSubmitIntent = nil
         firstChunkInterval?.end()
         firstChunkInterval = nil
-        cancelFirstIntentWarmStart()
+        cancelLeftoverWarmStart()
         cancelStreamingTextFlush()
         invalidateTurnSettlement()
         connectionWatchdogTask?.cancel()
@@ -3242,7 +3235,7 @@ final class ChatStore {
         pendingSubmitIntent = nil
         firstChunkInterval?.end()
         firstChunkInterval = nil
-        cancelFirstIntentWarmStart()
+        cancelLeftoverWarmStart()
         cancelStreamingTextFlush()
         invalidateTurnSettlement()
         connectionWatchdogTask?.cancel()

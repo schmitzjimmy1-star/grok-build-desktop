@@ -51,7 +51,7 @@ final class WorkbenchIntentTests: XCTestCase {
         // always-visible model menu); model choice must not reappear mid-canvas.
         XCTAssertFalse(source.contains("grok-starter-model-selector"))
         XCTAssertTrue(source.contains("TextField(\"Describe a task\""))
-        XCTAssertTrue(source.contains("grok-first-intent-startup-status"))
+        XCTAssertTrue(source.contains("grok-send-startup-status"))
         XCTAssertTrue(source.contains("mode.displayName"))
         XCTAssertFalse(source.contains("default: return \"Agent\""),
                        "unknown ACP mode ids must not be relabeled Agent")

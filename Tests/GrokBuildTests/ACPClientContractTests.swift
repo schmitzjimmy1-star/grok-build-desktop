@@ -2275,7 +2275,7 @@ final class ACPClientContractTests: XCTestCase {
         XCTAssertTrue(source.contains("updateRevision &+= 1"))
     }
 
-    func testWorkbenchChromeKeepsBackendReceiptsInTheActivityDrawer() throws {
+    func testWorkbenchChromeKeepsBackendReceiptsInTheRunInspector() throws {
         let repositoryRoot = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent()
             .deletingLastPathComponent()
@@ -2331,7 +2331,7 @@ final class ACPClientContractTests: XCTestCase {
         XCTAssertTrue(sidebarSource.contains("External artifact"))
         XCTAssertTrue(sidebarSource.contains("Files in review"))
         XCTAssertTrue(sidebarSource.contains("section(\"Workers\""))
-        XCTAssertTrue(sidebarSource.contains("grok-activity-sidebar"))
+        XCTAssertTrue(sidebarSource.contains("grok-run-inspector"))
         XCTAssertTrue(sidebarSource.contains("let snapshot: RunEvidenceSnapshot?"))
         XCTAssertFalse(sidebarSource.contains("store."))
         XCTAssertTrue(contentSource.contains(".onChange(of: activeStore.gitRefreshRevision)"))

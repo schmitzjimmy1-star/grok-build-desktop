@@ -14,7 +14,7 @@ GrokBuild should feel like a durable agentic workbench whose primary record is t
 thread. Browser automation remains a supported tool family, but it must not be the
 default mental model, default startup cost, or primary proof surface. A long task
 should make its plan, workers, exact tool calls, checkpoints, artifacts, review
-state, and next action understandable in the thread without requiring the Activity
+state, and next action understandable in the thread without requiring the Run
 inspector to be open.
 
 The thin-wrapper boundary remains absolute: the Grok CLI owns ACP, provider

@@ -398,7 +398,7 @@ final class BackgroundTaskTests: XCTestCase {
         )
     }
 
-    func testBackgroundTaskTrackerMarksWorkersStoppedWithoutHidingEvidence() {
+    func testBackgroundTaskTrackerMarksActiveSubagentsOrphanedWithoutHidingEvidence() {
         var tracker = BackgroundTaskTracker()
         tracker.apply(update: [
             "toolCallId": "call-1",
@@ -415,6 +415,47 @@ final class BackgroundTaskTests: XCTestCase {
 
         XCTAssertEqual(tracker.activities.count, 1)
         XCTAssertEqual(tracker.activities.first?.status, "orphaned")
+    }
+
+    func testUserStopLeavesAlreadyFinishedWorkersCompleted() {
+        var tracker = BackgroundTaskTracker()
+        let childID = "child-finished-during-stop"
+        let identity = ACPEventIdentity(
+            localTabID: UUID(),
+            backendSessionID: "backend-1",
+            processGeneration: 3,
+            backendEventID: "event-1"
+        )
+        tracker.apply(update: [
+            "toolCallId": "spawn-call",
+            "title": "Education lane",
+            "_meta": ["x.ai/tool": ["name": "spawn_subagent"]],
+            "rawInput": ["task_id": childID, "description": "Education lane"]
+        ])
+        tracker.apply(spawned: SubagentSpawnedEvent(
+            identity: identity,
+            childID: childID,
+            parentPromptID: nil,
+            subagentType: "general-purpose",
+            modelID: "grok-4.6",
+            description: "Education lane"
+        ))
+        tracker.apply(finished: SubagentFinishedEvent(
+            identity: identity,
+            childID: childID,
+            status: "completed",
+            durationMilliseconds: 800,
+            turns: 1,
+            toolCallCount: 2,
+            tokenCount: 40,
+            redactedError: nil
+        ))
+
+        tracker.markActiveSubagentsStoppedByUser()
+
+        XCTAssertEqual(tracker.activities.first?.status, "completed",
+                       "a subagent_finished drained during Stop is ACP truth, not an orphan")
+        XCTAssertEqual(tracker.activities.count, 1)
     }
 
     func testBeginUserTurnDropsPriorWorkersButKeepsScheduled() {

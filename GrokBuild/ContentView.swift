@@ -26,7 +26,7 @@ struct ContentView: View {
     //   impossible for both to be presented at once.
     // - `showPreview` owns the Git review split inside the session canvas and
     //   always targets the real `PreviewPane`.
-    // - The contextual Activity inspector is per-tab presentation state owned by
+    // - The contextual Run inspector is per-tab presentation state owned by
     //   `ChatView.showActivitySidebar` (reset naturally on tab switch).
     private enum AppRoute: Equatable {
         case session
@@ -1208,7 +1208,7 @@ struct ContentView: View {
         }, priority: .utility)
         transcriptMetadataByID.merge(restoreMetadata) { _, new in new }
 
-        // Prune stale empty sessions instead of rebuilding them: warm-started New chats
+        // Prune stale empty sessions instead of rebuilding them: empty idle New chats
         // that never held a message accumulate one record per launch and were the bulk
         // of the 130-tab restore. Pruned records are simply not restored; the next
         // committed layout save persists the smaller set, and any transcript remnants

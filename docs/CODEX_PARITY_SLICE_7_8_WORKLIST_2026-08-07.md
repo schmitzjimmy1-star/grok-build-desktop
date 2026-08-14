@@ -110,8 +110,9 @@ from the list by owner decision on 2026-08-07 night.
 ## Slice 7 progress log (updated 2026-08-07 evening)
 
 **Fixed and ship-verified this pass (630 tests / 0 failures each):**
-- Responsive policy live: inspector hides first at narrow widths and returns
-  with preserved state when the sidebar collapses (fixtures 21–23).
+- Responsive policy live: inspector yields to the collapsed strip at narrow
+  widths and returns with preserved state when the sidebar collapses
+  (fixtures 21–23; receipt language said “hides first”).
 - Menubutton AXPress repaired: mode/model menus moved off `.menuStyle(.button)`;
   plain AXPress now opens them (installed-verified).
 - Session Dashboard AX exposure repaired: the sheet's `LazyVStack` was deferring

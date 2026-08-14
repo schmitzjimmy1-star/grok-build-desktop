@@ -63,7 +63,7 @@ final class CodexShellParityTests: XCTestCase {
             "browserStatusIndicator",
             "computerUseStatusIndicator",
             "grok-mode-selector",
-            "grok-first-intent-startup-status",
+            "grok-send-startup-status",
             "grok-model-effort-selector",
             "MicButton(",
             "sessionActionButton",

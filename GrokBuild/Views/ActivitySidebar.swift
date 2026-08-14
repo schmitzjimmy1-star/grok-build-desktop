@@ -290,7 +290,7 @@ struct ActivitySidebar: View {
         .modifier(ActivitySidebarChrome(docked: docked))
         .accessibilityElement(children: .contain)
         .accessibilityLabel("Run inspector")
-        .accessibilityIdentifier("grok-activity-sidebar")
+        .accessibilityIdentifier("grok-run-inspector")
         .confirmationDialog("Continue this transcript as a new conversation?", isPresented: $confirmsContinueAsNew) {
             Button("Continue as New", role: .destructive, action: onContinueAsNew)
             Button("Cancel", role: .cancel) {}

@@ -230,8 +230,9 @@ struct SidebarView: View {
             .padding(.top, 12)
             .padding(.bottom, 8)
 
-            // Navigation-only rail (Codex parity Slice 1): Activity moved to the
-            // header bell; Workflows lives in Settings and the composer command menu.
+            // Navigation-only rail (Codex parity Slice 1): Session dashboard is
+            // the header bell; Run inspector is the ChatView header toggle.
+            // Workflows lives in Settings and the composer command menu.
             VStack(spacing: 2) {
                 CodexRailButton(title: "New chat", systemImage: "square.and.pencil", railAction: .newChat, action: onNewChat)
                 CodexRailButton(title: "Sessions", systemImage: "clock.arrow.circlepath", railAction: .sessions, action: onBrowseSessions)

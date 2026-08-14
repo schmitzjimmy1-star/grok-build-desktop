@@ -284,20 +284,19 @@ final class UsageAndRoutingTests: XCTestCase {
             contentsOf: repositoryRoot.appendingPathComponent("GrokBuild/Services/ChatStore.swift"),
             encoding: .utf8
         )
-        let warmStartRange = try XCTUnwrap(storeSource.range(of: "private func warmStartOnFirstIntentIfNeeded"))
-        let cancelRange = try XCTUnwrap(
-            storeSource.range(of: "private func cancelFirstIntentWarmStart", range: warmStartRange.upperBound..<storeSource.endIndex)
-        )
-        let warmStartBody = String(storeSource[warmStartRange.lowerBound..<cancelRange.lowerBound])
-        XCTAssertFalse(warmStartBody.contains("startNewSession"),
-                       "first keystroke must not spawn grok; Send remains the launch gate")
-        XCTAssertFalse(warmStartBody.contains("restartProcess"),
-                       "first keystroke must not spawn grok; Send remains the launch gate")
-        XCTAssertTrue(storeSource.contains("cancelFirstIntentWarmStart()"),
-                      "Stop, shutdown, and Close Session must cancel an in-flight first-intent spawn")
+        XCTAssertFalse(storeSource.contains("warmStartOnFirstIntentIfNeeded"),
+                       "the keystroke warm-start hook is gone; Send remains the launch gate")
+        XCTAssertFalse(storeSource.contains("didSet { warmStart"),
+                       "composerDraft must not spawn grok on first keystroke")
+        let draftRange = try XCTUnwrap(storeSource.range(of: "var composerDraft: String = \"\""))
+        let draftWindow = String(storeSource[draftRange.lowerBound..<storeSource.index(draftRange.lowerBound, offsetBy: min(400, storeSource.distance(from: draftRange.lowerBound, to: storeSource.endIndex)))])
+        XCTAssertFalse(draftWindow.contains("didSet"),
+                       "composerDraft has no didSet; typing must not launch grok")
+        XCTAssertTrue(storeSource.contains("cancelLeftoverWarmStart()"),
+                      "Stop, shutdown, and Close Session must cancel a leftover synthetic warm-start task")
         XCTAssertTrue(storeSource.contains("isPermanentlyShutdown"),
                       "a closed tab must refuse restartProcess after shutdownPermanently")
-        XCTAssertTrue(storeSource.contains("var firstIntentStartupStageText: String?"),
+        XCTAssertTrue(storeSource.contains("var sendOwnedStartupStageText: String?"),
                       "Send-owned spawn must expose starting copy, not only a silent sidebar working dot")
         XCTAssertTrue(storeSource.contains("composerDraft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty"),
                       "welcome pills hide once the composer draft owns the task")
@@ -334,6 +333,10 @@ final class UsageAndRoutingTests: XCTestCase {
         )
         XCTAssertTrue(chatViewSource.contains("store.sessionUsageSummary"),
                       "the model popover surfaces the session usage HUD (Slice 4 home)")
+        XCTAssertTrue(
+            chatViewSource.contains("rolesByName: store.subagentRoleModelsByName"),
+            "Tasks-pill unbound workers use the same role→model table as the inspector"
+        )
 
         let settingsSource = try String(
             contentsOf: repositoryRoot.appendingPathComponent("GrokBuild/Views/Settings/CustomModelsSettingsPane.swift"),

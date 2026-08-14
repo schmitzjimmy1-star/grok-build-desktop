@@ -61,8 +61,25 @@ git diff --quiet <stamped-commit>..HEAD -- \
 A model provider selected *inside* GrokBuild (Grok, GPT, OpenRouter, Kimi) never
 changes which application repository owns the workbench.
 
+## Live chrome (current)
+
+The workbench names that must match the running app:
+
+- **Run inspector** — header toggle; accessibility ids `grok-run-inspector`,
+  `grok-run-inspector-toggle`, `grok-run-inspector-collapsed`. Docked at the
+  default 1440×900 window; overlay 900..<1,100 pt chat area; collapsed strip
+  below 900 pt (`showActivitySidebar` stays true).
+- **Session dashboard** — header bell.
+- Composer placeholder **Describe a task**. Welcome **What do you want to work on?**
+- Fresh tabs stay idle until Send. `cancelLeftoverWarmStart` is teardown-only.
+
+Dated acceptance sections below keep their original receipts and chrome names
+(Activity inspector, **Do anything**, hide-first). Do not copy those names
+forward.
+
 ## Codex desktop frontend facelift acceptance — 2026-08-07
 
+> Historical receipt. Live names are in **Live chrome (current)** above.
 - Jimmy's supplied Codex desktop photographs are the authoritative visual target. The OpenCodex dashboard detour was removed instead of restyled: GrokBuild remains a native SwiftUI application and the canonical Grok CLI workbench.
 - The complete shell now follows Codex's conversation-first hierarchy: a compact command rail, mapped New chat / Sessions / Activity / Workflows / Plugins / Security actions, nested projects and sessions, a quiet task header, the transcript canvas, an optional floating upper-right Activity inspector, and a wide bottom composer labeled **Do anything**. A fresh chat presents only the restrained Ask / Build / Review starters rather than a management dashboard.
 - Existing project/session state, ACP chat, generation-bound receipts, credentials, model routing, Git review, Grok CLI architecture, and full Settings workspace remain wired to their native implementations; the facelift does not promote configured provider state into runtime proof.

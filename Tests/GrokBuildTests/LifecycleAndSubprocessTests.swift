@@ -784,9 +784,9 @@ final class SubprocessHygieneTests: XCTestCase {
     func testPermanentShutdownCancelsWarmStartAndRefusesRestart() async {
         let store = ChatStore()
         store.beginSyntheticWarmStartForTests()
-        XCTAssertTrue(store.firstIntentWarmStartIsRunningForTests)
+        XCTAssertTrue(store.leftoverWarmStartIsRunningForTests)
         await store.shutdownPermanently()
-        XCTAssertFalse(store.firstIntentWarmStartIsRunningForTests)
+        XCTAssertFalse(store.leftoverWarmStartIsRunningForTests)
         XCTAssertTrue(store.isPermanentlyShutdownForTests)
 
         store.prepare(workspace: Workspace(name: "demo", path: URL(fileURLWithPath: "/tmp/demo-perm-shutdown")))
@@ -802,7 +802,7 @@ final class SubprocessHygieneTests: XCTestCase {
         store.composerDraft = "x"
         XCTAssertEqual(store.connectionState, .idle)
         XCTAssertNil(store.process.sessionId)
-        XCTAssertFalse(store.firstIntentWarmStartIsRunningForTests)
+        XCTAssertFalse(store.leftoverWarmStartIsRunningForTests)
         XCTAssertFalse(SidebarSessionActivity.isWorking(connectionState: store.connectionState, isStreaming: store.isStreaming))
         await store.shutdownPermanently()
     }
