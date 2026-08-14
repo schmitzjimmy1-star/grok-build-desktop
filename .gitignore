@@ -64,6 +64,10 @@ playground.xcworkspace
 .vscode/
 .env
 
+# Python harness
+__pycache__/
+*.pyc
+
 # Local review/handoff notes (not part of the upstream project)
 CLAUDE_FABLE_HANDOFF.md
 CLAUDE_FABLE_AUDIT.md

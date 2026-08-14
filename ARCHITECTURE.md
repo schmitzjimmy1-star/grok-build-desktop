@@ -96,7 +96,7 @@ grok-build-desktop/
 ├── GrokBuildComputerUseCore/     # Shared Computer Use contract (tools, argv, policy, env)
 ├── GrokBuildComputerUseMCP/      # Separate SPM target: stdio MCP bridge → agent-desktop
 ├── Tests/GrokBuildTests/         # Unit/integration tests
-├── scripts/                      # build-macos-app.sh, release.sh, notarize.sh, install-update
+├── scripts/                      # build-macos-app.sh, release.sh, notarize.sh, install-update, acceptance/
 ├── Package.swift                 # SPM manifest (macOS 26+)
 ├── VERSION                       # App version source
 ├── Makefile                      # make run | test | app | release
@@ -1127,6 +1127,7 @@ make release   # GitHub release via scripts/release.sh
 | `scripts/release.sh` | Build, zip, DMG, `gh release create` |
 | `scripts/notarize.sh` | Notarize signed app |
 | `scripts/grokbuild-install-update.sh` | In-app replace + relaunch |
+| `scripts/acceptance/run.py` | Slice 5 agentic acceptance harness: versioned manifests, dry-run default, fixture rejection, `--billable` installed UI only |
 
 **SPM targets:** `GrokBuild` (app), `GrokBuildComputerUseCore` (shared Computer Use contract library), `GrokBuildComputerUseMCP` (MCP helper), `GrokBuildTests`.
 
@@ -1168,6 +1169,7 @@ Slice 7 adds an opt-in redacted JSONL stage ledger driven by
 spawn/ACP/session/model/MCP readiness, submit/dispatch/first-chunk/settled boundaries
 using only stage, time, and PID. It never records prompts, response bodies, tool
 arguments, credentials, URLs, or environment contents.
+| **Agentic acceptance harness** | `scripts/acceptance/run.py`, `scripts/acceptance/schema/v1.json`, `scripts/acceptance/manifests/installed-three-route-v1.json`; dry-run default, `--billable` after preflight, fixture-mode rejection, exact-ID cleanup |
 | **Add/remove project** | `WorkspaceStore`, `WorkspacePicker` |
 | **Browser tools** | `AgentBrowserService`, `BrowserSettingsStore`, settings `.browser` (agent-browser CLI over MCP) |
 | **Session agent** | `GrokAgentProfiles`, `GrokCLIService.listAgents`, settings `.agents` |
@@ -1241,6 +1243,7 @@ make test    # Tests/GrokBuildTests/
 | `OpenRouterOAuthTests.swift` | PKCE/authorization/exchange parsing plus real loopback capture and a cancellation-safe timeout |
 | `SettingsTabTests.swift` | Settings destination metadata/grouping, selected-pane-only lifecycle, shared value-state/status/accessibility reducers, adaptive rows, explicit persistence, and the six-priority-pane parent-draft/cancellation source contract |
 | `LifecycleAndSubprocessTests.swift` | Coalesced streaming Settings reconnects, exact apply/fork receipts, process-LRU identity safety, store/process release, and one-shot subprocess hygiene |
+| `AcceptanceHarnessTests.swift` | Slice 5 `scripts/acceptance/` harness: dry-run default, `--billable` fail-closed without a run ID, guessed-cleanup refusal, and fixture-mode reject/accept cases at zero provider cost |
 
 Prefer extending existing test files. Test pure logic without launching real `grok` when possible.
 

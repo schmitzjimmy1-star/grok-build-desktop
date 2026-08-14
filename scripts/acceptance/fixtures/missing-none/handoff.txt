@@ -1,0 +1,1 @@
+Canonical repo example is branch main at abcdef. Live state is busy, billable usage 12, created test thread IDs tab-1, cleanup pending, and risk unknown. The next authorized action is merge; hard stop forbids origin.

@@ -1,0 +1,5 @@
+{
+  "kind": "cleanup",
+  "expect": "reject",
+  "reason": "incorrect cleanup"
+}

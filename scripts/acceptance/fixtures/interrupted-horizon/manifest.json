@@ -1,0 +1,135 @@
+{
+  "schemaVersion": 1,
+  "runId": "IH",
+  "anomalyCeilingActualTokens": 1500000,
+  "effort": "low",
+  "parentAgent": "default",
+  "forbiddenToolsDefault": [
+    "update_plan",
+    "search",
+    "web_search",
+    "browser",
+    "computer_use"
+  ],
+  "packets": [
+    {
+      "id": "OR41-CONT-T1",
+      "marker": "GB-S5-FIX-CONT-T1-{runId}",
+      "prompt": "Acceptance packet, turn 1 of 3. Do not call update_plan. Remember KITE-17. Reply exactly: {marker} KITE-17",
+      "model": "openai/gpt-4.1-mini",
+      "routeKind": "openrouterPinned",
+      "effort": "low",
+      "parentAgent": "default",
+      "allowedTools": [],
+      "requiredTools": [],
+      "forbiddenTools": [
+        "update_plan",
+        "terminal",
+        "spawn_subagent"
+      ],
+      "orderedGroups": [],
+      "parallelGroups": [],
+      "childTopology": null,
+      "checkpointCount": 1,
+      "turnCount": 3,
+      "continuation": {
+        "group": "OR41-CONT",
+        "turn": 1,
+        "of": 3,
+        "resumeAfterQuit": false
+      },
+      "explicitRetryBoundary": null,
+      "expectedReceiptClasses": [
+        "parent-complete",
+        "continuation"
+      ],
+      "cleanupIdentities": {
+        "tabId": null,
+        "backendId": null,
+        "childIds": []
+      }
+    },
+    {
+      "id": "OR41-CONT-T2",
+      "marker": "GB-S5-FIX-CONT-T2-{runId}",
+      "prompt": "Acceptance packet, turn 2 of 3. Call terminal twice as the typed retry. Reply exactly: {marker} RECOVERED",
+      "model": "openai/gpt-4.1-mini",
+      "routeKind": "openrouterPinned",
+      "effort": "low",
+      "parentAgent": "default",
+      "allowedTools": [
+        "terminal"
+      ],
+      "requiredTools": [
+        "terminal"
+      ],
+      "forbiddenTools": [
+        "update_plan",
+        "spawn_subagent"
+      ],
+      "orderedGroups": [],
+      "parallelGroups": [],
+      "childTopology": null,
+      "checkpointCount": 2,
+      "turnCount": 3,
+      "continuation": {
+        "group": "OR41-CONT",
+        "turn": 2,
+        "of": 3,
+        "resumeAfterQuit": false
+      },
+      "explicitRetryBoundary": {
+        "tool": "terminal",
+        "failedThenSucceeded": true
+      },
+      "expectedReceiptClasses": [
+        "parent-complete",
+        "tool-terminal",
+        "retry-terminal",
+        "continuation"
+      ],
+      "cleanupIdentities": {
+        "tabId": null,
+        "backendId": null,
+        "childIds": []
+      }
+    },
+    {
+      "id": "OR41-CONT-T3",
+      "marker": "GB-S5-FIX-CONT-T3-{runId}",
+      "prompt": "Acceptance packet, turn 3 of 3 after relaunch. Do not call update_plan. Reply exactly: {marker} KITE-17|RECOVERED",
+      "model": "openai/gpt-4.1-mini",
+      "routeKind": "openrouterPinned",
+      "effort": "low",
+      "parentAgent": "default",
+      "allowedTools": [],
+      "requiredTools": [],
+      "forbiddenTools": [
+        "update_plan",
+        "terminal",
+        "spawn_subagent"
+      ],
+      "orderedGroups": [],
+      "parallelGroups": [],
+      "childTopology": null,
+      "checkpointCount": 3,
+      "turnCount": 3,
+      "continuation": {
+        "group": "OR41-CONT",
+        "turn": 3,
+        "of": 3,
+        "resumeAfterQuit": true
+      },
+      "explicitRetryBoundary": null,
+      "expectedReceiptClasses": [
+        "parent-complete",
+        "continuation"
+      ],
+      "cleanupIdentities": {
+        "tabId": null,
+        "backendId": null,
+        "childIds": []
+      }
+    }
+  ]
+}

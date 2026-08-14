@@ -1,0 +1,68 @@
+{
+  "schemaVersion": 1,
+  "runId": "MR",
+  "anomalyCeilingActualTokens": 1500000,
+  "effort": "low",
+  "parentAgent": "default",
+  "forbiddenToolsDefault": [
+    "update_plan",
+    "search",
+    "web_search",
+    "browser",
+    "computer_use"
+  ],
+  "packets": [
+    {
+      "id": "NAT46-CH2",
+      "marker": "GB-S5-FIX-CH2-{runId}",
+      "prompt": "Acceptance packet. Do not call update_plan. Spawn exactly two children LEFT and RIGHT then wait_all. Reply exactly: {marker}-PARENT LEFT+RIGHT",
+      "model": "grok-4.6",
+      "routeKind": "nativeXAI",
+      "effort": "low",
+      "parentAgent": "default",
+      "allowedTools": [
+        "spawn_subagent",
+        "wait_all",
+        "terminal"
+      ],
+      "requiredTools": [
+        "spawn_subagent",
+        "wait_all"
+      ],
+      "forbiddenTools": [
+        "update_plan",
+        "search"
+      ],
+      "orderedGroups": [],
+      "parallelGroups": [
+        [
+          "spawn_subagent:LEFT",
+          "spawn_subagent:RIGHT"
+        ]
+      ],
+      "childTopology": {
+        "count": 2,
+        "roles": [
+          "LEFT",
+          "RIGHT"
+        ],
+        "collection": "wait_all"
+      },
+      "checkpointCount": 1,
+      "turnCount": 1,
+      "continuation": null,
+      "explicitRetryBoundary": null,
+      "expectedReceiptClasses": [
+        "parent-complete",
+        "child-left",
+        "child-right",
+        "collection-wait_all"
+      ],
+      "cleanupIdentities": {
+        "tabId": null,
+        "backendId": null,
+        "childIds": []
+      }
+    }
+  ]
+}

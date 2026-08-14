@@ -1,0 +1,60 @@
+{
+  "schemaVersion": 1,
+  "runId": "RO",
+  "anomalyCeilingActualTokens": 1500000,
+  "effort": "low",
+  "parentAgent": "default",
+  "forbiddenToolsDefault": [
+    "update_plan",
+    "search",
+    "web_search",
+    "browser",
+    "computer_use"
+  ],
+  "packets": [
+    {
+      "id": "LUNA-ORD3",
+      "marker": "GB-S5-FIX-ORD3-{runId}",
+      "prompt": "Acceptance packet. Do not call update_plan. Call terminal exactly three times: (1) /bin/echo ONE (2) /bin/echo TWO (3) /bin/echo THREE. Reply exactly: {marker} ONE|TWO|THREE",
+      "model": "gpt-5.6-luna",
+      "routeKind": "direct",
+      "effort": "low",
+      "parentAgent": "default",
+      "allowedTools": [
+        "terminal"
+      ],
+      "requiredTools": [
+        "terminal"
+      ],
+      "forbiddenTools": [
+        "update_plan",
+        "spawn_subagent",
+        "wait_all"
+      ],
+      "orderedGroups": [
+        [
+          "terminal:ONE",
+          "terminal:TWO",
+          "terminal:THREE"
+        ]
+      ],
+      "parallelGroups": [],
+      "childTopology": null,
+      "checkpointCount": 1,
+      "turnCount": 1,
+      "continuation": null,
+      "explicitRetryBoundary": null,
+      "expectedReceiptClasses": [
+        "parent-complete",
+        "tool-terminal:ONE",
+        "tool-terminal:TWO",
+        "tool-terminal:THREE"
+      ],
+      "cleanupIdentities": {
+        "tabId": null,
+        "backendId": null,
+        "childIds": []
+      }
+    }
+  ]
+}

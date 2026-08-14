@@ -1,0 +1,274 @@
+{
+  "schemaVersion": 1,
+  "runId": "FIXTURE",
+  "anomalyCeilingActualTokens": 1500000,
+  "effort": "low",
+  "parentAgent": "default",
+  "forbiddenToolsDefault": [
+    "update_plan",
+    "search",
+    "web_search",
+    "browser",
+    "computer_use",
+    "read",
+    "write",
+    "edit",
+    "git",
+    "glob",
+    "grep",
+    "image",
+    "config",
+    "scheduler",
+    "workflow"
+  ],
+  "packets": [
+    {
+      "id": "NAT46-CH2",
+      "marker": "GB-S5-NAT46-CH2-{runId}",
+      "prompt": "Acceptance packet. This is not a planning task. Do not call update_plan or any other extra tool. Spawn exactly two general-purpose children concurrently in the background. LEFT child prompt: Use terminal exactly once with /bin/echo LEFT; then reply exactly {marker}-LEFT. No other tool, worker, or retry. RIGHT child prompt: Use terminal exactly once with /bin/echo RIGHT; then reply exactly {marker}-RIGHT. After both spawns, use exactly one wait_all collection. The parent must not use terminal or any other tool. If either child lacks an exact identity and terminal lifecycle, or calls an extra tool, stop without retry. Otherwise reply exactly: {marker}-PARENT LEFT+RIGHT",
+      "model": "grok-4.6",
+      "routeKind": "nativeXAI",
+      "effort": "low",
+      "parentAgent": "default",
+      "allowedTools": [
+        "spawn_subagent",
+        "wait_all",
+        "terminal"
+      ],
+      "requiredTools": [
+        "spawn_subagent",
+        "wait_all"
+      ],
+      "forbiddenTools": [
+        "update_plan",
+        "search",
+        "web_search",
+        "browser",
+        "computer_use",
+        "read",
+        "write",
+        "edit",
+        "git"
+      ],
+      "orderedGroups": [],
+      "parallelGroups": [
+        [
+          "spawn_subagent:LEFT",
+          "spawn_subagent:RIGHT"
+        ]
+      ],
+      "childTopology": {
+        "count": 2,
+        "roles": [
+          "LEFT",
+          "RIGHT"
+        ],
+        "collection": "wait_all"
+      },
+      "checkpointCount": 1,
+      "turnCount": 1,
+      "continuation": null,
+      "explicitRetryBoundary": null,
+      "expectedReceiptClasses": [
+        "parent-complete",
+        "child-left",
+        "child-right",
+        "collection-wait_all"
+      ],
+      "cleanupIdentities": {
+        "tabId": null,
+        "backendId": null,
+        "childIds": []
+      }
+    },
+    {
+      "id": "LUNA-ORD3",
+      "marker": "GB-S5-LUNA-ORD3-{runId}",
+      "prompt": "Acceptance packet. This is not a planning task. Do not call update_plan or any other extra tool. Call the terminal exactly three times, sequentially, using these exact commands as three separate calls: (1) /bin/echo ONE (2) /bin/echo TWO (3) /bin/echo THREE. Do not combine calls, use workers, or use any other tool. If any call fails or another tool is needed, stop without retry. After three exit-0 receipts, reply exactly: {marker} ONE|TWO|THREE",
+      "model": "gpt-5.6-luna",
+      "routeKind": "direct",
+      "effort": "low",
+      "parentAgent": "default",
+      "allowedTools": [
+        "terminal"
+      ],
+      "requiredTools": [
+        "terminal"
+      ],
+      "forbiddenTools": [
+        "update_plan",
+        "spawn_subagent",
+        "wait_all",
+        "search",
+        "web_search",
+        "browser",
+        "computer_use"
+      ],
+      "orderedGroups": [
+        [
+          "terminal:ONE",
+          "terminal:TWO",
+          "terminal:THREE"
+        ]
+      ],
+      "parallelGroups": [],
+      "childTopology": null,
+      "checkpointCount": 1,
+      "turnCount": 1,
+      "continuation": null,
+      "explicitRetryBoundary": null,
+      "expectedReceiptClasses": [
+        "parent-complete",
+        "tool-terminal:ONE",
+        "tool-terminal:TWO",
+        "tool-terminal:THREE"
+      ],
+      "cleanupIdentities": {
+        "tabId": null,
+        "backendId": null,
+        "childIds": []
+      }
+    },
+    {
+      "id": "OR41-CONT-T1",
+      "marker": "GB-S5-OR41-CONT-T1-{runId}",
+      "prompt": "Acceptance packet, turn 1 of 3. This is not a planning task. Do not call update_plan or any other tool. Remember the secret token KITE-17. Reply exactly: {marker}-T1 KITE-17",
+      "model": "openai/gpt-4.1-mini",
+      "routeKind": "openrouterPinned",
+      "effort": "low",
+      "parentAgent": "default",
+      "allowedTools": [],
+      "requiredTools": [],
+      "forbiddenTools": [
+        "update_plan",
+        "terminal",
+        "spawn_subagent",
+        "wait_all",
+        "search",
+        "web_search",
+        "browser",
+        "computer_use"
+      ],
+      "orderedGroups": [],
+      "parallelGroups": [],
+      "childTopology": null,
+      "checkpointCount": 1,
+      "turnCount": 3,
+      "continuation": {
+        "group": "OR41-CONT",
+        "turn": 1,
+        "of": 3,
+        "resumeAfterQuit": false
+      },
+      "explicitRetryBoundary": null,
+      "expectedReceiptClasses": [
+        "parent-complete",
+        "continuation"
+      ],
+      "cleanupIdentities": {
+        "tabId": null,
+        "backendId": null,
+        "childIds": []
+      }
+    },
+    {
+      "id": "OR41-CONT-T2",
+      "marker": "GB-S5-OR41-CONT-T2-{runId}",
+      "prompt": "Acceptance packet, turn 2 of 3. Call terminal exactly twice in order. First call /bin/test -e /private/tmp/grokbuild-s5-{runId}-must-not-exist; it must fail with exit 1. Then treat the second call as the single retry of that failed existence check, correct only the path, and call /bin/test -e /Applications/GrokBuild.app; it must succeed with exit 0. Use no other tool or retry. Reply exactly: {marker}-T2 RECOVERED",
+      "model": "openai/gpt-4.1-mini",
+      "routeKind": "openrouterPinned",
+      "effort": "low",
+      "parentAgent": "default",
+      "allowedTools": [
+        "terminal"
+      ],
+      "requiredTools": [
+        "terminal"
+      ],
+      "forbiddenTools": [
+        "update_plan",
+        "spawn_subagent",
+        "wait_all",
+        "search",
+        "web_search",
+        "browser",
+        "computer_use"
+      ],
+      "orderedGroups": [
+        [
+          "terminal"
+        ],
+        [
+          "terminal"
+        ]
+      ],
+      "parallelGroups": [],
+      "childTopology": null,
+      "checkpointCount": 2,
+      "turnCount": 3,
+      "continuation": {
+        "group": "OR41-CONT",
+        "turn": 2,
+        "of": 3,
+        "resumeAfterQuit": false
+      },
+      "explicitRetryBoundary": {
+        "tool": "terminal",
+        "failedThenSucceeded": true
+      },
+      "expectedReceiptClasses": [
+        "parent-complete",
+        "tool-terminal",
+        "retry-terminal",
+        "continuation"
+      ],
+      "cleanupIdentities": {
+        "tabId": null,
+        "backendId": null,
+        "childIds": []
+      }
+    },
+    {
+      "id": "OR41-CONT-T3",
+      "marker": "GB-S5-OR41-CONT-T3-{runId}",
+      "prompt": "Acceptance packet, turn 3 of 3 after relaunch. This is not a planning task. Do not call update_plan or any other tool. After the literal prefix {marker}-T3 and one space, append the secret token from turn 1, then a vertical bar, then the single status word you emitted in turn 2. No extra text.",
+      "model": "openai/gpt-4.1-mini",
+      "routeKind": "openrouterPinned",
+      "effort": "low",
+      "parentAgent": "default",
+      "allowedTools": [],
+      "requiredTools": [],
+      "forbiddenTools": [
+        "update_plan",
+        "terminal",
+        "spawn_subagent",
+        "wait_all",
+        "search",
+        "web_search",
+        "browser",
+        "computer_use"
+      ],
+      "orderedGroups": [],
+      "parallelGroups": [],
+      "childTopology": null,
+      "checkpointCount": 3,
+      "turnCount": 3,
+      "continuation": {
+        "group": "OR41-CONT",
+        "turn": 3,
+        "of": 3,
+        "resumeAfterQuit": true
+      },
+      "explicitRetryBoundary": null,
+      "expectedReceiptClasses": [
+        "parent-complete",
+        "continuation"
+      ],
+      "cleanupIdentities": {
+        "tabId": null,
+        "backendId": null,
+        "childIds": []
+      }
+    }
+  ]
+}

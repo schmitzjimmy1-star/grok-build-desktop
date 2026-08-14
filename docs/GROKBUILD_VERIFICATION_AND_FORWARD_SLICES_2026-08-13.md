@@ -568,8 +568,7 @@ ships.
 
 ## Current authorized slice
 
-Execute **Slice 4 only** from clean merged `personal/main` at `6b98cbb`. Slice 3 is
-closed by PR #71 and its corrective receipt in `docs/OUTSTANDING.md`; Slice 4 must
-end each checkpoint update—and its final merged-main closeout—with the mandatory
-three-sentence handoff. Do not begin Slice 5 until Slice 4 is merged, reinstalled,
-cleaned, and proven at process zero.
+Execute **Slice 5 only** from clean merged `personal/main` at `bbff383`. Slices 0–4
+are closed; Slice 5 must end each checkpoint update—and its final merged-main
+closeout—with the mandatory three-sentence handoff. Do not begin Slice 6 until Slice 5
+is merged, reinstalled, cleaned, and proven at process zero.

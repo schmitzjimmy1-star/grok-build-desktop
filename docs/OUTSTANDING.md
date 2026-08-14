@@ -17,6 +17,34 @@
 > User conversations, historical acceptance evidence, unnamed sessions that were not
 > created by the current slice, and unrelated browser/app state are protected.
 
+## Slice 5 — first-class agentic acceptance harness (in progress, 2026-08-14)
+
+Authorized scope is the documented harness in
+`docs/GROKBUILD_VERIFICATION_AND_FORWARD_SLICES_2026-08-13.md`. Gate A started from
+clean canonical `main == personal/main == bbff38345935cbf8c7d39f7c46bf1605e3fc9339`
+(tree `eee9c9240e510b71674f024559d37f22b36b8090`), installed stamp equal to that
+commit with `dirty=false`, signed Team `DD2GCQJVB4`, matching dist/installed
+SHA-256 `b9a8649bfc40bffefb55271e0bd3e64e63d49443225de69f38ac68b40eb5b113`, Grok CLI
+`1.0.3 (1a29d5bc12d4) [stable]`, empty observation key, and two process-zero samples
+at `2026-08-14T17:19:11-0500` and `17:19:28-0500`. Origin remains untouched
+(`433ddf86`). Protected config SHA-256
+`2cb4dcdaf0f1841aab54fb2ae10586381ca78b560eb9fc0477efb521e92140ae` (2,894 bytes, mode
+`0600`) and cwd-scoped `prompt_history.jsonl` SHA-256
+`40acee352d7d1a622e9523a997e34a91e74e29574d3f3deab37d007c56d6fa7a` (112,665 bytes, mode
+`0644`) must stay unchanged except for exact Slice 5 composer-history residue.
+Recoverable Slice 4 Trash bundles
+`~/.Trash/GrokBuild-Slice4-canary-20260814T194900Z` and
+`~/.Trash/GrokBuild-Slice4-run-20260814T195756Z-OR41-CH2` are preserved.
+
+Frozen implementation paths are `scripts/acceptance/`,
+`Tests/GrokBuildTests/AcceptanceHarnessTests.swift`, `ARCHITECTURE.md`,
+`scripts/README.md`, this ledger, the forward-slices current-slice line,
+`.cursor/skills/grokbuild-dev/SKILL.md`, and `.gitignore`. Dry-run is default;
+`--billable` is required for any fresh provider Send; cleanup refuses guessed IDs;
+the harness never bypasses the installed UI or fakes ACP. Slice 6, Slice 7,
+releases, tags, origin, force-push, branch deletion, and configuration changes
+remain forbidden.
+
 ## Slice 4 — observed agentic model-performance ledger (complete, 2026-08-14)
 
 Authorized scope is the local-only observation ledger in
