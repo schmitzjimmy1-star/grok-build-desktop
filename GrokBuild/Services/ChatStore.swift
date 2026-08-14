@@ -4741,9 +4741,10 @@ final class ChatStore {
                 mcpReceiptRole: tool.mcpReceiptRole,
                 qualifiedToolName: tool.qualifiedToolName,
                 discoveredQualifiedToolNames: tool.discoveredQualifiedToolNames,
-                resultDetail: ToolResultPresentation.commandOutput(
+                resultDetail: ToolResultPresentation.transcriptOutput(
                     detail: tool.detail,
-                    kind: tool.kind
+                    kind: tool.kind,
+                    title: tool.title
                 ),
                 owningPlanStepID: currentTurnToolPlanStepIDs[tool.id],
                 durationMilliseconds: tool.durationMilliseconds

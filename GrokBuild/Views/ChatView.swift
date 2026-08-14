@@ -525,10 +525,16 @@ struct ChatView: View {
 
     @ViewBuilder
     private func assistantToolDetails(message: Message, useLiveTrace: Bool) -> some View {
-        if useLiveTrace {
+        // Live in-flight rows stay compact. After the turn is no longer streaming,
+        // prefer the message trace so settled `resultDetail` is visible. If live
+        // receipts outlive the stream, still map their detail through the same
+        // bounded extractor.
+        if useLiveTrace, store.isStreaming || store.isGrokking {
             AssistantToolTraceView(tools: store.liveToolCalls.map(Self.assistantTraceTool))
         } else if let tools = message.assistantTrace?.tools, !tools.isEmpty {
             AssistantToolTraceView(tools: tools)
+        } else if useLiveTrace {
+            AssistantToolTraceView(tools: store.liveToolCalls.map(Self.assistantTraceTool))
         }
     }
 
@@ -544,6 +550,11 @@ struct ChatView: View {
             mcpReceiptRole: tool.mcpReceiptRole,
             qualifiedToolName: tool.qualifiedToolName,
             discoveredQualifiedToolNames: tool.discoveredQualifiedToolNames,
+            resultDetail: ToolResultPresentation.transcriptOutput(
+                detail: tool.detail,
+                kind: tool.kind,
+                title: tool.title
+            ),
             durationMilliseconds: tool.durationMilliseconds
         )
     }

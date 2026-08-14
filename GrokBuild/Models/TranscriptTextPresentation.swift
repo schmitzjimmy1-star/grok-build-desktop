@@ -46,6 +46,27 @@ enum TranscriptTextPresentation {
 /// Protocol JSON, edit receipts, and todo state remain authoritative elsewhere;
 /// they are not command output and must not be dumped into the transcript.
 enum ToolResultPresentation {
+    /// Bounded, secret-safe tool output for the transcript after a tool settles.
+    /// Execute/terminal keep the command-output extractor; read uses the already
+    /// projected file text. Edit/protocol JSON never become transcript output.
+    static func transcriptOutput(detail: String?, kind: String?, title: String? = nil) -> String? {
+        let kind = kind?.lowercased() ?? ""
+        let title = title?.lowercased() ?? ""
+        let looksExecute = kind == "execute" || kind == "terminal"
+            || title.hasPrefix("execute") || title.hasPrefix("run ")
+        let looksRead = kind == "read" || title.hasPrefix("read")
+        let raw: String?
+        if looksExecute {
+            raw = commandOutput(detail: detail, kind: "execute")
+        } else if looksRead {
+            raw = fileReadOutput(detail: detail)
+        } else {
+            raw = nil
+        }
+        guard let raw else { return nil }
+        return secretSafe(raw)
+    }
+
     static func commandOutput(detail: String?, kind: String?) -> String? {
         guard let detail,
               let kind = kind?.lowercased(),
@@ -81,6 +102,24 @@ enum ToolResultPresentation {
             return "Exit \(exitCode.intValue) · no command output reported"
         }
         return nil
+    }
+
+    private static func fileReadOutput(detail: String?) -> String? {
+        guard let detail else { return nil }
+        let normalized = TranscriptTextPresentation.normalize(detail)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !normalized.isEmpty, !normalized.hasPrefix("{") else { return nil }
+        return TranscriptTextPresentation.singleLine(normalized, maxLength: 280)
+    }
+
+    static func secretSafe(_ text: String) -> String {
+        var result = GrokMCPRedactor.redact(text)
+        result = result.replacingOccurrences(
+            of: #"\bsk-[A-Za-z0-9._-]{8,}"#,
+            with: "<redacted>",
+            options: .regularExpression
+        )
+        return result
     }
 }
 

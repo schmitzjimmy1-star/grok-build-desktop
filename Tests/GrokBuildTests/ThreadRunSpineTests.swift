@@ -135,6 +135,37 @@ final class ThreadRunSpineTests: XCTestCase {
             ToolResultPresentation.commandOutput(detail: "GB-S11-TESTS-PASSED", kind: "execute"),
             "GB-S11-TESTS-PASSED"
         )
+        XCTAssertEqual(
+            ToolResultPresentation.transcriptOutput(detail: "GB-S11-TESTS-PASSED", kind: "execute"),
+            "GB-S11-TESTS-PASSED"
+        )
+        XCTAssertEqual(
+            ToolResultPresentation.transcriptOutput(detail: "0.1.20", kind: "read"),
+            "0.1.20"
+        )
+        XCTAssertEqual(
+            ToolResultPresentation.transcriptOutput(
+                detail: "/Users/jimmyschmitz/Desktop/Projects",
+                kind: "tool",
+                title: "Execute /bin/pwd"
+            ),
+            "/Users/jimmyschmitz/Desktop/Projects"
+        )
+        XCTAssertNil(ToolResultPresentation.transcriptOutput(detail: "0.1.20", kind: "edit"))
+        XCTAssertNil(ToolResultPresentation.transcriptOutput(
+            detail: #"{"EditsApplied":{"absolute_path":"/tmp/result.txt"}}"#,
+            kind: "read"
+        ))
+        XCTAssertFalse(
+            ToolResultPresentation.transcriptOutput(
+                detail: "token=sk-abcdefghijklmnopqrstuvwxyz",
+                kind: "execute"
+            )?.contains("sk-") == true
+        )
+        XCTAssertEqual(
+            ToolResultPresentation.secretSafe("prefix sk-abcdefghijklmnopqrstuvwxyz suffix"),
+            "prefix <redacted> suffix"
+        )
     }
 
     func testFailureReceiptStaysFailedAfterSettlement() {
