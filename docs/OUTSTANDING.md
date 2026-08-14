@@ -17,7 +17,7 @@
 > User conversations, historical acceptance evidence, unnamed sessions that were not
 > created by the current slice, and unrelated browser/app state are protected.
 
-## Slice 4 — observed agentic model-performance ledger (in progress, 2026-08-14)
+## Slice 4 — observed agentic model-performance ledger (complete, 2026-08-14)
 
 Authorized scope is the local-only observation ledger in
 `docs/GROKBUILD_VERIFICATION_AND_FORWARD_SLICES_2026-08-13.md`. Gate A began from
@@ -634,6 +634,24 @@ exact-head CI-green normal merge, clean merged-main reinstall and nonbillable em
 ledger/process-zero verification before handing off Slice 5 only; hard stop forbids
 provider reruns, unrelated cleanup, origin, releases/tags, force push, branch deletion,
 or beginning Slice 5 in this session.
+
+**Slice 4 merged-main closeout.** PR #72 merged reviewed head `a96fee6` normally as
+`a2597ee8da307411bd9f74899451722688c24375` after required GitHub CI passed, and clean
+`personal/main` then passed 847/847 tests plus signed `make ship`; installed/dist
+executable SHA-256
+`a9247a4fd6188fada0a83d955d8c8ba25cf04584d5f170cfa4c33c47757df88f` is
+byte-identical, Team `DD2GCQJVB4`, quarantine-free, and Settings → App reports
+`Personal • main @ a2597ee8` with installed CLI `1.0.3`. Live state is clean
+`main == personal/main == a2597ee8`, observation key absent and the disabled empty
+Models surface persistent after relaunch, all exact Slice 4 tabs/transcripts/backends
+absent, protected config/prompt history and unrelated-name digests unchanged, both
+recoverable child-remnant bundles preserved, campaign total 1,092,357 actual tokens,
+process-zero at `2026-08-14T17:03:14-0500` and `17:03:20-0500`, cleanup complete,
+and risk `none`.
+The next authorized work is Slice 5's documented first-class agentic acceptance
+harness in a new session only; hard stop leaves Slice 6, provider/model/credential/
+configuration changes, origin, releases/tags, force push, branch deletion, and any
+unrelated work forbidden.
 
 ## Slice 3 — Run history/export corrective closeout (2026-08-14)
 

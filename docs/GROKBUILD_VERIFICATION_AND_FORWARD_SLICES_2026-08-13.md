@@ -1,6 +1,6 @@
 # GrokBuild agentic-performance verification and forward slices — 2026-08-13
 
-Status: **Slices 0–3 complete; Slice 4 is authorized and in progress.**
+Status: **Slices 0–4 complete; Slice 5 is authorized for a new session only. Slice 6 remains forbidden.**
 
 This plan follows the canonical identity and Gates A–H in
 [`CANONICAL_WORKTREE.md`](../CANONICAL_WORKTREE.md) and
