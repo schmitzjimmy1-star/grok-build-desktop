@@ -3163,7 +3163,13 @@ final class ChatStore {
         // receipt and stays completed under the parent userStopped outcome.
         // markActiveSubagentsStoppedByUser then orphans/cancels only workers
         // that never finished.
+        let stopStartedAt = ContinuousClock.now
         await process.stop()
+        let stopDuration = stopStartedAt.duration(to: .now).components
+        backgroundTaskTracker.recordStopToSettle(
+            milliseconds: Int(stopDuration.seconds * 1_000)
+                + Int(stopDuration.attoseconds / 1_000_000_000_000_000)
+        )
         backgroundTaskTracker.markActiveSubagentsStoppedByUser()
         backgroundTaskTracker.markActiveActivitiesStopped()
         backgroundActivities = backgroundTaskTracker.activities
@@ -4609,6 +4615,9 @@ final class ChatStore {
             },
             plan: currentRunPlan,
             workers: workers,
+            coordination: backgroundTaskTracker.coordinationMetrics(
+                parentTotalTokens: completion?.totalTokens
+            ),
             tools: toolSummary,
             artifacts: runArtifacts,
             gitReviewFiles: [],

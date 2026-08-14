@@ -190,6 +190,235 @@ final class BackgroundTaskTests: XCTestCase {
         XCTAssertTrue(tracker.activities.filter { $0.kind == .subagent }.allSatisfy { $0.status == "completed" })
     }
 
+    func testSubagentCorrelationIsStableAcrossAllToolSpawnFinishPermutations() throws {
+        enum Event: CaseIterable {
+            case tool
+            case spawned
+            case finished
+        }
+        let permutations: [[Event]] = [
+            [.tool, .spawned, .finished],
+            [.tool, .finished, .spawned],
+            [.spawned, .tool, .finished],
+            [.spawned, .finished, .tool],
+            [.finished, .tool, .spawned],
+            [.finished, .spawned, .tool],
+        ]
+        let tabID = UUID()
+        let identity = ACPEventIdentity(
+            localTabID: tabID,
+            backendSessionID: "backend-permutation",
+            processGeneration: 4,
+            backendEventID: "event-permutation"
+        )
+
+        for ordering in permutations {
+            var tracker = BackgroundTaskTracker()
+            for event in ordering {
+                switch event {
+                case .tool:
+                    tracker.apply(update: [
+                        "toolCallId": "spawn-permutation",
+                        "title": "Inspect worker correlation",
+                        "_meta": ["x.ai/tool": ["name": "spawn_subagent"]],
+                        "rawInput": [
+                            "task_id": NSNull(),
+                            "description": "Inspect worker correlation",
+                        ],
+                    ])
+                case .spawned:
+                    tracker.apply(spawned: SubagentSpawnedEvent(
+                        identity: identity,
+                        childID: "child-permutation",
+                        parentPromptID: "prompt-permutation",
+                        subagentType: "explore",
+                        modelID: "grok-4.6",
+                        description: "Inspect worker correlation"
+                    ))
+                case .finished:
+                    tracker.apply(finished: SubagentFinishedEvent(
+                        identity: identity,
+                        childID: "child-permutation",
+                        status: "completed",
+                        durationMilliseconds: 420,
+                        turns: 1,
+                        toolCallCount: 2,
+                        tokenCount: 900,
+                        redactedError: nil,
+                        childToolReceipts: [
+                            ChildToolReceipt(
+                                id: "read-1",
+                                title: "Read package",
+                                status: .succeeded,
+                                mcpReceiptRole: nil,
+                                qualifiedToolName: nil,
+                                discoveredQualifiedToolNames: []
+                            ),
+                            ChildToolReceipt(
+                                id: "read-2",
+                                title: "Read tests",
+                                status: .succeeded,
+                                mcpReceiptRole: nil,
+                                qualifiedToolName: nil,
+                                discoveredQualifiedToolNames: []
+                            ),
+                        ]
+                    ))
+                }
+            }
+
+            let workers = tracker.activities.filter { $0.kind == .subagent }
+            let worker = try XCTUnwrap(workers.first, "ordering \(ordering) did not bind")
+            XCTAssertEqual(workers.count, 1, "ordering \(ordering)")
+            XCTAssertEqual(worker.id, "spawn-permutation", "ordering \(ordering)")
+            XCTAssertEqual(worker.childID, "child-permutation", "ordering \(ordering)")
+            XCTAssertEqual(worker.status, "completed", "ordering \(ordering)")
+            XCTAssertEqual(worker.runtimeModelID, "grok-4.6", "ordering \(ordering)")
+            XCTAssertEqual(worker.toolCallCount, 2, "ordering \(ordering)")
+            XCTAssertTrue(tracker.unboundSpawnedEvents.isEmpty, "ordering \(ordering)")
+
+            let metrics = tracker.coordinationMetrics(parentTotalTokens: 1_200)
+            XCTAssertEqual(metrics.requestedChildCount, 1, "ordering \(ordering)")
+            XCTAssertEqual(metrics.spawnedChildCount, 1, "ordering \(ordering)")
+            XCTAssertEqual(metrics.finishedChildCount, 1, "ordering \(ordering)")
+            XCTAssertEqual(metrics.maximumUsefulConcurrency, 1, "ordering \(ordering)")
+            XCTAssertEqual(metrics.childToolCallCount, 2, "ordering \(ordering)")
+            XCTAssertEqual(metrics.unresolvedIdentityCount, 0, "ordering \(ordering)")
+            XCTAssertEqual(metrics.parentTotalTokens, 1_200, "ordering \(ordering)")
+            XCTAssertEqual(metrics.childTotalTokens, 900, "ordering \(ordering)")
+        }
+    }
+
+    func testDuplicateLifecycleEventsKeepOneWorkerAndOneMetricReceipt() {
+        var tracker = BackgroundTaskTracker()
+        let identity = ACPEventIdentity(
+            localTabID: UUID(),
+            backendSessionID: "backend-duplicate",
+            processGeneration: 2,
+            backendEventID: "event-duplicate"
+        )
+        let spawned = SubagentSpawnedEvent(
+            identity: identity,
+            childID: "child-duplicate",
+            parentPromptID: nil,
+            subagentType: "explore",
+            modelID: "grok-4.6",
+            description: "Duplicate lane"
+        )
+        let finished = SubagentFinishedEvent(
+            identity: identity,
+            childID: "child-duplicate",
+            status: "completed",
+            durationMilliseconds: 100,
+            turns: 1,
+            toolCallCount: 1,
+            tokenCount: 50,
+            redactedError: nil
+        )
+        tracker.apply(update: [
+            "toolCallId": "spawn-duplicate",
+            "title": "Duplicate lane",
+            "_meta": ["x.ai/tool": ["name": "spawn_subagent"]],
+            "rawInput": ["description": "Duplicate lane"],
+        ])
+        tracker.apply(spawned: spawned)
+        tracker.apply(spawned: spawned)
+        tracker.apply(finished: finished)
+        tracker.apply(finished: SubagentFinishedEvent(
+            identity: identity,
+            childID: "child-duplicate",
+            status: "unknown",
+            durationMilliseconds: nil,
+            turns: nil,
+            toolCallCount: nil,
+            tokenCount: nil,
+            redactedError: nil
+        ))
+
+        let workers = tracker.activities.filter { $0.kind == .subagent }
+        XCTAssertEqual(workers.count, 1)
+        XCTAssertEqual(workers.first?.status, "completed")
+        XCTAssertEqual(workers.first?.durationMilliseconds, 100)
+        XCTAssertEqual(workers.first?.toolCallCount, 1)
+        XCTAssertEqual(workers.first?.tokenCount, 50)
+        let metrics = tracker.coordinationMetrics(parentTotalTokens: nil)
+        XCTAssertEqual(metrics.spawnedChildCount, 1)
+        XCTAssertEqual(metrics.finishedChildCount, 1)
+        XCTAssertEqual(metrics.childToolCallCount, 1)
+        XCTAssertEqual(metrics.childTotalTokens, 50)
+    }
+
+    func testAmbiguousDescriptionsRemainExplicitlyUnbound() {
+        var tracker = BackgroundTaskTracker()
+        for callID in ["spawn-a", "spawn-b"] {
+            tracker.apply(update: [
+                "toolCallId": callID,
+                "title": "Same lane",
+                "_meta": ["x.ai/tool": ["name": "spawn_subagent"]],
+                "rawInput": ["description": "Same lane"],
+            ])
+        }
+        tracker.apply(spawned: SubagentSpawnedEvent(
+            identity: ACPEventIdentity(
+                localTabID: UUID(),
+                backendSessionID: "backend-ambiguous",
+                processGeneration: 1,
+                backendEventID: "spawn-ambiguous"
+            ),
+            childID: "child-ambiguous",
+            parentPromptID: nil,
+            subagentType: "explore",
+            modelID: "grok-4.6",
+            description: "Same lane"
+        ))
+
+        XCTAssertEqual(tracker.activities.filter { $0.kind == .subagent }.count, 2)
+        XCTAssertTrue(tracker.activities.compactMap(\.childID).isEmpty)
+        XCTAssertEqual(tracker.unboundSpawnedEvents.map(\.childID), ["child-ambiguous"])
+        XCTAssertEqual(tracker.coordinationMetrics(parentTotalTokens: nil).unresolvedIdentityCount, 3)
+    }
+
+    func testCoordinationMetricsTrackConcurrencyStopAndTurnReset() {
+        var tracker = BackgroundTaskTracker()
+        let identity = ACPEventIdentity(
+            localTabID: UUID(),
+            backendSessionID: "backend-metrics",
+            processGeneration: 1,
+            backendEventID: "spawn-metrics"
+        )
+        for index in 1...2 {
+            tracker.apply(update: [
+                "toolCallId": "spawn-\(index)",
+                "title": "Lane \(index)",
+                "_meta": ["x.ai/tool": ["name": "spawn_subagent"]],
+                "rawInput": ["task_id": "child-\(index)", "description": "Lane \(index)"],
+            ])
+            tracker.apply(spawned: SubagentSpawnedEvent(
+                identity: identity,
+                childID: "child-\(index)",
+                parentPromptID: nil,
+                subagentType: "explore",
+                modelID: "grok-4.6",
+                description: "Lane \(index)"
+            ))
+        }
+        tracker.recordStopToSettle(milliseconds: 275)
+
+        let observed = tracker.coordinationMetrics(parentTotalTokens: nil)
+        XCTAssertEqual(observed.maximumUsefulConcurrency, 2)
+        XCTAssertEqual(observed.stopToSettleMilliseconds, 275)
+        XCTAssertNil(observed.childToolCallCount)
+        XCTAssertNil(observed.childTotalTokens)
+
+        tracker.beginUserTurn()
+        let reset = tracker.coordinationMetrics(parentTotalTokens: nil)
+        XCTAssertEqual(reset.requestedChildCount, 0)
+        XCTAssertEqual(reset.spawnedChildCount, 0)
+        XCTAssertEqual(reset.finishedChildCount, 0)
+        XCTAssertEqual(reset.maximumUsefulConcurrency, 0)
+        XCTAssertNil(reset.stopToSettleMilliseconds)
+    }
+
     func testMissingTerminalEvidenceIsExplicitlyUnknownOrOrphaned() {
         var unknownTracker = BackgroundTaskTracker()
         unknownTracker.apply(update: [

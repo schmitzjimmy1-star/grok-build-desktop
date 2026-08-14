@@ -148,6 +148,7 @@ struct AssistantTurnCheckpoint: Codable, Sendable, Hashable {
     var processReceipt: ProcessReceipt? = nil
     var continuityReceipt: ContinuityReceipt? = nil
     var usageReceipt: UsageReceipt? = nil
+    var coordinationReceipt: RunEvidenceSnapshot.CoordinationMetrics? = nil
     var attachmentNames: [String]? = nil
 
     init(
@@ -249,6 +250,7 @@ struct AssistantTurnCheckpoint: Codable, Sendable, Hashable {
                 )
             }
         )
+        coordinationReceipt = snapshot.coordination
         self.attachmentNames = Array(Set(attachmentNames)).sorted()
     }
 
@@ -330,6 +332,7 @@ struct AssistantTurnCheckpoint: Codable, Sendable, Hashable {
             goalSummary: objective,
             plan: plan.map { .init(id: $0.id, title: $0.title, status: $0.status) },
             workers: restoredWorkers,
+            coordination: coordinationReceipt,
             tools: tools,
             artifacts: restoredArtifacts,
             gitReviewFiles: gitReviewFiles ?? [],

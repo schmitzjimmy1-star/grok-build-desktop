@@ -4,6 +4,19 @@ import SwiftUI
 /// drawer and the compact task pill. These helpers format existing receipts;
 /// they do not decide lifecycle state.
 enum ActivitySidebarPresentation {
+    static func coordinationSummary(_ metrics: RunEvidenceSnapshot.CoordinationMetrics) -> String {
+        "\(metrics.requestedChildCount) requested • \(metrics.spawnedChildCount) spawned • \(metrics.finishedChildCount) finished • max \(metrics.maximumUsefulConcurrency) concurrent"
+    }
+
+    static func coordinationUsage(_ metrics: RunEvidenceSnapshot.CoordinationMetrics) -> String? {
+        let parts = [
+            metrics.parentTotalTokens.map { "\($0.formatted()) parent tokens" },
+            metrics.childTotalTokens.map { "\($0.formatted()) child tokens" },
+            metrics.childToolCallCount.map { "\($0) child tool calls" },
+        ].compactMap { $0 }
+        return parts.isEmpty ? nil : parts.joined(separator: " • ")
+    }
+
     static func summaryDetail(_ snapshot: RunEvidenceSnapshot) -> String {
         if snapshot.outcome == .failed {
             return "The backend confirmed that this turn ended with an error."
@@ -850,6 +863,18 @@ struct ActivitySidebar: View {
             detailRow("Outcome", value: snapshot.outcome.displayName)
             detailRow("Process", value: snapshot.process.state)
             detailRow("Continuity", value: snapshot.continuity.provenance)
+            if let coordination = snapshot.coordination {
+                detailRow("Coordination", value: ActivitySidebarPresentation.coordinationSummary(coordination))
+                if coordination.unresolvedIdentityCount > 0 {
+                    detailRow("Unresolved identities", value: "\(coordination.unresolvedIdentityCount)")
+                }
+                if let usage = ActivitySidebarPresentation.coordinationUsage(coordination) {
+                    detailRow("Parent / children", value: usage)
+                }
+                if let stop = coordination.stopToSettleMilliseconds {
+                    detailRow("Stop to settle", value: ThreadRunSpinePresentation.durationLabel(stop))
+                }
+            }
             detailRow("Usage", value: usageLabel(snapshot.usage))
             let tokenSplit = [
                 snapshot.usage.inputTokens.map { "\($0.formatted()) input" },

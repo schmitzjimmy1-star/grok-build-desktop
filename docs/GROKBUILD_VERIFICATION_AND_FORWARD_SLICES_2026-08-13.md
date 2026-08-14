@@ -1,6 +1,6 @@
 # GrokBuild agentic-performance verification and forward slices — 2026-08-13
 
-Status: **review complete; proposal only; no implementation slice is active.**
+Status: **Slice 0 merged and proven; Slice 1 implementation active on 2026-08-14.**
 
 This plan follows the canonical identity and Gates A–H in
 [`CANONICAL_WORKTREE.md`](../CANONICAL_WORKTREE.md) and
