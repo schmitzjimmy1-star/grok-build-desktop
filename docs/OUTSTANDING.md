@@ -17,6 +17,30 @@
 > User conversations, historical acceptance evidence, unnamed sessions that were not
 > created by the current slice, and unrelated browser/app state are protected.
 
+## Slice 3 — Run history/export corrective closeout (2026-08-14)
+
+Jimmy accepted the incomplete historical live packet as a documented waiver after
+the corrective implementation, local/full validation, signed installed-app
+acceptance, and PR CI all passed. The corrective implementation is `4c69188`;
+PR #71 additionally carries this closeout receipt. The only permanent cleanup
+target is the following Slice 3 acceptance thread, not any
+other GrokBuild history:
+
+- local tab/transcript `DC91AFB9-F0B9-4ABF-A5E8-2DC6719B229E`;
+- parent backend `019fff0f-4843-7942-bacf-87aca58de7d1`;
+- nested receipt-only child identities `019fff0f-7f45-77f3-8aba-5963ee9f9913`
+  and `019fff0f-7f46-7442-9bba-3c80aeb00cec`.
+
+The Grok CLI exposed only the parent, which GrokBuild permanently deleted through
+its Sessions UI. Its two child identities were not CLI-deletable (`No session
+found`), so only those exact child directories and the exact local transcript plus
+metadata were moved recoverably to
+`~/.Trash/GrokBuild-Slice3-closeout-20260814T024900`; no other session,
+`prompt_history.jsonl`, configuration, or credential changed. The original
+transcript and all three original session locations are absent, CLI marker lookup
+returns zero, and two final samples found no GrokBuild, Grok, `agent-desktop`, or
+GrokBuild Computer Use helper process.
+
 ## Status — Long-horizon truth, process hygiene, publication (2026-08-13)
 
 Jimmy authorized a prove-then-repair campaign: backend leaks, three-route
