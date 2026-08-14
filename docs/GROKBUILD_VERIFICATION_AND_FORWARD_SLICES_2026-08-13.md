@@ -1,0 +1,468 @@
+# GrokBuild agentic-performance verification and forward slices — 2026-08-13
+
+Status: **review complete; proposal only; no implementation slice is active.**
+
+This plan follows the canonical identity and Gates A–H in
+[`CANONICAL_WORKTREE.md`](../CANONICAL_WORKTREE.md) and
+[`docs/OUTSTANDING.md`](OUTSTANDING.md). Jimmy has authorized billable prompt
+acceptance for future slices and has no spending cap. That freedom should be used
+to test the workbench where it is supposed to matter: subagent coordination,
+long-horizon task continuity, ordered and parallel multi-tool work, recovery from
+partial failure, Stop behavior, and trustworthy run evidence—not to spray tokens at
+decorative one-turn demos. Each packet still needs a frozen prompt, exact
+route/model, unique marker, retry boundary, actual-usage receipt, exact test-thread
+cleanup, and process-zero closeout. The ceilings below are anomaly circuit breakers,
+not budget caps; a healthy, intentionally long run may continue when its checkpoint
+records why.
+
+## Review verdict
+
+The maintained line is in unusually strong shape. The local tree, personal fork,
+installed app, signing identity, and packaged binary all agree at the reviewed
+baseline. The full suite passes. The latest Cursor work is coherent with the
+thin-wrapper architecture and materially improves lifecycle truth.
+
+The next work should not be another broad polish campaign. It should make GrokBuild
+a better cockpit for serious agentic work: prove that parent/child coordination is
+stable under reordered events, keep long-horizon and scheduled work alive on
+purpose, make complex multi-tool runs inspectable after the fact, and compare model
+behavior on repeatable workloads without pretending that token count equals quality.
+The publication gate still comes first because expensive agentic proof without an
+independent merge gate is just artisanal optimism.
+
+### Re-derived baseline
+
+| Authority | Reviewed value |
+|---|---|
+| Canonical checkout | `/Users/jimmyschmitz/Desktop/Projects/MCP Servers/Grok Build/grok-build-desktop` |
+| Personal repository | `schmitzjimmy1-star/grok-build-desktop` (`personal`) |
+| Preserved upstream | `rimusz/grok-build-desktop` (`origin`) |
+| Branch / HEAD | clean `main` at `8c8cfb0bc5d099423da62857b1e06ee62aeab91b` |
+| Remote parity | `main == personal/main`, `+0/-0` |
+| Installed app | `/Applications/GrokBuild.app` |
+| Installed receipt | `main`, source `8c8cfb0`, `dirty=false`, `com.grokbuild.app` |
+| Signing | Apple Development, Team `DD2GCQJVB4` |
+| Dist / installed executable | matching SHA-256 `8de6f7c505581a32790646aa809150603a8c7afa123843ff7edc336a60cbbf83` |
+| Automated tests | `make test`: **802 passed, 0 failed** in 31.7 s |
+| Latest GitHub work | PR #65 and PR #66 merged into `main` |
+
+### Findings
+
+#### P1 — the remote PR gate exists on disk but does not run
+
+`.github/workflows/pr.yml` declares test-and-build checks, but GitHub reports no
+workflow runs for PR #65 head `89efdd8`, PR #66 head `b26b9b6`, or any other run
+in the fork. The combined commit statuses are empty and `main` is not protected.
+Local `make test` is green, but today a PR can merge without independent GitHub
+execution.
+
+This is the only clear release-process defect found in the current baseline.
+
+#### P1 — scheduled work has an underpowered lifetime contract
+
+`ContentView.enforceConnectionCap()` protects the four most-recent sessions and
+any session currently `.busy`, but it does not protect a connected session merely
+because `ChatStore.scheduledTasks` contains an active `/loop`. The documented
+behavior is truthful—schedules run only while that session process is alive—but a
+quiet recurring task can therefore lose its runtime through ordinary LRU eviction.
+The product needs an explicit retention policy and visible ownership, not a footnote.
+
+#### P2 — subagent correlation is truthful but not permutation-complete
+
+The new `BackgroundTaskTracker` correctly separates spawn-tool rows,
+`subagent_spawned`, `subagent_finished`, unreadable child ledgers, and unbound
+spawn receipts. The tests cover the normal tool → spawned → finished order,
+description binding, missing receipts, Stop, and turn clearing.
+
+The reducer has two one-way reconciliation triggers that deserve hostile tests:
+
+- a `subagent_finished` receipt arriving before its matching
+  `subagent_spawned` receipt can remain in `pendingFinishedEvents` after the spawn
+  later binds by description;
+- a `subagent_spawned` receipt arriving before a late spawn-tool row whose child ID
+  is still null is not re-bound merely because that late row now supplies the exact
+  title/description match.
+
+Those are protocol-ordering risks, not confirmed live failures. They should be
+settled with table-driven permutation tests before more lifecycle features land.
+
+#### P2 — the README hero image is stale product evidence
+
+`docs/images/grokbuild-app.png` entered history on 2026-07-24 and shows the old
+pre-facelift shell: permanent chips and status controls, no current command rail,
+no Ask/Build/Review empty state, no Run inspector, no Session dashboard, and the
+old composer. The prose beneath it describes the current interface, so the first
+thing a reader sees contradicts the product.
+
+#### P2 — the remaining architecture bottleneck is coordination density
+
+The Settings split succeeded, but the largest owners are still substantial:
+
+| File | Current size |
+|---|---:|
+| `GrokBuild/Services/ChatStore.swift` | 5,421 lines |
+| `GrokBuild/Views/ChatView.swift` | 3,569 lines |
+| `GrokBuild/Services/GrokProcess.swift` | 2,915 lines |
+| `GrokBuild/ContentView.swift` | 2,036 lines |
+
+The suite is broad, but roughly one hundred test assertions inspect source text or
+file contents. Those are useful architecture tripwires; they are not substitutes
+for reducer and service behavior tests. Future extraction should move pure policy
+out first and replace the most brittle string pins as it goes.
+
+## Agentic-performance scorecard
+
+Every billable acceptance packet should answer the same questions so later slices
+produce comparable evidence instead of a scrapbook of impressive anecdotes.
+
+| Dimension | Required evidence |
+|---|---|
+| Subagent coordination | Parent and child identities, spawn/finish ordering, child tool ledgers, terminal state, unresolved bindings, and no cross-turn leakage |
+| Long-horizon continuity | Multiple turns or scheduled checkpoints on one backend, relaunch/restore truth, context continuity, and explicit process/runtime ownership |
+| Multi-tool execution | Planned versus observed tool order, parallel groups where intended, per-tool result detail, retry count, artifacts, and partial-failure behavior |
+| Recovery and control | Stop during a child/tool call, permission denial, one injected tool failure, resumability, exact cleanup, and process zero |
+| Model/route performance | Exact effective model and route, time to first chunk when measurable, provider duration, tokens/calls/cost, completion outcome, and workload class |
+| Evidence quality | Live versus historical labels, generation/backend binding, redaction, deterministic export, and no invented provider or worker claims |
+
+Do not optimize for maximum child count, maximum tool count, or the prettiest final
+answer. Optimize for correct decomposition, useful concurrency, bounded recovery,
+continuity across checkpoints, and receipts that explain what the system actually did.
+
+## Checkpoint and handoff contract
+
+Each slice has four checkpoints: **baseline**, **focused implementation**,
+**signed-installed acceptance**, and **merged-main closeout**. A documentation-only
+or GitHub-configuration slice may mark a checkpoint not applicable, but it may not
+silently skip the closeout.
+
+At the end of **every checkpoint update in the working thread**, the agent must write
+exactly three plain-prose sentences that can be copied into a fresh session without
+editing:
+
+1. Sentence one states the canonical repo, branch/commit, slice, completed checkpoint,
+   and exact verified result.
+2. Sentence two states live app/backend/process state, billable usage, created test
+   thread IDs, cleanup status, and any unresolved risk; use `none` explicitly rather
+   than omitting a field.
+3. Sentence three gives one next authorized action plus the hard stop, including the
+   files or systems that must not be touched.
+
+The three sentences are a handoff, not a victory lap: no bullets, no fourth sentence,
+no vague “continue testing,” and no claim of completion before merged-main identity,
+installed proof, cleanup, and process zero agree. If work stops mid-checkpoint, the
+same three sentences must say **incomplete**, identify the last settled receipt, and
+name the exact restart point.
+
+## Slice sequence
+
+The recommended order is 0 → 1 → 2 → 3 → 4 → 5 → 6 → 7. Each slice gets one
+bounded branch and one personal-fork PR. Do not push to `origin`, combine slices,
+or add a GrokBuild-side agent runtime, proxy, or provider fallback.
+
+## Slice 0 — make GitHub PR checks real
+
+**Purpose:** turn the existing workflow from decorative YAML into an enforced
+independent gate.
+
+### Scope
+
+- Determine why Actions has zero runs in the personal fork: repository Actions
+  policy, fork workflow approval, permissions, or event configuration.
+- Trigger `PR Checks` on a disposable documentation-only PR and prove the exact
+  head SHA receives one completed `Test and Build App` job.
+- Pin the required check on `main` through branch protection or a repository
+  ruleset.
+- Keep `release.yml` manual. Do not publish a release, rotate secrets, or touch
+  notarization credentials.
+- Add a compact check/run receipt to `.github/workflows/README.md`.
+
+### Acceptance
+
+- One PR-head workflow run exists and passes `make test`, `make app`, and bundled
+  `agent-desktop version`.
+- A red or pending required check blocks merge; a green exact-head check permits it.
+- The branch rule applies to Jimmy's personal `main`, not upstream `origin/main`.
+- No billable model prompt is needed. Ceiling: **0 tokens**.
+- The merged-main closeout ends with the mandatory three-sentence handoff and names
+  the exact required check and successful run URL for the next session.
+
+## Slice 1 — permutation-proof and benchmark subagent coordination
+
+**Purpose:** make worker truth independent of benign ACP event reordering, then prove
+that useful two-child work remains attributable, controllable, and inspectable over a
+multi-turn parent run.
+
+### Scope
+
+- Extract a small typed correlation reducer from `BackgroundTaskTracker` if that
+  makes the state machine easier to prove; do not create a second lifecycle owner.
+- Reconcile pending spawn and finish receipts whenever either the tool row, spawn
+  event, or finish event supplies a newly usable identity.
+- Preserve the current rules: no invented worker row, no prose-as-authority, no
+  fake completion, exact tab/backend/generation ownership, and no cross-turn leak.
+- Add a table-driven permutation suite covering all six orderings of tool,
+  spawned, and finished events, plus duplicate, ambiguous-description, missing-ID,
+  wrong-generation, Stop, and next-turn-clear variants.
+- Record coordination metrics per parent turn: requested/spawned/finished child
+  count, maximum useful concurrency, child tool-call count, unresolved identities,
+  Stop-to-settle time, and parent/child usage when the backend exposes it.
+- Treat these as observations, not a scoreboard. More children are not better when
+  one child or a direct tool call would do the job.
+
+### Billable acceptance
+
+Run one native Grok 4.6 packet in which a parent decomposes a real repository question
+between exactly two children, each child uses at least one different read-only tool,
+and the parent synthesizes both results across a second turn. Capture live and settled
+worker rows, child IDs, terminal receipts, child tool ledgers, parent tool separation,
+concurrency, artifacts, and usage. Then run one Stop-mid-child packet where the child
+is allowed to finish during the teardown window, followed by a fresh-turn continuity
+check that must not inherit stale worker state.
+
+Suggested anomaly ceiling: **500k actual tokens**. No automatic retry; at most two
+children; no OpenRouter lane unless the reducer behavior differs after native proof.
+
+### Exit
+
+All permutations produce one stable worker identity and the right terminal or
+explicit unresolved state. The parent can complete a multi-turn synthesis without
+losing child attribution, and Stop settles truthfully without ghost workers or
+cross-turn leakage. The exact test threads are deleted, Gate G ends at process zero,
+and the checkpoint update ends with the mandatory three-sentence handoff.
+
+## Slice 2 — give long-horizon and scheduled tasks an explicit runtime lease
+
+**Purpose:** make recurring and long-horizon work durable enough to trust without
+pretending the CLI can execute after its owning process is gone.
+
+### Product contract
+
+- A session with an active schedule is visibly **runtime pinned** and excluded from
+  ordinary idle LRU eviction.
+- The Session dashboard and Tasks menu explain why the process is retained and when
+  the schedule last produced an authoritative receipt.
+- If protected busy/pinned sessions exceed the normal cap of four, show a truthful
+  soft-cap warning. Never silently cancel a schedule or evict its process.
+- Closing the session, cancelling the schedule, quitting the app, or an exact process
+  failure releases the lease with explicit copy. No launch daemon or hidden daemon.
+- Restored metadata must not claim a lease until the exact schedule inventory is
+  re-observed from the live backend.
+- A long-horizon run displays its owning session, backend, process generation, last
+  settled checkpoint, next scheduled checkpoint when applicable, and whether it is
+  safe to close, Stop, or resume.
+- Multi-turn continuity is proved from authoritative backend/session identity; a
+  similar-looking transcript after relaunch is not continuity proof.
+
+### Implementation shape
+
+- Add a pure `SessionRuntimeRetentionPolicy` consumed by
+  `ContentView.enforceConnectionCap()`.
+- Feed it exact connection state, selected/MRU identity, and authoritative active
+  schedule inventory.
+- Add behavior tests for four ordinary sessions plus pinned schedules, multiple busy
+  sessions, cancellation, close, quit, restore, and a stale cached schedule.
+
+### Billable acceptance
+
+Create one disposable `/loop` with a unique marker that performs a small read-only
+multi-tool repository check at three checkpoints, then open enough minimal native
+no-tool sessions to cross the normal four-process cap. Prove the scheduled session
+keeps the same authoritative ownership, survives ordinary session switching, emits
+all three checkpoint markers, and exposes any tool failure without silently skipping
+the remaining horizon. Cancel that exact schedule, prove the lease releases, then
+close/delete only the ledgered sessions.
+
+Suggested anomaly ceiling: **600k actual tokens**. The cost is secondary here; exact
+schedule cleanup and process ownership are the hard gates. Every checkpoint update,
+including an overnight or resumed checkpoint, ends with the mandatory three-sentence
+handoff so a new session can continue without reconstructing state from vibes.
+
+## Slice 3 — add durable agentic Run history and redacted evidence export
+
+**Purpose:** turn complex multi-turn, multi-tool, and multi-agent receipts into
+something users can revisit and share instead of confining them to one turn's
+inspector.
+
+### Product contract
+
+- Add **Run history** to the Session dashboard, derived from persisted
+  `AssistantTurnCheckpoint` data already attached to assistant messages.
+- Show outcome, model/route, tool and worker counts, usage, artifacts, unresolved
+  evidence, and timestamp with the same truth labels as the Run inspector.
+- Group checkpoints into one long-horizon run without flattening turn boundaries;
+  show parent/child topology, tool sequence and parallel groups, retries, Stop/resume
+  boundaries, and the last authoritative continuation point.
+- Add explicit **Copy redacted Markdown receipt** and **Export redacted JSON** actions.
+- Export only already-redacted, typed receipt fields. Exclude prompts, response bodies,
+  credentials, raw environment values, and private chain-of-thought.
+- A historical checkpoint is labeled historical; it never becomes current Live state.
+
+### Verification
+
+- Round-trip old and new transcript fixtures, including legacy messages without a
+  checkpoint, a failed tool, a user Stop, an unreadable child ledger, and an external
+  artifact label.
+- Confirm export is deterministic, bounded, and contains no `sk-`, bearer token,
+  Keychain material, raw MCP environment, or transcript prose.
+- Installed acceptance uses one native three-turn packet with ordered tools, one
+  parallel two-child phase, one injected tool failure with bounded recovery, and one
+  Stop/resume boundary; then quit/relaunch, inspect Run history, and compare Markdown/
+  JSON exports.
+
+Suggested anomaly ceiling: **400k actual tokens**.
+
+## Slice 4 — observed agentic model-performance ledger
+
+**Purpose:** help Jimmy choose models for actual agentic workloads using local evidence
+without inventing quality scores or adding automatic routing.
+
+### Product contract
+
+- Record bounded, local-only per-model observations from authoritative completion
+  receipts: first-chunk latency when measured, provider API duration, total/input/
+  output/cached/reasoning tokens, calls, cost, outcome, and tool/worker presence.
+- Classify the workload as no-tool, ordered multi-tool, parallel multi-tool,
+  two-child coordination, long-horizon continuation, or recovery. Never compare
+  unlike workload classes as if they were one benchmark.
+- Surface a compact **Observed on this Mac** section in the model menu or Settings →
+  Models: sample count, median/range for measured fields, completion and recovery
+  rates, unresolved-worker rate, and last observed route.
+- Separate native xAI, direct OpenAI-compatible, local, pinned OpenRouter, and
+  `openrouter/auto`. Downstream OpenRouter serving identity remains unproven.
+- Never auto-select a model, declare one "best," compare unlike workloads as quality,
+  or manufacture `$0` for missing prices.
+- Provide **Clear local observations** with an exact confirmation and no effect on
+  provider credentials, Grok history, or transcripts.
+
+### Billable acceptance
+
+Use frozen same-workload matrices on fresh sessions. Each lane runs an ordered
+three-tool task, a parallel two-child synthesis, and a three-turn continuation with
+one recoverable tool failure; the simple no-tool marker is retained only as a route
+and latency control.
+
+| Lane | Packet |
+|---|---|
+| Native | Grok 4.6: control marker plus the full agentic workload matrix |
+| Direct | `gpt-5.6-luna`: identical prompts, tools, recovery boundary, and turn count |
+| Brokered | pinned `openai/gpt-4.1-mini`: identical matrix; downstream provider remains unproven |
+
+Inspect live route receipts, settled usage, child/tool correctness, time to settle,
+recovery behavior, continuity, ledger aggregation, relaunch persistence, and clear
+behavior. Human-review the final synthesis against a frozen evidence key, but store
+no fake scalar “quality” score. Suggested anomaly ceiling: **1.5m actual tokens**;
+this is a stuck-run breaker, not a spend limit.
+
+## Slice 5 — build a first-class agentic acceptance harness
+
+**Purpose:** make expensive product proof repeatable, reviewable, and much less
+dependent on heroic manual note-taking.
+
+### Scope
+
+- Add a versioned acceptance-manifest schema under `scripts/acceptance/` for exact
+  marker, model, route, effort, prompt, allowed/required/forbidden tools, ordered and
+  parallel tool groups, child topology, turn/checkpoint count, retry and recovery
+  boundaries, expected receipt classes, continuation rules, and anomaly ceiling.
+- Provide a preflight that verifies installed stamp/signing/hash, CLI version,
+  configured model availability, process zero, and clean test-thread ledger before
+  enabling Send.
+- Capture structured receipts and generate a Markdown closeout packet with the
+  three-sentence checkpoint handoff already rendered for the agent to post verbatim.
+  The harness may assist with exact test-session cleanup but must stop rather than
+  guess an ID.
+- Require an explicit `--billable` flag even though this campaign is authorized.
+  Dry-run is the default and prints the frozen plan without credentials or response
+  bodies.
+- Do not bypass the installed UI, fake ACP authority, auto-approve permissions, or
+  kill broad process patterns.
+
+### Acceptance
+
+- Fixture mode proves dry-run, duplicate-marker refusal, ceiling stop, wrong-model
+  stop, missing-receipt stop, event reordering, child/tool partial failure, interrupted
+  horizon, resume mismatch, and exact cleanup ledger behavior at zero cost.
+- Installed mode runs one three-route, multi-turn, multi-tool, two-child manifest and
+  reproduces the same receipts as a manually inspected pass.
+- The generated handoff is exactly three sentences and includes repo/commit/checkpoint,
+  live state/usage/cleanup/risk, and next action/hard stop. Fixture tests reject two or
+  four sentences and missing `none` fields.
+
+Suggested anomaly ceiling for the installed harness proof: **1.5m actual tokens**.
+
+## Slice 6 — extract coordination seams and replace brittle test pins
+
+**Purpose:** lower the cost of every later feature without a behavior rewrite.
+
+### Scope
+
+Do this as multiple tiny PRs if necessary, but never mix it with product behavior:
+
+1. Extract subagent/lifecycle correlation from `ChatStore` into a pure reducer already
+   proven by Slice 1.
+2. Extract session-retention/LRU decisions from `ContentView` into the pure policy
+   proven by Slice 2.
+3. Extract Run-history/export formatting from the view into a Sendable value layer.
+4. Move top bar and composer presentation into small `ChatView` components without
+   moving state ownership.
+5. Replace source-string assertions for touched contracts with compile-time or
+   behavior tests; keep a few deliberate architecture tripwires.
+
+### Acceptance
+
+- No product copy, persistence schema, launch argv, provider route, or installed
+  behavior changes.
+- Focused tests plus `make test`, `make ship`, session switch/restore, Stop, close,
+  quit, and process zero.
+- The smoke is an agentic packet: three ordered tools, two parallel read-only child
+  investigations, one follow-up turn, and one deliberate Stop. Prove no behavior or
+  receipt drift before calling the extraction neutral.
+- Suggested anomaly ceiling: **250k actual tokens**.
+
+## Slice 7 — refresh public evidence and onboarding
+
+**Purpose:** make the repository's first impression match the product that actually
+ships.
+
+### Scope
+
+- Replace `docs/images/grokbuild-app.png` with a current signed-installed screenshot.
+- Add a compact second image showing a settled tool turn with the docked Run inspector.
+- Capture System/Dark and Light appearance if both are current supported surfaces;
+  otherwise document the actual appearance contract instead of staging a fake image.
+- Tighten the README's first screenful around three truths: thin wrapper over Grok CLI,
+  project/thread workflow, and exact model/route receipts.
+- Move historical acceptance detail out of the opening product pitch; keep links to
+  the authoritative docs.
+
+### Acceptance
+
+- Screenshots come from `/Applications/GrokBuild.app` stamped to the exact merged
+  `main`, not a debug preview.
+- AX names match **Run inspector**, **Session dashboard**, **Describe a task**, and
+  **What do you want to work on?**
+- One minimal native tool turn may be used to populate the inspector. Suggested
+  anomaly ceiling: **100k actual tokens**; reuse no prior provider history.
+- The final public example should show a settled multi-tool/two-child run with readable
+  parent/child and tool evidence, not another chatbot answering a one-line prompt.
+
+## Ideas deliberately rejected
+
+- Reimplementing ACP, MCP execution, memory, skills, plan mode, or subagents in the app.
+- Adding an app-side fallback router or claiming OpenRouter's downstream provider.
+- Keeping scheduled tasks alive through a new daemon or LaunchAgent.
+- Persisting raw prompts, responses, tool inputs, credentials, or chain-of-thought in
+  the performance ledger.
+- Auto-running billable matrices merely because a model is configured.
+- Treating a green unit suite, exact marker, polished answer, or `/health`-style status
+  as installed-product acceptance.
+- Calling gratuitous tool calls, child spam, or token burn “agentic performance.”
+- Ending any checkpoint without the exact three-sentence copy/paste handoff.
+
+## Recommended next authorization
+
+Authorize **Slice 0 only** first. It is zero-token, isolates the one confirmed release
+process defect, and gives every later billable enhancement an actual remote gate.
+After Slice 0 is merged and proven, authorize Slice 1 as the first product-code slice
+and the first serious agentic-performance packet. That task must end each checkpoint
+update—and its final merged-main closeout—with the mandatory three-sentence handoff.
