@@ -48,6 +48,16 @@ npm install -g agent-desktop   # if testing full bundle like CI
 make app
 ```
 
+### Merge-gate contract
+
+The `Test and Build App` job is a required check on the personal fork's `main`
+branch. GitHub must run it against the exact pull-request head SHA, and the pull
+request must remain blocked while that check is pending or failing. A successful
+run permits the merge; it does not replace merged-main packaging, signing, or
+installed-app acceptance when a product slice requires those gates.
+
+`release.yml` remains manual and is not part of this required pull-request check.
+
 ---
 
 ## Release (`release.yml`)
