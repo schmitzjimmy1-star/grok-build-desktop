@@ -87,6 +87,10 @@ struct ContentView: View {
     /// Rejects stale asynchronous transcript hydration after rapid A → B → A switching.
     @State private var sessionSelectionGeneration: UInt64 = 0
     @State private var cachedSessionTitles: [UUID: String] = [:]
+    /// Historical Run receipts are snapshotted only when the dashboard opens. Reading
+    /// every store's streamed messages from `body` would subscribe this root view to
+    /// every chunk and re-project the full history at display cadence.
+    @State private var dashboardRunHistoryBySessionID: [UUID: [RunHistory.Record]] = [:]
     /// Metadata is loaded in one background snapshot during restore. Keeping it in memory lets
     /// layout persistence answer counts/generations without touching transcript files on the
     /// main actor or decoding any unselected body.
@@ -252,7 +256,7 @@ struct ContentView: View {
                 onSessionDisclosureChanged: { persistSessionLayout() },
                 onNewChat: { startNewSessionForCurrentProject() },
                 onBrowseSessions: { sessionModal = .sessionBrowser },
-                onOpenActivity: { sessionModal = .activityDashboard },
+                onOpenActivity: { openActivityDashboard() },
                 onOpenPlugins: { openSettings(tab: .plugins) },
                 onOpenSecurity: { openSettings(tab: .permissions) }
             )
@@ -306,7 +310,7 @@ struct ContentView: View {
                         onOpenMemorySettings: { openSettings(tab: .memory) },
                         onOpenWorkflowSettings: { openSettings(tab: .workflows) },
                         onForkSession: { Task { await forkCurrentSession() } },
-                        onOpenDashboard: { sessionModal = .activityDashboard },
+                        onOpenDashboard: { openActivityDashboard() },
                         onSwitchBranch: {
                             if let workspace = currentWorkspace {
                                 gitCheckoutRequest = GitCheckoutRequest(project: workspace)
@@ -409,6 +413,7 @@ struct ContentView: View {
             SessionDashboardPanel(
                 entries: dashboardEntries,
                 selectedSessionID: selectedSessionID,
+                runHistoryBySessionID: dashboardRunHistoryBySessionID,
                 softCapExcess: runtimeRetentionDecision.softCapExcess
             ) { sessionID in
                 sessionModal = .none
@@ -594,6 +599,13 @@ struct ContentView: View {
             get: { sessionModal == modal },
             set: { sessionModal = $0 ? modal : .none }
         )
+    }
+
+    private func openActivityDashboard() {
+        dashboardRunHistoryBySessionID = Dictionary(uniqueKeysWithValues: liveSessions.map { session in
+            (session.id, RunHistory.records(from: session.store.messages))
+        })
+        sessionModal = .activityDashboard
     }
 
     /// Discovered agents and prompt-MCP inventories are per-workspace; refresh them at

@@ -150,11 +150,15 @@ struct AssistantTurnCheckpoint: Codable, Sendable, Hashable {
     var usageReceipt: UsageReceipt? = nil
     var coordinationReceipt: RunEvidenceSnapshot.CoordinationMetrics? = nil
     var attachmentNames: [String]? = nil
+    /// Credential-free route detail captured from the exact process generation
+    /// when this settled checkpoint was written. Absent legacy values stay absent.
+    var routeReceipt: String? = nil
 
     init(
         snapshot: RunEvidenceSnapshot,
         requestedToolFamilies: [String],
-        attachmentNames: [String] = []
+        attachmentNames: [String] = [],
+        routeReceipt: String? = nil
     ) {
         objective = snapshot.goalSummary
         outcome = snapshot.outcome.displayName
@@ -252,6 +256,7 @@ struct AssistantTurnCheckpoint: Codable, Sendable, Hashable {
         )
         coordinationReceipt = snapshot.coordination
         self.attachmentNames = Array(Set(attachmentNames)).sorted()
+        self.routeReceipt = routeReceipt
     }
 
     /// Reconstitutes the settled Activity projection from the existing local

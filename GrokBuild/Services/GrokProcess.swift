@@ -707,9 +707,13 @@ final class GrokProcess: @unchecked Sendable {
     /// manufactures completion: expiry emits a typed bridge failure and the run
     /// remains visibly incomplete.
     private static let turnCompletionReceiptWatchdog: Duration = .seconds(180)
+    /// A cancellation is advisory; receipt delivery gets one short chance before
+    /// hard teardown. This is deliberately not a completion wait or provider retry.
+    private static let stopReceiptDrainWindow: Duration = .milliseconds(150)
     private let ioLock = NSLock()
     private let writeLock = NSLock()
     private let turnCompletionLock = NSLock()
+    private let cancellationWriteQueue = DispatchQueue(label: "com.grokbuild.acp-cancellation-write")
     private let terminalManager = ACPClientTerminalManager()
     private(set) var state: GrokProcessState = .idle
     private(set) var currentWorkspace: Workspace?
@@ -769,6 +773,9 @@ final class GrokProcess: @unchecked Sendable {
     /// recent receipt is historical rather than a live-process claim.
     private(set) var processGeneration: UInt64 = 0
     private(set) var activeProcessGeneration: UInt64?
+    /// True only while Stop is allowing the captured process generation to deliver
+    /// final ACP receipts before identity invalidation and hard teardown.
+    private(set) var isStopDraining = false
     /// Exact root/descendant evidence for this generation. Teardown signals only
     /// fingerprints captured from this root; it never searches by executable name.
     private(set) var ownedProcessLedger = OwnedProcessLedger()
@@ -1383,9 +1390,8 @@ final class GrokProcess: @unchecked Sendable {
     /// after LRU eviction or a configuration reload; call this only when the session's
     /// tab closes for good or the app is quitting.
     func shutdown() async {
-        // Skip the courtesy session/cancel: it is a blocking pipe write with no
-        // timeout, and at quit the immediate stdin close below already tells grok to
-        // exit. A stuck child could otherwise hold the whole teardown hostage.
+        // Quit does not need an acknowledgement: closing stdin immediately tells
+        // Grok to exit and avoids retaining a process solely for a courtesy drain.
         await cleanupProcess(setIdle: false, sendCancel: false)
         acpEventContinuation?.finish()
         acpEventContinuation = nil
@@ -1418,18 +1424,28 @@ final class GrokProcess: @unchecked Sendable {
                 child: $0
             )
         }
+        let closingStdin = stdin
+        let shouldDrainStopReceipts = sendCancel && closingGeneration != nil && closingStdin != nil
+        if shouldDrainStopReceipts, let sid = sessionId, let closingStdin {
+            // Keep this exact generation and its readers alive briefly so a terminal
+            // completion already in flight can cross ACP before teardown. The write
+            // occurs on a dedicated queue and targets this captured old handle: a
+            // blocked CLI stdin must never pin the SwiftUI/MainActor path or a later
+            // process generation.
+            isStopDraining = true
+            writeCancellationAsynchronously(sessionID: sid, to: closingStdin)
+            try? await Task.sleep(for: Self.stopReceiptDrainWindow)
+        }
+
         activeProcessGeneration = nil
+        isStopDraining = false
         readerTask?.cancel()
         readerTask = nil
         stdout?.fileHandleForReading.readabilityHandler = nil
         stderr?.fileHandleForReading.readabilityHandler = nil
-        terminalManager.releaseAll()
+        await terminalManager.releaseAllAndEscalate()
         finishTurnCompletionWait()
-
-        if sendCancel, let sid = sessionId {
-            _ = writeJson(["jsonrpc": "2.0", "method": "session/cancel", "params": ["sessionId": sid]])
-        }
-        try? stdin?.close()
+        try? closingStdin?.close()
 
         if let p = process, p.isRunning {
             try? await Task.sleep(for: .milliseconds(100))
@@ -1819,23 +1835,46 @@ final class GrokProcess: @unchecked Sendable {
     // MARK: - ACP Implementation
 
     private func writeJson(_ obj: [String: Any]) -> Bool {
-        writeLock.lock()
-        defer { writeLock.unlock() }
-        guard let h = stdin else { return false }
+        guard let line = Self.jsonLine(obj) else { return false }
+        return writeLine(line, to: stdin)
+    }
+
+    private func writeCancellationAsynchronously(sessionID: String, to handle: FileHandle) {
+        guard let line = Self.jsonLine([
+            "jsonrpc": "2.0",
+            "method": "session/cancel",
+            "params": ["sessionId": sessionID]
+        ]) else { return }
+        cancellationWriteQueue.async {
+            // This deliberately does not take `writeLock`: if the old CLI stdin is
+            // full, its stuck courtesy cancellation must not lock future writes to a
+            // newly launched process generation.
+            try? handle.write(contentsOf: line)
+        }
+    }
+
+    private static func jsonLine(_ obj: [String: Any]) -> Data? {
         let data: Data
         if #available(macOS 12.0, *) {
             guard let encoded = try? JSONSerialization.data(
                 withJSONObject: obj,
                 options: [.withoutEscapingSlashes]
-            ) else { return false }
+            ) else { return nil }
             data = encoded
         } else {
-            guard let encoded = try? JSONSerialization.data(withJSONObject: obj) else { return false }
+            guard let encoded = try? JSONSerialization.data(withJSONObject: obj) else { return nil }
             data = encoded
         }
         var line = data
         line.append("\n".data(using: .utf8)!)
-        do { try h.write(contentsOf: line); return true } catch { return false }
+        return line
+    }
+
+    private func writeLine(_ line: Data, to handle: FileHandle?) -> Bool {
+        writeLock.lock()
+        defer { writeLock.unlock() }
+        guard let handle else { return false }
+        do { try handle.write(contentsOf: line); return true } catch { return false }
     }
 
     private func sendRequest(method: String, params: [String: Any]) async throws -> Any? {

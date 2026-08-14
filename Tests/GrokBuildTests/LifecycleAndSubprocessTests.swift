@@ -57,6 +57,77 @@ final class SessionLifecycleTests: XCTestCase {
         XCTAssertEqual(process.state, .idle)
     }
 
+    func testStopDrainsLateWorkerReceiptBeforeMarkingUnresolvedWorkers() async throws {
+        let fixtureRoot = FileManager.default.temporaryDirectory
+            .appendingPathComponent("grokbuild-stop-drain-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: fixtureRoot, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: fixtureRoot) }
+        let scriptURL = fixtureRoot.appendingPathComponent("fake-grok")
+        let script = """
+        #!/bin/sh
+        while IFS= read -r line; do
+          id=$(printf '%s' "$line" | sed -E 's/.*"id":([0-9]+).*/\\1/')
+          case "$line" in
+            *'"method":"initialize"'*) printf '{"jsonrpc":"2.0","id":%s,"result":{}}\n' "$id" ;;
+            *'"method":"session/new"'*)
+              printf '{"jsonrpc":"2.0","id":%s,"result":{"sessionId":"stop-drain-backend","models":{"currentModelId":"grok-4.5","availableModels":[]}}}\n' "$id"
+              ;;
+            *'"method":"session/cancel"'*)
+              printf '{"jsonrpc":"2.0","method":"_x.ai/session/update","params":{"sessionId":"stop-drain-backend","_meta":{"eventId":"finish-1"},"update":{"sessionUpdate":"subagent_finished","subagent_id":"child-1","child_session_id":"child-1","status":"completed","tool_calls":1,"turns":1,"duration_ms":1,"tokens_used":1}}}\n'
+              ;;
+          esac
+        done
+        """
+        try script.write(to: scriptURL, atomically: true, encoding: .utf8)
+        try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: scriptURL.path)
+
+        GrokProcess.cliOverrideForTests = scriptURL
+        defer { GrokProcess.cliOverrideForTests = nil }
+        let store = ChatStore()
+        store.bindTabSession(UUID(), savedModel: "grok-4.5")
+        await store.start(workspace: Workspace(name: "stop-drain", path: fixtureRoot))
+        XCTAssertEqual(store.process.sessionId, "stop-drain-backend")
+        XCTAssertEqual(store.connectionState, .ready)
+        let generation = try XCTUnwrap(store.process.activeProcessGeneration)
+        store.process.routeSessionUpdateForTests(
+            [
+                "sessionUpdate": "tool_call",
+                "toolCallId": "spawn-call-1",
+                "title": "spawn_subagent",
+                "rawInput": ["description": "late completion worker"],
+                "_meta": ["x.ai/tool": ["name": "spawn_subagent"]]
+            ],
+            sessionID: "stop-drain-backend",
+            backendEventID: "spawn-tool-1",
+            processGeneration: generation
+        )
+        store.process.routeSessionUpdateForTests(
+            [
+                "sessionUpdate": "subagent_spawned",
+                "subagent_id": "child-1",
+                "child_session_id": "child-1",
+                "description": "late completion worker",
+                "model": "grok-4.5"
+            ],
+            sessionID: "stop-drain-backend",
+            backendEventID: "spawn-1",
+            processGeneration: generation
+        )
+        for _ in 0..<100 where store.backgroundActivities.isEmpty {
+            try await Task.sleep(for: .milliseconds(5))
+        }
+        XCTAssertEqual(store.backgroundActivities.count, 1)
+        store.setStreamingForTests(true)
+
+        await store.stop()
+
+        let worker = try XCTUnwrap(store.backgroundActivities.first)
+        XCTAssertEqual(worker.status, "completed")
+        XCTAssertEqual(store.runEvidenceSnapshot?.outcome, .userStopped)
+        XCTAssertNil(store.process.activeProcessGeneration)
+        await store.shutdownPermanently()
+    }
+
     func testSubagentLifecycleRejectsWrongTabBackendAndGeneration() {
         let tabID = UUID()
         let identity = ACPEventIdentity(

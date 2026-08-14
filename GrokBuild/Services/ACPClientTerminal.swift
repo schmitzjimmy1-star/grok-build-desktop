@@ -1,4 +1,5 @@
 import Foundation
+import Darwin
 
 /// Client-owned terminals advertised through ACP. Commands run directly (never through an
 /// interpolated shell), inherit GrokBuild's environment, and retain a bounded combined output
@@ -134,6 +135,15 @@ final class ACPClientTerminalManager: @unchecked Sendable {
         func terminateIfRunning() {
             if process.isRunning { process.terminate() }
         }
+
+        func terminateAndEscalate() async {
+            terminateIfRunning()
+            if process.isRunning {
+                try? await Task.sleep(for: .milliseconds(100))
+                if process.isRunning { Darwin.kill(process.processIdentifier, SIGKILL) }
+            }
+            pipe.fileHandleForReading.readabilityHandler = nil
+        }
     }
 
     private let lock = NSLock()
@@ -262,6 +272,26 @@ final class ACPClientTerminalManager: @unchecked Sendable {
             session.terminateIfRunning()
             session.pipe.fileHandleForReading.readabilityHandler = nil
         }
+    }
+
+    /// Teardown path for a Grok process: client terminals are independently
+    /// launched, so they need their own bounded TERM → KILL verification rather
+    /// than relying on the Grok-root descendant ledger.
+    func releaseAllAndEscalate() async {
+        let active = takeAllSessions()
+        await withTaskGroup(of: Void.self) { group in
+            for session in active {
+                group.addTask { await session.terminateAndEscalate() }
+            }
+        }
+    }
+
+    private func takeAllSessions() -> [Session] {
+        lock.lock()
+        defer { lock.unlock() }
+        let active = Array(sessions.values)
+        sessions.removeAll()
+        return active
     }
 
     private func session(for terminalID: String) throws -> Session {

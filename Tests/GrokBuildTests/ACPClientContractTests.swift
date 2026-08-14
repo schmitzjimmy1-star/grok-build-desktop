@@ -1587,6 +1587,43 @@ final class ACPClientContractTests: XCTestCase {
         XCTAssertThrowsError(try manager.snapshot(terminalID: terminalID))
     }
 
+    func testTerminalTeardownEscalatesTermIgnoringClientProcess() async throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("grokbuild-terminal-teardown-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let pidURL = root.appendingPathComponent("terminal.pid")
+        let scriptURL = root.appendingPathComponent("term-ignoring-script")
+        try """
+        #!/bin/sh
+        printf '%s' "$$" > '\(pidURL.path)'
+        trap '' TERM
+        while true; do sleep 1; done
+        """.write(to: scriptURL, atomically: true, encoding: .utf8)
+        try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: scriptURL.path)
+
+        let manager = ACPClientTerminalManager()
+        _ = try manager.create(
+            command: scriptURL.path,
+            arguments: [],
+            environment: [:],
+            workingDirectory: root.path,
+            outputByteLimit: 1_024
+        )
+        for _ in 0..<100 where !FileManager.default.fileExists(atPath: pidURL.path) {
+            try await Task.sleep(for: .milliseconds(5))
+        }
+        let pid = try XCTUnwrap(pid_t(String(contentsOf: pidURL, encoding: .utf8)))
+        let fingerprint = try XCTUnwrap(OwnedProcessTree.fingerprint(of: pid))
+
+        await manager.releaseAllAndEscalate()
+
+        for _ in 0..<50 where OwnedProcessTree.stillMatches(fingerprint) {
+            try await Task.sleep(for: .milliseconds(10))
+        }
+        XCTAssertFalse(OwnedProcessTree.stillMatches(fingerprint))
+    }
+
     func testTerminalOutputRetainsBoundedValidUTF8Suffix() async throws {
         let manager = ACPClientTerminalManager()
         let terminalID = try manager.create(
@@ -2136,6 +2173,50 @@ final class ACPClientContractTests: XCTestCase {
         XCTAssertNil(store.lastError)
         XCTAssertEqual(store.runEvidenceSnapshot?.process.state, "Cancelled")
         XCTAssertEqual(store.runEvidenceSnapshot?.usage.totalTokens, 42)
+        await store.shutdownPermanently()
+    }
+
+    @MainActor
+    func testPermissionTimeoutCancellationClearsPendingUIAndStaysCancelled() async throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("grokbuild-permission-cancel-fixture-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let scriptURL = root.appendingPathComponent("fake-grok")
+        let script = """
+        #!/bin/sh
+        while IFS= read -r line; do
+          id=$(printf '%s' "$line" | sed -E 's/.*"id":([0-9]+).*/\\1/')
+          case "$line" in
+            *'"method":"initialize"'*) printf '{"jsonrpc":"2.0","id":%s,"result":{}}\n' "$id" ;;
+            *'"method":"session/new"'*) printf '{"jsonrpc":"2.0","id":%s,"result":{"sessionId":"permission-cancelled-backend","models":{"currentModelId":"grok-4.5","availableModels":[]}}}\n' "$id" ;;
+            *'"method":"session/set_model"'*) printf '{"jsonrpc":"2.0","id":%s,"result":{"_meta":{"model":{"Ok":"grok-4.5"}}}}\n' "$id" ;;
+            *'"method":"session/prompt"'*)
+              printf '{"jsonrpc":"2.0","id":"permission-1","method":"session/request_permission","params":{"sessionId":"permission-cancelled-backend","toolCall":{"toolCallId":"call-1","title":"Execute `/bin/sleep 45`","kind":"execute"},"options":[{"optionId":"allow_once","name":"Allow once","kind":"allow_once"}]}}\n'
+              printf '{"jsonrpc":"2.0","method":"_x.ai/session_notification","params":{"sessionId":"permission-cancelled-backend","update":{"sessionUpdate":"turn_completed","stop_reason":"cancelled","usage":{"totalTokens":43,"modelCalls":1,"numTurns":1}}}}\n'
+              ;;
+          esac
+        done
+        """
+        try script.write(to: scriptURL, atomically: true, encoding: .utf8)
+        try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: scriptURL.path)
+
+        GrokProcess.cliOverrideForTests = scriptURL
+        defer { GrokProcess.cliOverrideForTests = nil }
+        let store = ChatStore()
+        store.bindTabSession(UUID(), savedModel: "grok-4.5")
+        await store.start(workspace: Workspace(name: "permission-cancelled-prompt", path: root))
+
+        let sendSucceeded = await store.sendAndWait("Exercise permission timeout cancellation")
+
+        XCTAssertTrue(sendSucceeded)
+        XCTAssertEqual(store.latestTurnOutcome, .cancelled)
+        XCTAssertTrue(store.pendingPermissions.isEmpty)
+        XCTAssertNil(store.pendingExitPlan)
+        XCTAssertTrue(store.pendingQuestions.isEmpty)
+        XCTAssertEqual(store.connectionState, .ready)
+        XCTAssertEqual(store.runEvidenceSnapshot?.outcome, .cancelled)
+        XCTAssertEqual(store.runEvidenceSnapshot?.usage.totalTokens, 43)
         await store.shutdownPermanently()
     }
 
