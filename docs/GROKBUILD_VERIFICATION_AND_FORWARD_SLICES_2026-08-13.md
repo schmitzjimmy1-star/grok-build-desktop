@@ -1,6 +1,6 @@
 # GrokBuild agentic-performance verification and forward slices — 2026-08-13
 
-Status: **Slices 0–1 complete; Slice 2 authorized and in progress.**
+Status: **Slices 0–2 complete; Slice 3 is not authorized.**
 
 This plan follows the canonical identity and Gates A–H in
 [`CANONICAL_WORKTREE.md`](../CANONICAL_WORKTREE.md) and
@@ -326,6 +326,63 @@ Suggested anomaly ceiling: **600k actual tokens**. The cost is secondary here; e
 schedule cleanup and process ownership are the hard gates. Every checkpoint update,
 including an overnight or resumed checkpoint, ends with the mandatory three-sentence
 handoff so a new session can continue without reconstructing state from vibes.
+
+### Slice 2 acceptance receipt — 2026-08-14
+
+- **Code and deterministic proof:** the generation-bound inventory receipt and
+  runtime lease, protected-outside-ordinary MRU policy, mounted Tasks menu, Session
+  dashboard ownership rows, and soft-cap warning are frozen at code commit
+  `21f293bf67cb6af2f293b884b20f380948f3ad24` on
+  `codex/grokbuild-audit-s2-runtime-lease`. Focused retention/scheduler/dashboard
+  coverage passed 23/23 and `make ship` passed 817/817 with installed stamp equal to
+  that clean commit, dist/install binary parity, Team `DD2GCQJVB4`, strict deep
+  signature verification, no quarantine, and bundled-helper packaging. Installed
+  acceptance first caught and fixed two candidate defects: the Tasks menu builder
+  was not mounted, then a selected protected schedule consumed one of the four
+  ordinary MRU slots. The final pure-policy regression proves the selected pinned
+  runtime remains outside all four ordinary slots.
+- **Schedule continuity and truthful UI:** disposable native Grok 4.6 loop parent
+  `019ffee2-88b0-78e2-bef6-8d2ed6ceeadb`, task `019ffee29ff1`, and marker
+  `GB-S2-LEASE-20260814T0106` retained backend ownership at process generation 1.
+  Four detached checkpoint children—`019ffee2-9ff2-7320-9f81-14a0ce813a90`,
+  `019ffee3-8a54-78c2-877f-03d8715c6725`,
+  `019ffee4-74b5-7352-945e-8eeec9a863ca`, and
+  `019ffee5-5f17-7f70-ae7b-b1c842255688`—each used the bounded Read plus
+  `git rev-parse --short HEAD` path and independently returned
+  `GB-S2-LEASE-20260814T0106 GrokBuild 0f9622b`. The fourth checkpoint exceeded the
+  frozen three-checkpoint target while the MRU defect was being isolated; it was
+  recorded rather than hidden, and the exact task was then cancelled. Relaunching
+  the earlier cancelled-loop tab showed `runtime not pinned` and explicitly said
+  cached/restored metadata could not mint a lease without live re-observation.
+- **Exact corrected cap proof:** final no-fire parent
+  `019ffeeb-7090-7ce1-9e56-f764e7ecb53c` created exact task `019ffeeb8180` at a
+  one-hour cadence with `fire_immediately=false`. The Tasks menu reported that
+  backend at generation 1; four ordinary live runtimes plus the protected schedule
+  produced five exact Grok child processes beneath GrokBuild PID 54608, while the
+  Session dashboard reported `Runtime soft cap exceeded by 1` and kept the pinned
+  row visible. Cancelling that task immediately changed the menu to
+  `runtime not pinned` and the OS tree to four Grok children, proving lease release
+  without a daemon or hidden continuation.
+- **Failure and child lifecycle:** parent
+  `019ffeef-4935-7802-8c12-9177cb58763b` attempted one deliberately missing Read,
+  preserved the visible failure without retry, spawned exact child
+  `019ffeef-682a-7571-88a0-eee44e24e7fc`, waited once, and still settled with marker
+  `GB-S2-FAIL-CHILD-20260814T0121` plus child result `# GrokBuild Desktop App`.
+  Unified Grok receipts report 747,964 actual prompt-plus-completion tokens across
+  46 model calls for the full exploratory acceptance sequence, 147,964 above the
+  suggested 600k anomaly ceiling because the two installed defects required fresh
+  signed-build reruns and the loop emitted one extra checkpoint. Every inference
+  recorded `attempts: 1`; there was no automatic provider retry and no further
+  billable send after the overrun was calculated.
+- **Cleanup and closeout:** both schedules were cancelled before teardown. GrokBuild
+  closed every exact Slice 2 local tab, leaving zero matching local transcripts and
+  deleting all root backend sessions. The Grok CLI does not index detached children
+  for `sessions delete`, so the six verified child-session directories were removed
+  directly and irrecoverably; only the shared historical `prompt_history.jsonl`
+  audit entries remain untouched. Two post-quit samples found no GrokBuild, helper,
+  `agent-desktop`, or Grok process. No OpenRouter, provider/configuration/credential,
+  release, upstream-origin, automatic-retry, Slice 3, or unrelated system change
+  occurred.
 
 ## Slice 3 — add durable agentic Run history and redacted evidence export
 
