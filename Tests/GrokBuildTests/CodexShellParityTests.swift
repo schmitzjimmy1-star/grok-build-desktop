@@ -305,9 +305,13 @@ final class CodexShellParityTests: XCTestCase {
 
         let chatView = try source("GrokBuild/Views/ChatView.swift")
 
-        // The inspector overlays; it is not a conversation-crushing third column.
+        // The inspector docks at the default window width; overlay is mid-band only.
         XCTAssertTrue(chatView.contains("ZStack(alignment: .topTrailing) {"),
-                      "the Activity inspector overlays the top-trailing corner")
+                      "the Run inspector still overlays in the mid band")
+        XCTAssertTrue(chatView.contains("activityInspector(docked: true)"),
+                      "at default width the inspector docks as a third column")
+        XCTAssertTrue(chatView.contains("ResponsiveLayoutPolicy.inspectorDocks(chatAreaWidth: chatAreaWidth)"),
+                      "docking is gated by the responsive policy")
         XCTAssertFalse(chatView.contains("HStack(spacing: 0) {\n            VStack(spacing: 0) {\n            topBar"),
                        "the old third-column body layout must not return")
 

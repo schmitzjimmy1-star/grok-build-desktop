@@ -223,8 +223,8 @@ struct SidebarView: View {
                 }
                 .buttonStyle(.plain)
                 .foregroundStyle(.secondary)
-                .accessibilityLabel("Session activity")
-                .accessibilityHint("Opens the session activity dashboard.")
+                .accessibilityLabel("Session dashboard")
+                .accessibilityHint("Opens the session dashboard.")
             }
             .padding(.horizontal, 14)
             .padding(.top, 12)

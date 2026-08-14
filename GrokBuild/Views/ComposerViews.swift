@@ -225,6 +225,9 @@ private struct AssistantToolTraceRow: View {
         if duration != "Duration not reported" {
             parts.append(duration)
         }
+        if let output = settledOutput {
+            parts.append(output)
+        }
         return parts.joined(separator: ", ")
     }
 

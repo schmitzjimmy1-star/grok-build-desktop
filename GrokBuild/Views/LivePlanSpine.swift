@@ -541,7 +541,7 @@ struct ThreadTaskContractView: View {
                     )
                 }
                 .buttonStyle(.link)
-                .accessibilityHint("Opens the owning thread's authoritative Activity receipts.")
+                .accessibilityHint("Opens the owning thread's authoritative run inspector receipts.")
             }
 
             HStack(spacing: 10) {
@@ -571,7 +571,7 @@ struct ThreadTaskContractView: View {
                     Button("Continue as New", action: onContinueAsNew)
                         .help("Preserves the prior record and clears the unsafe backend binding for the next send.")
                 }
-                Button("Activity") {
+                Button("Run inspector") {
                     isExpanded = false
                     onOpenActivity()
                 }
@@ -690,7 +690,7 @@ struct ThreadRunSpineView: View {
                     .foregroundStyle(.tertiary)
                     .lineLimit(1)
             }
-            Button("Activity", action: onOpenActivity)
+            Button("Run inspector", action: onOpenActivity)
                 .buttonStyle(.link)
                 .font(AppTheme.Typography.caption)
         }
@@ -827,7 +827,7 @@ struct ThreadRunSpineView: View {
             }
 
             HStack(spacing: 14) {
-                Button("Activity", action: onOpenActivity)
+                Button("Run inspector", action: onOpenActivity)
                     .buttonStyle(.link)
             }
             .font(AppTheme.Typography.caption)

@@ -420,6 +420,7 @@ final class ChatTranscriptLayoutTests: XCTestCase {
         XCTAssertTrue(toolView.contains("textSelection(.enabled)"))
         XCTAssertTrue(toolView.contains("grok-assistant-tool-\\(sanitizedToolID)"))
         XCTAssertTrue(toolView.contains("accessibilityLabel(server: displayedMCPServer)"))
+        XCTAssertTrue(toolView.contains("if let output = settledOutput"))
         XCTAssertFalse(toolView.contains("grok-assistant-tool-details"))
         XCTAssertTrue(toolView.contains("grok-assistant-tool-list"))
     }

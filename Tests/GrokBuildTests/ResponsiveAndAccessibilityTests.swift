@@ -18,22 +18,24 @@ final class ResponsiveAndAccessibilityTests: XCTestCase {
                       "the unmeasured initial state never suppresses the panel")
     }
 
-    /// Workbench W-6 — three regimes, one order of sacrifice: hidden below
-    /// 900, a top-trailing overlay through 1,499, a docked third column from
-    /// 1,500 up. Docking never changes when the inspector hides.
+    /// Workbench W-6 / audit Slice 4 — three regimes: collapsed strip below
+    /// 900, a top-trailing overlay through 1,099, a docked third column from
+    /// 1,100 up. Docking never changes when the inspector collapses.
     func testInspectorDocksOnlyAtFullThirdColumnWidth() {
         XCTAssertFalse(ResponsiveLayoutPolicy.inspectorDocks(chatAreaWidth: 899),
-                       "hidden regime: the inspector hides first, so it cannot dock")
-        XCTAssertFalse(ResponsiveLayoutPolicy.inspectorDocks(chatAreaWidth: 1499),
+                       "collapsed regime: the inspector does not dock")
+        XCTAssertFalse(ResponsiveLayoutPolicy.inspectorDocks(chatAreaWidth: 1099),
                        "overlay regime: below the dock threshold the panel overlays")
-        XCTAssertTrue(ResponsiveLayoutPolicy.inspectorDocks(chatAreaWidth: 1500),
+        XCTAssertTrue(ResponsiveLayoutPolicy.inspectorDocks(chatAreaWidth: 1100),
                       "dock regime: a real third column once both surfaces fit at full width")
-        XCTAssertEqual(ResponsiveLayoutPolicy.inspectorDockMinimumChatWidth, 1500)
+        XCTAssertTrue(ResponsiveLayoutPolicy.inspectorDocks(chatAreaWidth: 1200),
+                      "default 1440×900 chat area (1440 − 240 sidebar) docks")
+        XCTAssertEqual(ResponsiveLayoutPolicy.inspectorDockMinimumChatWidth, 1100)
         // Docking must leave the transcript above its readable minimum.
         XCTAssertGreaterThanOrEqual(
             ResponsiveLayoutPolicy.inspectorDockMinimumChatWidth - 284,
             ResponsiveLayoutPolicy.conversationReadableMinimum,
-            "1,500 − (260-pt panel + padding) keeps the reading column readable"
+            "1,100 − (260-pt panel + padding) keeps the reading column readable"
         )
     }
 
@@ -62,6 +64,10 @@ final class ResponsiveAndAccessibilityTests: XCTestCase {
                       "the docked column is gated by the same policy and preserved open state")
         XCTAssertTrue(chatView.contains("activityInspector(docked: false)"),
                       "both mounts share the one inspector instance")
+        XCTAssertTrue(chatView.contains("activityInspectorCollapsedStrip()"),
+                      "below 900 the open inspector collapses instead of hiding")
+        XCTAssertTrue(chatView.contains("Text(\"Run inspector\")"),
+                      "header toggle speaks Run inspector")
     }
 
     /// Slice 4 acceptance found `.menuStyle(.button)` menus ignored AXPress and
@@ -164,7 +170,7 @@ final class ResponsiveAndAccessibilityTests: XCTestCase {
     func testAuditedIconOnlyControlsCarryExplicitLabels() throws {
         let expectations: [(file: String, labels: [String])] = [
             ("GrokBuild/Views/SidebarView.swift",
-             ["Filter projects", "Session activity", "New project"]),
+             ["Filter projects", "Session dashboard", "New project"]),
             ("GrokBuild/Views/PreviewPane.swift", ["Close review pane"]),
             ("GrokBuild/Views/SessionsBrowserPanel.swift", ["Delete session"]),
             ("GrokBuild/Views/MemoryBrowserPanel.swift", ["Reveal in Finder"]),

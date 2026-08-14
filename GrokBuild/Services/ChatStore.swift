@@ -3119,6 +3119,8 @@ final class ChatStore {
         currentTurnWorkerPlanStepIDs = [:]
         pendingArtifactPathsByToolCallID = [:]
         activeTurnCompletionConsumed = false
+        backgroundTaskTracker.beginUserTurn()
+        backgroundActivities = backgroundTaskTracker.activities
     }
 
     private func invalidateTurnSettlement() {
