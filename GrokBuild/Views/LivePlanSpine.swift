@@ -866,7 +866,8 @@ struct ThreadRunSpineView: View {
             redactedError: worker.redactedError,
             childToolReceipts: worker.childToolReceipts,
             runtimeModelID: worker.runtimeModelID,
-            routedModel: worker.routedModel
+            routedModel: worker.routedModel,
+            childLedgerReadOutcome: worker.childLedgerReadOutcome
         )
         return VStack(alignment: .leading, spacing: 2) {
             Label(worker.title, systemImage: worker.isActive ? "person.wave.2" : "person.2")

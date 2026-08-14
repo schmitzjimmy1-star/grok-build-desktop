@@ -178,10 +178,14 @@ enum ContextInspectorProjection {
             let normalized = worker.status.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
             if worker.isActive {
                 running += 1
+            } else if worker.isUnresolved {
+                if normalized == "unknown" || normalized == "orphaned" {
+                    noReport += 1
+                } else {
+                    failed += 1
+                }
             } else if worker.isCompleted {
                 done += 1
-            } else if normalized == "unknown" || normalized == "orphaned" {
-                noReport += 1
             } else {
                 failed += 1
             }

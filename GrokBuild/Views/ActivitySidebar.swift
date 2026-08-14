@@ -92,7 +92,8 @@ enum ActivitySidebarPresentation {
             toolCallCount: activity.toolCallCount,
             redactedError: activity.redactedError,
             childToolReceipts: activity.childToolReceipts,
-            runtimeModelID: activity.runtimeModelID
+            runtimeModelID: activity.runtimeModelID,
+            childLedgerReadOutcome: activity.childLedgerReadOutcome
         )
     }
 
@@ -103,7 +104,8 @@ enum ActivitySidebarPresentation {
         redactedError: String?,
         childToolReceipts: [ChildToolReceipt]? = nil,
         runtimeModelID: String? = nil,
-        routedModel: String? = nil
+        routedModel: String? = nil,
+        childLedgerReadOutcome: ChildLedgerReadOutcome? = nil
     ) -> String {
         var parts: [String] = []
         if let runtimeModelID, !runtimeModelID.isEmpty {
@@ -125,14 +127,22 @@ enum ActivitySidebarPresentation {
             parts.append("No final report")
         } else if normalized == "orphaned" {
             parts.append("No final report (orphaned)")
+        } else if normalized == "cancelled" {
+            parts.append("Cancelled before finish")
         }
         if let redactedError {
             parts.append("Error: \(TranscriptTextPresentation.singleLine(redactedError, maxLength: 120))")
-        } else if BackgroundActivityStatusPolicy.canonicalWorkerTerminalStatus(status) == "completed",
-                  (toolCallCount ?? 0) > 0 {
-            if let childToolReceipts, childToolReceipts.count == toolCallCount {
+        } else if BackgroundActivityStatusPolicy.canonicalWorkerTerminalStatus(status) == "completed" {
+            let toolCount = toolCallCount ?? 0
+            if childLedgerReadOutcome == .unreadable {
+                parts.append("Child ledger unreadable")
+            } else if toolCount == 0 {
+                if childLedgerReadOutcome == .empty {
+                    parts.append("Child ledger confirmed zero tools")
+                }
+            } else if let childToolReceipts, childToolReceipts.count == toolCount {
                 let succeeded = childToolReceipts.filter { $0.status == .succeeded }.count
-                parts.append("Child receipts: \(succeeded)/\(toolCallCount ?? 0) succeeded")
+                parts.append("Child receipts: \(succeeded)/\(toolCount) succeeded")
                 let exercised = childToolReceipts.filter { $0.mcpReceiptRole == .invocation }
                     .compactMap { receipt -> String? in
                         guard let name = receipt.qualifiedToolName else { return nil }
@@ -141,7 +151,7 @@ enum ActivitySidebarPresentation {
                             ?? "\(name) \(receipt.status.rawValue)"
                     }
                 parts.append(contentsOf: exercised)
-            } else {
+            } else if childLedgerReadOutcome != .empty {
                 parts.append("Child tool outcomes were not reported to the parent receipt")
             }
         }
@@ -171,6 +181,7 @@ enum ActivitySidebarPresentation {
         switch clean.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() {
         case "unknown": return "No final report"
         case "orphaned": return "No final report (orphaned)"
+        case "cancelled", "canceled": return "Cancelled"
         case "not_settled", "status_not_settled": return "Not finished yet"
         default: break
         }
@@ -576,7 +587,8 @@ struct ActivitySidebar: View {
                                 redactedError: worker.redactedError,
                                 childToolReceipts: worker.childToolReceipts,
                                 runtimeModelID: worker.runtimeModelID,
-                                routedModel: worker.routedModel
+                                routedModel: worker.routedModel,
+                                childLedgerReadOutcome: worker.childLedgerReadOutcome
                             )
                             if !detail.isEmpty {
                                 Text(detail)
@@ -791,8 +803,10 @@ struct ActivitySidebar: View {
                                 durationMilliseconds: worker.durationMilliseconds,
                                 toolCallCount: worker.toolCallCount,
                                 redactedError: worker.redactedError,
+                                childToolReceipts: worker.childToolReceipts,
                                 runtimeModelID: worker.runtimeModelID,
-                                routedModel: worker.routedModel
+                                routedModel: worker.routedModel,
+                                childLedgerReadOutcome: worker.childLedgerReadOutcome
                             )
                             if !detail.isEmpty {
                                 Text(detail)
@@ -821,7 +835,8 @@ struct ActivitySidebar: View {
             redactedError: worker.redactedError,
             childToolReceipts: worker.childToolReceipts,
             runtimeModelID: worker.runtimeModelID,
-            routedModel: worker.routedModel
+            routedModel: worker.routedModel,
+            childLedgerReadOutcome: worker.childLedgerReadOutcome
         )
         return detail.isEmpty
             ? "Worker \(worker.title). \(status)."

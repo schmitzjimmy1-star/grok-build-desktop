@@ -400,6 +400,31 @@ final class ActivitySidebarTests: XCTestCase {
         )
     }
 
+    func testChildLedgerPresentationDistinguishesUnreadableFromEmpty() {
+        let unreadable = ActivitySidebarPresentation.workerReceiptDetail(
+            status: "completed",
+            durationMilliseconds: 100,
+            toolCallCount: 0,
+            redactedError: nil,
+            childToolReceipts: nil,
+            childLedgerReadOutcome: .unreadable
+        )
+        XCTAssertTrue(unreadable.contains("Child ledger unreadable"))
+        XCTAssertFalse(unreadable.contains("not reported"))
+
+        let empty = ActivitySidebarPresentation.workerReceiptDetail(
+            status: "completed",
+            durationMilliseconds: 100,
+            toolCallCount: 0,
+            redactedError: nil,
+            childToolReceipts: [],
+            childLedgerReadOutcome: .empty
+        )
+        XCTAssertTrue(empty.contains("Child ledger confirmed zero tools"))
+        XCTAssertFalse(empty.contains("not reported"))
+        XCTAssertFalse(empty.contains("unreadable"))
+    }
+
     func testReconciledChildBrowserReceiptStaysAttributedInsideWorker() {
         let receipts = [
             ChildToolReceipt(

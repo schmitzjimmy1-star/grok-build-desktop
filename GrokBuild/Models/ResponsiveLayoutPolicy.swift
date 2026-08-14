@@ -2,14 +2,15 @@ import Foundation
 
 /// Codex parity Slice 7 — pure responsive thresholds derived from available
 /// conversation width. Order of sacrifice when space runs out:
-/// 1. the contextual inspector hides first;
+/// 1. the contextual inspector overlay yields first (collapsed strip below 900);
 /// 2. the sidebar collapses next;
 /// 3. the transcript never compresses below its readable minimum.
 enum ResponsiveLayoutPolicy {
     /// Minimum chat-area width at which the 260-pt top-trailing inspector
     /// overlay can be shown without covering most of the reading column.
-    /// Below this the inspector hides first; the user's open/closed state is
-    /// preserved and the panel returns when the window widens.
+    /// Below this the overlay stands down and an open inspector becomes a
+    /// collapsed strip; the user's open/closed state is preserved and the
+    /// panel returns when the window widens.
     static let inspectorMinimumChatWidth: Double = 900
 
     /// Workbench W-6 (2026-08-08), audit Slice 4 (2026-08-13): at this chat-area

@@ -32,8 +32,8 @@ Do not scrape `~/.grok/sessions`. Do not translate cross-provider history.
 | 1 | Process ownership: cancel warm-start task, 5s quit, stderr redaction, external CDP PID | High | CU plus one Send only if needed | Merged PR #61 `f6f648d` |
 | 2 | Spawn on Send; Connecting/Default copy; idle sidebar until Send | Medium | One native no-tool after Send spawn | Merged PR #62 `18a9f3e` |
 | 3 | Transcript `resultDetail` + per-tool AX | Medium | 3-route tool packets | Merged PR #63 `f837f60` |
-| 4 | Inspector at default 1440 + per-turn worker clear | Medium | One Grok 4.6 horizon | Proven 2026-08-13 — `codex/grokbuild-audit-s4-inspector-clear` `4d21aac` |
-| 5 | Subagent Stop/unbound/ledger + publication matrix | High | 3-route closeout; stop at 400k | Blocked on 4 |
+| 4 | Inspector at default 1440 + per-turn worker clear | Medium | One Grok 4.6 horizon | Merged PR #64 `0c97cff` |
+| 5 | Subagent Stop/unbound/ledger + publication matrix | High | 3-route closeout; stop at 400k | In progress on `codex/grokbuild-audit-s5-subagent-truth` |
 
 ### Slice 0 receipt — live prove, 2026-08-13
 
@@ -266,8 +266,18 @@ no-tool markers `GB-S4-HORIZON-T2-20260813T2048` /
 `grok-inspector-subagents` row (live list matches this turn). Backend
 `019ffdf5-4da6-71f2-8f91-89e60d832dec` (deleted after this receipt).
 
-**Repair owners still live for Slice 5:** Stop mid-child still uses `"stopped"`;
-unbound `subagent_spawned` is silent; child ledger `nil` vs `[]` collapsed in UI.
+**Slice 4 merged PR #64 `0c97cff`. Slice 5 repairs on
+`codex/grokbuild-audit-s5-subagent-truth`:** Stop mid-child → orphaned/cancelled;
+unbound `subagent_spawned` surfaced; child ledger nil vs `[]` distinguished.
+
+### Slice 5 — subagent Stop / unbound / ledger (in progress), 2026-08-13
+
+Branch `codex/grokbuild-audit-s5-subagent-truth` from merged PR #64 at `0c97cff`.
+Code repairs: `markActiveSubagentsStoppedByUser()` (orphaned/cancelled, not
+`stopped`); `unboundSpawnedEvents` + synthetic projection rows; `ChildLedgerReadOutcome`
+for nil vs `[]` vs receipts; `beginUserTurn()` drops unbound pending spawn/finish
+receipts so they cannot leak into the next send. Parent owns Computer Use and
+publication matrix.
 
 ## Status — Transcript chrome, tool visibility, provider honesty (2026-08-13)
 

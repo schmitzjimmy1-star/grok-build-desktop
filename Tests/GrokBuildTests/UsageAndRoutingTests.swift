@@ -316,9 +316,11 @@ final class UsageAndRoutingTests: XCTestCase {
         )
         XCTAssertEqual(
             chatStoreSource.components(separatedBy: "routedModel: SubagentRouting.routedModel(").count - 1,
-            2,
-            "both worker construction sites (live projection + settled snapshot) must carry routing"
+            1,
+            "worker construction carries routing through currentTurnEvidenceWorkers()"
         )
+        XCTAssertTrue(chatStoreSource.contains("func currentTurnEvidenceWorkers()"),
+                      "live projection and settled snapshot share one worker builder")
         let settleAnchor = try XCTUnwrap(chatStoreSource.range(of: "let turnSucceeded = completion.isSuccessful"))
         let afterSettle = String(chatStoreSource[settleAnchor.upperBound...].prefix(600))
         XCTAssertTrue(afterSettle.contains("sessionUsage.recordTurn("),

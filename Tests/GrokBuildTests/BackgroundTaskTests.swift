@@ -283,22 +283,138 @@ final class BackgroundTaskTests: XCTestCase {
         XCTAssertEqual(tracker.activities.first?.scheduledTask?.prompt, "ping")
     }
 
-    func testBackgroundTaskTrackerMarksWorkersStoppedWithoutHidingEvidence() {
+    func testBackgroundTaskTrackerMarksNonSubagentActivitiesStopped() {
         var tracker = BackgroundTaskTracker()
         tracker.apply(update: [
-            "toolCallId": "call-1",
-            "_meta": ["x.ai/tool": ["name": "spawn_subagent"]],
-            "rawInput": ["name": "reviewer", "prompt": "Review the diff"]
-        ])
-        tracker.apply(update: [
-            "toolCallId": "call-1",
-            "rawOutput": ["id": "sub-1", "status": "running"]
+            "toolCallId": "shell-1",
+            "_meta": ["x.ai/tool": ["name": "run_terminal_command"]],
+            "rawInput": ["command": "sleep 60", "is_background": true]
         ])
 
         tracker.markActiveActivitiesStopped()
 
         XCTAssertEqual(tracker.activities.count, 1)
         XCTAssertEqual(tracker.activities.first?.status, "stopped")
+    }
+
+    func testStopMidChildMarksBoundSubagentOrphanedNotStopped() throws {
+        var tracker = BackgroundTaskTracker()
+        let identity = ACPEventIdentity(
+            localTabID: UUID(),
+            backendSessionID: "backend-1",
+            processGeneration: 1,
+            backendEventID: "spawn-1"
+        )
+        tracker.apply(update: [
+            "toolCallId": "spawn-call",
+            "_meta": ["x.ai/tool": ["name": "spawn_subagent"]],
+            "rawInput": ["task_id": "child-1", "description": "Mid-child work"]
+        ])
+        tracker.apply(spawned: SubagentSpawnedEvent(
+            identity: identity,
+            childID: "child-1",
+            parentPromptID: nil,
+            subagentType: "explore",
+            modelID: "grok-4.5",
+            description: "Mid-child work"
+        ))
+
+        tracker.markActiveSubagentsStoppedByUser()
+
+        let worker = try XCTUnwrap(tracker.activities.first(where: { $0.kind == .subagent }))
+        XCTAssertEqual(worker.status, "orphaned")
+        XCTAssertEqual(worker.childID, "child-1")
+        XCTAssertNotEqual(worker.status, "stopped")
+        XCTAssertNotEqual(worker.status, "completed")
+    }
+
+    func testStopMidChildWithoutChildIDMarksCancelled() {
+        var tracker = BackgroundTaskTracker()
+        tracker.apply(update: [
+            "toolCallId": "spawn-call",
+            "_meta": ["x.ai/tool": ["name": "spawn_subagent"]],
+            "rawInput": ["prompt": "No child yet"]
+        ])
+
+        tracker.markActiveSubagentsStoppedByUser()
+
+        XCTAssertEqual(tracker.activities.first?.status, "cancelled")
+    }
+
+    func testUnboundSpawnedEventSurfacesWithoutInventingActivityRow() {
+        var tracker = BackgroundTaskTracker()
+        let identity = ACPEventIdentity(
+            localTabID: UUID(),
+            backendSessionID: "backend-1",
+            processGeneration: 1,
+            backendEventID: "spawn-orphan"
+        )
+        tracker.apply(spawned: SubagentSpawnedEvent(
+            identity: identity,
+            childID: "orphan-child",
+            parentPromptID: nil,
+            subagentType: "general-purpose",
+            modelID: "grok-4.5",
+            description: "No spawn row"
+        ))
+
+        XCTAssertTrue(tracker.activities.filter { $0.kind == .subagent }.isEmpty)
+        XCTAssertEqual(tracker.unboundSpawnedEvents.count, 1)
+        XCTAssertEqual(tracker.unboundSpawnedEvents.first?.childID, "orphan-child")
+    }
+
+    func testChildLedgerReadOutcomeDistinguishesUnreadableFromEmpty() {
+        var tracker = BackgroundTaskTracker()
+        tracker.apply(update: [
+            "toolCallId": "spawn-call",
+            "_meta": ["x.ai/tool": ["name": "spawn_subagent"]],
+            "rawInput": ["task_id": "child-1", "prompt": "Ledger test"]
+        ])
+        tracker.reconcileChildToolReceipts(childID: "child-1", receipts: nil)
+        XCTAssertEqual(
+            tracker.activities.first?.childLedgerReadOutcome,
+            .unreadable
+        )
+
+        tracker.reconcileChildToolReceipts(childID: "child-1", receipts: [])
+        XCTAssertEqual(
+            tracker.activities.first?.childLedgerReadOutcome,
+            .empty
+        )
+        XCTAssertEqual(tracker.activities.first?.childToolReceipts, [])
+
+        let receipt = ChildToolReceipt(
+            id: "tool-1",
+            title: "search",
+            status: .succeeded,
+            mcpReceiptRole: nil,
+            qualifiedToolName: nil,
+            discoveredQualifiedToolNames: []
+        )
+        tracker.reconcileChildToolReceipts(childID: "child-1", receipts: [receipt])
+        XCTAssertEqual(
+            tracker.activities.first?.childLedgerReadOutcome,
+            .receipts
+        )
+    }
+
+    func testBackgroundTaskTrackerMarksWorkersStoppedWithoutHidingEvidence() {
+        var tracker = BackgroundTaskTracker()
+        tracker.apply(update: [
+            "toolCallId": "call-1",
+            "_meta": ["x.ai/tool": ["name": "spawn_subagent"]],
+            "rawInput": ["name": "reviewer", "prompt": "Review the diff", "task_id": "sub-1"]
+        ])
+        tracker.apply(update: [
+            "toolCallId": "call-1",
+            "_meta": ["x.ai/tool": ["name": "spawn_subagent"]],
+            "rawOutput": ["task_id": "sub-1", "status": "running"]
+        ])
+
+        tracker.markActiveSubagentsStoppedByUser()
+
+        XCTAssertEqual(tracker.activities.count, 1)
+        XCTAssertEqual(tracker.activities.first?.status, "orphaned")
     }
 
     func testBeginUserTurnDropsPriorWorkersButKeepsScheduled() {
@@ -335,5 +451,57 @@ final class BackgroundTaskTests: XCTestCase {
         XCTAssertEqual(tracker.activities.count, 2)
         XCTAssertEqual(tracker.activities.filter { $0.kind == .subagent }.count, 1)
         XCTAssertEqual(tracker.activities.first(where: { $0.kind == .subagent })?.id, "current-worker")
+    }
+
+    func testBeginUserTurnDropsUnboundSpawnedEventsEvenWithoutActivities() {
+        var tracker = BackgroundTaskTracker()
+        let identity = ACPEventIdentity(
+            localTabID: UUID(),
+            backendSessionID: "backend-1",
+            processGeneration: 1,
+            backendEventID: "spawn-orphan"
+        )
+        tracker.apply(spawned: SubagentSpawnedEvent(
+            identity: identity,
+            childID: "orphan-child",
+            parentPromptID: nil,
+            subagentType: "general-purpose",
+            modelID: "grok-4.5",
+            description: "No spawn row"
+        ))
+        XCTAssertEqual(tracker.unboundSpawnedEvents.count, 1)
+
+        tracker.beginUserTurn()
+
+        XCTAssertTrue(tracker.unboundSpawnedEvents.isEmpty)
+        XCTAssertTrue(tracker.activities.isEmpty)
+    }
+
+    func testBeginUserTurnDropsUnboundSpawnedEventsAlongsidePriorWorkers() {
+        var tracker = BackgroundTaskTracker()
+        tracker.apply(update: [
+            "toolCallId": "prior-worker",
+            "_meta": ["x.ai/tool": ["name": "spawn_subagent"]],
+            "rawInput": ["name": "reviewer", "prompt": "Prior turn work"]
+        ])
+        tracker.apply(spawned: SubagentSpawnedEvent(
+            identity: ACPEventIdentity(
+                localTabID: UUID(),
+                backendSessionID: "backend-1",
+                processGeneration: 1,
+                backendEventID: "unbound"
+            ),
+            childID: "unbound-child",
+            parentPromptID: nil,
+            subagentType: "explore",
+            modelID: "grok-4.5",
+            description: "Never bound"
+        ))
+        XCTAssertEqual(tracker.unboundSpawnedEvents.count, 1)
+
+        tracker.beginUserTurn()
+
+        XCTAssertTrue(tracker.unboundSpawnedEvents.isEmpty)
+        XCTAssertTrue(tracker.activities.filter { $0.kind == .subagent }.isEmpty)
     }
 }

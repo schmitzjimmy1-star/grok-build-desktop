@@ -34,6 +34,8 @@ struct BackgroundActivity: Identifiable, Equatable, Sendable {
     /// Typed terminal receipts read from this exact child's backend ledger.
     /// They remain child evidence and are never merged into the parent tool list.
     var childToolReceipts: [ChildToolReceipt]?
+    /// Whether the child ledger was unreadable, empty, or contained receipts.
+    var childLedgerReadOutcome: ChildLedgerReadOutcome?
     /// Wait/collection calls attach a receipt to an existing activity rather than
     /// creating a second worker row.
     var collectionStatus: String?
@@ -57,6 +59,7 @@ struct BackgroundActivity: Identifiable, Equatable, Sendable {
         tokenCount: Int? = nil,
         redactedError: String? = nil,
         childToolReceipts: [ChildToolReceipt]? = nil,
+        childLedgerReadOutcome: ChildLedgerReadOutcome? = nil,
         collectionStatus: String? = nil,
         collectionReceiptCount: Int = 0
     ) {
@@ -74,6 +77,7 @@ struct BackgroundActivity: Identifiable, Equatable, Sendable {
         self.tokenCount = tokenCount
         self.redactedError = redactedError
         self.childToolReceipts = childToolReceipts
+        self.childLedgerReadOutcome = childLedgerReadOutcome
         self.collectionStatus = collectionStatus
         self.collectionReceiptCount = collectionReceiptCount
         self.scheduledTask = scheduledTask
@@ -233,6 +237,11 @@ struct BackgroundTaskTracker {
     private var pendingFinishedEvents: [String: SubagentFinishedEvent] = [:]
     private var anonymousWorkerSequence = 0
 
+    /// Spawned lifecycle receipts that never bound to a spawn tool row.
+    var unboundSpawnedEvents: [SubagentSpawnedEvent] {
+        Array(pendingSpawnedEvents.values)
+    }
+
     mutating func apply(update: [String: Any]) {
         scheduledTracker.apply(update: update)
 
@@ -356,6 +365,7 @@ struct BackgroundTaskTracker {
         activity.tokenCount = event.tokenCount
         activity.redactedError = event.redactedError
         activity.childToolReceipts = event.childToolReceipts
+        activity.childLedgerReadOutcome = ChildLedgerReadOutcome.from(receipts: event.childToolReceipts)
         activities[index] = activity
     }
 
@@ -366,7 +376,9 @@ struct BackgroundTaskTracker {
         childID: String,
         receipts: [ChildToolReceipt]?
     ) {
-        guard let index = workerIndex(childID: childID), let receipts else { return }
+        guard let index = workerIndex(childID: childID) else { return }
+        activities[index].childLedgerReadOutcome = ChildLedgerReadOutcome.from(receipts: receipts)
+        guard let receipts else { return }
         activities[index].childToolReceipts = receipts
     }
 
@@ -398,12 +410,11 @@ struct BackgroundTaskTracker {
     /// Prunes live workers and other non-scheduled activities at the start of a
     /// new user turn. Scheduled tasks and their tracker state survive; settled
     /// worker receipts remain on the message checkpoint, not in this mirror.
+    /// Unbound spawn/finish receipts never had activity rows, so they are
+    /// dropped wholesale — a child-ID filter would leak them into the next turn.
     mutating func beginUserTurn() {
         let removed = activities.filter { $0.kind != .scheduled }
-        guard !removed.isEmpty else { return }
-
         let removedActivityIDs = Set(removed.map(\.id))
-        let removedChildIDs = Set(removed.compactMap(\.childID))
         let removedToolCallIDs = Set(removed.compactMap(\.toolCallID))
 
         activities.removeAll { $0.kind != .scheduled }
@@ -411,8 +422,8 @@ struct BackgroundTaskTracker {
         pendingInputs = pendingInputs.filter { key, _ in
             !removedActivityIDs.contains(key) && !removedToolCallIDs.contains(key)
         }
-        pendingSpawnedEvents = pendingSpawnedEvents.filter { !removedChildIDs.contains($0.key) }
-        pendingFinishedEvents = pendingFinishedEvents.filter { !removedChildIDs.contains($0.key) }
+        pendingSpawnedEvents = [:]
+        pendingFinishedEvents = [:]
     }
 
     mutating func reset() {
@@ -427,9 +438,29 @@ struct BackgroundTaskTracker {
     mutating func markActiveActivitiesStopped() {
         activities = activities.map { activity in
             guard activity.kind != .scheduled,
+                  activity.kind != .subagent,
                   BackgroundActivityStatusPolicy.isActive(activity.status) else { return activity }
             var stopped = activity
             stopped.status = "stopped"
+            return stopped
+        }
+    }
+
+    /// User Stop on the parent turn. Subagents without `subagent_finished` are
+    /// explicitly cancelled or orphaned — never `"stopped"` as if cleanly terminal.
+    mutating func markActiveSubagentsStoppedByUser() {
+        activities = activities.map { activity in
+            guard activity.kind == .subagent,
+                  BackgroundActivityStatusPolicy.isActive(activity.status) else { return activity }
+            var stopped = activity
+            if activity.childID != nil {
+                stopped.status = "orphaned"
+                if stopped.detail.isEmpty {
+                    stopped.detail = "Stopped before terminal worker status was reported."
+                }
+            } else {
+                stopped.status = "cancelled"
+            }
             return stopped
         }
     }
