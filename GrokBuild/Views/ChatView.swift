@@ -2261,16 +2261,17 @@ struct ChatView: View {
 
     private var tasksStatusPill: some View {
         let activities = store.backgroundActivities
+        let unboundSpawns = store.unboundSubagentSpawnedEvents
         let scheduled = activities.filter { $0.kind == .scheduled }
         let background = activities.filter { $0.kind == .backgroundCommand }
         let monitors = activities.filter { $0.kind == .monitor }
         let subagents = activities.filter { $0.kind == .subagent }
-        let count = activities.count
+        let count = activities.count + unboundSpawns.count
         let available = store.hasLoopCommand
         let title = count > 0 ? "Tasks (\(count))" : "Tasks"
 
         return Menu {
-            if activities.isEmpty {
+            if activities.isEmpty && unboundSpawns.isEmpty {
                 Button("No background tasks") {}
                     .disabled(true)
             } else {
@@ -2295,10 +2296,13 @@ struct ChatView: View {
                         }
                     }
                 }
-                if !subagents.isEmpty {
+                if !subagents.isEmpty || !unboundSpawns.isEmpty {
                     Section("Subagents") {
                         ForEach(subagents) { activity in
                             backgroundActivityMenu(activity)
+                        }
+                        ForEach(unboundSpawns, id: \.childID) { event in
+                            unboundSpawnMenu(event)
                         }
                     }
                 }
@@ -2360,6 +2364,21 @@ struct ChatView: View {
     private func backgroundActivityTitle(_ activity: BackgroundActivity) -> String {
         let title = ActivitySidebarPresentation.activityTitle(activity)
         return "\(title) · \(ActivitySidebarPresentation.activityStatus(activity.status))"
+    }
+
+    @ViewBuilder
+    private func unboundSpawnMenu(_ event: SubagentSpawnedEvent) -> some View {
+        let worker = RunEvidenceSnapshot.unboundWorker(from: event)
+        Menu("\(worker.title) · No final report") {
+            if let model = event.modelID, !model.isEmpty {
+                Text("Model: \(model)")
+            }
+            if let description = event.description, !description.isEmpty {
+                Text(description)
+            }
+            Text("Child: \(event.childID)")
+            Text("Status: Unbound — no spawn row matched")
+        }
     }
 
     private var promptQueueBar: some View {

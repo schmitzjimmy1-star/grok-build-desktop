@@ -11,7 +11,7 @@ final class ResponsiveAndAccessibilityTests: XCTestCase {
 
     func testInspectorHidesFirstAndReturnsWhenWide() {
         XCTAssertFalse(ResponsiveLayoutPolicy.inspectorFits(chatAreaWidth: 856),
-                       "at the 1100-pt window minimum with the sidebar visible, the overlay hides first")
+                       "at the 1100-pt window minimum with the sidebar visible, the overlay yields to the collapsed strip")
         XCTAssertTrue(ResponsiveLayoutPolicy.inspectorFits(chatAreaWidth: 1100),
                       "collapsing the sidebar reclaims room for the inspector")
         XCTAssertTrue(ResponsiveLayoutPolicy.inspectorFits(chatAreaWidth: .infinity),

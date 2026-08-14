@@ -32,6 +32,42 @@ final class ContextInspectorProjectionTests: XCTestCase {
         XCTAssertEqual(summary.rows.count, 5, "no invented workers, none dropped")
     }
 
+    func testUnresolvedCompletedWorkerIsNotCountedAsDone() {
+        let unresolvedCompleted = RunEvidenceSnapshot.Worker(
+            id: "u",
+            title: "Child with tools",
+            status: "completed",
+            childID: "child",
+            durationMilliseconds: 10,
+            toolCallCount: 1,
+            redactedError: nil
+        )
+        let summary = ContextInspectorProjection.subagentSummary([unresolvedCompleted])
+        XCTAssertEqual(summary.doneCount, 0)
+        XCTAssertEqual(summary.failedCount, 1)
+    }
+
+    func testUnboundWorkerProjectsIntoSummary() {
+        let event = SubagentSpawnedEvent(
+            identity: ACPEventIdentity(
+                localTabID: UUID(),
+                backendSessionID: "backend",
+                processGeneration: 1,
+                backendEventID: "e"
+            ),
+            childID: "child-unbound",
+            parentPromptID: nil,
+            subagentType: "explore",
+            modelID: "grok-4.5",
+            description: "Map tests"
+        )
+        let worker = RunEvidenceSnapshot.unboundWorker(from: event)
+        let summary = ContextInspectorProjection.subagentSummary([worker])
+        XCTAssertEqual(summary.noReportCount, 1)
+        XCTAssertEqual(summary.doneCount, 0)
+        XCTAssertTrue(worker.title.contains("Unbound subagent"))
+    }
+
     func testRequestedMCPsAreNeverPresentedAsUsed() throws {
         let sources = try XCTUnwrap(ContextInspectorProjection.sourcesSection(
             attachmentNames: ["README.md"],

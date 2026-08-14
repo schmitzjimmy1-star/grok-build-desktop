@@ -357,26 +357,7 @@ final class ChatStore {
               backendSessionID == process.sessionId,
               let processGeneration = process.activeProcessGeneration else { return nil }
 
-        let workers = backgroundActivities.filter {
-            $0.kind == .subagent && currentTurnWorkerActivityIDs.contains($0.id)
-        }.map {
-            RunEvidenceSnapshot.Worker(
-                id: $0.id,
-                title: $0.title,
-                status: $0.status,
-                owningPlanStepID: currentTurnWorkerPlanStepIDs[$0.id],
-                childID: $0.childID,
-                durationMilliseconds: $0.durationMilliseconds,
-                toolCallCount: $0.toolCallCount,
-                redactedError: $0.redactedError,
-                childToolReceipts: $0.childToolReceipts,
-                runtimeModelID: $0.runtimeModelID,
-                routedModel: SubagentRouting.routedModel(
-                    forWorkerTitle: $0.title,
-                    rolesByName: subagentRoleModelsByName
-                )
-            )
-        }
+        let workers = currentTurnEvidenceWorkers()
         let tools = parentLiveToolCalls().map { tool in
             let status: String
             let isActive: Bool
@@ -791,6 +772,10 @@ final class ChatStore {
     /// worker presentation; Slice 2 owns correlation with visible worker activities.
     private(set) var subagentSpawnedEvents: [SubagentSpawnedEvent] = []
     private(set) var subagentFinishedEvents: [SubagentFinishedEvent] = []
+    /// Spawned lifecycle receipts with no matching spawn tool row (read-only).
+    var unboundSubagentSpawnedEvents: [SubagentSpawnedEvent] {
+        backgroundTaskTracker.unboundSpawnedEvents
+    }
     private var seenSubagentLifecycleKeys: Set<String> = []
     /// Session-wide background tracking remains available for durable tasks,
     /// but run evidence may include only worker rows created or changed during
@@ -931,6 +916,22 @@ final class ChatStore {
     func setStreamingForTests(_ value: Bool) {
         isStreaming = value
         activeTurnBackendSessionID = value ? process.sessionId : nil
+    }
+
+    /// Test-only: ingest a background-activity ACP payload without a live process.
+    func ingestBackgroundActivityForTests(_ payload: [String: Any]) {
+        let previousActivities = backgroundTaskTracker.activities
+        backgroundTaskTracker.apply(update: payload)
+        backgroundActivities = backgroundTaskTracker.activities
+        recordCurrentTurnWorkerChanges(since: previousActivities)
+    }
+
+    /// Test-only: ingest a typed `subagent_spawned` receipt without a live process.
+    func ingestSubagentSpawnedForTests(_ event: SubagentSpawnedEvent) {
+        let previousActivities = backgroundTaskTracker.activities
+        backgroundTaskTracker.apply(spawned: event)
+        backgroundActivities = backgroundTaskTracker.activities
+        recordCurrentTurnWorkerChanges(since: previousActivities)
     }
 
     /// Test-only: a long-lived warm-start stand-in that must cancel on teardown.
@@ -3170,6 +3171,7 @@ final class ChatStore {
         // down this exact session so Stop is a real stop, then lazily restart
         // it on the next send.
         await process.stop()
+        backgroundTaskTracker.markActiveSubagentsStoppedByUser()
         backgroundTaskTracker.markActiveActivitiesStopped()
         backgroundActivities = backgroundTaskTracker.activities
         mcpServerStatuses = MCPReadinessPolicy.stoppedStatuses(for: mcpServerStatuses.map(\.name))
@@ -4541,26 +4543,7 @@ final class ChatStore {
         processStateOverride: String? = nil,
         nextActionOverride: String? = nil
     ) -> RunEvidenceSnapshot {
-        let workers = backgroundActivities.filter {
-            $0.kind == .subagent && currentTurnWorkerActivityIDs.contains($0.id)
-        }.map {
-            RunEvidenceSnapshot.Worker(
-                id: $0.id,
-                title: $0.title,
-                status: $0.status,
-                owningPlanStepID: currentTurnWorkerPlanStepIDs[$0.id],
-                childID: $0.childID,
-                durationMilliseconds: $0.durationMilliseconds,
-                toolCallCount: $0.toolCallCount,
-                redactedError: $0.redactedError,
-                childToolReceipts: $0.childToolReceipts,
-                runtimeModelID: $0.runtimeModelID,
-                routedModel: SubagentRouting.routedModel(
-                    forWorkerTitle: $0.title,
-                    rolesByName: subagentRoleModelsByName
-                )
-            )
-        }
+        let workers = currentTurnEvidenceWorkers()
         let parentTools = parentLiveToolCalls()
         let toolSummary = RunEvidenceSnapshot.ToolSummary(
             succeeded: parentTools.filter { $0.terminalStatus == .succeeded }.count,
@@ -4662,6 +4645,37 @@ final class ChatStore {
             outcome: outcome,
             unresolvedErrors: unresolvedErrors,
             nextAction: nextAction
+        )
+    }
+
+    private func currentTurnEvidenceWorkers() -> [RunEvidenceSnapshot.Worker] {
+        let activityWorkers = backgroundActivities.filter {
+            $0.kind == .subagent && currentTurnWorkerActivityIDs.contains($0.id)
+        }.map { worker(from: $0) }
+        let boundChildIDs = Set(activityWorkers.compactMap(\.childID))
+        let unbound = backgroundTaskTracker.unboundSpawnedEvents
+            .filter { !boundChildIDs.contains($0.childID) }
+            .map { RunEvidenceSnapshot.unboundWorker(from: $0, rolesByName: subagentRoleModelsByName) }
+        return activityWorkers + unbound
+    }
+
+    private func worker(from activity: BackgroundActivity) -> RunEvidenceSnapshot.Worker {
+        RunEvidenceSnapshot.Worker(
+            id: activity.id,
+            title: activity.title,
+            status: activity.status,
+            owningPlanStepID: currentTurnWorkerPlanStepIDs[activity.id],
+            childID: activity.childID,
+            durationMilliseconds: activity.durationMilliseconds,
+            toolCallCount: activity.toolCallCount,
+            redactedError: activity.redactedError,
+            childToolReceipts: activity.childToolReceipts,
+            runtimeModelID: activity.runtimeModelID,
+            routedModel: SubagentRouting.routedModel(
+                forWorkerTitle: activity.title,
+                rolesByName: subagentRoleModelsByName
+            ),
+            childLedgerReadOutcome: activity.childLedgerReadOutcome
         )
     }
 
