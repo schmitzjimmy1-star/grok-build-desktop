@@ -416,6 +416,12 @@ final class ChatTranscriptLayoutTests: XCTestCase {
         XCTAssertTrue(toolView.contains("Capability discovery"))
         XCTAssertTrue(toolView.contains("if let server = displayedMCPServer"))
         XCTAssertTrue(toolView.contains("Text(\"Using \\(server)\")"))
+        XCTAssertTrue(toolView.contains("settledOutput"))
+        XCTAssertTrue(toolView.contains("textSelection(.enabled)"))
+        XCTAssertTrue(toolView.contains("grok-assistant-tool-\\(sanitizedToolID)"))
+        XCTAssertTrue(toolView.contains("accessibilityLabel(server: displayedMCPServer)"))
+        XCTAssertFalse(toolView.contains("grok-assistant-tool-details"))
+        XCTAssertTrue(toolView.contains("grok-assistant-tool-list"))
     }
 
     func testComposerOrdersAddModeThenModelMicSend() throws {
@@ -457,6 +463,8 @@ final class ChatTranscriptLayoutTests: XCTestCase {
         )
         XCTAssertTrue(storeSource.contains("?? toolCall.title"))
         XCTAssertTrue(storeSource.contains("toolCall.rawInput?[\"name\"] as? String"))
+        XCTAssertTrue(storeSource.contains("ToolResultPresentation.transcriptOutput"))
+        XCTAssertTrue(source.contains("store.isStreaming || store.isGrokking"))
 
         let composerViews = try String(
             contentsOf: repositoryRoot.appendingPathComponent("GrokBuild/Views/ComposerViews.swift"),

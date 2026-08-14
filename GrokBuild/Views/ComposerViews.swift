@@ -131,35 +131,112 @@ struct AssistantToolTraceView: View {
             Label("Tool use", systemImage: "wrench.and.screwdriver")
                 .font(.system(size: 13, weight: .semibold))
                 .foregroundStyle(.secondary)
+                .accessibilityIdentifier("grok-assistant-tool-list")
             ForEach(tools) { tool in
-                let displayedMCPServer = tool.mcpReceiptRole == .discovery ? nil : MCPToolReceiptIdentity.serverName(
-                    explicitName: tool.mcpServerName,
-                    qualifiedToolName: tool.qualifiedToolName ?? tool.title,
-                    knownServerNames: []
-                )
-                HStack(alignment: .firstTextBaseline, spacing: 7) {
-                    Image(systemName: displayedMCPServer == nil ? "wrench" : "network")
-                        .font(.caption2.weight(.semibold))
-                        .foregroundStyle(displayedMCPServer == nil ? Color.secondary : Color.accentColor)
-                    VStack(alignment: .leading, spacing: 2) {
-                        if tool.mcpReceiptRole == .discovery {
-                            Text("Capability discovery")
-                                .font(.system(size: 13, weight: .semibold))
-                        } else if let server = displayedMCPServer {
-                            Text("Using \(server)")
-                                .font(.system(size: 13, weight: .semibold))
-                        }
-                        Text(tool.title)
-                            .font(AppTheme.Typography.thinking)
-                        Text(tool.status)
-                            .font(AppTheme.Typography.caption)
-                            .foregroundStyle(.tertiary)
-                    }
-                }
+                AssistantToolTraceRow(tool: tool)
             }
         }
         .padding(.leading, 12)
-        .accessibilityIdentifier("grok-assistant-tool-details")
+    }
+}
+
+private struct AssistantToolTraceRow: View {
+    let tool: AssistantTurnTrace.Tool
+
+    var body: some View {
+        let displayedMCPServer = tool.mcpReceiptRole == .discovery ? nil : MCPToolReceiptIdentity.serverName(
+            explicitName: tool.mcpServerName,
+            qualifiedToolName: tool.qualifiedToolName ?? tool.title,
+            knownServerNames: []
+        )
+        let output = settledOutput
+        VStack(alignment: .leading, spacing: 4) {
+            HStack(alignment: .firstTextBaseline, spacing: 7) {
+                Image(systemName: displayedMCPServer == nil ? "wrench" : "network")
+                    .font(.caption2.weight(.semibold))
+                    .foregroundStyle(displayedMCPServer == nil ? Color.secondary : Color.accentColor)
+                VStack(alignment: .leading, spacing: 2) {
+                    if tool.mcpReceiptRole == .discovery {
+                        Text("Capability discovery")
+                            .font(.system(size: 13, weight: .semibold))
+                    } else if let server = displayedMCPServer {
+                        Text("Using \(server)")
+                            .font(.system(size: 13, weight: .semibold))
+                    }
+                    Text(tool.title)
+                        .font(AppTheme.Typography.thinking)
+                    Text(statusLine)
+                        .font(AppTheme.Typography.caption)
+                        .foregroundStyle(.tertiary)
+                }
+            }
+            if let output {
+                Text(output)
+                    .font(AppTheme.Typography.caption.monospaced())
+                    .foregroundStyle(.secondary)
+                    .textSelection(.enabled)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+        }
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(accessibilityLabel(server: displayedMCPServer))
+        .accessibilityValue(accessibilityValue(output: output, server: displayedMCPServer))
+        .accessibilityIdentifier("grok-assistant-tool-\(sanitizedToolID)")
+    }
+
+    private var sanitizedToolID: String {
+        let kept = tool.id.unicodeScalars.filter { CharacterSet.alphanumerics.contains($0) }
+        let value = String(String.UnicodeScalarView(kept))
+        return value.isEmpty ? "tool" : value
+    }
+
+    private var isSettled: Bool {
+        switch tool.status.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() {
+        case "succeeded", "success", "completed", "complete",
+             "failed", "failure", "error", "cancelled", "canceled":
+            return true
+        default:
+            return false
+        }
+    }
+
+    private var settledOutput: String? {
+        guard isSettled,
+              let detail = tool.resultDetail,
+              !detail.isEmpty else { return nil }
+        return ToolResultPresentation.secretSafe(detail)
+    }
+
+    private var statusLine: String {
+        let duration = ThreadRunSpinePresentation.durationLabel(tool.durationMilliseconds)
+        if duration == "Duration not reported" {
+            return tool.status
+        }
+        return "\(tool.status) · \(duration)"
+    }
+
+    private func accessibilityLabel(server: String?) -> String {
+        var parts = [tool.title]
+        if let server, !server.isEmpty {
+            parts.append("server \(server)")
+        }
+        parts.append(tool.status)
+        let duration = ThreadRunSpinePresentation.durationLabel(tool.durationMilliseconds)
+        if duration != "Duration not reported" {
+            parts.append(duration)
+        }
+        return parts.joined(separator: ", ")
+    }
+
+    private func accessibilityValue(output: String?, server: String?) -> String {
+        var parts: [String] = []
+        if let server, !server.isEmpty {
+            parts.append(server)
+        }
+        parts.append(tool.status)
+        parts.append(ThreadRunSpinePresentation.durationLabel(tool.durationMilliseconds))
+        parts.append(output ?? "no command output reported")
+        return parts.joined(separator: ", ")
     }
 }
 

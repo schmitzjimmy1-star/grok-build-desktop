@@ -1055,7 +1055,8 @@ Live `ThreadRunSpineView` groups parent command/test receipts and successful
 artifact links beneath the typed plan step that was current when the ACP receipt
 first arrived. The association is a generation-bound observation, not a new
 planner. After the answer settles, those receipts stay on the assistant turn
-(`AssistantToolTraceView`); the GitHub-style settled Run checklist is not
+(`AssistantToolTraceView`, including bounded selectable `resultDetail` for
+settled execute/terminal/read tools and per-tool accessibility labels); the GitHub-style settled Run checklist is not
 mounted in the transcript. Turns with tool receipts default expanded, including
 after restore, until the user collapses that turn. Git review stays on the header
 Review chip and the inline changed-files card; the live Run row's Activity control

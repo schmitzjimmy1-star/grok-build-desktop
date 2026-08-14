@@ -30,8 +30,8 @@ Do not scrape `~/.grok/sessions`. Do not translate cross-provider history.
 |---|---|---:|---:|---|
 | 0 | Prove leaks, 3-route honesty, multi-tool, 2-child subagent, horizon clear | High | Frozen packets; stop at 400k tokens | Proven 2026-08-13 |
 | 1 | Process ownership: cancel warm-start task, 5s quit, stderr redaction, external CDP PID | High | CU plus one Send only if needed | Merged PR #61 `f6f648d` |
-| 2 | Spawn on Send; Connecting/Default copy; idle sidebar until Send | Medium | One native no-tool after Send spawn | Proven 2026-08-13 |
-| 3 | Transcript `resultDetail` + per-tool AX | Medium | 3-route tool packets | Blocked on 2 |
+| 2 | Spawn on Send; Connecting/Default copy; idle sidebar until Send | Medium | One native no-tool after Send spawn | Merged PR #62 `18a9f3e` |
+| 3 | Transcript `resultDetail` + per-tool AX | Medium | 3-route tool packets | Proven 2026-08-13 |
 | 4 | Inspector at default 1440 + per-turn worker clear | Medium | One Grok 4.6 horizon | Blocked on 3 |
 | 5 | Subagent Stop/unbound/ledger + publication matrix | High | 3-route closeout; stop at 400k | Blocked on 4 |
 
@@ -179,8 +179,53 @@ sessions list` and was not created by this packet; not deleted.
 in **0.27 s**. Gate G zero: GrokBuild, grok agent, GrokBuildComputerUseMCP, no
 BrowserProfiles.
 
-**Repair owners still live for later slices:** transcript tool rows omit
-`resultDetail`; Activity inspector overlays the canvas at default 1440.
+**Repair owners still live for later slices:** Activity inspector overlays the
+canvas at default 1440; long-horizon Tasks pill can keep prior-turn workers.
+
+### Slice 3 receipt — transcript tool output, 2026-08-13
+
+Repair is on `codex/grokbuild-audit-s3-tool-output`. Candidate Computer Use ran
+on `/Applications/GrokBuild.app` stamped `18a9f3e` (`dirty=true`), Team
+`DD2GCQJVB4`. `make test` **785/785**. Computer Use via `agent-desktop` session
+`run-1786669306493-26403-0`. Ceiling **200k**; charged **99.4k** actual tokens
+on the three route packets (49.5k + 25.0k + 24.9k). A stray Send of `x` on Grok
+4.6 was Stopped/closed before the frozen matrix; its backend was already gone.
+
+**Code**
+
+- `ToolResultPresentation.transcriptOutput` projects bounded execute/terminal
+  and read output, redacts `sk-` / MCP secrets, and ignores edit/protocol JSON.
+- Settled tool rows in `AssistantToolTraceView` show selectable `resultDetail`.
+  In-flight live rows stay compact. After stream end, the message trace wins so
+  output is not stuck on the live compact mapping.
+- Each tool has its own AX id `grok-assistant-tool-<id>` (operation, status,
+  duration). The list label is `grok-assistant-tool-list`, not one combined
+  `grok-assistant-tool-details` blob.
+
+**GROK-MULTI.** Native Grok 4.6, marker `GB-S3-GROK-MULTI-20260813T2012`.
+Ordered Execute `/bin/pwd` then Read `VERSION`. Live Grok 4.6, Direct xAI, 3
+calls, **49.5k** tokens, $0.66. Per-tool AX ids present; pwd path and `0.1.20`
+visible under Tool use without opening Activity. Backend
+`019ffdd4-3fba-73e2-9f98-770f8b628c61` (deleted). An earlier same-prompt
+attempt `019ffdcd-96fe-7250-a6bc-0232fbd636e8` was deleted; search still has a
+tombstone (retained CLI limit).
+
+**OPENAI-TOOL.** `gpt-5.6-luna` saved before Send. Live luna. Route `direct
+ChatGPT (OpenAI)` `api.openai.com`. Execute `/bin/pwd` Succeeded. Marker plus
+pwd in the answer. **25.0k** / 2 calls. Backend
+`019ffdd7-c8be-70e2-a5b4-4a8dc46a3757` (deleted). No GrokBuild fallback.
+
+**OR-TOOL.** Pin `openai/gpt-4.1-mini` before Send. Live pin confirmed. Route
+OpenRouter, model pinned, downstream serving unproven, no GrokBuild fallback.
+Execute `/bin/pwd` Succeeded. Marker plus pwd. **24.9k** / 2 calls / ≈$0.01.
+Backend `019ffdd8-f41d-7de1-bf21-7cd2717101af` (deleted). No `sk-` in AX.
+
+**Gate G.** `osascript` quit. Zero GrokBuild / grok agent /
+GrokBuildComputerUseMCP / BrowserProfiles. The bouncing Dock Python is the
+kept `browser-use --cli-mcp` helper (PID 26494), not a GrokBuild child.
+
+**Repair owners still live:** inspector overlays the canvas at default 1440;
+long-horizon Tasks pill can keep prior-turn workers.
 
 ## Status — Transcript chrome, tool visibility, provider honesty (2026-08-13)
 
