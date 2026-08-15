@@ -31,3 +31,5 @@ SwiftPM windowed macOS app — UI for `grok agent stdio`, not a replacement for 
 - `AGENTS.md` — agent entry
 - `BUILDING.md` — build, sign, release
 - `README.md` — user-facing features
+- `docs/OUTSTANDING.md` — current campaign ledger and Gates A–H
+- `docs/GROKBUILD_RESIDUAL_CLOSEOUT_2026-08-14.md` — current residual-closeout phases
