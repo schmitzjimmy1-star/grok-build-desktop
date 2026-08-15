@@ -17,16 +17,105 @@
 > User conversations, historical acceptance evidence, unnamed sessions that were not
 > created by the current slice, and unrelated browser/app state are protected.
 >
-> **Current campaign slice:** Slice 6, extract coordination seams, complete after
-> this final closeout receipt merges. Slice 7 is next for a new session only.
-> PR 1 merged as `6f2d0eb` (PR #77). PR 2 merged as `f7246f4` (PR #78).
-> PR 3 merged as `ec97b88` (PR #79). PR 4 merged as `1d7ec82` (PR #80).
-> Inspector-layout hotfix PR #81 merged as `7730105`; restored-transcript
-> hotfix PR #82 merged as `092bebc` and passed merged-main installed acceptance.
+> **Current campaign slice:** Slice 7, refresh public evidence and onboarding.
+> Slice 6 closeout merged as `150fbbe858a1c11f9447441bcbe717a88e59975b` (PR #84).
 > Spec:
 > [`docs/GROKBUILD_VERIFICATION_AND_FORWARD_SLICES_2026-08-13.md`](GROKBUILD_VERIFICATION_AND_FORWARD_SLICES_2026-08-13.md).
 > Numbered `## Slice N` headings below the 2026-08-14 harness receipt are historical
 > campaigns. Do not implement them.
+
+## Slice 7 — refresh public evidence and onboarding (in progress, 2026-08-14)
+
+Authorized scope is the Slice 7 section in
+`docs/GROKBUILD_VERIFICATION_AND_FORWARD_SLICES_2026-08-13.md`. Start from clean
+merged `main == personal/main` at `150fbbe858a1c11f9447441bcbe717a88e59975b` with
+installed stamp == HEAD, `dirty=false`, dist/installed executable SHA-256
+`350b2f1487afa222bff043eeeae9fbde07f4cd8bb8ece9bea583ded35c41b01b`, Team
+`DD2GCQJVB4`, deep/strict signing, and no quarantine. Do not reuse Slice 6
+markers or provider packets. Do not ship a docs-only successor just to chase
+`stamp == HEAD`.
+
+Purpose: make the repository's first impression match the signed installed
+product. Replace `docs/images/grokbuild-app.png`, add
+`docs/images/grokbuild-run-inspector.png`, and tighten the README first
+screenful around the thin Grok CLI wrapper, project/thread workflow, and exact
+model/route receipts.
+
+### Gate A start
+
+| Authority | Value |
+|---|---|
+| Worktree | `/Users/jimmyschmitz/Desktop/Projects/MCP Servers/Grok Build/grok-build-desktop` |
+| Branch / HEAD | clean `main` at `150fbbe858a1c11f9447441bcbe717a88e59975b` |
+| Tree | `801de5fbb13228f533d257f83e2187b942775eee` |
+| Remote | `main == personal/main`, `+0/-0` |
+| Installed stamp | `personal` / `main` / `150fbbe8` / `dirty=false` |
+| Dist / installed SHA-256 | `350b2f1487afa222bff043eeeae9fbde07f4cd8bb8ece9bea583ded35c41b01b` |
+| Signing | Apple Development, Team `DD2GCQJVB4`, deep/strict, no quarantine |
+| CLI | `grok 1.0.3 (1a29d5bc12d4) [stable]` |
+| Protected config | SHA-256 `2cb4dcdaf0f1841aab54fb2ae10586381ca78b560eb9fc0477efb521e92140ae`, 2,894 bytes, mode `0600` |
+| Process-zero | `2026-08-14T23:15:33-0500` and `2026-08-14T23:16:38-0500` |
+
+Branch: `codex/grokbuild-audit-s7-public-evidence`.
+
+### Frozen visual packet
+
+One native parent turn only. No Slice 6 packet, no OpenRouter/direct-provider
+lane, no second prompt.
+
+| Field | Frozen value |
+|---|---|
+| Run ID | `20260815T041847Z` |
+| Marker | `GB-S7-VIS-20260815T041847Z` |
+| Model / route | inherited New chat default `grok-4.6`, native xAI through the Grok CLI |
+| Effort | CLI launch `--reasoning-effort low` |
+| Turns / children | 1 parent turn, exactly 2 concurrent children, one `wait_all` |
+| Allowed tools | `terminal`, `spawn_subagent`, `wait_all` |
+| Forbidden | `update_plan`, search/web, browser, Computer Use, write/edit, git, retries |
+| Suggested ceiling | 100k actual tokens |
+| Prompt | 826-character composer text: one-turn visual packet; sequential `/bin/echo ALPHA`, `BETA`, `GAMMA`; concurrent LEFT/RIGHT children each echoing once; one `wait_all`; reply `GB-S7-VIS-20260815T041847Z-PARENT ALPHA\|BETA\|GAMMA LEFT+RIGHT` |
+
+### Installed visual receipt
+
+Computer Use used `agent-desktop` against `/Applications/GrokBuild.app` PID
+`91351` (MCP `user-grokbuild-computer-use` was not loaded in this Cursor
+session). AX names: **Session dashboard**, **Show/Hide run inspector**
+(`grok-run-inspector-toggle`), **Run inspector** (`grok-run-inspector`),
+**What do you want to work on?**, composer **Message composer**
+(`grok-message-composer`) with visible placeholder **Describe a task**.
+
+New chat hero captured before Send. The same disposable tab then ran the
+frozen packet and settled.
+
+| Identity | Value |
+|---|---|
+| Local tab | `C7B29221-4B7B-4C3E-BE03-542BB213738F` |
+| Parent backend | `01a003a5-855b-7900-b6db-b1c99676f13e` |
+| LEFT child | `01a003a5-b855-7773-8309-47f40b40026d` |
+| RIGHT child | `01a003a5-b858-7743-af2f-5e015334385b` |
+| Process generation | 1 |
+| Live model | `grok-4.6` / usage alias `grok-4.6-build` |
+| Route receipt | `Route: native xAI through the Grok CLI.` |
+| Outcome | Settled: Turn completed |
+| Tools | ALPHA, BETA, GAMMA, LEFT visual receipt, RIGHT visual receipt, `multi-wait (wait_all)` — 6 succeeded, 0 failed |
+| Coordination | 2 requested • 2 spawned • 2 finished • max 2 concurrent |
+| Parent usage | 147,946 tokens • 10 model calls • $0.24 provider-reported |
+| Child usage | 23,472 tokens • 2 child tool calls |
+| Reply | `GB-S7-VIS-20260815T041847Z-PARENT ALPHA|BETA|GAMMA LEFT+RIGHT` |
+
+Variance: parent actual tokens exceeded the suggested 100k anomaly ceiling
+because a fresh native Grok 4.6 first turn carries ~148k context, the same
+band as Slice 6 T1. No second prompt was sent.
+
+Public images: `docs/images/grokbuild-app.png` (New chat, Dark) and
+`docs/images/grokbuild-run-inspector.png` (settled docked inspector, sidebar
+hidden for compactness). System/Light/Dark remain supported; Light was not
+staged by mutating Settings → App.
+
+`make test` on this branch: **865 tests, 0 failures** in 38.035 seconds.
+`git diff --check` is clean. Paths: `README.md`, `ARCHITECTURE.md`,
+`docs/OUTSTANDING.md`, `docs/GROKBUILD_VERIFICATION_AND_FORWARD_SLICES_2026-08-13.md`,
+`docs/images/grokbuild-app.png`, `docs/images/grokbuild-run-inspector.png`.
 
 ## Slice 6 — extract coordination seams and replace brittle test pins (complete, PR 1–4 + hotfixes + final closeout, 2026-08-14)
 
