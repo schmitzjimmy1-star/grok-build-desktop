@@ -31,12 +31,11 @@
 >
 > **Current campaign:** 2026-08-15 Visual Quiet —
 > [`docs/GROKBUILD_VISUAL_QUIET_CAMPAIGN_2026-08-15.md`](GROKBUILD_VISUAL_QUIET_CAMPAIGN_2026-08-15.md).
-> Phases 1–2 (cool tokens + Path A welcome chips) verified and merged.
-> **Phase 3 is the Codex-style overlay sidebar plus quiet chrome**
-> (compact projects, slide-over canvas, account-row Settings, titlebar
-> inline with the traffic lights, `TitlebarGlyph` Dark contrast, inspector
-> dropdown + subagent tracker)
-> on `codex/grokbuild-vq-p3-sidebar-overlay`. Then Phase 4 accent sweep.
+> Phases 1–3 (cool tokens, Path A welcome chips, and Codex-style overlay/
+> quiet chrome) are verified and merged. Phase 3 merged as `bb01c58` (PR
+> #104) and its clean merged-main install, bounded packet, exact cleanup,
+> and process-zero closeout are recorded below. **Current authorized work is
+> P3C composer/task-strip density**, then Phase 4 accent sweep.
 > Leftover closeout Phases 1–2 are merged on `main` as `7a3006d`
 > (PR #102). Leftover Phase 3 (`ChatView` split) stays deferred.
 > Install path is `make ship` on this Mac.
@@ -44,15 +43,49 @@
 > Prior campaigns: 2026-08-14 Residual Closeout (Phases 0–6) complete and merged as `4613bde` (PR #94);
 > 2026-08-13 campaign (Slices 0–7) closed at merge `c0895ee` (PR #86).
 
-## Visual Quiet — 2026-08-15 (Phase 3 overlay sidebar + quiet chrome)
+## Visual Quiet — 2026-08-15 (P3C composer/task-strip density authorized)
 
 Authorized spec is
 [`docs/GROKBUILD_VISUAL_QUIET_CAMPAIGN_2026-08-15.md`](GROKBUILD_VISUAL_QUIET_CAMPAIGN_2026-08-15.md).
-Phases 1–2 are merged. **Phase 3** (Jimmy redirect) is compact projects, a
-Codex slide-over sidebar, Settings on the account row, a titlebar
-inline with the traffic lights, and quiet header/inspector chrome.
-Branch `codex/grokbuild-vq-p3-sidebar-overlay`. Composer tightness
-still waits. This is not leftover Phase 3.
+Phases 1–3 are merged and verified. **P3C** is the narrow composer and
+post-send task-strip density closeout authorized on 2026-08-15. It preserves
+all composer controls and receipt identity, does not redesign Settings or
+runtime behavior, and is not leftover Phase 3.
+
+### Visual Quiet Phase 3 receipt — 2026-08-15
+
+Gate A: clean `main == personal/main ==
+bb01c58b4ab54528af6d44a4628defad8763a5cd`; canonical worktree and remotes
+verified. Phase 3 code merged in PR #104.
+
+Gate C/E: `make ship` ran **894 tests, 0 failures** and installed
+`/Applications/GrokBuild.app` stamped `Personal • main @ bb01c58b`,
+`dirty=false`. Dist and installed executable SHA-256 both equal
+`9109250b74efee7ae88a9f002a291f9e34c661b2f1901355680e2c899aabff5a`;
+deep/strict signing passed under Team `DD2GCQJVB4`, and quarantine is absent.
+
+Installed Computer Use verified the slide-over sidebar, full-width hidden
+canvas, selected-project session disclosure, account-row Settings, App identity,
+Dark titlebar glyph contrast, no header hairline, quiet launch choices, and the
+Run inspector's truthful `Finished` / `No active process` state. The idle task
+strip stayed suppressed.
+
+Billable packet: fresh marker `GB-VQ-P3-20260815T154813Z` returned exactly
+`GB_VQ_P3_OK` on live `grok-4.6` through the Responses backend. Local tab
+`13FB94A2-CA8B-456D-BD59-17A27D8EA6AF`, backend
+`01a0061d-0c87-7b71-b044-61d3adaaa563`, request
+`C7650FFF-3496-4442-B534-BEA2778E3609`, process generation 1, PID 64478;
+16,012 prompt tokens, 49 completion tokens, 37 reasoning tokens, one model
+attempt, and no tool-call event.
+
+Gate F: after the receipt and explicit permanent-delete confirmation, Close
+Session removed only that local tab and backend. Marker search is Total: 0;
+the protected OK-F transcript and Aug 14 backend
+`019ffdad-0d4f-7f42-a429-7ac12ad8198d` remain. `Clear Empty` was not used.
+
+Gate G/H: graceful quit produced two process/service-zero samples eight seconds
+apart. Installed stamp equals the code-bearing merged commit; the following
+documentation closeout is intentionally not re-shipped.
 
 ### Visual Quiet Phases 1–2 receipt — 2026-08-15
 
