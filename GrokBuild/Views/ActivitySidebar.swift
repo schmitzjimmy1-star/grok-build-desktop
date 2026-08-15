@@ -106,7 +106,11 @@ enum ActivitySidebarPresentation {
             redactedError: activity.redactedError,
             childToolReceipts: activity.childToolReceipts,
             runtimeModelID: activity.runtimeModelID,
-            childLedgerReadOutcome: activity.childLedgerReadOutcome
+            childLedgerReadOutcome: activity.childLedgerReadOutcome,
+            tokenCount: activity.tokenCount,
+            turns: activity.turns,
+            spawnToolCallID: activity.toolCallID ?? activity.id,
+            childID: activity.childID
         )
     }
 
@@ -118,15 +122,28 @@ enum ActivitySidebarPresentation {
         childToolReceipts: [ChildToolReceipt]? = nil,
         runtimeModelID: String? = nil,
         routedModel: String? = nil,
-        childLedgerReadOutcome: ChildLedgerReadOutcome? = nil
+        childLedgerReadOutcome: ChildLedgerReadOutcome? = nil,
+        tokenCount: Int? = nil,
+        turns: Int? = nil,
+        spawnToolCallID: String? = nil,
+        childID: String? = nil
     ) -> String {
         var parts: [String] = []
+        if let spawnToolCallID, !spawnToolCallID.isEmpty, let childID, !childID.isEmpty {
+            parts.append("Spawn tool \(spawnToolCallID) → child \(childID)")
+        }
         if let runtimeModelID, !runtimeModelID.isEmpty {
             parts.append("Ran on \(runtimeModelID) (Grok ACP)")
         }
         if let routedModel, !routedModel.isEmpty {
             // Declared routing from [subagents.roles.*] — config truth, not a billing claim.
             parts.append("Routes to \(routedModel) (configured)")
+        }
+        if let tokenCount {
+            parts.append("\(tokenCount.formatted()) tokens")
+        }
+        if let turns {
+            parts.append(turns == 1 ? "1 turn" : "\(turns) turns")
         }
         if let durationMilliseconds {
             let seconds = Double(durationMilliseconds) / 1_000
@@ -587,35 +604,7 @@ struct ActivitySidebar: View {
                 emptyState("No authoritative worker lifecycle receipts observed yet.")
             } else {
                 ForEach(live.workers) { worker in
-                    HStack(alignment: .top, spacing: 8) {
-                        Circle().fill(statusColor(worker.status)).frame(width: 6, height: 6).padding(.top, 5)
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text(worker.title).font(AppTheme.Typography.captionStrong).lineLimit(2)
-                            // A worker that already finished mid-turn carries its
-                            // authoritative receipt; show it live, not only at settlement.
-                            let detail = ActivitySidebarPresentation.workerReceiptDetail(
-                                status: worker.status,
-                                durationMilliseconds: worker.durationMilliseconds,
-                                toolCallCount: worker.toolCallCount,
-                                redactedError: worker.redactedError,
-                                childToolReceipts: worker.childToolReceipts,
-                                runtimeModelID: worker.runtimeModelID,
-                                routedModel: worker.routedModel,
-                                childLedgerReadOutcome: worker.childLedgerReadOutcome
-                            )
-                            if !detail.isEmpty {
-                                Text(detail)
-                                    .font(AppTheme.Typography.section)
-                                    .foregroundStyle(.secondary)
-                                    .lineLimit(3)
-                            }
-                            Text(ActivitySidebarPresentation.activityStatus(worker.status))
-                                .font(AppTheme.Typography.section)
-                                .foregroundStyle(.secondary)
-                        }
-                    }
-                    .accessibilityElement(children: .ignore)
-                    .accessibilityLabel(workerAccessibilityLabel(worker))
+                    workerDelegationRow(worker)
                 }
             }
         }
@@ -807,41 +796,76 @@ struct ActivitySidebar: View {
             if snapshot.workers.isEmpty { emptyState("No workers reported.") }
             else {
                 ForEach(snapshot.workers) { worker in
-                    HStack(alignment: .top, spacing: 8) {
-                        Circle().fill(statusColor(worker.status)).frame(width: 6, height: 6).padding(.top, 5)
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text(worker.title).font(AppTheme.Typography.captionStrong).lineLimit(2)
-                            let detail = ActivitySidebarPresentation.workerReceiptDetail(
-                                status: worker.status,
-                                durationMilliseconds: worker.durationMilliseconds,
-                                toolCallCount: worker.toolCallCount,
-                                redactedError: worker.redactedError,
-                                childToolReceipts: worker.childToolReceipts,
-                                runtimeModelID: worker.runtimeModelID,
-                                routedModel: worker.routedModel,
-                                childLedgerReadOutcome: worker.childLedgerReadOutcome
-                            )
-                            if !detail.isEmpty {
-                                Text(detail)
-                                    .font(AppTheme.Typography.section)
-                                    .foregroundStyle(.secondary)
-                                    .lineLimit(3)
-                            }
-                            Text(ActivitySidebarPresentation.activityStatus(worker.status))
-                                .font(AppTheme.Typography.section)
-                                .foregroundStyle(.secondary)
-                        }
-                    }
-                    .accessibilityElement(children: .ignore)
-                    .accessibilityLabel(workerAccessibilityLabel(worker))
+                    workerDelegationRow(worker)
                 }
             }
         }
     }
 
-    private func workerAccessibilityLabel(_ worker: RunEvidenceSnapshot.Worker) -> String {
+    @ViewBuilder private func workerDelegationRow(_ worker: RunEvidenceSnapshot.Worker) -> some View {
+        let detail = workerReceiptDetail(for: worker)
         let status = ActivitySidebarPresentation.activityStatus(worker.status)
-        let detail = ActivitySidebarPresentation.workerReceiptDetail(
+        DisclosureGroup {
+            VStack(alignment: .leading, spacing: 4) {
+                if let spawn = worker.spawnToolCallID {
+                    Text("Spawn tool: \(spawn)")
+                        .font(AppTheme.Typography.section)
+                        .foregroundStyle(.secondary)
+                        .textSelection(.enabled)
+                }
+                if let childID = worker.childID {
+                    Text("Child session: \(childID)")
+                        .font(AppTheme.Typography.section)
+                        .foregroundStyle(.secondary)
+                        .textSelection(.enabled)
+                }
+                if !detail.isEmpty {
+                    Text(detail)
+                        .font(AppTheme.Typography.section)
+                        .foregroundStyle(.secondary)
+                        .textSelection(.enabled)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                if let receipts = worker.childToolReceipts, !receipts.isEmpty {
+                    ForEach(receipts, id: \.id) { receipt in
+                        Text("\(receipt.title) · \(receipt.status.rawValue)")
+                            .font(AppTheme.Typography.section)
+                            .foregroundStyle(.secondary)
+                    }
+                } else {
+                    Text("No child tool receipts on this worker.")
+                        .font(AppTheme.Typography.section)
+                        .foregroundStyle(.secondary)
+                }
+            }
+            .padding(.leading, 14)
+            .padding(.top, 2)
+        } label: {
+            HStack(alignment: .top, spacing: 8) {
+                Circle().fill(statusColor(worker.status)).frame(width: 6, height: 6).padding(.top, 5)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(worker.title).font(AppTheme.Typography.captionStrong).lineLimit(2)
+                    if !detail.isEmpty {
+                        Text(detail)
+                            .font(AppTheme.Typography.section)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(3)
+                    }
+                    Text(status)
+                        .font(AppTheme.Typography.section)
+                        .foregroundStyle(.secondary)
+                }
+            }
+        }
+        .disclosureGroupStyle(.automatic)
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("grok-run-inspector-worker-\(worker.id)")
+        .accessibilityLabel(workerAccessibilityLabel(worker))
+        .accessibilityHint("Expands the worker delegation receipt.")
+    }
+
+    private func workerReceiptDetail(for worker: RunEvidenceSnapshot.Worker) -> String {
+        ActivitySidebarPresentation.workerReceiptDetail(
             status: worker.status,
             durationMilliseconds: worker.durationMilliseconds,
             toolCallCount: worker.toolCallCount,
@@ -849,8 +873,17 @@ struct ActivitySidebar: View {
             childToolReceipts: worker.childToolReceipts,
             runtimeModelID: worker.runtimeModelID,
             routedModel: worker.routedModel,
-            childLedgerReadOutcome: worker.childLedgerReadOutcome
+            childLedgerReadOutcome: worker.childLedgerReadOutcome,
+            tokenCount: worker.tokenCount,
+            turns: worker.turns,
+            spawnToolCallID: worker.spawnToolCallID,
+            childID: worker.childID
         )
+    }
+
+    private func workerAccessibilityLabel(_ worker: RunEvidenceSnapshot.Worker) -> String {
+        let status = ActivitySidebarPresentation.activityStatus(worker.status)
+        let detail = workerReceiptDetail(for: worker)
         return detail.isEmpty
             ? "Worker \(worker.title). \(status)."
             : "Worker \(worker.title). \(status). \(detail)."

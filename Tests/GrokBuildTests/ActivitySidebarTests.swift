@@ -498,10 +498,12 @@ final class ActivitySidebarTests: XCTestCase {
         // disclosure in the compact inspector.
         XCTAssertTrue(sidebar.contains("Label(\"Run details\", systemImage: \"list.bullet.rectangle\")"))
         XCTAssertTrue(sidebar.contains("workerAccessibilityLabel"))
+        XCTAssertTrue(sidebar.contains("workerDelegationRow"))
+        XCTAssertTrue(sidebar.contains("grok-run-inspector-worker-\\(worker.id)"))
         XCTAssertTrue(sidebar.contains("MCP evidence"))
         XCTAssertTrue(sidebar.contains("Unavailable for this turn") == false,
                       "the unavailable copy is owned by the typed projection, not hard-coded outcome prose")
-        XCTAssertTrue(sidebar.contains(".accessibilityElement(children: .ignore)"))
+        XCTAssertTrue(sidebar.contains(".accessibilityElement(children: .contain)"))
         XCTAssertFalse(sidebar.contains(".regularMaterial"))
         XCTAssertTrue(chat.contains("Text(\"Run inspector\")"))
         XCTAssertTrue(chat.contains("grok-live-progress"))
@@ -577,6 +579,40 @@ final class ActivitySidebarTests: XCTestCase {
             ActivitySidebarPresentation.coordinationUsage(metrics),
             "20,000 parent tokens • 8,000 child tokens • 3 child tool calls"
         )
+    }
+
+    func testWorkerReceiptDetailIncludesTokensTurnsAndSpawnCorrelation() {
+        let detail = ActivitySidebarPresentation.workerReceiptDetail(
+            status: "completed",
+            durationMilliseconds: 1_500,
+            toolCallCount: 2,
+            redactedError: nil,
+            tokenCount: 8_796,
+            turns: 1,
+            spawnToolCallID: "spawn-tokens",
+            childID: "child-tokens"
+        )
+        XCTAssertTrue(detail.contains("Spawn tool spawn-tokens → child child-tokens"))
+        XCTAssertTrue(detail.contains("8,796 tokens"))
+        XCTAssertTrue(detail.contains("1 turn"))
+        XCTAssertTrue(detail.contains("1.5 sec"))
+        XCTAssertTrue(detail.contains("2 tools"))
+    }
+
+    func testWorkerReceiptDetailOmitsNilTokensTurnsAndSpawnWithoutChild() {
+        let detail = ActivitySidebarPresentation.workerReceiptDetail(
+            status: "running",
+            durationMilliseconds: nil,
+            toolCallCount: nil,
+            redactedError: nil,
+            tokenCount: nil,
+            turns: nil,
+            spawnToolCallID: "spawn-only",
+            childID: nil
+        )
+        XCTAssertFalse(detail.contains("tokens"))
+        XCTAssertFalse(detail.contains("turn"))
+        XCTAssertFalse(detail.contains("Spawn tool"))
     }
 
     private func makeWorker(status: String) -> RunEvidenceSnapshot.Worker {
