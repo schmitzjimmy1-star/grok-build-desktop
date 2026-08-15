@@ -57,6 +57,23 @@ final class ComposerPresentationContractTests: XCTestCase {
         XCTAssertTrue(composer.contains("PromptMCPChipBar("))
     }
 
+    func testVisualQuietDensityKeepsTargetsWhileReducingCardWeight() throws {
+        XCTAssertEqual(ComposerControlMetrics.minimumHitTarget, 36)
+        XCTAssertEqual(ComposerDensityPolicy.editorMinimumHeight, 36)
+        XCTAssertEqual(ComposerDensityPolicy.minimumLineCount, 1)
+        XCTAssertEqual(ComposerDensityPolicy.maximumLineCount, 8)
+        XCTAssertEqual(ComposerDensityPolicy.surfaceHorizontalPadding, 11)
+        XCTAssertEqual(ComposerDensityPolicy.surfaceVerticalPadding, 7)
+        XCTAssertEqual(ComposerDensityPolicy.outerHorizontalPadding, 20)
+        XCTAssertEqual(ComposerDensityPolicy.outerVerticalPadding, 5)
+        XCTAssertFalse(ComposerDensityPolicy.surfaceHasShadow)
+
+        let composer = try source("GrokBuild/Views/ChatComposer.swift")
+        XCTAssertTrue(composer.contains("ComposerDensityPolicy.surfaceVerticalPadding"))
+        XCTAssertTrue(composer.contains("ComposerDensityPolicy.outerVerticalPadding"))
+        XCTAssertTrue(composer.contains("shadowed: ComposerDensityPolicy.surfaceHasShadow"))
+    }
+
     func testDetailsShelfIsAbsentInEverySpelling() throws {
         let chrome = try chromeSource()
         for forbidden in [

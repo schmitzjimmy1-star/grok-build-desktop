@@ -295,6 +295,23 @@ final class ThreadRunSpineTests: XCTestCase {
         )
     }
 
+    func testTaskContractCollapsedSummaryIsOneCalmLine() {
+        XCTAssertEqual(
+            ThreadTaskContractPresentation.collapsedSummary(
+                objective: "  Review the composer\nwithout changing controls  ",
+                phase: "Working — live receipt pending"
+            ),
+            "Review the composer without changing controls · Working — live receipt pending"
+        )
+        XCTAssertEqual(
+            ThreadTaskContractPresentation.collapsedSummary(
+                objective: "Acceptance",
+                phase: ""
+            ),
+            "Acceptance"
+        )
+    }
+
     func testTaskContractKeepsRecoveryAndPreDispatchSemanticsDistinct() {
         XCTAssertEqual(
             ThreadTaskContractPresentation.phase(

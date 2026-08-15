@@ -10,6 +10,11 @@ enum ComposerDensityPolicy {
     static let minimumLineCount = 1
     static let maximumLineCount = 8
     static let editorMinimumHeight = ComposerControlMetrics.minimumHitTarget
+    static let surfaceHorizontalPadding: CGFloat = 11
+    static let surfaceVerticalPadding: CGFloat = 7
+    static let outerHorizontalPadding: CGFloat = 20
+    static let outerVerticalPadding: CGFloat = 5
+    static let surfaceHasShadow = false
 }
 
 /// Owns one stable AppKit cursor rectangle for the text-entry portion of the

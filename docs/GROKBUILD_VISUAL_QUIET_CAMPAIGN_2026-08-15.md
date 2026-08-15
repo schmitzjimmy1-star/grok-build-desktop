@@ -1,8 +1,9 @@
 # GrokBuild Visual Quiet Campaign — 2026-08-15
 
-Status: **Phases 1–3 verified** (cool tokens, Path A chips, and Codex-style
-overlay/quiet chrome). **P3C composer and post-send task-strip density is the
-current authorized slice.** Then Phase 4 accent sweep. Phases 5–6 wait.
+Status: **Phases 1–3 plus P3C verified** (cool tokens, Path A chips,
+Codex-style overlay/quiet chrome, and composer/task-strip density). **P3D live
+activity composition is the proposed next slice and has not started.** Then
+Phase 4 accent sweep. Phases 5–6 wait.
 Leftover `ChatView` split stays deferred.
 
 This is a **product visual** campaign. It is **not** leftover Phase 3
@@ -134,12 +135,14 @@ dropping Computer Use.
 | **P1** | Cool tokens + semantic colors | Light loses the cream cast. Dark gets a cooler ink. Add `warning` / `link` tokens. No control restyle yet. | S | `GB-VQ-P1-<UTC>` → `GB_VQ_P1_OK` |
 | **P2** | Quiet welcome | Smaller mark, quieter headline, less padding. Pills become compact chips **or** go away (Jimmy chooses). | M | `GB-VQ-P2-<UTC>` → `GB_VQ_P2_OK` |
 | **P3** | Overlay sidebar + quiet chrome | Compact selected-project sessions. Codex slide-over sidebar. Account row opens Settings. Header sits with the traffic lights. Inspector is a dropdown; live subagents open a right tracker. No header hairline. | M | `GB-VQ-P3-<UTC>` → `GB_VQ_P3_OK` |
+| **P3C** | Composer + task-strip density | Composer loses padding/shadow weight. Collapsed task strip becomes one objective/phase line plus disclosure. | S | `GB-VQ-P3C-<UTC>` → `GB_VQ_P3C_OK` |
+| **P3D** | Live activity composition | Redundant transcript Run card goes. Active workers become a first-class right-side activity canvas with honest narrow fallback. | M | `GB-VQ-P3D-<UTC>` → `GB_VQ_P3D_OK` |
 | **P4** | Accent-leak sweep | Send, chips, CTAs, inspector dots use `AppTheme`, not system brown/orange. | M | `GB-VQ-P4-<UTC>` → `GB_VQ_P4_OK` |
 | **P5** | Cheap bundle lightening | Real AppIcon. Drop duplicate PNGs. Delete unused `workflowsStatusPill`. Keep `agent-desktop`. | S | `GB-VQ-P5-<UTC>` → `GB_VQ_P5_OK` |
 | **P6** | Optional welcome extract | Move the quiet welcome into its own file. Not the full ChatView split. | M | none (structural) |
 
 ```text
-P1 ──► P2 ──► P3 ──► P4 ──► P5 ──► (optional) P6
+P1 ──► P2 ──► P3 ──► P3C ──► P3D ──► P4 ──► P5 ──► (optional) P6
 ```
 
 No parallel product phases on the same chrome files.
@@ -389,6 +392,51 @@ Acceptance adds the normal exact `GB-VQ-P3C-<UTC>` reply packet plus bounded
 tool-use and two-child agentic layout probes authorized by Jimmy on 2026-08-15.
 Each probe gets a fresh chat, a frozen marker and ceiling, typed receipt capture,
 and exact-session cleanup; no probe is allowed to mutate source or configuration.
+
+P3C accepted commit `6697530`: focused 52/0, full 896/0, clean signed
+`make ship`, and installed/dist SHA-256 `2bb91f51c1c2d8d10e433b10adff2775ee058a07f654dcddb1524a44dd8ae74f`.
+Light, Dark, and 1100-point narrow layouts passed with the sidebar dismissed.
+The standard packet settled exactly at 16,066 tokens; the two ordered read-only
+terminal calls settled at 48,877; the two-worker packet showed useful concurrency
+2 and 144,349 combined parent/child tokens under the 200k ceiling. Its worker
+coordination passed, but progress prose preceded the requested final token, so
+exact final-only prose is retained as partial rather than upgraded.
+
+Exact Close Session removed the three ledgered tabs and parent backends. The
+CLI could not enumerate/delete the two exact child IDs; only their validated
+directories were moved recoverably to Trash. Marker/session-file checks are zero,
+protected OK-F remains, and two post-quit process-zero samples passed.
+
+---
+
+### P3D — Live activity composition (proposed next)
+
+Jimmy's installed agentic packet exposed two presentation truths. The full-width
+`ThreadRunSpineView` **Run / Working / Run inspector** card repeats the task strip,
+live trace, Stop control, and inspector rather than adding useful evidence. At the
+same time, the two workers correctly auto-opened but appeared as tiny name/status
+rows in a 260-point receipt rail, visually tucked away from the work they owned.
+
+**User-visible job**
+
+- Remove the live transcript Run card after proving phase, current action, plan,
+  Stop, recovery, and receipt truth remain reachable from the task summary, trace,
+  and inspector.
+- Promote current-turn active workers into a deliberate right-side live activity
+  canvas with assignment, status, current action, and honest terminal state.
+- Keep private reasoning and raw child output out. Preserve exact parent/child
+  identity in the disclosure/settled receipt.
+- At wide width, dock without crushing the transcript. At mid width, use a bounded
+  overlay; at narrow width, collapse to a named/count control that never clips the
+  transcript or fights the left overlay sidebar.
+- Keep backend/runtime owners untouched. Phase 4 accent cleanup remains separate.
+
+**Acceptance**
+
+- Focused transcript-layout, inspector-projection, coordination, responsive, and
+  accessibility contracts; then full `make test` and clean candidate/merged ship.
+- Fresh two-worker `GB-VQ-P3D-<UTC>` packet under 200k. Capture workers running and
+  settled in Light and Dark, plus wide/mid/narrow behavior and exact cleanup.
 
 ---
 

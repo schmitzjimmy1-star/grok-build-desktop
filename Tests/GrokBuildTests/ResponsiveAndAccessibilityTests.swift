@@ -189,6 +189,14 @@ final class ResponsiveAndAccessibilityTests: XCTestCase {
                       "the UI must not invent pause semantics the CLI does not expose")
         XCTAssertTrue(contract.contains(".popover(isPresented: $isExpanded"),
                       "task details must not resize the selectable transcript during live ACP updates")
+        XCTAssertTrue(contract.contains("ThreadTaskContractPresentation.collapsedSummary("),
+                      "the collapsed strip is one summary line plus disclosure")
+        for retainedDetail in ["Project", "Worktree", "Branch", "Model receipt"] {
+            XCTAssertTrue(contract.contains("contractRow(\"\(retainedDetail)\""),
+                          "the disclosure must retain \(retainedDetail) truth")
+        }
+        XCTAssertTrue(contract.contains("\"Identity\""),
+                      "the disclosure must retain exact checkpoint identity truth")
     }
 
     func testFocusOrderSectionsRemainDeclared() throws {
