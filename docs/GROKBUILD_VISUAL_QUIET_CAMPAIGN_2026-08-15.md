@@ -2,8 +2,8 @@
 
 Status: **Phases 1–3, P3C, and P3D verified** (cool tokens, Path A chips,
 Codex-style overlay/quiet chrome, composer/task-strip density, and live activity
-composition). **Phase 4 accent sweep is proposed and not authorized.** Phases
-5–6 wait.
+composition). **Phase 4 accent sweep is authorized and in progress, with billable
+acceptance capped at 2.5 million reported tokens.** Phases 5–6 wait.
 Leftover `ChatView` split stays deferred.
 
 This is a **product visual** campaign. It is **not** leftover Phase 3

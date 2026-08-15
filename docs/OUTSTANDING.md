@@ -37,7 +37,8 @@
 > and process-zero closeout are recorded below. **P3C composer/task-strip
 > density is merged. P3D live activity composition is accepted and merged as
 > `1e11be2` in PR #107; required CI, merged-main install, and installed UI
-> closeout passed.** The Phase 4 accent sweep follows P3D but is not authorized.
+> closeout passed.** Jimmy authorized the bounded Phase 4 accent sweep on
+> 2026-08-15 with billable acceptance capped at 2.5 million reported tokens.
 > Leftover closeout Phases 1–2 are merged on `main` as `7a3006d`
 > (PR #102). Leftover Phase 3 (`ChatView` split) stays deferred.
 > Install path is `make ship` on this Mac.
@@ -45,7 +46,7 @@
 > Prior campaigns: 2026-08-14 Residual Closeout (Phases 0–6) complete and merged as `4613bde` (PR #94);
 > 2026-08-13 campaign (Slices 0–7) closed at merge `c0895ee` (PR #86).
 
-## Visual Quiet — 2026-08-15 (P3D accepted; Phase 4 proposed next)
+## Visual Quiet — 2026-08-15 (P3D accepted; Phase 4 authorized and in progress)
 
 Authorized spec is
 [`docs/GROKBUILD_VISUAL_QUIET_CAMPAIGN_2026-08-15.md`](GROKBUILD_VISUAL_QUIET_CAMPAIGN_2026-08-15.md).
@@ -53,7 +54,7 @@ Phases 1–3 and **P3C** are merged and verified. **P3D** is the accepted live
 activity closeout merged as `1e11be2` in PR #107: the duplicate transcript Run card is gone and
 active workers occupy a compact truthful right-side canvas. It does not redesign
 Settings or runtime behavior and is not leftover Phase 3. Phase 4 accent work is
-proposed but not authorized.
+authorized only for the documented semantic sweep; Phase 5 remains unauthorized.
 
 ### Visual Quiet P3D receipt — 2026-08-15
 

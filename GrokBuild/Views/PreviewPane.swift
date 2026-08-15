@@ -534,7 +534,7 @@ struct PreviewPane: View {
         } label: {
             HStack(spacing: 8) {
                 Image(systemName: "doc.text")
-                    .foregroundStyle(isSelected ? Color.accentColor : Color.secondary)
+                    .foregroundStyle(isSelected ? AppTheme.Palette.accent : Color.secondary)
                 Text(diff.filePath ?? "Patch \(index + 1)")
                     .font(.caption.monospaced())
                     .lineLimit(1)
@@ -582,7 +582,7 @@ struct PreviewPane: View {
             .padding(.vertical, 6)
             .frame(maxWidth: .infinity, alignment: .leading)
             .contentShape(Rectangle())
-            .background(isSelected ? Color.accentColor.opacity(0.12) : Color.clear, in: RoundedRectangle(cornerRadius: AppTheme.Radius.medium))
+            .background(isSelected ? AppTheme.Palette.accent.opacity(0.12) : Color.clear, in: RoundedRectangle(cornerRadius: AppTheme.Radius.medium))
         }
         .buttonStyle(.plain)
     }

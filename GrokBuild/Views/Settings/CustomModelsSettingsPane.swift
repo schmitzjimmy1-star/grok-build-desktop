@@ -348,7 +348,7 @@ struct CustomModelsSettingsPane: View {
                             systemImage: "safari"
                         )
                     }
-                    .buttonStyle(.borderedProminent)
+                    .buttonStyle(GrokProminentButtonStyle())
                     .controlSize(.small)
                     .disabled(GrokAuthentication.loginCommand() == nil)
 
@@ -405,7 +405,7 @@ struct CustomModelsSettingsPane: View {
                     Spacer()
 
                     Button("Apply Default") { Task { await applyDefaultModel() } }
-                    .buttonStyle(.borderedProminent)
+                    .buttonStyle(GrokProminentButtonStyle())
                     .controlSize(.small)
                     .disabled(!isDefaultModelDirty)
                 }
@@ -742,7 +742,7 @@ struct CustomModelsSettingsPane: View {
                             }
                         }
                         .controlSize(.small)
-                        .buttonStyle(.borderedProminent)
+                        .buttonStyle(GrokProminentButtonStyle())
                     } else {
                         Button {
                             fetchModels(for: provider)
@@ -916,7 +916,7 @@ struct CustomModelsSettingsPane: View {
                                 .toggleStyle(.checkbox)
                             Text("Requests — including any API key — travel unencrypted. Only for model servers on hardware you control.")
                                 .font(.caption2)
-                                .foregroundStyle(.orange)
+                                .foregroundStyle(AppTheme.Palette.warning)
                         }
                     }
                 }
@@ -966,7 +966,7 @@ struct CustomModelsSettingsPane: View {
 
                 HStack(spacing: 10) {
                     Button(isEditingProvider ? "Save Provider" : "Add Provider") { _ = saveProviderDraft() }
-                        .buttonStyle(.borderedProminent)
+                        .buttonStyle(GrokProminentButtonStyle())
                         .disabled(providerDraft.validationError != nil)
                     Button("Cancel") { resetProviderDraft() }
                     Spacer()
@@ -996,7 +996,7 @@ struct CustomModelsSettingsPane: View {
                         } label: {
                             Label("Connect with OpenRouter…", systemImage: "safari")
                         }
-                        .buttonStyle(.borderedProminent)
+                        .buttonStyle(GrokProminentButtonStyle())
                         .controlSize(.small)
 
                         if providerDraft.credentialMetadata.kind == .oauthIssuedKey {
@@ -1114,7 +1114,7 @@ struct CustomModelsSettingsPane: View {
             VStack(alignment: .leading, spacing: 12) {
                 Text("\(models.count)/\(CustomModelStore.maxModels) custom models")
                     .font(.caption)
-                    .foregroundStyle(isAtModelLimit ? .orange : .secondary)
+                    .foregroundStyle(isAtModelLimit ? AppTheme.Palette.warning : .secondary)
 
                 Group {
                     if models.isEmpty {
@@ -1429,7 +1429,7 @@ struct CustomModelsSettingsPane: View {
 
                 HStack(spacing: 10) {
                     Button(isEditing ? "Save Changes" : "Add Model") { saveDraft() }
-                        .buttonStyle(.borderedProminent)
+                        .buttonStyle(GrokProminentButtonStyle())
                         .disabled(draftSaveBlockedReason != nil)
                     Button("Cancel") { resetDraft() }
                     Spacer()

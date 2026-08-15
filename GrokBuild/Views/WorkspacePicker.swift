@@ -24,7 +24,7 @@ struct WorkspacePicker: View {
                 } label: {
                     Label("Choose Folder…", systemImage: "folder.badge.plus")
                 }
-                .buttonStyle(.borderedProminent)
+                .buttonStyle(GrokProminentButtonStyle())
                 .controlSize(.large)
 
                 selectionStatusText
@@ -47,7 +47,7 @@ struct WorkspacePicker: View {
                     }
                 }
                 .keyboardShortcut(.defaultAction)
-                .buttonStyle(.borderedProminent)
+                .buttonStyle(GrokProminentButtonStyle())
                 .controlSize(.large)
                 .disabled(selectedURL == nil)
             }

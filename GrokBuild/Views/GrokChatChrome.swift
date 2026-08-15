@@ -223,7 +223,7 @@ struct ToolCallRow: View {
     }
 
     private var statusColor: Color {
-        if tool.isRecovered { return .orange }
+        if tool.isRecovered { return AppTheme.Palette.warning }
         if tool.isFailed { return .red }
         if tool.isComplete { return .green }
         return .secondary

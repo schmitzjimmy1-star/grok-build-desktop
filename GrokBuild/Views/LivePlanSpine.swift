@@ -73,7 +73,7 @@ struct LivePlanSpineView: View {
 
     private func stepColor(_ step: RunEvidenceSnapshot.PlanStep) -> Color {
         if PlanSpinePresentation.isCompleted(step.status) { return .secondary }
-        return step.isCurrent ? .accentColor : Color(nsColor: .tertiaryLabelColor)
+        return step.isCurrent ? AppTheme.Palette.accent : Color(nsColor: .tertiaryLabelColor)
     }
 }
 
@@ -724,7 +724,7 @@ struct ThreadRunSpineView: View {
                     HStack(alignment: .firstTextBaseline, spacing: 7) {
                         Image(systemName: stepSymbol(step))
                             .font(.caption2.weight(.semibold))
-                            .foregroundStyle(step.isCurrent ? Color.accentColor : Color.secondary)
+                            .foregroundStyle(step.isCurrent ? AppTheme.Palette.accent : Color.secondary)
                         Text(step.title)
                             .font(AppTheme.Typography.caption)
                             .foregroundStyle(step.isCurrent ? .primary : .secondary)
@@ -772,7 +772,7 @@ struct ThreadRunSpineView: View {
                         ? "exclamationmark.triangle.fill" : "bookmark.fill"
                 )
                 .font(AppTheme.Typography.caption)
-                .foregroundStyle(snapshot.continuity.requiresRecoveryAction ? Color.orange : Color.secondary)
+                .foregroundStyle(snapshot.continuity.requiresRecoveryAction ? AppTheme.Palette.warning : Color.secondary)
 
                 Text(snapshot.nextAction)
                     .font(AppTheme.Typography.caption)
@@ -785,7 +785,7 @@ struct ThreadRunSpineView: View {
                         ForEach(snapshot.unresolvedErrors, id: \.self) { warning in
                             Text(warning)
                                 .font(AppTheme.Typography.caption)
-                                .foregroundStyle(.orange)
+                                .foregroundStyle(AppTheme.Palette.warning)
                         }
                         Text("No exact producing plan step was reported for these receipts.")
                             .font(AppTheme.Typography.caption)
@@ -799,7 +799,7 @@ struct ThreadRunSpineView: View {
                         ? "exclamationmark.triangle.fill" : "bookmark.fill"
                 )
                 .font(AppTheme.Typography.caption)
-                .foregroundStyle(checkpoint.requiresRecoveryAction ? Color.orange : Color.secondary)
+                .foregroundStyle(checkpoint.requiresRecoveryAction ? AppTheme.Palette.warning : Color.secondary)
 
                 Text(checkpoint.nextAction)
                     .font(AppTheme.Typography.caption)
@@ -812,7 +812,7 @@ struct ThreadRunSpineView: View {
                         ForEach(warnings, id: \.self) { warning in
                             Text(warning)
                                 .font(AppTheme.Typography.caption)
-                                .foregroundStyle(.orange)
+                                .foregroundStyle(AppTheme.Palette.warning)
                         }
                     }
                 }
@@ -894,7 +894,7 @@ struct ThreadRunSpineView: View {
             HStack(spacing: 6) {
                 Image(systemName: isCurrent ? "arrow.right.circle.fill" : "wrench")
                     .font(.caption2)
-                    .foregroundStyle(isCurrent ? Color.accentColor : Color.secondary)
+                    .foregroundStyle(isCurrent ? AppTheme.Palette.accent : Color.secondary)
                 Text("\(tool.family) · \(tool.operation)")
                     .font(AppTheme.Typography.caption.weight(isCurrent ? .semibold : .regular))
                     .lineLimit(2)

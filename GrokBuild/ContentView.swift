@@ -349,11 +349,11 @@ struct ContentView: View {
                     .accessibilityLabel("Dismiss migration banner")
                     .accessibilityIdentifier("grok-migration-banner-dismiss")
                 }
-                .foregroundStyle(Color.orange)
+                .foregroundStyle(AppTheme.Palette.warning)
                 .padding(.horizontal, 12)
                 .padding(.vertical, 8)
                 .frame(maxWidth: .infinity)
-                .background(Color.orange.opacity(0.10))
+                .background(AppTheme.Palette.warning.opacity(0.10))
                 .accessibilityElement(children: .contain)
                 .accessibilityIdentifier("grok-migration-banner")
             }

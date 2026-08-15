@@ -44,6 +44,11 @@ enum AppTheme {
             dark: NSColor.white.withAlphaComponent(0.92),
             light: NSColor.black.withAlphaComponent(0.88)
         )
+        /// Text and symbols placed on the neutral accent fill.
+        static let accentForeground = adaptive(
+            dark: NSColor.black.withAlphaComponent(0.90),
+            light: NSColor.white
+        )
         /// Workbench icons. Dark stays a consistent near-white so every
         /// header control matches; Light stays ink on stone.
         static let titlebarControlNSColor = adaptiveNSColor(
@@ -283,6 +288,60 @@ struct GrokChromeButtonStyle: ButtonStyle {
             if configuration.isPressed { return AppTheme.Palette.accentSoft.opacity(1.5) }
             if isHovering && isEnabled { return AppTheme.Palette.surfaceHover }
             return .clear
+        }
+    }
+}
+
+/// App-owned primary action treatment. Native `borderedProminent` inherits the
+/// user's macOS accent color, which can turn the cool-neutral workbench orange
+/// or brown; this style keeps the same semantic emphasis in Light and Dark.
+struct GrokProminentButtonStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        GrokProminentButtonBody(configuration: configuration)
+    }
+
+    private struct GrokProminentButtonBody: View {
+        let configuration: ButtonStyle.Configuration
+        @Environment(\.isEnabled) private var isEnabled
+        @Environment(\.controlSize) private var controlSize
+        @State private var isHovering = false
+
+        var body: some View {
+            configuration.label
+                .foregroundStyle(AppTheme.Palette.accentForeground)
+                .padding(.horizontal, horizontalPadding)
+                .frame(minHeight: minimumHeight)
+                .contentShape(Rectangle())
+                .background(
+                    RoundedRectangle(cornerRadius: AppTheme.Radius.medium, style: .continuous)
+                        .fill(backgroundColor)
+                )
+                .opacity(isEnabled ? 1 : 0.42)
+                .onHover { isHovering = $0 }
+        }
+
+        private var backgroundColor: Color {
+            if configuration.isPressed { return AppTheme.Palette.accent.opacity(0.72) }
+            if isHovering && isEnabled { return AppTheme.Palette.accent.opacity(0.84) }
+            return AppTheme.Palette.accent
+        }
+
+        private var horizontalPadding: CGFloat {
+            switch controlSize {
+            case .mini: return 6
+            case .small: return 8
+            case .large: return 14
+            default: return 10
+            }
+        }
+
+        private var minimumHeight: CGFloat {
+            switch controlSize {
+            case .mini: return 20
+            case .small: return 24
+            case .large: return 36
+            default: return 30
+            }
         }
     }
 }

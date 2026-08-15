@@ -581,7 +581,7 @@ struct SettingsApplyBar: View {
                 Button("Revert", action: onRevert)
                     .disabled(!canApply || isApplying)
                 Button(isApplying ? "Applying…" : "Apply", action: onApply)
-                    .buttonStyle(.borderedProminent)
+                    .buttonStyle(GrokProminentButtonStyle())
                     .disabled(!canApply || isApplying)
             }
 

@@ -147,7 +147,7 @@ struct AgentsSettingsPane: View {
             HStack {
                 Spacer()
                 Button("Apply Default") { Task { await applyDefaultAgent() } }
-                .buttonStyle(.borderedProminent)
+                .buttonStyle(GrokProminentButtonStyle())
                 .disabled(!valueState.canApply)
             }
             SettingsPaneStateHeader(status: valueState.status)
@@ -512,7 +512,7 @@ private struct SubagentRoleEditor: View {
                     ))
                     dismiss()
                 }
-                .buttonStyle(.borderedProminent)
+                .buttonStyle(GrokProminentButtonStyle())
                 .disabled(validationError != nil)
             }
         }

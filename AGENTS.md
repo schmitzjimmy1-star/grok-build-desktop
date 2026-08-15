@@ -17,8 +17,8 @@ Before edits or acceptance, read and follow in order:
 3. `docs/OUTSTANDING.md` — current slice scope and Gates A–H when a campaign slice is active.
 4. `docs/GROKBUILD_VISUAL_QUIET_CAMPAIGN_2026-08-15.md` — Visual Quiet.
    Phases 1–3, P3C, and P3D are accepted. P3D removed the duplicate live Run
-   card and promoted workers into a compact right canvas. The Phase 4 accent
-   sweep is proposed but not authorized; broad `ChatView` split stays deferred.
+   card and promoted workers into a compact right canvas. Jimmy authorized the
+   bounded Phase 4 accent sweep on 2026-08-15; broad `ChatView` split stays deferred.
 
 Stop on a path, branch, remote, installed-stamp, signing, hash, or dirty-state mismatch.
 

@@ -225,7 +225,7 @@ struct GitCheckoutSheet: View {
                         onCreateBranch(name)
                         dismiss()
                     }
-                    .buttonStyle(.borderedProminent)
+                    .buttonStyle(GrokProminentButtonStyle())
                     .disabled(newBranchName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                     .accessibilityIdentifier("grok-checkout-create-branch")
                 }
@@ -249,7 +249,7 @@ struct GitCheckoutSheet: View {
                             onCreateWorktree(branch, path)
                             dismiss()
                         }
-                        .buttonStyle(.borderedProminent)
+                        .buttonStyle(GrokProminentButtonStyle())
                         .disabled(
                             newWorktreeBranch.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ||
                             newWorktreePath.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty

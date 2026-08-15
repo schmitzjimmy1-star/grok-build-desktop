@@ -395,7 +395,7 @@ struct ActivitySidebar: View {
                 HStack(alignment: .top, spacing: 7) {
                     Image(systemName: "arrow.right.circle.fill")
                         .font(.system(size: 11, weight: .semibold))
-                        .foregroundStyle(.tint)
+                        .foregroundStyle(AppTheme.Palette.link)
                         .padding(.top, 2)
                     Text(current.title)
                         .font(AppTheme.Typography.captionStrong)
@@ -621,7 +621,7 @@ struct ActivitySidebar: View {
                 systemImage: "exclamationmark.triangle"
             )
             .font(AppTheme.Typography.captionStrong)
-            .foregroundStyle(.orange)
+            .foregroundStyle(AppTheme.Palette.warning)
             ForEach(inspector.unresolvedErrors.indices, id: \.self) { index in
                 Text(inspector.unresolvedErrors[index])
                     .font(AppTheme.Typography.caption)
@@ -666,7 +666,7 @@ struct ActivitySidebar: View {
                     if snapshot != nil {
                         evidencePhaseBadge("Finished", color: .secondary)
                     } else if liveProjection != nil {
-                        evidencePhaseBadge("Live", color: .accentColor)
+                        evidencePhaseBadge("Live", color: AppTheme.Palette.accent)
                     }
                 }
                 Text(headerSubtitle)
@@ -716,7 +716,7 @@ struct ActivitySidebar: View {
             HStack(alignment: .top, spacing: 10) {
                 Image(systemName: "bolt.circle")
                     .font(.system(size: 17, weight: .semibold))
-                    .foregroundStyle(Color.accentColor)
+                    .foregroundStyle(AppTheme.Palette.accent)
                     .frame(width: 22, height: 22)
                     .accessibilityHidden(true)
                 VStack(alignment: .leading, spacing: 3) {
@@ -757,7 +757,7 @@ struct ActivitySidebar: View {
                 ForEach(live.plan) { step in
                     HStack(alignment: .top, spacing: 8) {
                         Circle()
-                            .fill(step.isCurrent ? Color.accentColor : Color.secondary.opacity(0.5))
+                            .fill(step.isCurrent ? AppTheme.Palette.accent : Color.secondary.opacity(0.5))
                             .frame(width: 6, height: 6)
                             .padding(.top, 5)
                         VStack(alignment: .leading, spacing: 2) {
@@ -830,7 +830,7 @@ struct ActivitySidebar: View {
                     } label: {
                         HStack(alignment: .top, spacing: 8) {
                             Circle()
-                                .fill(tool.isActive ? Color.accentColor : statusColor(tool.status))
+                                .fill(tool.isActive ? AppTheme.Palette.accent : statusColor(tool.status))
                                 .frame(width: 6, height: 6)
                                 .padding(.top, 5)
                             VStack(alignment: .leading, spacing: 2) {
@@ -939,17 +939,17 @@ struct ActivitySidebar: View {
     private func continuityCard(_ snapshot: RunEvidenceSnapshot) -> some View {
         VStack(alignment: .leading, spacing: 8) {
             Label("Continuity needs review", systemImage: "exclamationmark.shield")
-                .font(AppTheme.Typography.captionStrong).foregroundStyle(Color.orange)
+                .font(AppTheme.Typography.captionStrong).foregroundStyle(AppTheme.Palette.warning)
             Text("\(snapshot.continuity.provenance) • \(snapshot.continuity.reason)")
                 .font(AppTheme.Typography.caption).foregroundStyle(.secondary)
             HStack(spacing: 8) {
                 Button("Continue as New") { confirmsContinueAsNew = true }
-                    .buttonStyle(.borderedProminent).controlSize(.small)
+                    .buttonStyle(GrokProminentButtonStyle()).controlSize(.small)
                 Button("Review…", action: onReviewRecovery).buttonStyle(.bordered).controlSize(.small)
             }
         }
-        .padding(11).background(Color.orange.opacity(0.08), in: RoundedRectangle(cornerRadius: AppTheme.Radius.large))
-        .overlay { RoundedRectangle(cornerRadius: AppTheme.Radius.large).stroke(Color.orange.opacity(0.24)) }
+        .padding(11).background(AppTheme.Palette.warning.opacity(0.08), in: RoundedRectangle(cornerRadius: AppTheme.Radius.large))
+        .overlay { RoundedRectangle(cornerRadius: AppTheme.Radius.large).stroke(AppTheme.Palette.warning.opacity(0.24)) }
     }
 
     @ViewBuilder private func artifacts(_ snapshot: RunEvidenceSnapshot) -> some View {
@@ -1171,10 +1171,10 @@ struct ActivitySidebar: View {
             || snapshot.outcome == .completionReceiptMissing
             || snapshot.unresolvedWorkerCount > 0
             || !snapshot.unresolvedErrors.isEmpty {
-            return .orange
+            return AppTheme.Palette.warning
         }
         if snapshot.outcome == .userStopped { return .secondary }
-        return snapshot.activeWorkerCount > 0 ? .accentColor : .secondary
+        return snapshot.activeWorkerCount > 0 ? AppTheme.Palette.accent : .secondary
     }
 
     private func artifactRow(_ artifact: ChatStore.RunArtifact) -> some View {
@@ -1216,8 +1216,8 @@ struct ActivitySidebar: View {
         case "completed", "complete", "success", "succeeded", "done": return .green
         case "failed", "error": return .red
         case "cancelled", "canceled", "stopped": return .secondary
-        case "unknown", "orphaned", "not_settled": return .orange
-        default: return .accentColor
+        case "unknown", "orphaned", "not_settled": return AppTheme.Palette.warning
+        default: return AppTheme.Palette.accent
         }
     }
 
