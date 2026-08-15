@@ -30,7 +30,10 @@ After quit/relaunch, continuation packets click **Resume current task** (ACP
 session** while continuity is verifying. Slice 6 uses
 `manifests/installed-slice6-packet-v1.json` (250k actual-token ceiling, one
 grok-4.6 packet with three ordered tools, two read-only children, one follow-up
-turn, and a deliberate **Stop turn**). Slice 5's three-route 1.5m ceiling
+turn, and a deliberate **Stop turn**). Captured `LEFT/RIGHT child echo` rows are
+the settled presentation of successful `spawn_subagent` receipts; fixture
+coverage keeps those rows classified as child spawns rather than generic tools.
+Slice 5's three-route 1.5m ceiling
 manifest remains the default.
 
 ```bash

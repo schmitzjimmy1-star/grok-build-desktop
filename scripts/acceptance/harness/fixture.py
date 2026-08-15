@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Any
 
 from .cleanup import require_exact_ids
+from .evidence import _tool_name
 from .errors import HarnessError
 from .handoff import HandoffContext, render_handoff, validate_handoff
 from .receipts import evaluate, load_ledger
@@ -47,6 +48,13 @@ def run_fixture(directory: Path) -> int:
             )
         elif kind == "handoff":
             validate_handoff((directory / "handoff.txt").read_text(encoding="utf-8"))
+        elif kind == "tool-shape":
+            observed = [_tool_name(tool) for tool in case["tools"]]
+            expected = [tuple(item) for item in case["expected"]]
+            if observed != expected:
+                raise HarnessError(
+                    f"tool shape mismatch: expected {expected}, found {observed}"
+                )
         else:
             raise HarnessError(f"unknown fixture kind {kind}")
     except HarnessError as exc:

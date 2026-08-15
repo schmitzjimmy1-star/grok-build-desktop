@@ -17,7 +17,8 @@
 > User conversations, historical acceptance evidence, unnamed sessions that were not
 > created by the current slice, and unrelated browser/app state are protected.
 >
-> **Current campaign slice:** Slice 6, extract coordination seams, authorized.
+> **Current campaign slice:** Slice 6, extract coordination seams, complete after
+> this final closeout receipt merges. Slice 7 is next for a new session only.
 > PR 1 merged as `6f2d0eb` (PR #77). PR 2 merged as `f7246f4` (PR #78).
 > PR 3 merged as `ec97b88` (PR #79). PR 4 merged as `1d7ec82` (PR #80).
 > Inspector-layout hotfix PR #81 merged as `7730105`; restored-transcript
@@ -27,7 +28,7 @@
 > Numbered `## Slice N` headings below the 2026-08-14 harness receipt are historical
 > campaigns. Do not implement them.
 
-## Slice 6 — extract coordination seams and replace brittle test pins (authorized, PR 1–4 + hotfixes merged, 2026-08-14)
+## Slice 6 — extract coordination seams and replace brittle test pins (complete, PR 1–4 + hotfixes + final closeout, 2026-08-14)
 
 Authorized scope is the Slice 6 section in
 `docs/GROKBUILD_VERIFICATION_AND_FORWARD_SLICES_2026-08-13.md`. Product identity is
@@ -112,6 +113,50 @@ twenty-second soak; no prompt ran. Graceful close left process-zero samples at
 `2026-08-14T22:20:39-0500` and `2026-08-14T22:20:47-0500`. A launcher-resolved
 `.build/GrokBuild.app` process was detected by executable path, closed, and
 excluded before this installed-product receipt.
+
+Final billable gate run `20260815T033736Z` started from clean installed
+`fae01334068cae5f5ed6cac1c207af22fae525d0`, exact stamp == HEAD,
+`dirty=false`, Team `DD2GCQJVB4`, and matching dist/installed executable
+SHA-256 `b071b1ff980629957a1997b655543bbd2e7652f9f945ce78e458803a41ef5527`.
+The three-turn Grok 4.6 packet evaluated accepted at **165,710 actual tokens**:
+T1 used 147,982 tokens and retained ordered ONE/TWO/THREE terminal receipts,
+two successful concurrent child receipts, exact child IDs
+`01a0037f-eb9f-7c30-bc1e-4271094a1dab` and
+`01a0037f-eba1-7021-9a9c-45d9dc8a643d`, and one `wait_all`; T2 used 17,728
+tokens on the same tab `64DF200F-4A88-4102-9965-97C476462296` and backend
+`01a0037f-c677-7e50-923f-65483ac5699b`; T3 was deliberately stopped before
+usage. Installed Computer Use exposed those six successful tool rows, the exact
+follow-up marker, meaningful transcript/composer/inspector AX names, and
+**Settled: Stopped by you**.
+
+The immediately preceding run `20260815T033451Z` also completed the product
+packet at 164,878 tokens but correctly failed the harness evaluator because the
+captured `LEFT/RIGHT child echo` rows arrived as generic ACP `other` tools.
+`scripts/acceptance/harness/evidence.py` now recognizes that settled
+child-presentation shape as `spawn_subagent`; zero-cost fixture
+`live-child-tool-shape` and `AcceptanceHarnessTests` cover both children plus
+`wait_all`. The focused six-test harness suite and final full **865-test** suite
+passed with zero failures. This is a receipt-extraction correction only; it does
+not alter ACP, provider routing, launch argv, persistence, or installed app
+behavior.
+
+Exact **Close Session** removed the accepted tab above, the rejected-run tab
+`032C960C-8C1F-4814-835A-62974F8CF7CF` / backend
+`01a0037d-3cf8-7783-adc4-64caa7ee8b91`, and the original interrupted T1 tab
+`3EEF6920-7F0C-45C5-9755-BE7A628073C2` / backend
+`01a00323-3399-7a01-8156-7d0730935751`. Exact local transcript and backend
+searches are empty for all three, and the six ledgered child IDs are absent.
+Protected `~/.grok/config.toml` remains SHA-256
+`2cb4dcdaf0f1841aab54fb2ae10586381ca78b560eb9fc0477efb521e92140ae`,
+2,894 bytes, mode `0600`; only normal composer residue advanced cwd-scoped
+`prompt_history.jsonl` to SHA-256
+`d406c05304ddca555f4fe489a1fd7053c4e4ec37a278e25069cb248082b39b26`,
+122,307 bytes, mode `0644`. The installed app settled at 0.0% CPU in four of
+five final one-second samples (one transient 1.0% sample during accessibility
+inspection), graceful Computer Use quit succeeded, and exact process-zero
+samples passed at `2026-08-14T22:43:16-0500` and
+`2026-08-14T22:43:21-0500`. After the final closeout PR merges and merged
+`main` is re-shipped and rechecked, Slice 7 is the only next authorized slice.
 
 ## Slice 5 — first-class agentic acceptance harness (complete, 2026-08-14)
 

@@ -1,6 +1,6 @@
 # GrokBuild agentic-performance verification and forward slices — 2026-08-13
 
-Status: **Slices 0–5 complete; Slice 6 is authorized for a new session only. Slice 7 remains forbidden.**
+Status: **Slices 0–6 complete after the final closeout receipt merges; Slice 7 is next for a new session only.**
 
 This plan follows the canonical identity and Gates A–H in
 [`CANONICAL_WORKTREE.md`](../CANONICAL_WORKTREE.md) and
@@ -580,6 +580,29 @@ processes remained at 0.0% CPU after four seconds and a twenty-second soak. No
 prompt ran. Graceful close left merged-main process-zero samples at
 `2026-08-14T22:20:39-0500` and `2026-08-14T22:20:47-0500`.
 
+**Final acceptance receipt (2026-08-14).** Billable run
+`20260815T033736Z` used Grok 4.6 under the 250k anomaly ceiling and evaluated
+all three packets accepted at **165,710 actual tokens**. T1 retained the ordered
+ONE/TWO/THREE terminals, exactly two successful concurrent children, exact
+child backend IDs, and one `wait_all`; T2 retained the same local tab and parent
+backend with the exact follow-up marker; T3 used the native Stop control and
+retained `userStopped` with zero billed tokens. Installed Computer Use showed
+the six successful coordination rows, exact T2 continuation, disabled empty
+composer, and **Settled: Stopped by you**.
+
+The first closeout attempt `20260815T033451Z` completed at 164,878 tokens but
+the evaluator rejected its otherwise complete product receipt because the
+settled ACP trace titles `LEFT child echo` and `RIGHT child echo` were
+classified as generic `other` tools. The harness now maps that child-specific
+settled shape to `spawn_subagent`, with zero-cost fixture coverage for both
+children and `wait_all`; the fresh run above then passed without changing app
+runtime behavior. Focused harness tests and all 865 repository tests passed with
+zero failures. Both closeout tabs and original T1 tab were closed through their
+exact installed-UI rows, all three local transcript/parent-backend identities
+and six child IDs are absent, protected config is unchanged, final CPU settled
+at 0.0% except one transient 1.0% accessibility sample, and process-zero passed
+at `2026-08-14T22:43:16-0500` and `2026-08-14T22:43:21-0500`.
+
 ## Slice 7 — refresh public evidence and onboarding
 
 **Purpose:** make the repository's first impression match the product that actually
@@ -622,11 +645,11 @@ ships.
 
 ## Current authorized slice
 
-Execute **Slice 6 only** from the merged Slice 5 product at `da07f559`
-(PR #74, installed SHA-256
-`9b955934c44e723fc0a32b37c5995134ab4042fc4112ec2db3914fd442590a9a`). Slices 0–5
-are closed. Receipt or documentation commits may sit on `main` above that stamp;
-prove `git merge-base --is-ancestor da07f559 HEAD` and an empty product diff
-before starting. Slice 6 must end each checkpoint update, and its final
-merged-main closeout, with the mandatory three-sentence handoff. Do not begin
-Slice 7 until Slice 6 is merged, reinstalled, cleaned, and proven at process zero.
+Execute **Slice 7 only** from the exact merged Slice 6 closeout. At session
+start, require clean `main == personal/main`, installed stamp == HEAD,
+`dirty=false`, dist/installed byte parity, Team `DD2GCQJVB4`, deep/strict
+signing, no quarantine, and two process-zero samples. Slices 0–6 are closed;
+do not rerun their provider packets or reuse their markers. Slice 7 must refresh
+signed-installed public screenshots and the README first screenful within its
+documented scope, then end every checkpoint and its final merged-main closeout
+with the mandatory three-sentence handoff.

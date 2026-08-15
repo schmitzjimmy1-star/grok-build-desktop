@@ -1,0 +1,26 @@
+{
+  "kind": "tool-shape",
+  "expect": "accept",
+  "tools": [
+    {
+      "kind": "other",
+      "title": "LEFT child echo",
+      "status": "Succeeded"
+    },
+    {
+      "kind": "other",
+      "title": "RIGHT child echo",
+      "status": "Succeeded"
+    },
+    {
+      "kind": "other",
+      "title": "multi-wait (wait_all)",
+      "status": "Succeeded"
+    }
+  ],
+  "expected": [
+    ["spawn_subagent", "LEFT"],
+    ["spawn_subagent", "RIGHT"],
+    ["wait_all", null]
+  ]
+}
