@@ -220,6 +220,8 @@ final class CodexShellParityTests: XCTestCase {
                        "SidebarActivityProjection had zero consumers after Slice 1")
         XCTAssertFalse(fm.fileExists(atPath: root.appendingPathComponent("GrokBuild/Models/AgentHub.swift").path),
                        "AgentHubProjection had zero consumers after Slice 1")
+        XCTAssertFalse(fm.fileExists(atPath: root.appendingPathComponent("GrokBuild/Models/Agent.swift").path),
+                       "empty Agent Team placeholder must stay deleted")
 
         let chatView = try source("GrokBuild/Views/ChatView.swift")
         for dead in ["agentStatusPill", "memoryStatusPill", "ContextUsageIndicator", "rememberPromptSheet", "showMemoryBrowser"] {

@@ -1,9 +1,12 @@
 # GrokBuild → Agentic Workbench — Ten-Slice Roadmap
 
-> Historical 2026-08-03 roadmap. Live chrome is **Run inspector**, spawn-on-Send,
-> collapsed strip below 900 pt. Open work lives in `docs/OUTSTANDING.md`.
+> **Historical 2026-08-03 roadmap. Not current work.** Slices 1–10 marked
+> shipped below are already in the app. The line “nothing here is implemented
+> yet” is stale. Current leftover list:
+> [`docs/GROKBUILD_LEFTOVER_CLOSEOUT_2026-08-15.md`](GROKBUILD_LEFTOVER_CLOSEOUT_2026-08-15.md).
+> Live chrome is **Run inspector**, spawn-on-Send, collapsed strip below 900 pt.
 
-*Deep-dive synthesis (2026-08-03) from a four-agent read of backend, providers, frontend/sidebar, and performance. Read-only analysis; nothing here is implemented yet.*
+*Deep-dive synthesis (2026-08-03) from a four-agent read of backend, providers, frontend/sidebar, and performance.*
 
 ## The vision, honestly stated
 

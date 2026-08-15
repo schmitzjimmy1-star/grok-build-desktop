@@ -68,6 +68,8 @@ installed-app acceptance when a product slice requires those gates.
   transition; the earlier enabled/active API state had produced zero runs.
 - Required branch check: `Test and Build App`, GitHub Actions app ID `15368`, strict
   and enforced for administrators on the personal fork's `main`.
+- Re-checked 2026-08-15: same pin is live (`strict=true`, `enforce_admins=true`).
+  No waiver.
 - PR #68 head `031747d3c3ee0115128dc93f75ea5bff71439cd9` passed `make test`
   (802/802), `make app`, and bundled `agent-desktop version` in
   [run 31770647721](https://github.com/schmitzjimmy1-star/grok-build-desktop/actions/runs/31770647721).
@@ -94,7 +96,7 @@ Tag push auto-release is commented out in the workflow file:
 
 | Input | Default | Description |
 |-------|---------|-------------|
-| `release_type` | `notarized` | `notarized` or `unsigned` |
+| `release_type` | `unsigned` | `unsigned` or `notarized`. This personal fork refuses `notarized`. |
 | `version` | *(empty)* | Optional tag override; must match `VERSION` (e.g. `v0.1.11`). Empty uses `v$(cat VERSION)`. |
 
 ### Preconditions
@@ -136,14 +138,17 @@ make dmg-package
 
 No Apple signing secrets required. Release title: **`v{VERSION} (Unsigned)`**. Notes include Gatekeeper bypass instructions.
 
-#### Notarized path (`release_type: notarized`, default)
+#### Notarized path (`release_type: notarized`)
+
+This personal fork refuses that input. Do not dispatch it here.
 
 1. Import Developer ID certificate from secrets (`apple-actions/import-codesign-certs@v3`)
 2. `make signed SIGN_IDENTITY=...`
 3. `./scripts/notarize.sh dist/GrokBuild.app` (Apple API key from secrets)
 4. `make dmg-package`
 
-Release title: **`v{VERSION} (Notarized)`**. **Required for in-app GrokBuild updates** — the updater only offers notarized releases.
+Release title: **`v{VERSION} (Notarized)`**. This personal line does **not**
+dispatch that path. Install with `make ship`. The in-app app-release feed stays off.
 
 ### Required secrets (notarized only)
 
@@ -158,13 +163,13 @@ Release title: **`v{VERSION} (Notarized)`**. **Required for in-app GrokBuild upd
 
 `GITHUB_TOKEN` is provided automatically for release creation.
 
-**Note:** CI uses Apple API keys for notarization. Local builds can use a keychain profile (`NOTARY_PROFILE`) via `make notarize`; see [`scripts/notarize.sh`](../../scripts/notarize.sh).
+**Note:** `make notarize` is refused on this personal line. `scripts/notarize.sh` remains for upstream/CI parity only.
 
 ### Release outputs
 
 | Asset | In-app updater |
 |-------|----------------|
-| `GrokBuild-{tag}.app.zip` | Yes — downloaded by **Update App** when release is notarized |
+| `GrokBuild-{tag}.app.zip` | Not used on this personal line. The app-release feed stays off. |
 | `GrokBuild-{tag}-macOS.dmg` | Manual install only |
 
 ### Local equivalent

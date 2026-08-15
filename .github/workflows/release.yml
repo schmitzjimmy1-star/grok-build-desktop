@@ -9,7 +9,7 @@ on:
       release_type:
         description: 'Manual release type'
         required: true
-        default: notarized
+        default: unsigned
         type: choice
         options:
           - unsigned
@@ -30,6 +30,12 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
+      - name: Refuse notarized releases on the personal line
+        if: github.repository == 'schmitzjimmy1-star/grok-build-desktop' && github.event.inputs.release_type == 'notarized'
+        run: |
+          echo "::error::This personal line does not publish notarized GitHub releases. Install with make ship."
+          exit 1
 
       - name: Validate release tag
         id: validate
@@ -162,9 +168,8 @@ jobs:
           2. Terminal: \`xattr -cr ~/Applications/GrokBuild.app\`
           3. System Settings → Privacy & Security → "Open Anyway"
 
-          ---
-
-          For a signed + notarized version with no warnings, run this workflow manually.
+          This personal line installs with \`make ship\` under Apple Development.
+          It does not publish notarized GitHub releases.
           EOF
           fi
           echo "body<<EOF" >> $GITHUB_OUTPUT

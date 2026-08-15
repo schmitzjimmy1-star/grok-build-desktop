@@ -1,6 +1,6 @@
 # GrokBuild Agentic Cockpit Campaign — 2026-08-15
 
-Status: **Phase 1 complete**; **Phase 2 deferred** (user skip, 2026-08-15); **Phase 3 complete** (merged as `a799bf5` / PR #98, Gate H green); **Phase 4 complete** (merged as `b9bf633` / PR #99, post-merge ship `dirty=false`). No notarized GitHub release is outstanding. Install path is `make ship` under Apple Development.
+Status: **closed campaign.** Phase 1 complete; Phase 2 deferred (user skip, 2026-08-15) and now leftover closeout Phase 3; Phase 3 complete (merged as `a799bf5` / PR #98); Phase 4 complete (merged as `b9bf633` / PR #99). Current leftover list: [`docs/GROKBUILD_LEFTOVER_CLOSEOUT_2026-08-15.md`](GROKBUILD_LEFTOVER_CLOSEOUT_2026-08-15.md). Install path is `make ship` under Apple Development.
 
 Baseline: `main == personal/main` at `b9bf633` (PR #99 on top of Phase 3 `a799bf5` / PR #98). Installed app stamp `b9bf633`, `dirty=false`, dist ↔ installed SHA-256 `03cb7111307ffebfd65ef38ed175cdc92b9960c6983efa05667dcb360a1fa025`. Personal GitHub has no `v0.1.22` tag. Origin's unrelated `v0.1.22` at `8e60dfca` was left untouched.
 

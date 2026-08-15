@@ -1204,7 +1204,7 @@ arguments, credentials, URLs, or environment contents.
 | **Custom subagents (roles)** | `SubagentRole` / `SubagentRoleStore` (`CustomModelSettings.swift`), `SubagentRoleEditor` in `SettingsView`, `~/.grok/config.toml` `[subagents.roles.*]` + `~/.grok/prompts/` |
 | **Scheduled tasks / runtime lease** | `ScheduledTaskStore.swift`, `SessionRuntimeRetentionPolicy` (`SessionRuntimeProtectionReason.{starting,busy,activeBackgroundTask,activeSchedule}`) in `SessionProcessIdentity.swift`, `ChatStore.scheduledTasks` / `scheduledTaskInventoryReceipt` / `runtimeLease` / `hasActiveBackgroundTasks`, `ContentView.enforceConnectionCap` / `runtimeRetentionDecision`, `SessionDashboardPanel`, top-bar Tasks pill (`grok-tasks-status`), sidebar schedule badge (`grok-sidebar-session-schedule` via `SidebarSession.hasActiveSchedule`), and `AcpEvent.schedulerActivity` |
 | **Background tasks / subagent coordination** | `BackgroundTaskStore.swift` (single permutation-proof reducer + per-turn metrics + `unboundFinishedEvents`), `ChatStore.backgroundActivities`, `ActivitySidebar`, `AcpEvent.backgroundActivity` / typed subagent lifecycle |
-| **Sidebar navigation (post-Slice-1)** | `SidebarView.swift` (rail + projects/sessions only), `ContentView.refreshWorkspaceAgentInventories`; Slice 6 deleted `Models/SidebarActivity.swift` and `Models/AgentHub.swift`; agent-intent launch `createLiveSession(for:agent:)`; MCP attachment `ChatStore.promptMCPOptions` / `togglePromptMCPAttachment` (composer menu) |
+| **Sidebar navigation (post-Slice-1)** | `SidebarView.swift` (rail + projects/sessions only), `ContentView.refreshWorkspaceAgentInventories`; Slice 6 deleted `Models/SidebarActivity.swift` and `Models/AgentHub.swift`; leftover Phase 1 deleted the empty `Models/Agent.swift` placeholder; agent-intent launch `createLiveSession(for:agent:)`; MCP attachment `ChatStore.promptMCPOptions` / `togglePromptMCPAttachment` (composer menu) |
 | **Delegation inspector (live workers/tools)** | `ActivitySidebar.workerDelegationRow` / `liveWorkers` / `liveTools` (`grok-run-inspector-worker-<worker.id>`), `ActivitySidebarPresentation.liveToolMetadata` / `workerReceiptDetail`, `RunEvidenceSnapshot.Worker.tokenCount` / `turns` |
 | **Worker role→model routing display** | `SubagentRouting` (`Models/SessionUsage.swift`), `RunEvidenceSnapshot.Worker.routedModel`, `BackgroundTaskTracker.evidenceWorkers`, `ChatStore.subagentRoleModelsByName` |
 | **Session usage / cost HUD** | `SessionUsageLedger` (`Models/SessionUsage.swift`), `ModelPricingStore`, `ChatStore.sessionUsage` / `sessionUsageSummary`, model menu in `ChatView` |
@@ -1300,11 +1300,12 @@ Prefer extending existing test files. Test pure logic without launching real `gr
 | `AGENTS.md` | Agent entry point (points here) |
 | `CANONICAL_WORKTREE.md` | Maintained path/remotes/branch and retired duplicate stop rule |
 | `README.md` | User-facing features |
-| `BUILDING.md` | Signing, notarization, release CI |
+| `BUILDING.md` | Signing and local install (`make ship`) |
 | `docs/OUTSTANDING.md` | Canonical current-slice ledger and Gates A–H |
 | `docs/GROKBUILD_VERIFICATION_AND_FORWARD_SLICES_2026-08-13.md` | 2026-08-13 campaign spec (Slices 0–7 complete) |
 | `docs/GROKBUILD_RESIDUAL_CLOSEOUT_2026-08-14.md` | Closed 2026-08-14 residual-closeout campaign (Phases 0–6 complete) |
-| `docs/GROKBUILD_AGENTIC_COCKPIT_CAMPAIGN_2026-08-15.md` | Current Agentic Cockpit campaign (Phases 1/3/4 complete; Phase 2 deferred). Install with `make ship`. |
+| `docs/GROKBUILD_LEFTOVER_CLOSEOUT_2026-08-15.md` | Current leftover closeout (Phases 1–2 complete, awaiting merge). Install with `make ship`. |
+| `docs/GROKBUILD_AGENTIC_COCKPIT_CAMPAIGN_2026-08-15.md` | Closed Agentic Cockpit campaign (Phases 1/3/4 complete; Phase 2 deferred as leftover Phase 3). |
 | `.cursor/rules/` | Architecture, SwiftUI, CLI integration, AppKit panels |
 | `.cursor/skills/grokbuild-*` | Dev workflow, release, CLI checks |
 | `GrokBuild/Resources/Skills/` | Bundled runtime skills only; the unused `grokbuild-desktop` editing skill was retired |

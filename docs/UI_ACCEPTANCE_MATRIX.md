@@ -577,7 +577,12 @@ the app quit cleanly with zero remaining GrokBuild/grok processes.
 | `05-new-chat-empty-state.png` | New chat: "What do you want to work on?" + Ask/Build/Review pills |
 | `06-narrow-window-1100x720.png` | Documented minimum window size |
 
-### Parity matrix — installed today vs. photographed Codex target
+### Parity matrix — pre–Slice-1 baseline vs. photographed Codex target
+
+> The **Installed today** column is a 2026-08-07 baseline, not the current
+> app. Sidebar Activity / Agents / Connections lanes and
+> `SidebarActivityProjection` / `AgentHubProjection` were deleted in later
+> slices. Responsive thresholds shipped in Slice 7. Do not rebuild them.
 
 | Surface | Installed today (fixtures 01–06) | Codex target (photographs) | Visible mismatch | Backend owner to preserve |
 |---|---|---|---|---|
@@ -589,7 +594,7 @@ the app quit cleanly with zero remaining GrokBuild/grok processes.
 | Contextual inspector | `ActivitySidebar`: 260–320 pt wide, forced 620 pt height budget, idle "Ready to work" card, summary metric grid when settled | Compact content-height top-right overlay: Subagents ("3 done"), Computer Use (Picture in Picture/Hide), Sources (+ View all), short dividers | Tall dashboard vs. compact grouped inspector; idle card instead of absence | `RunEvidenceLiveProjection` / `RunEvidenceSnapshot` factual semantics + continuity recovery actions (Slice 5; safety beats parity) |
 | Review pane | Real Git pane: Preview header, branch, Commit or push, Create pull request, Changed Files 1 +0 -0 | Dedicated Review with Unstaged / Staged / Commit / Branch / Last turn scopes | Only entry point is the Details-shelf button, which renders **only when the cached count > 0**; scope model absent; count refreshes only at select/turn boundaries (live acceptance initially showed 0 changed files despite a dirty worktree until relaunch) | `PreviewPane`, `GitService` diff/stage operations (preserve; re-route entry in Slices 2–3) |
 | Empty state | "What do you want to work on?" heading + project name + Ask/Build/Review pills over the composer | Quiet thread-first canvas; no launch-card treatment in the photographs | Pills are a GrokBuild invention pending side-by-side judgment (Slice 1/7) | `WorkbenchIntent` drafts (behavior preserved wherever the entry lives) |
-| Resizing (1100×720) | Sidebar stays fixed width with Agents/Connections consuming it; composer/controls remain usable; no responsive collapse | Inspector hides first, sidebar collapses next, transcript keeps readable width | No responsive thresholds yet | `MainWindowLayout`, `SidebarVisibility` (Slice 7) |
+| Resizing (1100×720) | **Historical baseline.** Slice 7 later added responsive hide/collapse. Do not treat “no responsive thresholds yet” as current. | Inspector hides first, sidebar collapses next, transcript keeps readable width | Closed in Slice 7 | `MainWindowLayout`, `SidebarVisibility` (Slice 7) |
 
 ### Additional Slice 0 observations
 

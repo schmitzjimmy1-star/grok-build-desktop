@@ -11,7 +11,7 @@ alwaysApply: false
 - `GrokProcess` — spawns `grok agent … stdio`, parses ACP into `AcpEvent`s.
 - `GrokCLIService` — bounded one-shot CLI commands (`run`, session list, `--version`, structured MCP/extension management, `formatVersionOutput`).
 - `ChatStore` — bridges UI to `GrokProcess`, session resume IDs, permission settings.
-- `UpdateChecker` — notarized GitHub releases for app; `grok update --check --json` for CLI.
+- `UpdateChecker` — grok CLI via `grok update --check --json`. The GrokBuild app-release feed stays off on this personal line. Install with `make ship`.
 
 ## After changing these services
 
