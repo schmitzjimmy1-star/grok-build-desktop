@@ -126,7 +126,7 @@ make release
 make release RELEASE_TYPE=notarized SIGN_IDENTITY="Developer ID Application: ..." NOTARY_PROFILE=AC_PASSWORD
 ```
 
-Requires `gh` (`brew install gh && gh auth login`). Release tag must match `VERSION`. See [BUILDING.md](../BUILDING.md#github-releases).
+Requires `gh` (`brew install gh && gh auth login`). Release tag must match `VERSION`. Tags and `gh release` writes go to `personal` (`schmitzjimmy1-star/grok-build-desktop`) only — never `origin`. Existing tags are not moved or force-updated. See [BUILDING.md](../BUILDING.md#github-releases).
 
 ---
 

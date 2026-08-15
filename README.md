@@ -60,12 +60,12 @@ It is **not** a replacement for the CLI. The `grok` CLI still owns agent reasoni
 Jimmy's maintained app is built from this checkout and installed at
 `/Applications/GrokBuild.app`. Its About panel and Settings → App show the
 personal repository, branch, exact source commit, and dirty-state receipt; do
-not accept `0.1.21` alone as proof of source identity. The preserved
+not accept `0.1.22` alone as proof of source identity. The preserved
 [`rimusz/grok-build-desktop`](https://github.com/rimusz/grok-build-desktop)
 remote is upstream reference, not the owner of the installed personal repair
 line.
 
-Release assets are versioned, e.g. `GrokBuild-v0.1.21.app.zip` and `GrokBuild-v0.1.21-macOS.dmg`.
+Release assets are versioned, e.g. `GrokBuild-v0.1.22.app.zip` and `GrokBuild-v0.1.22-macOS.dmg`.
 
 ## Feature Highlights
 

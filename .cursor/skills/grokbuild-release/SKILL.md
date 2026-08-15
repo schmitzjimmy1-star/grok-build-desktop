@@ -28,7 +28,7 @@ Script: `scripts/release.sh`. Requires `gh auth login`.
 
 ## Checklist
 
-1. Verify the canonical publication target before making release artifacts: `personal` must resolve to `schmitzjimmy1-star/grok-build-desktop`; `origin` is the preserved third-party upstream and is never the publication target.
+1. Verify the canonical publication target before making release artifacts: `personal` must resolve to `schmitzjimmy1-star/grok-build-desktop`; `origin` is the preserved third-party upstream and is never the publication target. `scripts/release.sh` now enforces that: it pushes tags to `personal` only, uses `gh --repo schmitzjimmy1-star/grok-build-desktop`, and refuses to move or force-update an existing tag. If `origin` already has the same tag name (rimusz published `v0.1.22` first), delete the fetched local tag only (`git tag -d v0.1.22`) and never `git push --delete origin`. Notarized releases require `Developer ID Application`; do not title an Apple Development build `(Notarized)`. Do not run an older copy of the script that still says `git push origin`.
 2. Run `gh auth status` and `gh repo view schmitzjimmy1-star/grok-build-desktop --json isArchived,viewerPermission,defaultBranchRef`. If an explicitly authorized publication finds the repository archived, unarchive it with `gh repo unarchive schmitzjimmy1-star/grok-build-desktop --yes` and verify `isArchived:false` before committing or pushing.
 3. Bump `VERSION`
 4. **`make test`** — must pass; add tests if release/updater logic changed
