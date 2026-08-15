@@ -11,16 +11,19 @@
 | Field | Value |
 |---|---|
 | **Remote** | `personal` → `schmitzjimmy1-star/grok-build-desktop` |
-| **Branch** | `main` |
-| **HEAD** | `bb01c58b4ab54528af6d44a4628defad8763a5cd` (`bb01c58`) |
-| **Merge** | PR #104 — *Visual Quiet Phase 3: overlay sidebar and quiet workbench chrome* |
+| **Branch** | `codex/grokbuild-vq-p3c-composer-density` (publication closeout in progress) |
+| **HEAD** | `6697530531e6e3f65f80f848fcb86d4bcb7055c1` (`6697530`) |
+| **Last merged main** | `aff384c7e09e1add9423ed31f0213bc5a3ef9cb8` (PR #105, Phase 3 closeout) |
+| **P3 code merge** | PR #104 — *Visual Quiet Phase 3: overlay sidebar and quiet workbench chrome* |
 | **Prior** | P1–P2 at `7a3006d` (PR #102) |
 | **Worktree** | `/Users/jimmyschmitz/Desktop/Projects/MCP Servers/Grok Build/grok-build-desktop` |
 | **Installed app** | `/Applications/GrokBuild.app` via `make ship` only |
 | **Version file** | `0.1.22` (identity is stamp + commit, not version alone) |
 | **Upstream (read-only)** | `origin` → `rimusz/grok-build-desktop` — do not push |
 
-Local `main` should match `personal/main` at `bb01c58`. Run the canonical preflight in `CANONICAL_WORKTREE.md` before editing.
+Before P3C publication, local `main` and `personal/main` match at `aff384c`; the
+clean code-bearing P3C candidate is `6697530`. Run the canonical preflight in
+`CANONICAL_WORKTREE.md` before editing.
 
 ---
 
@@ -34,7 +37,8 @@ GrokBuild is a native SwiftUI macOS workbench for `grok agent stdio`. The CLI st
 |---|---|---|
 | **P1** Cool tokens | Light loses cream; Dark cooler ink | **Merged** (`7a3006d`). Cool-neutral canvas/sidebar tokens in `AppTheme.swift`. |
 | **P2** Quiet welcome | Smaller mark, compact chips | **Merged** (`7a3006d`). Path A: Ask/Build/Review chips, no detail paragraphs. |
-| **P3** Header + composer *(screenshot)* | Icon-only Tasks/Review/inspector; slim task strip; tighter composer | **Code merged** (`bb01c58`), but **scope shifted** — see below. Composer tightness **still waits**. Gate F billable packet **not yet captured** in ledger. |
+| **P3** Header + composer *(screenshot)* | Icon-only Tasks/Review/inspector; slim task strip; tighter composer | **Accepted in two bounded pieces:** overlay/quiet chrome at `bb01c58`, closeout at `aff384c`, and P3C density at `6697530`. |
+| **P3D** Live activity composition | Remove duplicate live Run card; show active workers confidently at right | **Proposed next, not started.** |
 | **P4** Accent sweep | Send/chips/CTAs stop macOS orange/brown | **Not started** |
 | **P5** Cheap size | Sharper Dock icon; drop dead Workflows pill | **Not started** |
 | **P6** Optional | Welcome-only file extract (not full ChatView split) | **Deferred** |
@@ -77,6 +81,23 @@ Jimmy redirected P3 twice on 2026-08-15. The shipped slice is **overlay sidebar 
 - Two post-quit process-zero samples passed. Protected OK-F and backend
   `019ffdad-0d4f-7f42-a429-7ac12ad8198d` remain.
 
+### P3C composer/task-strip density accepted
+
+- Composer chrome is 11×7 inner, 20×5 outer, and shadow-free while every
+  authoring action stays 36×36 and the editor still grows one-to-eight lines.
+- The collapsed task contract is one `objective · phase` line plus disclosure;
+  branch, model, worktree, review, tools, checkpoints, identities, and controls
+  remain available inside it.
+- Focused 52/0 and full 896/0 gates passed. Clean candidate `make ship` installed
+  `6697530`, `dirty=false`, with signed/hash parity.
+- Three bounded paid packets covered exact no-tool settlement, two ordered
+  read-only tools, and two parallel workers. Coordination passed; the agentic
+  answer's final-only wording is honestly partial because it emitted one progress
+  sentence before the requested token.
+- Exact cleanup removed all three parents and moved the two CLI-invisible child
+  ledgers recoverably to Trash. Marker files are zero, protected OK-F remains, and
+  two normal-quit process-zero samples passed.
+
 ---
 
 ## Screenshot review → possible next implementation
@@ -85,13 +106,17 @@ Jimmy attached a **six-phase roadmap** (cool tokens → quiet welcome → header
 
 ### Immediate next work (recommended order)
 
-**A. Finish P3 composer slice** *(authorized 2026-08-15)*
-- Tighten composer vertical/horizontal padding in `ComposerViews` / `GrokChatChrome`.
-- Reduce glass card visual weight on empty New chat.
-- Keep AX contracts: `grok-message-composer`, empty value **Describe a task**, `grok-send` / `grok-stop`, model/mode selectors.
-- Slim **task context strip** after first Send (second header density hit) — may shrink copy/padding but must remain (`grok-task-context-strip`).
+**A. P3D live activity composition** *(proposed next; wait for explicit start)*
+- Remove the redundant full-width live **Run / Working / Run inspector** card
+  only after task-strip, trace, Stop, plan, recovery, and receipt truth are pinned.
+- Promote current-turn live subagents into a first-class right-side activity
+  canvas with assignment/status/current-action rows and honest settled state.
+- Keep private reasoning/raw child output hidden and preserve exact parent/child
+  identity in disclosures and settled receipts.
+- Prove wide, mid, and narrow layouts; an open left overlay sidebar must not clip
+  the transcript at the 1100-point minimum.
 
-**B. Phase 4 — Accent-leak sweep**
+**B. Phase 4 — Accent-leak sweep** *(after P3D)*
 - Grep and replace `Color.accentColor`, raw `.orange`, unscoped `.borderedProminent`.
 - Route through `AppTheme.Palette.accent`, `Palette.warning`, `Palette.link`.
 - High-traffic files listed in campaign doc § Phase 4.
@@ -150,4 +175,4 @@ Jimmy attached a **six-phase roadmap** (cool tokens → quiet welcome → header
 
 ## One-line prompt for Codex
 
-> Read `docs/GROKBUILD_CODEX_HANDOFF_2026-08-15.md` and `docs/GROKBUILD_VISUAL_QUIET_CAMPAIGN_2026-08-15.md`. Work on `main @ bb01c58` in the canonical GrokBuild worktree. P1–P2 and P3 code are merged (PR #104); close P3 Gates E–H (ship + billable + ledger), then review the six-phase screenshot against remaining work — composer tightness, P4 accent sweep, P5 size, optional P6 welcome extract — and propose or implement the next authorized slice only.
+> Read `docs/GROKBUILD_CODEX_HANDOFF_2026-08-15.md` and `docs/GROKBUILD_VISUAL_QUIET_CAMPAIGN_2026-08-15.md`. P1–P3 and P3C are accepted; verify merged-main identity after the P3C publication receipt. P3D live activity composition is proposed next: remove the duplicate live Run card and give active workers a truthful right-side canvas, but do not start it without Jimmy's explicit authorization. Phase 4 accent, icon, Settings, provider, backend, and broad structural work remain out of scope.

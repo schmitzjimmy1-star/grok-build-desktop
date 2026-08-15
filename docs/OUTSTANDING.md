@@ -34,8 +34,10 @@
 > Phases 1–3 (cool tokens, Path A welcome chips, and Codex-style overlay/
 > quiet chrome) are verified and merged. Phase 3 merged as `bb01c58` (PR
 > #104) and its clean merged-main install, bounded packet, exact cleanup,
-> and process-zero closeout are recorded below. **Current authorized work is
-> P3C composer/task-strip density**, then Phase 4 accent sweep.
+> and process-zero closeout are recorded below. **P3C composer/task-strip
+> density is accepted and awaiting publication closeout. P3D live activity
+> composition is the proposed next slice but is not authorized to start.**
+> The Phase 4 accent sweep follows P3D.
 > Leftover closeout Phases 1–2 are merged on `main` as `7a3006d`
 > (PR #102). Leftover Phase 3 (`ChatView` split) stays deferred.
 > Install path is `make ship` on this Mac.
@@ -43,14 +45,92 @@
 > Prior campaigns: 2026-08-14 Residual Closeout (Phases 0–6) complete and merged as `4613bde` (PR #94);
 > 2026-08-13 campaign (Slices 0–7) closed at merge `c0895ee` (PR #86).
 
-## Visual Quiet — 2026-08-15 (P3C composer/task-strip density authorized)
+## Visual Quiet — 2026-08-15 (P3C accepted; P3D proposed next)
 
 Authorized spec is
 [`docs/GROKBUILD_VISUAL_QUIET_CAMPAIGN_2026-08-15.md`](GROKBUILD_VISUAL_QUIET_CAMPAIGN_2026-08-15.md).
-Phases 1–3 are merged and verified. **P3C** is the narrow composer and
-post-send task-strip density closeout authorized on 2026-08-15. It preserves
-all composer controls and receipt identity, does not redesign Settings or
-runtime behavior, and is not leftover Phase 3.
+Phases 1–3 are merged and verified. **P3C** is the accepted narrow composer and
+post-send task-strip density closeout. It preserves all composer controls and
+receipt identity, does not redesign Settings or runtime behavior, and is not
+leftover Phase 3. **P3D**, proposed from Jimmy's installed two-worker review,
+would remove the redundant live transcript Run card and promote active workers
+into a first-class right-side canvas; do not start it without explicit authority.
+
+### Visual Quiet P3C receipt — 2026-08-15
+
+Gate A/B: canonical branch `codex/grokbuild-vq-p3c-composer-density` from
+`main == personal/main == aff384c7e09e1add9423ed31f0213bc5a3ef9cb8`.
+Code/test commit `6697530531e6e3f65f80f848fcb86d4bcb7055c1` changes only
+`ChatComposer`, its density policy, the task-contract presentation, and focused
+tests. No `ChatStore`, `GrokProcess`, ACP, provider, credential, or configuration
+owner changed.
+
+Implementation: `ComposerDensityPolicy` keeps 11-point surface and 20-point
+outer horizontal padding, reduces their vertical values from 10/8 to 7/5, and
+disables the optional decorative shadow. Every composer action and editor target
+remains at least 36×36 with one-to-eight-line growth. The collapsed task contract
+is now one `objective · phase` line plus disclosure; project, worktree, branch,
+model receipt, review, tools, checkpoint, exact identities, and controls remain
+in the disclosure.
+
+Gate C: focused `ComposerPresentationContractTests`, `CodexShellParityTests`,
+`ResponsiveAndAccessibilityTests`, and `ThreadRunSpineTests` passed **52/52**.
+`make test` and candidate `make ship` each passed **896/896**.
+
+Gate E: installed `/Applications/GrokBuild.app` stamped
+`Personal • codex/grokbuild-vq-p3c-composer-density @ 66975305`,
+`dirty=false`; dist and installed executable SHA-256 both equal
+`2bb91f51c1c2d8d10e433b10adff2775ee058a07f654dcddb1524a44dd8ae74f`.
+Deep/strict signing passed under Team `DD2GCQJVB4`, with no quarantine.
+Installed Computer Use proved Light, Dark, empty chat, 1100-point narrow canvas,
+the live one-line task strip, ordered tool cards, and a live two-worker rail.
+The left overlay sidebar can cover leading transcript content at minimum width;
+that pre-existing responsive issue is assigned to proposed P3D, not hidden here.
+
+Billable standard packet: marker `GB-VQ-P3C-20260815T161048Z`, local tab
+`3F209BD7-9642-4F51-AA0C-358AFA987FF2`, backend
+`01a00630-da69-7d92-8211-b3afdfe056ac`, request
+`27ef71df-3974-43ed-95b5-c0c1b68a4007`, process generation 1, native xAI/
+Grok CLI, live `grok-4.6` (`grok-4.6-build` usage). It returned exactly
+`GB_VQ_P3C_OK`: 16,021 input, 45 output, 32 reasoning, 128 cached-read,
+16,066 total tokens, one model call, no tools, settled.
+
+Billable ordered-tool packet: marker `GB-VQ-P3C-TOOLS-20260815T161152Z`,
+local tab `844DC64D-7D5A-48C9-8A45-C13AE41C62EB`, backend
+`01a00631-c520-79b1-a394-bb533b81487a`, request
+`b5e40fa9-5626-4b3d-befa-21c8479cb9af`, process generation 1. Separate
+read-only `pwd` then `sed -n '1p' VERSION` receipts succeeded in order and the
+answer was exactly `GB_VQ_P3C_TOOLS_OK`: 48,709 input, 168 output, 147 reasoning,
+17,792 cached-read, 48,877 total tokens, three model calls, settled.
+
+Billable agentic packet: marker `GB-VQ-P3C-AGENTIC-20260815T161248Z`, local
+tab `27F3B2E1-C461-4207-8DD7-7142D9D7CCAF`, parent backend
+`01a00632-ac73-71a2-acf4-4c012aaa2697`, request
+`b71b47c6-5397-4337-804f-601de0e695d2`, process generation 1. Exactly two
+parallel workers completed and one wait-all succeeded: child
+`01a00632-c484-7823-9a1f-3a5274db0d17` reported 11,677 tokens / 8 tools;
+child `01a00632-c486-7533-bf92-1825c5ea6757` reported 17,130 tokens / 1 tool.
+The parent receipt reported useful concurrency 2, 113,420 input, 2,122 output,
+655 reasoning, 68,736 cached-read, 115,542 total tokens, and nine model calls;
+combined parent/child evidence is 144,349 tokens, below 200k. Coordination and
+identity passed, but the assistant emitted a progress sentence before
+`GB_VQ_P3C_AGENTIC_OK`, so exact final-only prose is **partial**, not accepted.
+
+Gate F/G: with Jimmy's action-time confirmation, exact Close Session removed the
+three local tabs and parent backends. CLI search is Total: 0 for all three markers.
+The CLI returned `No session found` for both exact children, so only their validated
+directories were moved recoverably to Trash; all five live backend directories and
+all three local transcripts are absent. Protected OK-F and backend
+`019ffdad-0d4f-7f42-a429-7ac12ad8198d` remain; `Clear Empty` was not used. Normal
+quit produced empty process/service samples at `2026-08-15T11:18:21-0500` and
+`11:18:29-0500`.
+
+Next-slice product note: the two-worker packet showed that the full-width live
+`Run / Working / Run inspector` transcript card duplicates the task strip, trace,
+Stop, and inspector. Live workers auto-open truthfully but look hidden in a narrow
+receipt rail. Proposed P3D removes only that redundant live card and gives active
+workers a deliberate right-side activity canvas with responsive fallback; backend
+and settled receipt owners remain unchanged.
 
 ### Visual Quiet Phase 3 receipt — 2026-08-15
 

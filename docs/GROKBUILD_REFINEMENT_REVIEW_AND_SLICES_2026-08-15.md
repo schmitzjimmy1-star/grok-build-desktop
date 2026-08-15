@@ -1,8 +1,9 @@
 # GrokBuild refinement review and remaining slices — 2026-08-15
 
-Status: **Slice 0 complete; Slice 1 authorized**. Phase 3 is accepted from clean
-merged source, its exact billable receipt is ledgered, and only its disposable
-acceptance session was removed. No Swift or configuration changed in Slice 0.
+Status: **Slices 0–1 complete; Slice 2 proposed and not started**. P3C is accepted
+from the clean installed candidate, its three bounded billable receipts are
+ledgered, and only their exact parent/child sessions were removed. Jimmy's live
+feedback adds a focused activity-composition slice before the accent sweep.
 
 ## Verdict
 
@@ -24,13 +25,13 @@ build emits three unused-local warnings in `SettingsTabTests.swift`.
 
 | Surface | Current evidence | Judgment |
 |---|---|---|
-| Local source | `main == personal/main == bb01c58b4ab54528af6d44a4628defad8763a5cd` | Canonical and current |
-| GitHub | PR #104 merged as `bb01c58`; 26 files, `+919/-455` | Phase 3 code is merged |
-| Installed app | `Personal • main @ bb01c58b` (`dirty=false`) | Clean merged-main acceptance |
-| Installed bytes | `dist` and installed executable SHA-256 both `9109250b74efee7ae88a9f002a291f9e34c661b2f1901355680e2c899aabff5a` | Package/install parity passes |
+| Local source | `codex/grokbuild-vq-p3c-composer-density @ 6697530531e6e3f65f80f848fcb86d4bcb7055c1`, based on `main == personal/main == aff384c` | Canonical Slice 1 candidate |
+| GitHub | PR #104 merged Phase 3 as `bb01c58`; PR #105 merged its closeout as `aff384c` | Phase 3 is closed; P3C publication follows this receipt |
+| Installed app | `Personal • codex/grokbuild-vq-p3c-composer-density @ 66975305` (`dirty=false`) | Clean P3C candidate acceptance |
+| Installed bytes | `dist` and installed executable SHA-256 both `2bb91f51c1c2d8d10e433b10adff2775ee058a07f654dcddb1524a44dd8ae74f` | Package/install parity passes |
 | Signing | Deep/strict valid, Team `DD2GCQJVB4`, no quarantine | Packaging integrity passes |
-| Automated tests | `make test`: 894 passed, 0 failed | Strong regression baseline |
-| Worktree | Existing untracked `docs/GROKBUILD_CODEX_HANDOFF_2026-08-15.md` preserved | Ownership must be resolved before a clean ship |
+| Automated tests | focused 52/0; `make test` and candidate `make ship`: 896/0 | Regression gates pass |
+| Worktree | Clean after commit `6697530`; paid probes made no source/configuration changes | Scope stayed exact |
 | Bundle | 26 MB total: 24 MB app binary, 2.1 MB `agent-desktop`, 216 KB Computer Use MCP, 300 KB icon | No large cheap deletion exists |
 
 ## Live UI review
@@ -52,28 +53,34 @@ build emits three unused-local warnings in `SettingsTabTests.swift`.
 
 1. **Release truth is now current.** Slice 0 installed and accepted clean merged
    Phase 3 at `bb01c58`; the next real problem is composer/task-strip density.
-2. **The empty composer is still a visual island.** Its inner padding is 11×10,
-   outer padding is 20×8, radius is 14, and a shadow remains; on an empty chat it
-   reads heavier than every other piece of chrome.
-3. **Accent behavior is still fragmented.** High-traffic views retain raw
+2. **P3C fixed the empty-composer island.** It now uses 11×7 inner and 20×5
+   outer padding with no decorative shadow while retaining every 36×36 target.
+3. **The live transcript still repeats run state.** The top task summary, trace,
+   Stop control, and inspector already own live truth, yet `ThreadRunSpineView`
+   adds a full-width **Run / Working / Run inspector** card under the trace.
+4. **Subagents still look tucked away.** They auto-open correctly, but the
+   260-point `ActivitySidebar` presents only tiny name/status rows. The live
+   workers deserve a first-class right-side activity canvas when space permits,
+   with narrow-width fallback that never covers the transcript.
+5. **Accent behavior is still fragmented.** High-traffic views retain raw
    `Color.accentColor`, `.orange`, and `.borderedProminent` call sites, so macOS
    appearance/accent choices can still punch warm color into an otherwise cool
    workbench. Real warnings may stay warm, but they need the semantic
    `AppTheme.Palette.warning` owner instead of ad hoc color.
-4. **Settings has not caught up visually.** The navigation is clear, but the pane
+6. **Settings has not caught up visually.** The navigation is clear, but the pane
    content is a stack of large cards with substantial dead space. Keep this out
    of the current campaign unless the composer/accent work leaves the app feeling
    inconsistent; it is a separate visual slice, not an excuse to balloon Phase 4.
-5. **The icon issue is quality, not missing resolution.** A tracked 1024×1024
+7. **The icon issue is quality, not missing resolution.** A tracked 1024×1024
    `AppIcon.png` already feeds the 300 KB installed ICNS, so the build is not
    currently falling back to the 909-byte 66 px menu mark. The source artwork is
    visibly jagged, however, so a genuinely redrawn high-quality icon still fits
    the vibe.
-6. **The “cheap size” claim is overstated.** Deleting three tiny loose brand PNGs
+8. **The “cheap size” claim is overstated.** Deleting three tiny loose brand PNGs
    and the dead `workflowsStatusPill` improves hygiene, not the 26 MB bundle in a
    meaningful way. Keep `agent-desktop`; it is a required first-class capability.
-7. **Campaign ledgers are reconciled by Slice 0.** They now name P3 complete and
-   P3C composer/task-strip density as the authorized next slice.
+9. **Campaign ledgers are reconciled through Slice 1.** They now name P3C
+   complete and P3D live activity composition as the proposed next slice.
 
 ## Slice rules
 
@@ -128,6 +135,10 @@ Slice 0 is complete: Phase 3 is installed from clean merged source, its live rec
 
 ## Slice 1 — finish the composer and post-send density
 
+Status: **complete 2026-08-15**. Commit `6697530` passed the focused 52-test
+gate and two full 896-test gates, clean `make ship`, signed/hash parity, Light,
+Dark, narrow-width, plain, ordered-tool, and two-worker installed acceptance.
+
 **Goal:** finish the part of the screenshot's Phase 3 that PR #104 intentionally
 deferred.
 
@@ -150,11 +161,63 @@ deferred.
 - New-chat marker `GB-VQ-P3C-<UTC>` → exactly `GB_VQ_P3C_OK`; delete only that
   session after the receipt is captured
 
+**Acceptance receipt:** the standard packet returned exactly `GB_VQ_P3C_OK`
+with 16,066 tokens and no tools. The ordered-tool packet ran `pwd` then
+`sed -n '1p' VERSION` as two successful receipts and returned
+`GB_VQ_P3C_TOOLS_OK` with 48,877 tokens. The agentic packet spawned exactly two
+parallel workers, waited for both, reported useful concurrency 2 and 28,807
+child tokens against a 115,542-token parent receipt (144,349 combined), but it
+also emitted one progress sentence before `GB_VQ_P3C_AGENTIC_OK`; coordination
+passed while exact final-only prose is recorded as partial.
+
+**Cleanup receipt:** exact Close Session removed tabs `3F209BD7…`, `844DC64D…`,
+and `27F3B2E1…` plus their three parent backends. The CLI could not enumerate the
+two exact children, so only those validated child directories were moved
+recoverably to Trash. All three markers now have zero retained session files,
+all five live backend directories are absent, protected OK-F remains, and two
+normal-quit process-zero samples passed at `11:18:21` and `11:18:29 -0500`.
+
 **Three-sentence handoff after completion**
 
-Slice 1 is complete: the composer and post-send strip are quieter without losing any authoring, accessibility, or receipt control. Jimmy has preauthorized Slice 2, limited to the semantic accent-leak sweep and its acceptance packet. Do not start icon cleanup, bundle experiments, Settings redesign, or any file decomposition.
+Slice 1 is complete: the composer and post-send strip are quieter without losing any authoring, accessibility, or receipt control. The next proposed slice is P3D live activity composition: remove the redundant live Run card and make active subagents first-class in the right-side canvas. Do not start P3D, the accent sweep, icon work, Settings redesign, or file decomposition until Jimmy explicitly authorizes the next slice.
 
-## Slice 2 — semantic accent-leak sweep
+## Slice 2 — live activity composition (P3D, proposed next)
+
+**Goal:** let the transcript show the work and answer while live coordination
+occupies a deliberate right-side surface instead of duplicating state in a card.
+
+**Scope**
+
+- Remove the live `ThreadRunSpineView` **Run / Working / Run inspector** card
+  from the transcript after proving the task summary, trace/tool rows, Stop, and
+  inspector retain phase, current action, plan, recovery, and receipt truth.
+- Keep settled checkpoints and run-history evidence; do not remove backend state
+  or manufacture completion from live projection.
+- Promote active subagents from tiny `ActivitySidebar` rows into a first-class
+  right-side live activity canvas with worker name, status, current assignment,
+  and honest completion/error state. Do not expose private reasoning or raw child
+  output.
+- Auto-open only for current-turn live workers. At narrow width, collapse to a
+  named/count control without covering or clipping transcript content; settlement
+  may return to the compact receipt surface.
+- Do not perform the accent sweep, Settings redesign, runtime changes, or broad
+  `ChatView` decomposition in this slice.
+
+**Tests and billable acceptance**
+
+- Source/presentation contracts forbid `grok-run-spine-live` from mounting while
+  preserving the task-contract, Stop, tool trace, worker identity, and settled
+  evidence owners.
+- Responsive tests cover docked, overlay, and collapsed worker-canvas behavior,
+  including the 1100-point sidebar-overlay case observed during P3C.
+- `make test`, candidate/merged-main `make ship`, and a two-worker fresh-chat
+  packet under the 200k ceiling with live and settled Light/Dark screenshots.
+
+**Three-sentence handoff after completion**
+
+Slice 2 is complete: the duplicate live Run card is gone and active subagents work visibly in a truthful right-side canvas. The next proposed slice is the semantic accent-leak sweep and its bounded acceptance packet. Do not start accent work, icon cleanup, Settings redesign, or structural extraction without Jimmy's explicit authorization.
+
+## Slice 3 — semantic accent-leak sweep
 
 **Goal:** stop the cool-neutral shell from inheriting arbitrary macOS accent and
 orange styling.
@@ -181,9 +244,9 @@ orange styling.
 
 **Three-sentence handoff after completion**
 
-Slice 2 is complete: ordinary interaction chrome now follows GrokBuild's cool semantic palette while warnings and failures remain distinct. Jimmy has preauthorized Slice 3, limited to icon quality, dead workflow chrome, bundle measurement, and helper-presence proof. Do not start the optional welcome extraction, Settings redesign, or full ChatView split.
+Slice 3 is complete: ordinary interaction chrome now follows GrokBuild's cool semantic palette while warnings and failures remain distinct. The next proposed slice is limited to icon quality, dead workflow chrome, bundle measurement, and helper-presence proof. Do not start icon work, the optional welcome extraction, Settings redesign, or the full ChatView split without Jimmy's explicit authorization.
 
-## Slice 3 — icon polish and bundle honesty
+## Slice 4 — icon polish and bundle honesty
 
 **Goal:** improve what users can see and delete genuine dead weight without
 pretending a few kilobytes transformed the app.
@@ -211,9 +274,9 @@ pretending a few kilobytes transformed the app.
 
 **Three-sentence handoff after completion**
 
-Slice 3 is complete: the icon is visibly sharper, dead workflow chrome is gone, the measured bundle delta is recorded honestly, and Computer Use remains bundled. Jimmy has preauthorized Slice 4 only if the optional structural cleanup still has a concrete payoff after the visual campaign settles. Do not begin a full ChatView or ContentView decomposition under that authority.
+Slice 4 is complete: the icon is visibly sharper, dead workflow chrome is gone, the measured bundle delta is recorded honestly, and Computer Use remains bundled. The optional welcome-only extraction remains a separate proposed slice only if it still has a concrete payoff after the visual campaign settles. Do not begin any structural cleanup without Jimmy's explicit authorization, and never turn it into a full ChatView or ContentView decomposition.
 
-## Slice 4 — optional welcome-only extraction
+## Slice 5 — optional welcome-only extraction
 
 **Recommendation:** skip unless the welcome is about to change again. Moving one
 already-quiet block out of a 3,485-line file has modest value and no user-visible
@@ -232,7 +295,7 @@ continuity, scrolling, and accessibility ownership.
 
 **Three-sentence handoff after completion**
 
-Slice 4 is complete: the welcome presentation moved without visual, lifecycle, or accessibility change, and the test build is warning-clean. The Visual Quiet campaign is closed unless Jimmy explicitly names a new product problem. Do not reopen the full ChatView split, Settings redesign, provider work, or backend architecture from this handoff.
+Slice 5 is complete: the welcome presentation moved without visual, lifecycle, or accessibility change, and the test build is warning-clean. The Visual Quiet campaign is closed unless Jimmy explicitly names a new product problem. Do not reopen the full ChatView split, Settings redesign, provider work, or backend architecture from this handoff.
 
 ## Backlog, not current scope
 
