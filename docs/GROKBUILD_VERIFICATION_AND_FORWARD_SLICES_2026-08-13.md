@@ -511,8 +511,9 @@ policy, or export type:
 1. Extract remaining subagent/lifecycle correlation from `ChatStore` into
    `BackgroundTaskTracker` in `GrokBuild/Services/BackgroundTaskStore.swift`
    (already proven by Slice 1). Remaining call sites:
-   `ChatStore.backgroundTaskTracker` and `ChatStore.currentTurnEvidenceWorkers()`
-   in `GrokBuild/Services/ChatStore.swift`.
+   `ChatStore.backgroundTaskTracker`, thin `ChatStore.currentTurnEvidenceWorkers()`
+   (delegates to `BackgroundTaskTracker.evidenceWorkers`), and ChatStore
+   turn-scoped worker ID sets in `GrokBuild/Services/ChatStore.swift`.
 2. Extract remaining session-retention/LRU decisions from `ContentView` into
    `SessionRuntimeRetentionPolicy` in `GrokBuild/Models/SessionProcessIdentity.swift`
    (already proven by Slice 2). Remaining call sites:

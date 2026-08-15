@@ -774,4 +774,96 @@ final class BackgroundTaskTests: XCTestCase {
         XCTAssertTrue(tracker.unboundSpawnedEvents.isEmpty)
         XCTAssertTrue(tracker.activities.filter { $0.kind == .subagent }.isEmpty)
     }
+
+    func testEvidenceWorkersIncludeOnlyCurrentTurnSubagentsAndUnboundSpawns() {
+        var tracker = BackgroundTaskTracker()
+        tracker.apply(update: [
+            "toolCallId": "prior-worker",
+            "_meta": ["x.ai/tool": ["name": "spawn_subagent"]],
+            "rawInput": ["name": "prior", "prompt": "Last turn"]
+        ])
+        tracker.apply(update: [
+            "toolCallId": "current-worker",
+            "_meta": ["x.ai/tool": ["name": "spawn_subagent"]],
+            "rawInput": ["name": "reviewer", "prompt": "Review the diff"]
+        ])
+        tracker.apply(update: [
+            "toolCallId": "shell-1",
+            "_meta": ["x.ai/tool": ["name": "run_terminal_command"]],
+            "rawInput": ["command": "sleep 60", "background": true]
+        ])
+        tracker.apply(spawned: SubagentSpawnedEvent(
+            identity: ACPEventIdentity(
+                localTabID: UUID(),
+                backendSessionID: "backend-1",
+                processGeneration: 1,
+                backendEventID: "spawn-reviewer"
+            ),
+            childID: "child-reviewer",
+            parentPromptID: nil,
+            subagentType: "reviewer",
+            modelID: "grok-4.5",
+            description: "reviewer"
+        ))
+        tracker.apply(spawned: SubagentSpawnedEvent(
+            identity: ACPEventIdentity(
+                localTabID: UUID(),
+                backendSessionID: "backend-1",
+                processGeneration: 1,
+                backendEventID: "spawn-orphan"
+            ),
+            childID: "orphan-child",
+            parentPromptID: nil,
+            subagentType: "explore",
+            modelID: "grok-4.6",
+            description: "Never bound"
+        ))
+
+        let workers = tracker.evidenceWorkers(
+            currentTurnActivityIDs: ["current-worker", "shell-1"],
+            planStepIDs: ["current-worker": "step-3"],
+            rolesByName: ["reviewer": "deepseek-deepseek-v4-flash-0731"]
+        )
+
+        XCTAssertEqual(workers.map(\.id), ["current-worker", "unbound|orphan-child"])
+        XCTAssertEqual(workers[0].title, "reviewer")
+        XCTAssertEqual(workers[0].childID, "child-reviewer")
+        XCTAssertEqual(workers[0].owningPlanStepID, "step-3")
+        XCTAssertEqual(workers[0].runtimeModelID, "grok-4.5")
+        XCTAssertEqual(workers[0].routedModel, "deepseek-deepseek-v4-flash-0731")
+        XCTAssertEqual(workers[1].status, "unknown")
+        XCTAssertEqual(workers[1].childID, "orphan-child")
+        XCTAssertEqual(workers[1].runtimeModelID, "grok-4.6")
+        XCTAssertNil(workers[1].owningPlanStepID)
+    }
+
+    func testEvidenceWorkersOmitPriorTurnWhenActivityIDsAreEmpty() {
+        var tracker = BackgroundTaskTracker()
+        tracker.apply(update: [
+            "toolCallId": "current-worker",
+            "_meta": ["x.ai/tool": ["name": "spawn_subagent"]],
+            "rawInput": ["name": "reviewer", "prompt": "Review the diff"]
+        ])
+        tracker.apply(spawned: SubagentSpawnedEvent(
+            identity: ACPEventIdentity(
+                localTabID: UUID(),
+                backendSessionID: "backend-1",
+                processGeneration: 1,
+                backendEventID: "spawn-orphan"
+            ),
+            childID: "orphan-child",
+            parentPromptID: nil,
+            subagentType: "general-purpose",
+            modelID: "grok-4.5",
+            description: "No spawn row"
+        ))
+
+        let workers = tracker.evidenceWorkers(
+            currentTurnActivityIDs: [],
+            planStepIDs: [:],
+            rolesByName: [:]
+        )
+
+        XCTAssertEqual(workers.map(\.id), ["unbound|orphan-child"])
+    }
 }
