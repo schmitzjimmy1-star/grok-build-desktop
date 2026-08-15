@@ -27,19 +27,20 @@
 > User conversations, historical acceptance evidence, unnamed sessions that were not
 > created by the current slice, and unrelated browser/app state are protected.
 >
-> **Current campaign:** 2026-08-14 residual closeout, Phases 0–2 leftover-close
-> complete, Phase 3 next. Spec:
+> **Current campaign:** 2026-08-14 residual closeout, Phases 0–3 complete,
+> Phase 4 next after the Phase 3 docs PR merges (or Jimmy explicitly continues
+> without merging). Spec:
 > [`docs/GROKBUILD_RESIDUAL_CLOSEOUT_2026-08-14.md`](GROKBUILD_RESIDUAL_CLOSEOUT_2026-08-14.md).
 > Phase 0 shipped `fa44cb2559735d2819789ed77d72a7a8f022abee` (PR #87). Phase 1
 > merged as `fb095d14844f76367659ecec7ea7566fd9517b5c` (PR #89). Phase 2 merged
 > as `27c146e6693927474e34e47238b3480e35429443` (PR #90). Leftover-close shipped
 > stamp == that Phase 2 merge. Live empty composer AX is **Describe a task**.
-> Do not `make ship` this leftover-close docs PR just to chase stamp == HEAD.
+> Do not `make ship` the Phase 3 docs PR just to chase stamp == HEAD.
 > The 2026-08-13 campaign (Slices 0–7) remains closed. Numbered `## Slice N`
 > headings below the 2026-08-14 harness receipt are historical campaigns. Do
 > not implement them.
 
-## Residual closeout — 2026-08-14 (Phases 0–2 leftover-close complete, Phase 3 next)
+## Residual closeout — 2026-08-14 (Phases 0–3 complete, Phase 4 next)
 
 Authorized scope is
 [`docs/GROKBUILD_RESIDUAL_CLOSEOUT_2026-08-14.md`](GROKBUILD_RESIDUAL_CLOSEOUT_2026-08-14.md).
@@ -59,9 +60,9 @@ Phases, in order:
 | 5 | Replace remaining extracted-contract source-string pins | Slice 6-shaped smoke, 250k ceiling |
 | 6 | Personal notarized `v0.1.21` release; no `origin` | one no-tool marker unless Phase 5 already proved that binary |
 
-Execute Phase 3 only. Installed stamp is `27c146e`. Do not `make ship` this
-leftover-close docs PR just to chase stamp == HEAD. Phase 2 proved Cursor
-`user-grokbuild-computer-use`. Do not start Phase 4–6.
+Execute Phase 4 only after the Phase 3 docs PR merges, or if Jimmy explicitly
+continues without merging it. Installed stamp is `27c146e`. Do not `make ship`
+the Phase 3 docs PR just to chase stamp == HEAD. Do not start Phase 5–6.
 
 ### Phase 0 receipt — 2026-08-15
 
@@ -330,7 +331,118 @@ Config hash unchanged. Origin untouched.
 
 This leftover-close PR is docs-only plus a skill-format fix. Do not `make
 ship` it just to chase stamp == HEAD. Stamp `27c146e` remains the installed
-ancestor with an empty product diff. Phase 3 is the only next action.
+ancestor with an empty product diff.
+
+### Phase 3 receipt — 2026-08-15
+
+Gate A: branch `codex/grokbuild-c8-p3-thread-hygiene` from clean
+`main == personal/main` at `9b65b7c5d05f8d1fdf2a923ec51d1d2e19601c7d`
+(tree `9624ac58d5df89d484d97292e880dc6fb70d6004`). Installed stamp ancestor
+`27c146e6693927474e34e47238b3480e35429443` / `dirty=false` / SHA-256
+`753e0027c1c70583d69028fee13f7eb1b5791e9277f693f06fe94f3a3c37f1aa` / Team
+`DD2GCQJVB4` / version `0.1.20`. Product diff `27c146e..HEAD` across
+`GrokBuild`, helpers, `Package.swift`, `VERSION`, `Makefile`, and `scripts`
+was empty. Origin remained `433ddf861a86447a8fee2b1cf13e6c674a8f2211`. CLI
+`grok 1.0.3 (1a29d5bc12d4) [stable]`. Protected config
+`2cb4dcdaf0f1841aab54fb2ae10586381ca78b560eb9fc0477efb521e92140ae`, 2,894
+bytes, mode `0600`. `gh` as `schmitzjimmy1-star`. No billable prompt.
+
+Live inventory used `grok sessions list` / `search` plus Sessions UI. Do not
+reuse remembered IDs as deletion authority. Protected rows kept: Jimmy
+Codebase Query `019ffca2-c717-73c1-b7ea-1dc9bafb9b47`; New Buffalo weather
+`019fede3-ddc9-71c2-9904-5de502523b16`; Reply-with-exact
+`019fea6b-05fc-7520-b1cb-6bcb812c3245`,
+`019fea6a-2a0c-7dc0-a42c-e484b59ea420`,
+`019fea53-1f39-7962-b328-651a5c1351d5`,
+`019fea50-219d-7770-9a4d-c93a016619c5`; unnamed `(no summary)`
+`01a00343-01b4-73f0-97a4-3b0fa153a3c6` (empty leftover-close New chat, not a
+leftover packet); sidebar `GB_MAIN_*`, VISUAL PASS, Reply-with-exact
+`GB_APP_*`; Grok Git Cubs / AI news / Chicago events / 1893 fair and Browser /
+Computer Use probes; unproven older probes such as Read VERSION, Sports MCP,
+and Run Sleep Echo. Search-only disk dir
+`019fc5eb-d3f6-7611-b6e9-e62cba49214e` is Slice 11 `SLICE11_MCP_TRACE_OK`
+historical evidence, not a Slice 6/7 leftover; kept.
+
+Cursor `user-grokbuild-computer-use` drove `/Applications/GrokBuild.app` PID
+`25428`, window `w-4291` 1440×819. No leftover test tabs were live in the
+sidebar, so Gate F skipped Close Session. **Clear Empty** was not used.
+Sessions search field advertises `SetValue`/`SetFocus` only; Cursor MCP
+`computer_type` / `computer_click` on `grok-sessions-search` is
+`POLICY_DENIED`. Empty Search refresh dropped leftover titles. Direct
+`agent-desktop` was not used (host split).
+
+#### Exact indexed deletes (`grok sessions delete`)
+
+Canonical cwd, 13 live leftover test IDs:
+
+- `01a00323-3399-7a01-8156-7d0730935751` GB-S6 Acceptance Packet T1 Echo Spawns
+- Chrome DevTools `list_pages` probes:
+  `019fea97-1706-7852-8684-60064fd0de32`,
+  `019fea90-115f-7232-97fc-58d304d32cd0`,
+  `019fea84-0bfe-78b1-a366-839fa9f2b514`,
+  `019fea7b-ebd2-7422-ba78-5c087b31f745`,
+  `019fea7b-286f-71a3-8f3b-4880df4a6480`,
+  `019fea7a-892b-7fd0-a7cc-15bd2e367780`,
+  `019fea79-67ea-7d70-a692-632dd00d63cd`,
+  `019fea77-2a92-77d0-b357-7b82768d708c`,
+  `019fea71-64a8-7931-9eda-6eb80893c4f1`,
+  `019fea6d-1e1e-72b2-8e6e-577af78db50e`,
+  `019fea6c-df1b-7080-91cd-86fa67c43008`,
+  `019fea6b-dea1-71b1-9bb4-49af7767ef47`
+
+Grok Git cwd, four proven `GB_SLICE6` leftover tests:
+
+- `019fc42b-c8a9-7032-8284-0ede8a2c87f9`
+- `019fc434-34fa-7f33-9c0b-81bbbbecfaa9`
+- `019fc429-e8a7-7b91-949e-d5b6cec46022`
+- `019fc435-413e-70d0-a6eb-d42583fd1d4d`
+
+Live dirs for those IDs are absent. `grok sessions list` no longer shows them.
+
+#### Unindexed children (CLI residual)
+
+`grok sessions delete` reported `No session found` for leftover
+`session_kind=subagent` children while the directories remained. Each path
+was a non-symlink under the canonical cwd (`prompt_context.json`
+`working_directory` plus `summary.json` `git_root_dir`) with `GB-S6-PKT` in
+history, then moved recoverably to
+`~/.Trash/GrokBuild-C8-P3-child-backends-20260815T064409Z`:
+
+- of parent `01a00323-3399-…`: `01a00323-5dc0-7c52-9700-d5a507cdcf84`,
+  `01a00323-5dc2-7d62-aad1-8599c802d858`
+- other leftover GB-S6-PKT children: `01a0037d-6a50-7520-99f7-65cf20fd2235`,
+  `01a0037d-6a52-71b0-9156-2cee0704a48b`,
+  `01a0037f-eb9f-7c30-bc1e-4271094a1dab`,
+  `01a0037f-eba1-7021-9a9c-45d9dc8a643d`
+
+Live backend directories for those six IDs are absent. Current grok CLI does
+not expose spawned child histories to `sessions delete`. Automatic cleanup
+and a GrokBuild scraper are rejected.
+
+#### Marker search after cleanup
+
+CLI `grok sessions search GB-C8-` and `GB-S7-VIS-` returned `Total: 0`.
+`GB-S6` returned `Total: 1` (deleted T1 parent; search-index residue).
+`list_pages` and Grok Git `GB_SLICE6` still hit deleted IDs in
+`session_search.sqlite`. Disk search excluding `prompt_history.jsonl` and
+`*.sqlite` found no remaining `GB-S6-PKT` / `GB-C8-P` / `GB_SLICE6` session
+dirs. GrokBuild `Transcripts/` had no `GB-C8-` / `GB-S7-VIS-` / `GB-S6-`
+files. `prompt_history.jsonl` and `session_search.sqlite` were not edited.
+Sessions UI after Search refresh showed no GB-S6 or Chrome DevTools
+`list_pages` rows; protected titles remained. **Clear Empty** went from (5)
+to (3) because those leftover rows disappeared, not because the button was
+clicked.
+
+`computer_close_app` graceful quit at `2026-08-15T01:46:39-0500`.
+Process-zero samples at `01:46:39` and `01:46:44` found no `GrokBuild`,
+`grok`, or `agent-desktop`. Cursor-owned `GrokBuildComputerUseMCP` PID
+`23551` (parent `Cursor Helper: mcp-process` `63345`) remained as the loaded
+user MCP, not a GrokBuild session leak. Origin untouched. Installed stamp
+still `27c146e` / `dirty=false`. Config hash unchanged.
+
+This Phase 3 PR is docs-only. Do not `make ship` it just to chase stamp ==
+HEAD. Jimmy asked to leave it unmerged; do not start Phase 4 until it merges
+or Jimmy explicitly continues without merging.
 
 ## Slice 7 — refresh public evidence and onboarding (complete, PR #85 + closeout, 2026-08-14)
 
