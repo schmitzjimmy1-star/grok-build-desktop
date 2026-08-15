@@ -10,22 +10,53 @@
 > in its own pull request, and merged before the next slice begins. This authority is
 > limited to the named slice files and required tests/docs. It does not authorize
 > force pushes, branch deletion, tags, releases, writes to `origin`, configuration or
-> credential changes, or opportunistic cleanup.
+> credential changes, or opportunistic cleanup, except the 2026-08-14 residual
+> closeout below.
+>
+> **2026-08-14 residual-closeout authority:** Jimmy authorized
+> [`docs/GROKBUILD_RESIDUAL_CLOSEOUT_2026-08-14.md`](GROKBUILD_RESIDUAL_CLOSEOUT_2026-08-14.md).
+> That campaign may `make ship` to close stamp == HEAD, run billable prompts in
+> every phase that needs them, upgrade the grok CLI to the advertised 1.0.4,
+> and publish one notarized GitHub release on
+> `schmitzjimmy1-star/grok-build-desktop`. It still does not authorize force
+> pushes, branch deletion, writes to `origin`, opportunistic history deletion,
+> or scraping private CLI session storage.
 >
 > **Cleanup authority:** Every acceptance thread created for a slice must be removed
 > after its receipt is captured. Only exact, ledgered test-thread IDs may be deleted.
 > User conversations, historical acceptance evidence, unnamed sessions that were not
 > created by the current slice, and unrelated browser/app state are protected.
 >
-> **Current campaign slice:** none. Slices 0–7 of the 2026-08-13 campaign are
-> complete. Slice 7 feature merge is
-> `4c7514f2cf4a696087f4173ec99f4c02a3731938` (PR #85). Installed product remains
-> stamp `150fbbe858a1c11f9447441bcbe717a88e59975b`. Do not start another slice
-> from this session.
+> **Current campaign:** 2026-08-14 residual closeout, Phase 0 not started.
 > Spec:
-> [`docs/GROKBUILD_VERIFICATION_AND_FORWARD_SLICES_2026-08-13.md`](GROKBUILD_VERIFICATION_AND_FORWARD_SLICES_2026-08-13.md).
-> Numbered `## Slice N` headings below the 2026-08-14 harness receipt are historical
-> campaigns. Do not implement them.
+> [`docs/GROKBUILD_RESIDUAL_CLOSEOUT_2026-08-14.md`](GROKBUILD_RESIDUAL_CLOSEOUT_2026-08-14.md).
+> The 2026-08-13 campaign (Slices 0–7) is complete at merge
+> `c0895eef092427d332c9c12eb4ed8211a1564626` (PR #86) with installed stamp
+> ancestor `150fbbe858a1c11f9447441bcbe717a88e59975b`. Numbered `## Slice N`
+> headings below the 2026-08-14 harness receipt are historical campaigns. Do
+> not implement them.
+
+## Residual closeout — 2026-08-14 (Phase 0 authorized, not started)
+
+Authorized scope is
+[`docs/GROKBUILD_RESIDUAL_CLOSEOUT_2026-08-14.md`](GROKBUILD_RESIDUAL_CLOSEOUT_2026-08-14.md).
+Start from clean `main == personal/main` at
+`c0895eef092427d332c9c12eb4ed8211a1564626` with installed stamp ancestor
+`150fbbe8` and an empty product diff. Do not reuse Slice 6/7 markers.
+
+Phases, in order:
+
+| Phase | Job | Billable |
+|---|---|---|
+| 0 | `make ship` so stamp == HEAD | none |
+| 1 | Light screenshots + composer AX value includes **Describe a task** | one native multi-tool/two-child turn |
+| 2 | Prove Cursor `user-grokbuild-computer-use` or record the block | one no-tool marker unless Phase 1 already used the MCP |
+| 3 | Exact leftover test-thread cleanup; ledger the child-delete CLI residual | none unless a row cannot be classified |
+| 4 | Official grok CLI update to advertised 1.0.4 | one native no-tool marker |
+| 5 | Replace remaining extracted-contract source-string pins | Slice 6-shaped smoke, 250k ceiling |
+| 6 | Personal notarized `v0.1.21` release; no `origin` | one no-tool marker unless Phase 5 already proved that binary |
+
+Execute Phase 0 only until its receipt is written here.
 
 ## Slice 7 — refresh public evidence and onboarding (complete, PR #85 + closeout, 2026-08-14)
 
