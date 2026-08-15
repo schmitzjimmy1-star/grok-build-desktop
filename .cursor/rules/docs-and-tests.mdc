@@ -29,8 +29,12 @@ Any of these drivers works:
 
 **Steps (every change):**
 
-1. Rebuild and relaunch: quit any running instance, then `make run` (`make build` alone does **not** refresh the running `.app`).
-2. Snapshot the accessibility tree (`computer_snapshot` / `agent-desktop snapshot --app GrokBuild`).
+1. Rebuild and relaunch. For local iteration: quit any running instance, then
+   `make run` (opens `.build/GrokBuild.app`; `make build` alone does **not**
+   refresh it). For campaign or installed acceptance: `make ship`, then drive
+   **`/Applications/GrokBuild.app` only**. Never Computer-Use `.build` or `dist`
+   as if it were the installed product.
+2. Snapshot the accessibility tree (`computer_snapshot` / `agent-desktop snapshot --app GrokBuild`). Confirm the running executable is `/Applications/GrokBuild.app/...` when proving installed behavior.
 3. Navigate to the **exact state your change affects** (tab, settings panel, empty state, restored session, etc.) and confirm behavior via snapshot, click/type, and screenshot when helpful.
 4. For non-UI service changes, still reach the user-visible outcome (e.g. transcript recovery → switch tabs and confirm messages; per-tab model → switch tabs and confirm model picker).
 5. Check interactive elements expose meaningful names/roles in the accessibility tree.
@@ -53,6 +57,7 @@ Note: the MCP registered in Cursor is **not** the same process the grok agent us
 | Dev workflow, make targets, testing | `.cursor/skills/grokbuild-dev/SKILL.md` |
 | Agent-facing bundled skill behavior | `GrokBuild/Resources/Skills/*/SKILL.md` |
 | Agent entry / repo conventions | `AGENTS.md` |
+| Campaign slice scope, Gates A–H, ledger | `docs/OUTSTANDING.md`, `docs/GROKBUILD_VERIFICATION_AND_FORWARD_SLICES_2026-08-13.md` |
 
 `ARCHITECTURE.md` is the canonical internal reference — keep it accurate when structure or data flow changes.
 
@@ -60,7 +65,7 @@ Note: the MCP registered in Cursor is **not** the same process the grok agent us
 
 - [ ] Code compiles (`make build` or `swift build`)
 - [ ] `make test` passes; new/changed behavior covered in `Tests/GrokBuildTests/`
-- [ ] **Computer Use** verification in the running app (`make run`, then `user-grokbuild-computer-use` MCP, `agent-desktop`, or Orca `computer-use` CLI) — required for **every** code change, not only view edits
+- [ ] **Computer Use** verification in the running app — required for **every** code change, not only view edits. Local iteration may use `make run` (`.build`). Campaign/installed proof uses `make ship` then `/Applications/GrokBuild.app` via `user-grokbuild-computer-use` MCP, `agent-desktop`, or Orca `computer-use` CLI.
 - [ ] Relevant docs updated (at minimum `ARCHITECTURE.md` for non-trivial app changes)
 - [ ] User-facing changes reflected in `README.md` when applicable
 

@@ -25,7 +25,11 @@ xed .             # open Package.swift in Xcode (optional)
 **Do not finish a task with code-only diffs.** Same session:
 
 1. **`make test`** — must pass; add tests in `Tests/GrokBuildTests/` for behavior you changed.
-2. **Computer Use** — required for **every** code change, not only SwiftUI view edits. `make run` to repackage/relaunch (not just `make build`), then drive the app (`snapshot` → navigate to affected state → `click`/`type` → `screenshot` when helpful). Default: **`user-grokbuild-computer-use` MCP**; fallback: `agent-desktop` directly or Orca `computer-use` CLI. Service/persistence changes still need a live check of the user-visible outcome.
+2. **Computer Use** — required for **every** code change, not only SwiftUI view edits.
+   For local iteration, `make run` relaunches `.build/GrokBuild.app`. For campaign
+   or installed acceptance, quit every GrokBuild instance, `make ship`, then drive
+   **`/Applications/GrokBuild.app` only** (`snapshot --app GrokBuild` is not proof
+   if the running exec is `.build` or `dist`). Default: **`user-grokbuild-computer-use` MCP**; fallback: `agent-desktop` directly or Orca `computer-use` CLI. Service/persistence changes still need a live check of the user-visible outcome.
 3. **`ARCHITECTURE.md`** — update source map, persistence, notifications, or common tasks → files when structure/flow changes.
 4. **`README.md`** — update when users would notice the change.
 5. **`BUILDING.md`** — update when build/packaging/scripts change.
@@ -44,8 +48,9 @@ Full checklist: `.cursor/rules/docs-and-tests.mdc`.
 | Lifecycle v3 / true-MRU tests | `swift test --filter 'Session(LifecycleV3|Persistence)Tests'` |
 | Slice 3 continuity / send-gate tests | `swift test --filter 'GrokSessionTranscriptImporterTests|SessionLifecycleV3Tests|ACPClientContractTests/testSavedBackendCannotStartOrSendBeforeContinuityGateAllowsIt'` |
 | Slice 4 provenance / explicit recovery tests | `swift test --filter 'GrokSessionTranscriptImporterTests|SessionLifecycleV3Tests|ACPClientContractTests'` |
-| Slice 5 Settings apply / reload / LRU tests | `swift test --filter 'SettingsTabTests|SettingsRuntimeContractTests|SessionLifecycleTests'` |
+| Coherence Settings apply / reload / LRU tests | `swift test --filter 'SettingsTabTests|SettingsRuntimeContractTests|SessionLifecycleTests'` |
 | Forward-slices Slice 5 agentic acceptance harness | `swift test --filter AcceptanceHarnessTests` |
+| Forward-slices Slice 6 coordination seams | `swift test --filter 'SessionRuntimeRetentionTests|RunHistoryTests|AcceptanceHarnessTests|ACPClientContractTests|LifecycleAndSubprocessTests'` |
 | Slice 7 Settings extensions / schema / cancellation tests | `swift test --filter 'SettingsExtensionContractTests|SettingsTabTests|CompatConfigTests|WorkflowRunTests|SessionLifecycleTests|SubprocessHygieneTests'` |
 | Slice 0 synthetic fixtures | `Tests/GrokBuildTests/Fixtures/CoherenceRepair/` |
 
@@ -55,7 +60,7 @@ The redacted `OSSignposter` contract lives in `PerformanceInstrumentation.swift`
 
 Session lifecycle changes must run both the focused filter above and `make test`. Migration tests use isolated UserDefaults suites plus the pinned synthetic HMAC/CLI fixtures; do not point tests at the installed app's preference domain. Recovery fixtures must retain row provenance (root, worker, unknown/non-final) and prove that startup performs no candidate scan, a common prompt is review-only, Relink re-verifies an exact choice, and Continue as New starts no process before a real send.
 
-Settings apply changes must keep `ConfigurationChange` narrow, route launch-affecting panes through `SettingsApplyRequest`, and run the Slice 5 filter plus `make test`. The fake ACP reconnect fixture is synthetic and provider-send-free; it must continue to prove that two streaming Applies share one restart and one exact tab/backend identity.
+Settings apply changes must keep `ConfigurationChange` narrow, route launch-affecting panes through `SettingsApplyRequest`, and run the coherence Settings filter plus `make test`. The fake ACP reconnect fixture is synthetic and provider-send-free; it must continue to prove that two streaming Applies share one restart and one exact tab/backend identity.
 
 ## grok CLI dependency
 

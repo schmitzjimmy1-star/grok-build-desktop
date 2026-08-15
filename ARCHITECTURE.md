@@ -269,7 +269,7 @@ ACP `mcpServers: []` is additive and does not override MCP servers already confi
 6. `send(_:)` — prompt during `.ready`/`.busy`.
 7. User **Stop** tears down the exact process and creates a local `userStopped` `RunEvidenceSnapshot`; LRU/app shutdown stay lifecycle-only and do not fabricate that user outcome. Resume re-verifies only an exact tab/backend/process-generation continuity receipt. A mismatch makes the next send create a fresh, ledgered backend run.
 
-**Context budget and owned-process closeout (audit Slice 6).** The Grok CLI remains
+**Context budget and owned-process closeout (historical tiny-turn Slice 6, 2026-08-09).** The Grok CLI remains
 the system-prompt/tool owner and already uses progressive MCP discovery; GrokBuild
 does not counterfeit provider token attribution or strip capabilities. The provider-free
 `PromptContextBudget` fixture separately measures observable project-instruction,
@@ -1111,12 +1111,18 @@ Not a full git UI — thin wrapper over `git` CLI in the selected workspace path
 
 ## Build, test & release
 
+**Rebuild vs installed proof:** `make run` opens `.build/GrokBuild.app` and is for
+local iteration only. Campaign and installed Computer Use must drive
+`/Applications/GrokBuild.app` after `make ship`. Do not snapshot or click the
+`.build` copy.
+
 ```bash
-make run       # release build + open .build/GrokBuild.app
+make run       # release build + open .build/GrokBuild.app (not installed acceptance)
 make run-debug # debug build + open .build/GrokBuild.app (Simulate Updates menu)
 make test      # swift test
 make app       # dist/GrokBuild.app (unsigned packaging)
 make install   # copy to /Applications
+make ship      # signed install to /Applications/GrokBuild.app
 make release   # GitHub release via scripts/release.sh
 ```
 
@@ -1159,6 +1165,7 @@ See `BUILDING.md` for signing, notarization, CI workflow.
 | **Sidebar sessions** | `ContentView` (`selectSession`, `persistSessionLayout`, LRU) |
 | **Browse Sessions** | `ContentView` sheet (`workspaceStore.workspaces`), `SessionBrowserView`, `SessionsBrowserPanel` (cwd-bound Resume; empty copy distinguishes no project vs no sessions) |
 | **Session restore at launch** | `ContentView.restorePersistedSessions`, `ContentView.selectSession`, `SessionRestorePolicy`, `SessionTranscriptRecovery`, `ChatStore.deliverPrompt` |
+| **Slice 6 coordination seams (2026-08-13 campaign)** | `BackgroundTaskTracker` in `BackgroundTaskStore.swift` plus `ChatStore.currentTurnEvidenceWorkers()`; `SessionRuntimeRetentionPolicy` in `SessionProcessIdentity.swift` plus `ContentView.enforceConnectionCap()`; `RunHistory.swift` plus `SessionDashboardPanel.swift`; `ChatView.topBar` / `composer` / `headerReviewToggle`; source-string pins in `ACPClientContractTests.swift` |
 | **Continuity verifier / send gate** | `GrokSessionTranscriptImporter.importMessagesBounded`, `SessionTranscriptRecovery.verifyContinuity`, `SessionSendGate`, `ChatStore.verifyContinuityBeforeResume`, `ChatStore.continuityRequiresRecovery` / `continuityIsResuming` / `isResumedSessionTab`, `ChatView.LaunchSessionChoices`, `ActivitySidebar` |
 | **Recovery candidate review / Continue as New / Relink** | `GrokSessionTranscriptImporter.importTranscriptBounded`, `SessionTranscriptRecovery.recoveryCandidates`, `ChatStore.reviewRecoveryCandidates` / `continueAsNew` / `relink`, `RecoveryCandidateReviewSheet` |
 | **Lifecycle migration/integrity** | `SessionLayoutStore`, `SessionLifecycleIntegrity`, `SessionLifecycleV3Tests` |
@@ -1272,6 +1279,8 @@ Prefer extending existing test files. Test pure logic without launching real `gr
 | `CANONICAL_WORKTREE.md` | Maintained path/remotes/branch and retired duplicate stop rule |
 | `README.md` | User-facing features |
 | `BUILDING.md` | Signing, notarization, release CI |
+| `docs/OUTSTANDING.md` | Canonical current-slice ledger and Gates A–H |
+| `docs/GROKBUILD_VERIFICATION_AND_FORWARD_SLICES_2026-08-13.md` | Current campaign spec (Slice 6 seams) |
 | `.cursor/rules/` | Architecture, SwiftUI, CLI integration, AppKit panels |
 | `.cursor/skills/grokbuild-*` | Dev workflow, release, CLI checks |
 | `GrokBuild/Resources/Skills/` | Bundled runtime skills only; the unused `grokbuild-desktop` editing skill was retired |
