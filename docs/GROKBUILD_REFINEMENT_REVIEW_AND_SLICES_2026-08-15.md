@@ -25,8 +25,8 @@ build emits three unused-local warnings in `SettingsTabTests.swift`.
 
 | Surface | Current evidence | Judgment |
 |---|---|---|
-| Local source | `codex/grokbuild-vq-p3c-composer-density @ 6697530531e6e3f65f80f848fcb86d4bcb7055c1`, based on `main == personal/main == aff384c` | Canonical Slice 1 candidate |
-| GitHub | PR #104 merged Phase 3 as `bb01c58`; PR #105 merged its closeout as `aff384c` | Phase 3 is closed; P3C publication follows this receipt |
+| Local source | `codex/grokbuild-vq-p3c-composer-density`; code/test commit `6697530531e6e3f65f80f848fcb86d4bcb7055c1`, based on `main == personal/main == aff384c` | Canonical Slice 1 candidate |
+| GitHub | PR #104 merged Phase 3 as `bb01c58`; PR #105 merged its closeout as `aff384c`; P3C publication is PR #106 | Phase 3 is closed; P3C has its focused publication lane |
 | Installed app | `Personal • codex/grokbuild-vq-p3c-composer-density @ 66975305` (`dirty=false`) | Clean P3C candidate acceptance |
 | Installed bytes | `dist` and installed executable SHA-256 both `2bb91f51c1c2d8d10e433b10adff2775ee058a07f654dcddb1524a44dd8ae74f` | Package/install parity passes |
 | Signing | Deep/strict valid, Team `DD2GCQJVB4`, no quarantine | Packaging integrity passes |

@@ -64,6 +64,7 @@ Code/test commit `6697530531e6e3f65f80f848fcb86d4bcb7055c1` changes only
 `ChatComposer`, its density policy, the task-contract presentation, and focused
 tests. No `ChatStore`, `GrokProcess`, ACP, provider, credential, or configuration
 owner changed.
+Publication is isolated in PR #106 against `personal/main`.
 
 Implementation: `ComposerDensityPolicy` keeps 11-point surface and 20-point
 outer horizontal padding, reduces their vertical values from 10/8 to 7/5, and
