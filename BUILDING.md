@@ -299,7 +299,7 @@ For publishing entirely from your Mac (requires [GitHub CLI](https://cli.github.
 make release
 ```
 
-`make release` runs `scripts/release.sh`: builds, zips, creates/updates the GitHub release, and pushes tag `v{VERSION}` if needed.
+`make release` runs `scripts/release.sh`: builds, zips, creates/updates the GitHub release on **`schmitzjimmy1-star/grok-build-desktop` only**, and pushes tag `v{VERSION}` to the `personal` remote if needed. It never pushes tags to `origin` (`rimusz/grok-build-desktop`) and it refuses to move or force-update an existing tag. If a fetched upstream tag is already local at a different SHA, delete it locally only (`git tag -d v{VERSION}`) — never `git push --delete origin`. Notarized releases require `SIGN_IDENTITY` to start with `Developer ID Application`; Apple Development identities are rejected so a development-signed build cannot be titled `(Notarized)`.
 
 **Notarized local release** (with `.env` configured):
 

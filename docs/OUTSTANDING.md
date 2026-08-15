@@ -11,7 +11,8 @@
 > limited to the named slice files and required tests/docs. It does not authorize
 > force pushes, branch deletion, tags, releases, writes to `origin`, configuration or
 > credential changes, or opportunistic cleanup, except the 2026-08-14 residual
-> closeout below.
+> closeout below and this campaign's authorized personal notarized `v0.1.22`
+> on `schmitzjimmy1-star/grok-build-desktop` only.
 >
 > **2026-08-14 residual-closeout authority:** Jimmy authorized
 > [`docs/GROKBUILD_RESIDUAL_CLOSEOUT_2026-08-14.md`](GROKBUILD_RESIDUAL_CLOSEOUT_2026-08-14.md).
@@ -29,9 +30,11 @@
 >
 > **Current campaign:** 2026-08-15 Agentic Cockpit Campaign — Phase 1 complete
 > (merged as `2b7f377`, PR #96; ledger closeout PR #97 merged as `1d2b6d5`).
-> Phase 2 deferred by explicit user skip (2026-08-15). Phase 3 complete on
-> `codex/grokbuild-c9-p3-delegation` (Gates A–G green; Gate H after merge +
-> post-merge `make ship`). Phase 4 is next.
+> Phase 2 deferred by explicit user skip (2026-08-15). Phase 3 complete
+> (merged as `a799bf5`, PR #98; Gate H green). Phase 4 in progress on
+> `codex/grokbuild-c9-p4-routing` (probe + `VERSION` 0.1.22; candidate ship
+> 890/0, SHA `30454e07…`, dirty=true; Gate H after merge + post-merge
+> `make ship`; notarized `v0.1.22` after that).
 > Spec: [`docs/GROKBUILD_AGENTIC_COCKPIT_CAMPAIGN_2026-08-15.md`](GROKBUILD_AGENTIC_COCKPIT_CAMPAIGN_2026-08-15.md).
 > Target: Elevate GrokBuild into a resilient, transparent agentic cockpit across 4 phases:
 > Phase 1 (Task Retention & /loop Lifetime Policy), Phase 2 (ChatView Decomposition),
@@ -43,7 +46,7 @@
 ## Agentic Cockpit Campaign — 2026-08-15 (Authorized & Planned)
 
 Authorized spec is [`docs/GROKBUILD_AGENTIC_COCKPIT_CAMPAIGN_2026-08-15.md`](GROKBUILD_AGENTIC_COCKPIT_CAMPAIGN_2026-08-15.md).
-Phase 3 started from clean `main == personal/main` at `1d2b6d5cda69c9b1039048bb7e8bf55b8c7c5bf8`. Phase 2 remains deferred. Phase 4 starts only after this Phase 3 PR merges and post-merge `make ship` proves `dirty=false`.
+Phase 3 merged as `a799bf57f2cb19196919fdb7dba745aec43bd555` (PR #98). Phase 2 remains deferred. Phase 4 starts from that clean `main == personal/main` with installed stamp `a799bf5`, `dirty=false`.
 
 Phases:
 
@@ -150,7 +153,7 @@ single billable turn was the authorized retention proof above.
 Ledger closeout (this receipt) published as a separate doc-only PR on branch
 `codex/grokbuild-c9-p1-ledger-closeout`.
 
-### Phase 3 receipt — 2026-08-15 (Complete — Gates A–G green; Gate H after merge)
+### Phase 3 receipt — 2026-08-15 (Complete — Gates A–H green, merged as `a799bf5` / PR #98)
 
 Gate A: clean `main == personal/main` at
 `1d2b6d5cda69c9b1039048bb7e8bf55b8c7c5bf8`. Phase 2 remains deferred. CLI
@@ -191,8 +194,10 @@ and child receipts (8,205 tokens / 1 turn and 11,717 tokens / 1 turn).
 Coordination: 2 requested · 2 spawned · 2 finished · max 2 concurrent.
 Provider-reported usage 158,338 tokens · $0.36. No response bodies retained.
 
-Gate D: this implementation commit on `codex/grokbuild-c9-p3-delegation`,
-pushed to `personal`, PR against `schmitzjimmy1-star/grok-build-desktop:main`.
+Gate D: implementation commit `1276f09` on `codex/grokbuild-c9-p3-delegation`,
+pushed to `personal`, PR #98 against `schmitzjimmy1-star/grok-build-desktop:main`.
+CI **Test and Build App** passed (7m32s). Merged `--merge` as `a799bf5`.
+GitHub deleted the merged feature branch.
 
 Gate F: backend `01a004cc-c573-7bb0-9c8c-cb37e5b1c4b2` deleted via
 `grok sessions delete` after Sessions-browser delete stayed disabled while the
@@ -208,9 +213,85 @@ Gate G: process-zero for `GrokBuild.app`, `.grok/bin/grok`, and
 `agent-desktop`. The only remaining GrokBuild-named process is the
 Cursor-hosted `GrokBuildComputerUseMCP`.
 
+Gate H: post-merge `make ship` proved stamp == HEAD == `personal/main` ==
+`a799bf57f2cb19196919fdb7dba745aec43bd555`, `dirty=false`, Team
+`DD2GCQJVB4`, deep/strict PASS, no quarantine, dist ↔ installed SHA-256
+`51dc422b01142132e3299fbbb95fcda1323bfba96b9600c4f6d9d3d75ac87de2`.
+`make test` **889 tests, 0 failures**. Do not reuse the Phase 3 dirty
+candidate SHA `ae41c58e…` or parent `1d2b6d5` as a Phase 4 identity.
+
+### Phase 4 receipt — 2026-08-15 (Complete — Gates A–G green; Gate H after merge)
+
+Gate A: clean `main == personal/main` at
+`a799bf57f2cb19196919fdb7dba745aec43bd555` after Phase 3 Gate H
+(`dirty=false`, SHA-256 `51dc422b…`). Phase 2 remains deferred. CLI
+`grok 1.0.4 (d846eb93d94d) [stable]`. `gh` authenticated as
+`schmitzjimmy1-star` with ADMIN on the personal repo. Origin remained
+read-only.
+
+Gate B: branch `codex/grokbuild-c9-p4-routing`.
+
+Scope (Phase 4 — OpenRouter Catalog Pricing & Provider Routing Expansion):
+
+- Did **not** re-implement `ModelPricingStore` / `SessionUsageLedger` (shipped
+  in `v0.1.21`). Did **not** add per-provider picker sections; live Settings
+  and the model menu already split **Grok** vs **Your models**.
+- Retargeted `scripts/release.sh` to `personal`
+  (`schmitzjimmy1-star/grok-build-desktop`) only. Tags are never pushed to
+  `origin`. Existing tags are never moved or force-updated. `gh release`
+  uses `--repo schmitzjimmy1-star/grok-build-desktop`.
+- Bumped `VERSION` to `0.1.22`.
+
+Billable packet (frozen marker `GB-C9-P4-ROUTING-20260815T101000Z`, one
+authorized turn on installed `a799bf5` / `0.1.21` before the version bump):
+Settings → Models → OpenRouter **Test connection** returned
+`Connected — 413 models available`. Pinned `openai/gpt-4.1-mini`. Settled
+reply `P4-OK`. Live process confirmed the OpenRouter model. HUD
+`grok-session-usage`: `12.3k tokens · 1 calls · 1 turn · ≈$0.0049–$0.0049
+est.` Route: brokered by OpenRouter, model pinned, downstream serving
+provider unproven, no app-side fallback. No response body retained.
+
+Gate C: `make test` **890 tests, 0 failures** (889 +
+`testReleaseScriptPublishesOnlyToPersonalRemote`). Candidate `make ship`
+installed `/Applications/GrokBuild.app` at stamp `a799bf5` (`dirty=true`
+scoped implementation), version `0.1.22`, branch
+`codex/grokbuild-c9-p4-routing`, dist == installed SHA-256
+`30454e0709b4b64f6b415a0c479292b00aa9cef72ddf705e7ebc9b478548384d`, Team
+`DD2GCQJVB4`, deep/strict PASS, no quarantine. Installed Computer Use
+(Cursor `user-grokbuild-computer-use` MCP) confirmed Settings → App
+**Installed Version 0.1.22** and
+`Personal • codex/grokbuild-c9-p4-routing @ a799bf57 (dirty)`.
+
+Gate D: this implementation commit on `codex/grokbuild-c9-p4-routing`,
+pushed to `personal`, PR against `schmitzjimmy1-star/grok-build-desktop:main`.
+
+Gate F: local leftover tab closed via sidebar **Close Session**. Backend
+`01a004e8-b3ef-7cd2-acce-0427193ed222` then absent from `grok sessions
+search GB-C9-P4` (Total: 0). Protected `OK-F` session and Aug 14
+`(no summary)` `019ffdad-…` were left untouched. Clear Empty was not used.
+
+Gate G: process-zero for `GrokBuild.app`, `.grok/bin/grok`, and
+`agent-desktop` except the Cursor-hosted `GrokBuildComputerUseMCP`.
+
+Publication landmines (do not paper over):
+
+- `origin` (`rimusz/grok-build-desktop`) already has an unrelated
+  `v0.1.22` at `8e60dfca03e37e564d77c318427a3874d358281c`
+  ("Fix Cursor bridge packaging…"). Local `v0.1.22` currently tracks
+  that fetched upstream tag. Delete it locally only (`git tag -d v0.1.22`)
+  before creating the personal tag. Never `git push --delete origin`.
+- Personal `v0.1.21 (Notarized)` is **mislabeled**: the published zip is
+  `Apple Development: jhschmitz1993@gmail.com (LS4SUB57QL)`, Gatekeeper
+  `rejected`, no staple ticket. This machine has no Developer ID
+  identity and no `notarytool` keychain profile. Do not title another
+  development-signed build `(Notarized)`.
+
 Gate H: post-merge `make ship` must prove stamp == merged HEAD,
 `dirty=false`, Team `DD2GCQJVB4`, deep/strict, no quarantine, and a freshly
-derived dist ↔ installed SHA.
+derived dist ↔ installed SHA. A true notarized `v0.1.22` is published
+only after that clean ship, only to `personal`, and only with a
+Developer ID identity. An unsigned personal tag is allowed only if
+explicitly labeled `(Unsigned)`.
 
 ## Residual closeout — 2026-08-14 (Complete — all phases 0–6 closed)
 

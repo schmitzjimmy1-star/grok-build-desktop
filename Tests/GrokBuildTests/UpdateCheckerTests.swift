@@ -193,6 +193,22 @@ final class UpdateCheckerTests: XCTestCase {
         }
         XCTAssertEqual(message, "grok update --check did not return version information.")
     }
+
+    func testReleaseScriptPublishesOnlyToPersonalRemote() throws {
+        let root = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        let script = try String(contentsOf: root.appendingPathComponent("scripts/release.sh"), encoding: .utf8)
+        XCTAssertTrue(script.contains("schmitzjimmy1-star/grok-build-desktop"))
+        XCTAssertTrue(script.contains("--repo \"$PERSONAL_SLUG\""))
+        XCTAssertTrue(script.contains("git push \"$remote\" \"$tag\""))
+        XCTAssertTrue(script.contains("Developer ID Application"))
+        XCTAssertTrue(script.contains("git tag -d"))
+        XCTAssertFalse(script.contains("git push origin"))
+        XCTAssertFalse(script.contains("git push --force origin"))
+        XCTAssertFalse(script.contains("git tag -f"))
+    }
 }
 
 final class UpdateSettingsStoreTests: XCTestCase {

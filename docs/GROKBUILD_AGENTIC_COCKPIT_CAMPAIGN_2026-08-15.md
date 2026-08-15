@@ -1,8 +1,8 @@
 # GrokBuild Agentic Cockpit Campaign — 2026-08-15
 
-Status: **Phase 1 complete**; **Phase 2 deferred** (user skip, 2026-08-15); **Phase 3 complete** (Gates A–G green; Gate H after merge + post-merge `make ship`); **Phase 4 next**.
+Status: **Phase 1 complete**; **Phase 2 deferred** (user skip, 2026-08-15); **Phase 3 complete** (merged as `a799bf5` / PR #98, Gate H green); **Phase 4 in progress** (probe + `VERSION` 0.1.22; Gate H after merge).
 
-Baseline: `main == personal/main` at `1d2b6d5` (PR #97 ledger closeout on top of Phase 1 merge `2b7f377` / PR #96). Installed app stamp `1d2b6d5`, `dirty=false`, dist ↔ installed SHA-256 `b09d43dcfc813a6fed01e469c5edb557f98a60cf82dd64b8bd5487f5523a4c05`. Notarized release `v0.1.21` remains the last published tag until Phase 4.
+Baseline: `main == personal/main` at `a799bf5` (PR #98 on top of Phase 1 `2b7f377` / PR #96 and ledger closeout `1d2b6d5` / PR #97). Installed app stamp `a799bf5`, `dirty=false`, dist ↔ installed SHA-256 `51dc422b01142132e3299fbbb95fcda1323bfba96b9600c4f6d9d3d75ac87de2`. Notarized release `v0.1.21` remains the last published tag until Phase 4 publishes `v0.1.22` to `personal` only.
 
 Following the 2026-08-14 Residual Closeout Campaign (which closed all open leftovers, updated the official CLI to 1.0.4, modernized ACP contract tests, and published the notarized release with zero leftovers), this campaign elevates GrokBuild into a resilient, transparent cockpit for long-horizon agentic workloads.
 
@@ -133,12 +133,10 @@ Agentic smoke packet with 3 ordered tools and 2 concurrent subagents.
 ### Exit
 Unit tests passing, Run Inspector delegation tree verified via Computer Use, Gate F cleanup, process-zero.
 
-> **Execution status (2026-08-15): Complete — Gates A–G green on
-> `codex/grokbuild-c9-p3-delegation`.** Marker
-> `GB-C9-P3-SUBAGENT-20260815T094138Z` settled `P3-OK explore=completed
-> general-purpose=completed`. Unique worker AX ids, unbound spawn+finish
-> merge, two-child `evidenceWorkers` isolation, and Gate F cleanup are in
-> the Phase 3 receipt. Gate H is post-merge `make ship`.
+> **Execution status (2026-08-15): Complete — merged as `a799bf5` (PR #98).**
+> Marker `GB-C9-P3-SUBAGENT-20260815T094138Z` settled `P3-OK
+> explore=completed general-purpose=completed`. Gate H: installed stamp
+> `a799bf5`, `dirty=false`, SHA-256 `51dc422b…`.
 
 ---
 
@@ -159,3 +157,16 @@ Live model probe verifying pricing calculation and role attribution.
 
 ### Exit
 Pricing tests passing, installed Computer Use verifying cost HUD and Settings, notarized release published, Gate F cleanup, process-zero.
+
+> **Execution status (2026-08-15): in progress on
+> `codex/grokbuild-c9-p4-routing`.** Marker
+> `GB-C9-P4-ROUTING-20260815T101000Z` settled `P4-OK`. HUD
+> `12.3k tokens · 1 turn · ≈$0.0049–$0.0049 est.` on pinned
+> `openai/gpt-4.1-mini`. `release.sh` now publishes to `personal` only.
+> Grouping skipped (two-bucket already shipped). Candidate `make ship`
+> **890 tests, 0 failures**, version `0.1.22`, SHA-256 `30454e07…`,
+> `dirty=true`. `origin` already has an unrelated `v0.1.22` at
+> `8e60dfca`; delete the fetched local tag only before tagging
+> `personal`. Personal `v0.1.21 (Notarized)` is Apple Development and
+> not actually notarized. Gate H follows merge; a true notarized
+> `v0.1.22` needs a Developer ID identity this machine does not have.

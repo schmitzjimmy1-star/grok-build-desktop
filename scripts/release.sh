@@ -3,6 +3,11 @@ set -euo pipefail
 
 # Build and publish a GitHub release (mirrors .github/workflows/release.yml).
 #
+# Publication target is the personal remote only:
+#   personal → schmitzjimmy1-star/grok-build-desktop
+# `origin` (rimusz/grok-build-desktop) is read-only upstream. This script
+# never pushes tags to origin and never force-updates a release tag.
+#
 # Usage:
 #   make release
 #   make release RELEASE_TYPE=notarized SIGN_IDENTITY="Developer ID Application: ..."
@@ -48,6 +53,10 @@ if ! gh auth status >/dev/null 2>&1; then
   echo "ERROR: gh is not authenticated. Run: gh auth login"
   exit 1
 fi
+
+PERSONAL_OWNER="schmitzjimmy1-star"
+PERSONAL_REPO="grok-build-desktop"
+PERSONAL_SLUG="${PERSONAL_OWNER}/${PERSONAL_REPO}"
 
 create_dmg() {
   make dmg-package
@@ -97,41 +106,96 @@ EOF
   fi
 }
 
+publication_remote() {
+  if ! git remote get-url personal >/dev/null 2>&1; then
+    echo "ERROR: remote 'personal' is required and must point at ${PERSONAL_SLUG}."
+    exit 1
+  fi
+  local url
+  url="$(git remote get-url personal)"
+  case "$url" in
+    *"${PERSONAL_SLUG}"*) ;;
+    *)
+      echo "ERROR: remote 'personal' is '${url}'; expected ${PERSONAL_SLUG}."
+      exit 1
+      ;;
+  esac
+  echo "personal"
+}
+
+commit_for_tag() {
+  git rev-parse "${1}^{}"
+}
+
 ensure_release_tag() {
   local tag="$1"
+  local remote
+  remote="$(publication_remote)"
   local head_sha
   head_sha="$(git rev-parse HEAD)"
 
-  if ! git rev-parse "$tag" >/dev/null 2>&1; then
+  if git rev-parse "$tag" >/dev/null 2>&1; then
+    local tag_sha
+    tag_sha="$(commit_for_tag "$tag")"
+    if [ "$tag_sha" != "$head_sha" ]; then
+      echo "ERROR: local tag ${tag} is at ${tag_sha:0:7}, HEAD is ${head_sha:0:7}."
+      echo "Refusing to move an existing tag."
+      echo "If this tag was fetched from origin (rimusz/grok-build-desktop), delete it locally only:"
+      echo "  git tag -d ${tag}"
+      echo "Never run: git push --delete origin ${tag}"
+      echo "Then re-run so ${tag} is created at this HEAD and pushed to personal only."
+      exit 1
+    fi
+  else
     echo "==> Creating tag ${tag} at HEAD..."
     git tag "$tag"
-  else
-    local tag_sha
-    tag_sha="$(git rev-parse "$tag")"
-    if [ "$tag_sha" != "$head_sha" ]; then
-      echo "==> Tag ${tag} was at ${tag_sha:0:7}; moving to HEAD ${head_sha:0:7} for this release..."
-      git tag -f "$tag"
-    fi
   fi
 
   local remote_sha=""
-  remote_sha="$(git ls-remote --tags origin "refs/tags/${tag}^{}" 2>/dev/null | awk '{print $1}' | head -1)"
-  tag_sha="$(git rev-parse "$tag")"
+  remote_sha="$(git ls-remote --tags "$remote" "refs/tags/${tag}^{}" 2>/dev/null | awk '{print $1}' | head -1)"
+  if [ -z "$remote_sha" ]; then
+    remote_sha="$(git ls-remote --tags "$remote" "refs/tags/${tag}" 2>/dev/null | awk '{print $1}' | head -1)"
+  fi
+  local tag_sha
+  tag_sha="$(commit_for_tag "$tag")"
 
   if [ -z "$remote_sha" ]; then
-    echo "==> Pushing ${tag} to origin..."
-    git push origin "$tag"
+    echo "==> Pushing ${tag} to ${remote} (${PERSONAL_SLUG})..."
+    git push "$remote" "$tag"
   elif [ "$remote_sha" != "$tag_sha" ]; then
-    echo "==> Updating ${tag} on origin (local release commit differs from remote tag)..."
-    git push --force origin "$tag"
+    echo "ERROR: ${remote} already has ${tag} at ${remote_sha:0:7}; local is ${tag_sha:0:7}."
+    echo "Refusing to force-update a release tag on ${PERSONAL_SLUG}."
+    exit 1
+  else
+    echo "==> ${remote} already has ${tag} at HEAD."
   fi
 }
+
+publication_remote >/dev/null
+
+origin_tag_sha="$(git ls-remote --tags origin "refs/tags/${tag_name}^{}" 2>/dev/null | awk '{print $1}' | head -1)"
+if [ -z "$origin_tag_sha" ]; then
+  origin_tag_sha="$(git ls-remote --tags origin "refs/tags/${tag_name}" 2>/dev/null | awk '{print $1}' | head -1)"
+fi
+if [ -n "$origin_tag_sha" ]; then
+  echo "WARN: origin (rimusz/grok-build-desktop) already has ${tag_name} at ${origin_tag_sha:0:7}."
+  echo "That tag is upstream's, not ours. This release still publishes to personal only."
+  echo "Do not delete or move the origin tag."
+fi
 
 if [ "$RELEASE_TYPE" = "notarized" ]; then
   if [ -z "$SIGN_IDENTITY" ]; then
     echo "ERROR: SIGN_IDENTITY is required for notarized releases (set in .env or environment)."
     exit 1
   fi
+  case "$SIGN_IDENTITY" in
+    "Developer ID Application"*) ;;
+    *)
+      echo "ERROR: notarized releases require SIGN_IDENTITY to start with 'Developer ID Application'."
+      echo "Apple Development identities cannot be notarized. Do not title an unsigned or development-signed build (Notarized)."
+      exit 1
+      ;;
+  esac
 fi
 
 zip_path="dist/${APP_NAME}-${tag_name}.app.zip"
@@ -173,19 +237,20 @@ ensure_release_tag "$tag_name"
 
 echo "==> Publishing GitHub release ${tag_name}..."
 
-if gh release view "$tag_name" >/dev/null 2>&1; then
-  echo "==> Release ${tag_name} already exists; updating title, notes, and assets..."
-  gh release edit "$tag_name" --title "$release_name" --notes-file "$release_body_file"
-  gh release upload "$tag_name" "$zip_path" "$dmg_path" --clobber
+if gh release view "$tag_name" --repo "$PERSONAL_SLUG" >/dev/null 2>&1; then
+  echo "==> Release ${tag_name} already exists on ${PERSONAL_SLUG}; updating title, notes, and assets..."
+  gh release edit "$tag_name" --repo "$PERSONAL_SLUG" --title "$release_name" --notes-file "$release_body_file"
+  gh release upload "$tag_name" --repo "$PERSONAL_SLUG" "$zip_path" "$dmg_path" --clobber
 else
   gh release create "$tag_name" \
+    --repo "$PERSONAL_SLUG" \
     --title "$release_name" \
     --draft \
     --generate-notes \
     "$zip_path" \
     "$dmg_path"
 
-  generated_notes="$(gh release view "$tag_name" --json body -q .body)"
+  generated_notes="$(gh release view "$tag_name" --repo "$PERSONAL_SLUG" --json body -q .body)"
   {
     cat "$release_body_file"
     echo ""
@@ -195,8 +260,12 @@ else
   } > "${release_body_file}.combined"
   mv "${release_body_file}.combined" "$release_body_file"
 
-  gh release edit "$tag_name" --notes-file "$release_body_file" --draft=false
+  gh release edit "$tag_name" --repo "$PERSONAL_SLUG" --notes-file "$release_body_file" --draft=false
 fi
 
-release_url="$(gh release view "$tag_name" --json url -q .url)"
+release_url="$(gh release view "$tag_name" --repo "$PERSONAL_SLUG" --json url -q .url)"
 echo "==> Published: ${release_url}"
+if [[ "$release_url" != *"${PERSONAL_SLUG}"* ]]; then
+  echo "ERROR: release URL is not on ${PERSONAL_SLUG}: ${release_url}"
+  exit 1
+fi

@@ -55,7 +55,7 @@ GrokBuild is a **windowed macOS project workbench** (SwiftUI + AppKit) over the 
 
 Every packaged bundle also stamps the personal build channel, source repository,
 branch, exact commit, and dirty state into `Info.plist`. `AppBuildIdentity`
-surfaces that receipt in About and Settings → App. `0.1.21` by itself is not
+surfaces that receipt in About and Settings → App. `0.1.22` by itself is not
 accepted as source identity because the maintained personal line and upstream
 can share the same marketing version.
 
@@ -1150,7 +1150,7 @@ make release   # GitHub release via scripts/release.sh
 |--------|---------|
 | `scripts/build-macos-app.sh` | Assemble `.app` bundle, copy resources/skills |
 | `scripts/build-identity.sh` | Resolve and escape personal repo / branch / commit / dirty bundle receipts |
-| `scripts/release.sh` | Build, zip, DMG, `gh release create` |
+| `scripts/release.sh` | Build, zip, DMG, tag + `gh release create` on `personal` (`schmitzjimmy1-star/grok-build-desktop`) only; never `origin`, never force-move tags |
 | `scripts/notarize.sh` | Notarize signed app |
 | `scripts/grokbuild-install-update.sh` | In-app replace + relaunch |
 | `scripts/acceptance/run.py` | Agentic acceptance harness: versioned manifests, dry-run default, fixture rejection, `--billable` installed UI only; Slice 6 packet ceiling 250k |
@@ -1303,7 +1303,8 @@ Prefer extending existing test files. Test pure logic without launching real `gr
 | `BUILDING.md` | Signing, notarization, release CI |
 | `docs/OUTSTANDING.md` | Canonical current-slice ledger and Gates A–H |
 | `docs/GROKBUILD_VERIFICATION_AND_FORWARD_SLICES_2026-08-13.md` | 2026-08-13 campaign spec (Slices 0–7 complete) |
-| `docs/GROKBUILD_RESIDUAL_CLOSEOUT_2026-08-14.md` | Current residual-closeout campaign (Phases 0–3 complete; Phase 4 next) |
+| `docs/GROKBUILD_RESIDUAL_CLOSEOUT_2026-08-14.md` | Closed 2026-08-14 residual-closeout campaign (Phases 0–6 complete) |
+| `docs/GROKBUILD_AGENTIC_COCKPIT_CAMPAIGN_2026-08-15.md` | Current Agentic Cockpit campaign (Phase 3 complete; Phase 4 in progress) |
 | `.cursor/rules/` | Architecture, SwiftUI, CLI integration, AppKit panels |
 | `.cursor/skills/grokbuild-*` | Dev workflow, release, CLI checks |
 | `GrokBuild/Resources/Skills/` | Bundled runtime skills only; the unused `grokbuild-desktop` editing skill was retired |
