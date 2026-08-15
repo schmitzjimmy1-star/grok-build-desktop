@@ -27,9 +27,9 @@
 > User conversations, historical acceptance evidence, unnamed sessions that were not
 > created by the current slice, and unrelated browser/app state are protected.
 >
-> **Current campaign:** 2026-08-15 Agentic Cockpit Campaign — Phase 1 in progress
-> on branch `codex/grokbuild-c9-p1-retention` (Gates A–C done; billable acceptance
-> and Gates D–H pending). Phases 2–4 planned.
+> **Current campaign:** 2026-08-15 Agentic Cockpit Campaign — Phase 1 complete
+> (merged as `2b7f377`, PR #96; Gates A–H green, billable retention proof passed).
+> Phases 2–4 planned.
 > Spec: [`docs/GROKBUILD_AGENTIC_COCKPIT_CAMPAIGN_2026-08-15.md`](GROKBUILD_AGENTIC_COCKPIT_CAMPAIGN_2026-08-15.md).
 > Target: Elevate GrokBuild into a resilient, transparent agentic cockpit across 4 phases:
 > Phase 1 (Task Retention & /loop Lifetime Policy), Phase 2 (ChatView Decomposition),
@@ -52,7 +52,7 @@ Phases in order:
 | 3 | Hostile Subagent Permutation Hardening & Delegation Tree | Harden `BackgroundTaskTracker` against hostile out-of-order events; enhance Run Inspector subagent delegation tree with duration & metrics | 1 native agentic smoke packet |
 | 4 | OpenRouter Catalog Pricing & Provider Routing Expansion | Integrate live catalog pricing into `SessionUsageLedger`; refine subagent role-to-model presets with provider grouping | 1 live OpenRouter/custom model probe |
 
-### Phase 1 receipt — 2026-08-15 (Gates A–C done; billable acceptance + Gates D–H pending)
+### Phase 1 receipt — 2026-08-15 (Complete — Gates A–H green, merged as `2b7f377` / PR #96)
 
 Gate A: clean `main == personal/main` at
 `b58b973aeeceab1eb53f45283baa047afeebdbf8`, `+0/-0`, installed stamp == HEAD
@@ -105,12 +105,48 @@ implementation), dist == installed SHA-256
 no-schedule state) and the `grok-sidebar-session-row` list rendering with the
 schedule badge correctly absent while no lease is live.
 
-Outstanding: the billable multi-tab retention verification turn (frozen marker
-`GB-C9-P1-RETENTION-<UTC>`) that exercises a live `/loop`/background session
-across 5+ tabs and the orange/badge active-schedule rendering, then Gate D
-(commit/push/PR/merge) and Gates E–H (post-merge `make ship`, exact test-thread
-cleanup, process-zero, identity/parity). No provider calls, config, credential,
-or `origin` writes occurred during Gates A–C.
+Gate D: `2cef894` ("Protect long-horizon background/scheduled sessions from LRU
+eviction (phase 1)") pushed to `personal`; PR #96 opened against
+`schmitzjimmy1-star/grok-build-desktop:main`, CI green, merged as `2b7f377`
+(`--merge`), branch deleted. `main == personal/main == 2b7f377`, working tree
+clean.
+
+Billable multi-tab retention proof (frozen marker
+`GB-C9-P1-RETENTION-20260815T083223Z`, one authorized turn): Session A used
+`grok`'s `scheduler_create` to add a recurring 1-minute task
+(`01a0048dc692`); the top-bar `grok-tasks-status` pill turned orange to
+"Tasks (1) · Scheduled" and the sidebar schedule badge appeared. Five additional
+ordinary sessions (B–F) were then connected past the 4-session connection cap;
+after cap enforcement Session A's `grok` process (PID 57779) **survived LRU
+eviction despite being the oldest** because its runtime lease pinned it, while
+the ordinary LRU session was evicted. Session A then deleted the task
+(`scheduler_delete`; `scheduler_list` returned empty) and the pill reverted to
+"Background tasks, runtime not pinned."
+
+Gate E: post-merge `make ship` installed `/Applications/GrokBuild.app` stamped
+`GrokBuildSourceCommit=2b7f377…` (== HEAD == `personal/main`), branch `main`,
+`GrokBuildSourceDirty=false`, channel `personal`, repo
+`schmitzjimmy1-star/grok-build-desktop`.
+
+Gate F: test-thread cleanup — all six marker sessions (A–F) deleted via the
+Sessions browser; a fresh browser snapshot confirmed **zero marker leftovers**
+(the 23 pre-existing sessions remain untouched).
+
+Gate G: process-zero — `GrokBuild.app`, `.grok/bin/grok`, and `agent-desktop`
+all at 0 after graceful quit; the only remaining GrokBuild-named process is the
+Cursor-hosted `GrokBuildComputerUseMCP` (PID parent `Cursor Helper:
+mcp-process`), the sanctioned verification driver, not a session orphan.
+
+Gate H: identity/parity — installed `2b7f377` == HEAD == `personal/main`, working
+tree clean; `codesign --verify --deep --strict` "valid on disk" / satisfies its
+Designated Requirement, Team `DD2GCQJVB4`, no `com.apple.quarantine`; dist ↔
+installed executable byte parity SHA-256
+`f4b82c09012883b3621216291ffaedf0468ba3efc6e43f01c0540f209f8d9b4c`. No provider
+calls, config, credential, or `origin` writes occurred across the phase; the
+single billable turn was the authorized retention proof above.
+
+Ledger closeout (this receipt) published as a separate doc-only PR on branch
+`codex/grokbuild-c9-p1-ledger-closeout`.
 
 ## Residual closeout — 2026-08-14 (Complete — all phases 0–6 closed)
 
