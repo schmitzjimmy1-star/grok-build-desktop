@@ -68,10 +68,33 @@ Stop, close, quit, and process-zero. Neutral-extraction smoke is one agentic pac
 (three ordered tools, two parallel read-only children, one follow-up turn, one
 deliberate Stop) under a **250k** actual-token ceiling. After T1 of that packet
 the installed app pinned the main thread at 100% in SwiftUI `ScrollView`
-`sizeThatFits` with Run inspector open and AppleScript quit wedged; the
-follow-up hotfix is `ResponsiveLayoutPolicy.shouldCommitMeasuredWidth` plus
-`inspectorPlacement` hysteresis, not Slice 7. Slice 7, releases, tags,
-origin, force-push, branch deletion, and configuration changes remain forbidden.
+`sizeThatFits` with Run inspector open and AppleScript quit wedged. The first
+hotfix (`ResponsiveLayoutPolicy.shouldCommitMeasuredWidth` plus inspector
+hysteresis) made idle New chat + inspector settle at 0% CPU, but installed
+restore/Resume of the populated T1 tab then reproduced the pin at
+`LazySubviewPlacements` → `ChatTranscriptLayout.MessageBlock` with grok idle.
+The bounded follow-up separates selectable transcript content from
+Resume/Continue/recovery-Send transactions, gives message blocks composite
+identities, coalesces settled-scroll requests, removes selectable settled tool
+output from the lazy transcript, and epsilon-gates table width. This remains the
+Slice 6 stop-the-line repair, not Slice 7. Slice 7, releases, tags, origin,
+force-push, branch deletion, and configuration changes remain forbidden.
+
+Follow-up acceptance commit `079589bbf0573cb300ead69ac7410277a67d20b9`
+passed the focused 50-test restore/layout suite and all 865 tests, then clean
+`make ship`: stamp == HEAD, `dirty=false`, dist/installed parity, Team
+`DD2GCQJVB4`, deep/strict signing, no quarantine, and installed executable
+SHA-256 `42939354d0cbc4fc88cfc9400c11c7d0f897fc8ef81b1264005fb942f02aba1`.
+Installed Computer Use restored the populated tool-heavy T1 transcript with no
+`grok` process and GrokBuild at 0.0% CPU after settle. Because that T1 tab had
+already been ledgered **Continue as New**, the transition proof used the
+preserved populated **VISUAL PASS 11/11 — STOP FLOW** tab: **Resume current
+task** replaced the three named saved-task choices with a connected-idle task
+contract and live Grok 4.5 receipt; GrokBuild and its exact `grok` child both
+sampled 0.0% CPU after four seconds and again after a twenty-second soak. No
+prompt or billable provider turn ran. Graceful app close succeeded; exact
+process-zero samples were recorded at `2026-08-14T22:05:47-0500` and
+`2026-08-14T22:05:59-0500`.
 
 ## Slice 5 — first-class agentic acceptance harness (complete, 2026-08-14)
 

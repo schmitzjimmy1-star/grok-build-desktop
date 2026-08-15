@@ -551,6 +551,22 @@ Supporting tests: `SessionRuntimeRetentionTests.swift`, `RunHistoryTests.swift`,
   receipt drift before calling the extraction neutral.
 - Suggested anomaly ceiling: **250k actual tokens**.
 
+**Stop-the-line repair receipt (2026-08-14).** The neutral packet exposed two
+installed macOS 26 SwiftUI layout loops, first during inspector-width movement
+and then while restoring/resuming a populated tool transcript. The bounded
+follow-up commit `079589bbf0573cb300ead69ac7410277a67d20b9` passed the focused
+50-test layout suite and all 865 tests, then clean `make ship` with stamp ==
+HEAD, `dirty=false`, dist/installed parity, Team `DD2GCQJVB4`, deep/strict
+signing, no quarantine, and installed executable SHA-256
+`42939354d0cbc4fc88cfc9400c11c7d0f897fc8ef81b1264005fb942f02aba1`.
+Installed Computer Use proved the tool-heavy T1 transcript restored at 0.0% CPU
+with no `grok` process; a separate populated saved task then changed from the
+three named launch choices through **Resume current task** to connected idle,
+with GrokBuild and its exact `grok` child both at 0.0% CPU after four seconds
+and after a twenty-second soak. No prompt or billable provider turn ran.
+Graceful close left process-zero samples at
+`2026-08-14T22:05:47-0500` and `2026-08-14T22:05:59-0500`.
+
 ## Slice 7 — refresh public evidence and onboarding
 
 **Purpose:** make the repository's first impression match the product that actually

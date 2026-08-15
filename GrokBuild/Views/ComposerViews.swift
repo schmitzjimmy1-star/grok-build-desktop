@@ -174,7 +174,9 @@ private struct AssistantToolTraceRow: View {
                 Text(output)
                     .font(AppTheme.Typography.caption.monospaced())
                     .foregroundStyle(.secondary)
-                    .textSelection(.enabled)
+                    // Settled tool detail remains available in the Run inspector.
+                    // Selectable AppKit text inside the transcript LazyVStack can
+                    // re-enter SelectionOverlay layout during session recovery.
                     .frame(maxWidth: .infinity, alignment: .leading)
             }
         }

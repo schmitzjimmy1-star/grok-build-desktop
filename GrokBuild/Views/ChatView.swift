@@ -114,6 +114,20 @@ enum ChatTranscriptLayout {
         case answer
     }
 
+    struct IdentifiedMessageBlock: Identifiable, Hashable {
+        let messageID: UUID
+        let block: MessageBlock
+
+        var id: Self { self }
+    }
+
+    static func identifiedMessageBlocks(
+        messageID: UUID,
+        blocks: [MessageBlock]
+    ) -> [IdentifiedMessageBlock] {
+        blocks.map { IdentifiedMessageBlock(messageID: messageID, block: $0) }
+    }
+
     /// One turn has one stable semantic order. Thinking and tool receipts may
     /// appear or settle at any point in the event stream, but neither is allowed
     /// to migrate below the answer it explains. The live run row (Workbench W-5)
@@ -310,8 +324,11 @@ struct ChatView: View {
     @State private var expandedAssistantTraceIDs: Set<UUID> = []
     @State private var collapsedAssistantTraceIDs: Set<UUID> = []
     @State private var autoScrollTask: Task<Void, Never>?
+    @State private var autoScrollTrailingPassRequested = false
+    @State private var autoScrollTrailingPerformanceInterval: GrokBuildPerformanceInterval?
     @State private var programmaticScrollReleaseTask: Task<Void, Never>?
     @State private var isProgrammaticTranscriptScroll = false
+    @State private var transcriptSessionTransitionInProgress = false
     @State private var lastAutoScroll: Date = .distantPast
     @State private var transcriptIsAttachedToBottom = true
     @State private var transcriptHasUserScrolled = false
@@ -630,7 +647,11 @@ struct ChatView: View {
                 }
             },
             onContinueAsNew: {
-                Task { _ = await store.continueAsNew() }
+                Task {
+                    _ = await performTranscriptSessionTransition {
+                        await store.continueAsNew()
+                    }
+                }
             },
             onReviewRecovery: {
                 showRecoveryReview = true
@@ -784,23 +805,25 @@ struct ChatView: View {
                                 explicitlyCollapsed: collapsedAssistantTraceIDs
                             )
                             ForEach(
-                                ChatTranscriptLayout.messageBlockOrder(
-                                    containsAgentHeader: msg.role == .assistant,
-                                    traceExpanded: traceExpanded,
-                                    containsThinking: hasLiveThinking || hasPersistedThinking
-                                        || (msg.role == .assistant && !hasAnyTrace),
-                                    containsToolActivity: hasLiveTools || hasPersistedTools,
-                                    containsLiveProgress: msg.role == .assistant
-                                        && msg.id == store.streamingMessageID
-                                        && store.liveRunEvidenceProjection == nil
-                                        && store.isGrokking,
-                                    containsPlanSpine: msg.role == .assistant
-                                        && msg.id == store.streamingMessageID
-                                        && store.liveRunEvidenceProjection != nil
-                                ),
-                                id: \.self
-                            ) { block in
-                                switch block {
+                                ChatTranscriptLayout.identifiedMessageBlocks(
+                                    messageID: msg.id,
+                                    blocks: ChatTranscriptLayout.messageBlockOrder(
+                                        containsAgentHeader: msg.role == .assistant,
+                                        traceExpanded: traceExpanded,
+                                        containsThinking: hasLiveThinking || hasPersistedThinking
+                                            || (msg.role == .assistant && !hasAnyTrace),
+                                        containsToolActivity: hasLiveTools || hasPersistedTools,
+                                        containsLiveProgress: msg.role == .assistant
+                                            && msg.id == store.streamingMessageID
+                                            && store.liveRunEvidenceProjection == nil
+                                            && store.isGrokking,
+                                        containsPlanSpine: msg.role == .assistant
+                                            && msg.id == store.streamingMessageID
+                                            && store.liveRunEvidenceProjection != nil
+                                    )
+                                )
+                            ) { identifiedBlock in
+                                switch identifiedBlock.block {
                                 case .agentHeader:
                                     assistantTurnHeader(
                                         message: msg,
@@ -836,7 +859,8 @@ struct ChatView: View {
                                         isStreaming: store.isStreaming && msg.id == store.streamingMessageID,
                                         streamingPresentation: msg.id == store.streamingMessageID
                                             ? store.streamingPresentation
-                                            : nil
+                                            : nil,
+                                        isLayoutFrozen: transcriptSessionTransitionInProgress
                                     )
                                     .id(msg.id)
                                 }
@@ -1009,6 +1033,10 @@ struct ChatView: View {
                     }
                     scheduleSettledAutoScroll(proxy: proxy)
                 }
+                .onChange(of: transcriptSessionTransitionInProgress) { _, isInProgress in
+                    guard !isInProgress, !store.messages.isEmpty else { return }
+                    scheduleSettledAutoScroll(proxy: proxy)
+                }
 
                 if !transcriptIsAttachedToBottom {
                     Button {
@@ -1075,7 +1103,11 @@ struct ChatView: View {
             } else if store.continuityIsResuming && store.isResumedSessionTab {
                 LaunchSessionChoices(
                     onResumeCurrent: {
-                        Task { _ = await store.resumeTaskSession() }
+                        Task {
+                            _ = await performTranscriptSessionTransition {
+                                await store.resumeTaskSession()
+                            }
+                        }
                     },
                     onStartNew: onNewSession,
                     onBrowseOld: onBrowseSessions
@@ -1127,8 +1159,7 @@ struct ChatView: View {
         }
         .onAppear { inputFocused = true }
         .onDisappear {
-            autoScrollTask?.cancel()
-            autoScrollTask = nil
+            cancelSettledAutoScroll()
             programmaticScrollReleaseTask?.cancel()
             programmaticScrollReleaseTask = nil
         }
@@ -1221,18 +1252,28 @@ struct ChatView: View {
             SavedWorkflowsPanel(projectRoot: store.currentWorkspace?.path) { workflow, argsJSON in
                 Task {
                     let args = Self.parseWorkflowArgsJSON(argsJSON)
-                    _ = await store.launchSavedWorkflow(name: workflow.name, args: args)
+                    _ = await sendWithTranscriptSessionTransition {
+                        await store.launchSavedWorkflow(name: workflow.name, args: args)
+                    }
                 }
             }
         }
         .sheet(isPresented: $showDeepResearch) {
             DeepResearchSheet { query in
-                Task { _ = await store.startDeepResearch(query) }
+                Task {
+                    _ = await sendWithTranscriptSessionTransition {
+                        await store.startDeepResearch(query)
+                    }
+                }
             }
         }
         .sheet(isPresented: $showSetGoal) {
             SetGoalSheet { objective, budget in
-                Task { _ = await store.setGoal(objective, budget: budget) }
+                Task {
+                    _ = await sendWithTranscriptSessionTransition {
+                        await store.setGoal(objective, budget: budget)
+                    }
+                }
             }
         }
         .sheet(isPresented: $showCreateSkill) {
@@ -1390,14 +1431,19 @@ struct ChatView: View {
             onPauseGoal: { Task { _ = await store.pauseGoal() } },
             onResumeGoal: { Task { _ = await store.resumeGoal() } },
             onResumeSavedTask: {
-                // Remove the expanded contract before the ACP process changes
-                // state. On macOS 26, rebuilding selectable transcript chrome
-                // and a disappearing action button in the same transaction can
-                // trap SwiftUI's SelectionOverlay in a layout loop.
-                taskContractExpanded = false
-                Task { _ = await store.resumeTaskSession() }
+                Task {
+                    _ = await performTranscriptSessionTransition {
+                        await store.resumeTaskSession()
+                    }
+                }
             },
-            onContinueAsNew: { Task { _ = await store.continueAsNew() } },
+            onContinueAsNew: {
+                Task {
+                    _ = await performTranscriptSessionTransition {
+                        await store.continueAsNew()
+                    }
+                }
+            },
             onOpenActivity: {
                 selectedActivityMessageID = nil
                 showActivitySidebar = true
@@ -1487,6 +1533,41 @@ struct ChatView: View {
     static let bottomAnchorID = "transcript-bottom-anchor"
     static let transcriptCoordinateSpace = "grokbuild-transcript"
 
+    /// Resume and Continue-as-New both remove recovery controls while process and
+    /// continuity state changes. Give selectable rich transcript content its own
+    /// preceding transaction, then restore it only after the operation settles.
+    /// This prevents macOS 26 SelectionOverlay updates from sharing a transaction
+    /// with LazyVStack identity and control removal.
+    @MainActor
+    private func performTranscriptSessionTransition(
+        _ operation: @MainActor () async -> Bool
+    ) async -> Bool {
+        guard !transcriptSessionTransitionInProgress else { return false }
+        taskContractExpanded = false
+        cancelSettledAutoScroll()
+        transcriptSessionTransitionInProgress = true
+        await Task.yield()
+        let result = await operation()
+        await Task.yield()
+        transcriptSessionTransitionInProgress = false
+        return result
+    }
+
+    @MainActor
+    private func sendWithTranscriptSessionTransition(
+        _ operation: @MainActor () async -> Bool
+    ) async -> Bool {
+        if store.continuityRequiresRecovery {
+            return await performTranscriptSessionTransition(operation)
+        }
+        return await operation()
+    }
+
+    private func cancelSettledAutoScroll() {
+        autoScrollTask?.cancel()
+        autoScrollTrailingPassRequested = false
+    }
+
     private func recordTranscriptContentChange(messageCountDelta: Int = 0) {
         // Stream revisions can arrive once per chunk. One detached response is
         // one unread item; message-count changes may add their exact delta.
@@ -1528,9 +1609,30 @@ struct ChatView: View {
         proxy: ScrollViewProxy,
         performanceInterval: GrokBuildPerformanceInterval? = nil
     ) {
-        autoScrollTask?.cancel()
+        guard !transcriptSessionTransitionInProgress else {
+            performanceInterval?.end()
+            return
+        }
+        // Restore, resume, and final rich-text settlement can all publish several
+        // state milestones in one window. Keep one bounded settlement task instead
+        // of cancel/restarting six ScrollViewProxy passes for every milestone.
+        guard autoScrollTask == nil else {
+            autoScrollTrailingPassRequested = true
+            if let performanceInterval {
+                autoScrollTrailingPerformanceInterval?.end()
+                autoScrollTrailingPerformanceInterval = performanceInterval
+            }
+            return
+        }
+        autoScrollTrailingPassRequested = false
         autoScrollTask = Task { @MainActor in
-            defer { performanceInterval?.end() }
+            defer {
+                performanceInterval?.end()
+                autoScrollTrailingPerformanceInterval?.end()
+                autoScrollTrailingPerformanceInterval = nil
+                autoScrollTrailingPassRequested = false
+                autoScrollTask = nil
+            }
             for gap in ChatAutoScrollPolicy.layoutSettleGapsMilliseconds {
                 if gap > 0 {
                     try? await Task.sleep(for: .milliseconds(gap))
@@ -1541,6 +1643,12 @@ struct ChatView: View {
                 guard transcriptIsAttachedToBottom || !transcriptHasUserScrolled else {
                     return
                 }
+                lastAutoScroll = Date()
+                scrollToBottom(proxy: proxy, instant: true)
+            }
+            let shouldRunTrailingPass = autoScrollTrailingPassRequested
+            if shouldRunTrailingPass,
+               transcriptIsAttachedToBottom || !transcriptHasUserScrolled {
                 lastAutoScroll = Date()
                 scrollToBottom(proxy: proxy, instant: true)
             }
@@ -2210,7 +2318,11 @@ struct ChatView: View {
                     let name = createSkillName.trimmingCharacters(in: .whitespacesAndNewlines)
                     guard !name.isEmpty else { return }
                     showCreateSkill = false
-                    Task { _ = await store.send("/create-skill \(name)") }
+                    Task {
+                        _ = await sendWithTranscriptSessionTransition {
+                            await store.send("/create-skill \(name)")
+                        }
+                    }
                 }
                 .keyboardShortcut(.defaultAction)
                 .buttonStyle(.borderedProminent)
@@ -2236,7 +2348,11 @@ struct ChatView: View {
                     let prompt = imaginePrompt.trimmingCharacters(in: .whitespacesAndNewlines)
                     guard !prompt.isEmpty else { return }
                     showImagine = false
-                    Task { _ = await store.send("/imagine \(prompt)") }
+                    Task {
+                        _ = await sendWithTranscriptSessionTransition {
+                            await store.send("/imagine \(prompt)")
+                        }
+                    }
                 }
                 .keyboardShortcut(.defaultAction)
                 .buttonStyle(.borderedProminent)
@@ -2744,7 +2860,9 @@ struct ChatView: View {
         case "deep-research":
             showDeepResearch = true
         default:
-            _ = await store.send("/\(command.name)")
+            _ = await sendWithTranscriptSessionTransition {
+                await store.send("/\(command.name)")
+            }
             inputFocused = true
         }
     }
@@ -2759,7 +2877,9 @@ struct ChatView: View {
         let preparation = store.prepareSubmit(text)
         guard preparation != .rejected else { return }
         Task {
-            let accepted = await store.send(text, preparedIntentID: preparation.intentID)
+            let accepted = await sendWithTranscriptSessionTransition {
+                await store.send(text, preparedIntentID: preparation.intentID)
+            }
             input = ComposerSubmissionPolicy.draftAfterSubmission(
                 currentDraft: input,
                 submittedDraft: submittedDraft,

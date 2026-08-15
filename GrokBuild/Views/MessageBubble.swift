@@ -8,6 +8,10 @@ struct MessageBubble: View {
     /// Incrementally maintained by `ChatStore` per display flush. Passing it in keeps
     /// per-render work O(1); the batch `make` fallback covers a missing value only.
     var streamingPresentation: StreamingMarkdownPresentation? = nil
+    /// Resume/recovery controls disappear while process and continuity state changes.
+    /// Render one non-selectable, non-rich snapshot during that transaction so AppKit's
+    /// selection overlay cannot feed back into the transcript LazyVStack layout.
+    var isLayoutFrozen: Bool = false
 
     var body: some View {
         switch message.role {
@@ -24,10 +28,16 @@ struct MessageBubble: View {
                     Text("You")
                         .font(AppTheme.Typography.section)
                         .foregroundStyle(AppTheme.Palette.textMuted)
-                    Text(message.content)
-                        .textSelection(.enabled)
-                        .font(AppTheme.Typography.body)
-                        .lineSpacing(2)
+                    if isLayoutFrozen {
+                        Text(message.content)
+                            .font(AppTheme.Typography.body)
+                            .lineSpacing(2)
+                    } else {
+                        Text(message.content)
+                            .textSelection(.enabled)
+                            .font(AppTheme.Typography.body)
+                            .lineSpacing(2)
+                    }
                 }
                 Spacer(minLength: 0)
             }
@@ -37,7 +47,13 @@ struct MessageBubble: View {
         case .assistant:
             if !message.content.isEmpty {
                 VStack(alignment: .leading, spacing: 7) {
-                    if isStreaming {
+                    if isLayoutFrozen {
+                        Text(message.content)
+                            .font(AppTheme.Typography.body)
+                            .lineSpacing(3)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .accessibilityLabel("Agent response: \(message.content)")
+                    } else if isStreaming {
                         // Settled bubbles must never pay for a streaming scan: the
                         // presentation is computed only on this branch, preferring the
                         // store's incremental value over the full-string fallback.

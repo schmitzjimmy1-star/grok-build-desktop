@@ -58,6 +58,20 @@ final class ResponsiveAndAccessibilityTests: XCTestCase {
         )
     }
 
+    func testMarkdownTableWidthUsesTheSharedGeometryEpsilon() throws {
+        let richMessage = try source("GrokBuild/Views/RichMessageView.swift")
+        let tableStart = try XCTUnwrap(richMessage.range(of: "private struct MarkdownTableView"))
+        let tableSource = String(richMessage[tableStart.lowerBound...])
+
+        XCTAssertTrue(tableSource.contains("commitAvailableWidth(proxy.size.width)"))
+        XCTAssertTrue(tableSource.contains("width.isFinite, width > 0"))
+        XCTAssertTrue(tableSource.contains("ResponsiveLayoutPolicy.shouldCommitMeasuredWidth("))
+        XCTAssertFalse(
+            tableSource.contains("onChange(of: proxy.size.width) { _, width in availableWidth = width }"),
+            "sub-point table width jitter must not rewrite state during LazyVStack placement"
+        )
+    }
+
     func testInspectorPlacementHysteresisAvoidsThresholdOscillation() {
         let docked = ResponsiveLayoutPolicy.InspectorPlacement.dockedColumn
         let overlay = ResponsiveLayoutPolicy.InspectorPlacement.overlay

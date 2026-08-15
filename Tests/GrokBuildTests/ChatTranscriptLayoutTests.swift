@@ -20,6 +20,61 @@ final class ChatTranscriptLayoutTests: XCTestCase {
         XCTAssertTrue(gaps.allSatisfy { $0 >= 0 })
     }
 
+    func testMessageBlockIdentityIncludesOwningMessage() {
+        let firstMessageID = UUID()
+        let secondMessageID = UUID()
+        let blocks: [ChatTranscriptLayout.MessageBlock] = [.agentHeader, .toolActivity, .answer]
+        let first = ChatTranscriptLayout.identifiedMessageBlocks(
+            messageID: firstMessageID,
+            blocks: blocks
+        )
+        let second = ChatTranscriptLayout.identifiedMessageBlocks(
+            messageID: secondMessageID,
+            blocks: blocks
+        )
+
+        XCTAssertEqual(first.map(\.block), blocks)
+        XCTAssertEqual(Set(first).count, blocks.count)
+        XCTAssertTrue(first.allSatisfy { $0.messageID == firstMessageID })
+        XCTAssertTrue(Set(first).isDisjoint(with: Set(second)))
+    }
+
+    func testRestoreSettlementCoalescesAndFreezesSelectableTranscript() throws {
+        let repositoryRoot = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        let chatSource = try String(
+            contentsOf: repositoryRoot.appendingPathComponent("GrokBuild/Views/ChatView.swift"),
+            encoding: .utf8
+        )
+        let bubbleSource = try String(
+            contentsOf: repositoryRoot.appendingPathComponent("GrokBuild/Views/MessageBubble.swift"),
+            encoding: .utf8
+        )
+
+        XCTAssertTrue(chatSource.contains("guard autoScrollTask == nil else"))
+        XCTAssertTrue(chatSource.contains("autoScrollTrailingPassRequested = true"))
+        XCTAssertTrue(chatSource.contains("guard !transcriptSessionTransitionInProgress else"))
+        XCTAssertTrue(chatSource.contains("await Task.yield()\n        let result = await operation()"))
+        XCTAssertGreaterThanOrEqual(
+            chatSource.components(separatedBy: "performTranscriptSessionTransition {").count - 1,
+            4,
+            "launch, task-contract, and inspector Resume/Continue actions share one transaction boundary"
+        )
+        XCTAssertTrue(chatSource.contains("private func sendWithTranscriptSessionTransition("))
+        XCTAssertTrue(chatSource.contains("if store.continuityRequiresRecovery"))
+        XCTAssertGreaterThanOrEqual(
+            chatSource.components(separatedBy: "sendWithTranscriptSessionTransition {").count - 1,
+            7,
+            "composer, slash, goal, workflow, research, create-skill, and imagine sends share the recovery boundary"
+        )
+        XCTAssertTrue(chatSource.contains("isLayoutFrozen: transcriptSessionTransitionInProgress"))
+        XCTAssertTrue(bubbleSource.contains("if isLayoutFrozen"))
+        XCTAssertTrue(bubbleSource.contains("isLayoutFrozen: Bool = false"))
+        XCTAssertTrue(bubbleSource.contains(".textSelection(.enabled)"))
+    }
+
     func testDetachedTranscriptStopsFollowingAndCountsNewContent() {
         XCTAssertTrue(
             ChatTranscriptScrollPolicy.isAttached(
@@ -417,7 +472,10 @@ final class ChatTranscriptLayoutTests: XCTestCase {
         XCTAssertTrue(toolView.contains("if let server = displayedMCPServer"))
         XCTAssertTrue(toolView.contains("Text(\"Using \\(server)\")"))
         XCTAssertTrue(toolView.contains("settledOutput"))
-        XCTAssertTrue(toolView.contains("textSelection(.enabled)"))
+        XCTAssertFalse(
+            toolView.contains("textSelection(.enabled)"),
+            "settled tool output must not mount AppKit SelectionOverlay inside the transcript LazyVStack"
+        )
         XCTAssertTrue(toolView.contains("grok-assistant-tool-\\(sanitizedToolID)"))
         XCTAssertTrue(toolView.contains("accessibilityLabel(server: displayedMCPServer)"))
         XCTAssertTrue(toolView.contains("if let output = settledOutput"))
@@ -773,8 +831,16 @@ final class ChatTranscriptLayoutTests: XCTestCase {
         )
 
         let preparation = try XCTUnwrap(source.range(of: "let preparation = store.prepareSubmit(text)"))
-        let delivery = try XCTUnwrap(source.range(of: "Task {\n            let accepted = await store.send"))
+        let delivery = try XCTUnwrap(
+            source.range(of: "let accepted = await sendWithTranscriptSessionTransition",
+                         range: preparation.upperBound..<source.endIndex)
+        )
+        let send = try XCTUnwrap(
+            source.range(of: "await store.send(text, preparedIntentID: preparation.intentID)",
+                         range: delivery.upperBound..<source.endIndex)
+        )
         XCTAssertLessThan(preparation.lowerBound, delivery.lowerBound)
+        XCTAssertLessThan(delivery.lowerBound, send.lowerBound)
         XCTAssertTrue(source.contains("onSubmit: submit"))
         XCTAssertTrue(composer.contains("onSubmit()"))
     }
