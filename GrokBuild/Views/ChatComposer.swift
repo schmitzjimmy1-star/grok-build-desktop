@@ -219,20 +219,20 @@ struct ChatComposer<QueueBar: View, PrimaryControls: View, ActionControls: View>
                     }
                 }
             }
-            .padding(.horizontal, 11)
-            .padding(.vertical, 10)
+            .padding(.horizontal, ComposerDensityPolicy.surfaceHorizontalPadding)
+            .padding(.vertical, ComposerDensityPolicy.surfaceVerticalPadding)
             .frame(maxWidth: AppTheme.Layout.composerMaxWidth, alignment: .leading)
             .grokGlassSurface(
                 cornerRadius: AppTheme.Radius.composer,
                 emphasized: isFileDropTargeted,
-                shadowed: true
+                shadowed: ComposerDensityPolicy.surfaceHasShadow
             )
             .onDrop(of: [UTType.fileURL.identifier], isTargeted: $isFileDropTargeted) { providers in
                 onFileDrop(providers)
             }
             .frame(maxWidth: .infinity, alignment: .center)
         }
-        .padding(.horizontal, 20)
-        .padding(.vertical, 8)
+        .padding(.horizontal, ComposerDensityPolicy.outerHorizontalPadding)
+        .padding(.vertical, ComposerDensityPolicy.outerVerticalPadding)
     }
 }

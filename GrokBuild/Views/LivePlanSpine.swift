@@ -313,6 +313,13 @@ enum ThreadTaskContractPresentation {
         }
     }
 
+    static func collapsedSummary(objective: String, phase: String) -> String {
+        [objective, phase]
+            .map { TranscriptTextPresentation.singleLine($0, maxLength: 240) }
+            .filter { !$0.isEmpty }
+            .joined(separator: " · ")
+    }
+
     static func phase(
         live: RunEvidenceLiveProjection?,
         snapshot: RunEvidenceSnapshot?,
@@ -467,22 +474,13 @@ struct ThreadTaskContractView: View {
             HStack(spacing: 7) {
                 Image(systemName: isExpanded ? "chevron.down" : "chevron.right")
                     .font(.caption2.weight(.semibold))
-                Text(objective)
+                Text(ThreadTaskContractPresentation.collapsedSummary(
+                    objective: objective,
+                    phase: phase
+                ))
                     .fontWeight(.medium)
                     .lineLimit(1)
-                Text("·").foregroundStyle(.tertiary)
-                Text(phase)
-                    .lineLimit(1)
-                Text("·").foregroundStyle(.tertiary)
-                Text(project)
-                if let branch {
-                    Text("·").foregroundStyle(.tertiary)
-                    Label(branch, systemImage: "arrow.triangle.branch")
-                        .labelStyle(.titleAndIcon)
-                }
                 Spacer(minLength: 6)
-                Text(modelReceipt)
-                    .foregroundStyle(.tertiary)
             }
             .frame(maxWidth: .infinity, minHeight: 26, alignment: .leading)
             .contentShape(Rectangle())
@@ -506,7 +504,10 @@ struct ThreadTaskContractView: View {
 
     private var contractDetails: some View {
         VStack(alignment: .leading, spacing: 7) {
+            contractRow("Project", project)
             contractRow("Worktree", worktree)
+            contractRow("Branch", branch ?? "Not reported")
+            contractRow("Model receipt", modelReceipt)
             contractRow("Review", reviewState)
             contractRow(
                 "Requested tools",
