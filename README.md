@@ -152,7 +152,7 @@ Make Browser and Computer Use available from **Settings → Browser** / **Settin
 
 - A normal windowed Mac app with standard application menus, native SF Symbols, and no redundant status-item applet. Settings → App owns System/Light/Dark appearance selection and applies it without restarting a session.
 - Grouped vertical Settings navigation keeps all configuration areas readable without a fourteen-tab horizontal traffic jam.
-- In-app update panels for both GrokBuild Desktop App and the `grok` CLI. App updates are offered only for signed and notarized releases.
+- In-app update panels for the `grok` CLI. This personal line installs with `make ship` under Apple Development. It does not offer notarized GitHub app updates.
 - Adaptive SwiftUI design with accessibility labels for interactive status controls plus native link elements, semantic headings and nested lists/checklists, spoken equation labels, and table header/cell summaries in rich results. Rich rendering is detached from the main actor and reuses parsed content where message identity, content, width, appearance, and render version still match.
 
 ## Permissions & Privacy
@@ -173,7 +173,7 @@ You only need **Xcode Command Line Tools**:
 xcode-select --install
 ```
 
-That is enough to compile the app, create the `.app` bundle and DMG, and codesign/notarize.
+That is enough to compile the app, create the `.app` bundle, and install with `make ship`.
 
 ```bash
 make build          # build the release binary
@@ -184,7 +184,7 @@ make app            # create dist/GrokBuild.app
 make dmg            # create the .app + DMG
 ```
 
-See [BUILDING.md](BUILDING.md) for packaging, signing, notarization, and GitHub releases.
+See [BUILDING.md](BUILDING.md) for packaging and the `make ship` install path.
 
 ### Opening a self-built (unsigned) app
 
@@ -197,7 +197,7 @@ Local builds from `make app` / `make run` are unsigned. macOS Gatekeeper may blo
    xattr -cr /path/to/GrokBuild.app
    ```
 
-Self-built apps do not receive in-app upgrade offers. Use a notarized GitHub release for one-click updates, or keep rebuilding from source.
+This personal line stays on `/Applications/GrokBuild.app` via `make ship`. Rebuild from source when you want a new install.
 
 ### Recommended for SwiftUI work
 
@@ -213,16 +213,15 @@ You can still build from the terminal with `make` or `swift build` with full Xco
 xed .          # open Package.swift in Xcode
 ```
 
-### Signing & notarization
+### Signing on this Mac
 
 ```bash
-cp .env.example .env   # optional: SIGN_IDENTITY, NOTARY_PROFILE
-make signed SIGN_IDENTITY="Developer ID Application: Your Name (TEAMID)"
-make notarize NOTARY_PROFILE=AC_PASSWORD
-make release RELEASE_TYPE=notarized
+cp .env.example .env   # optional: Apple Development SIGN_IDENTITY
+make ship
+make open
 ```
 
-Signing requires a **Developer ID Application** certificate, and notarization requires App Store Connect access. Full details: [BUILDING.md](BUILDING.md).
+Signing uses the local **Apple Development** identity (Team `DD2GCQJVB4`). `make notarize` is refused. Full details: [BUILDING.md](BUILDING.md).
 
 ### Developer documentation
 

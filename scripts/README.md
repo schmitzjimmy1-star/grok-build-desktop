@@ -85,12 +85,12 @@ only deliberately through the matching `GROKBUILD_SOURCE_*` environment values.
 
 ---
 
-## Signing & notarization
+## Signing (Apple Development on this Mac)
 
 | Script | Purpose |
 |--------|---------|
 | [`codesign-app-bundle.sh`](codesign-app-bundle.sh) | Sign `GrokBuild.app` and nested binaries (`GrokBuild`, `GrokBuildComputerUseMCP`, `agent-desktop`) with a shared bundle ID for Accessibility. Ad-hoc (`-`) when no identity is passed. |
-| [`notarize.sh`](notarize.sh) | Submit `.app`, `.dmg`, or `.zip` to Apple notary service, wait, staple, clean up temp zip. Used by `make notarize` and notarized release flows. |
+| [`notarize.sh`](notarize.sh) | Unused on this personal line. `make notarize` is refused. |
 
 **`codesign-app-bundle.sh`**
 
@@ -101,14 +101,7 @@ only deliberately through the matching `GROKBUILD_SOURCE_*` environment values.
 
 **`notarize.sh`**
 
-```bash
-NOTARY_PROFILE=AC_PASSWORD ./scripts/notarize.sh
-NOTARY_PROFILE=AC_PASSWORD ./scripts/notarize.sh dist/GrokBuild.app
-
-# CI / API key
-APPLE_API_KEY_PATH=... APPLE_API_KEY_ID=... APPLE_API_ISSUER_ID=... \
-  ./scripts/notarize.sh dist/GrokBuild.app
-```
+Do not run this on the personal line. `make notarize` exits with an error and tells you to use `make ship`.
 
 ---
 
@@ -116,17 +109,16 @@ APPLE_API_KEY_PATH=... APPLE_API_KEY_ID=... APPLE_API_ISSUER_ID=... \
 
 | Script | Purpose |
 |--------|---------|
-| [`release.sh`](release.sh) | Build, tag, and publish a GitHub release via `gh` (mirrors CI). Supports unsigned and notarized release types. |
+| [`release.sh`](release.sh) | Unsigned personal GitHub release only if explicitly asked. Refuses `RELEASE_TYPE=notarized`. |
 | [`load-dotenv.sh`](load-dotenv.sh) | Shell helper sourced by `release.sh`: load `.env` without overriding variables already set by `make` or CI. Not invoked directly. |
 
 **`release.sh`**
 
 ```bash
-make release
-make release RELEASE_TYPE=notarized SIGN_IDENTITY="Developer ID Application: ..." NOTARY_PROFILE=AC_PASSWORD
+make ship
 ```
 
-Requires `gh` (`brew install gh && gh auth login`). Release tag must match `VERSION`. Tags and `gh release` writes go to `personal` (`schmitzjimmy1-star/grok-build-desktop`) only — never `origin`. Existing tags are not moved or force-updated. See [BUILDING.md](../BUILDING.md#github-releases).
+`make release RELEASE_TYPE=notarized` is refused. The install path is `make ship` under Apple Development. See [BUILDING.md](../BUILDING.md).
 
 ---
 
@@ -177,9 +169,9 @@ AGENT_DESKTOP_PATH=/custom/path/agent-desktop ./scripts/bundle-agent-desktop.sh 
 |-------------|------------------|
 | `make build`, `make build-debug` | *(SwiftPM only)* |
 | `make run`, `make run-debug`, `make run-app` | `build-dev-app.sh` |
-| `make app`, `make dmg`, `make signed`, `make install` | `build-macos-app.sh`, `codesign-app-bundle.sh`, optionally `notarize.sh` |
-| `make notarize` | `notarize.sh` |
-| `make release` | `release.sh` (+ build/sign/notarize chain) |
+| `make app`, `make dmg`, `make signed`, `make install`, `make ship` | `build-macos-app.sh`, `codesign-app-bundle.sh` |
+| `make notarize` | Refused. Use `make ship`. |
+| `make release` | Refuses `RELEASE_TYPE=notarized`. Not the install path. |
 
 ```bash
 make help

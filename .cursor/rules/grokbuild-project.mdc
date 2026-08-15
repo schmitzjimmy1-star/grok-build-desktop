@@ -12,7 +12,7 @@ SwiftPM windowed macOS app — UI for `grok agent stdio`, not a replacement for 
 - Canonical worktree/remote/retired-line identity: `CANONICAL_WORKTREE.md` (run its preflight first).
 - Version: `VERSION` file → `AppVersion.display`.
 - Installed provenance: `AppBuildIdentity` reads the repository, branch, commit, channel, and dirty state stamped into `Info.plist` by `scripts/build-identity.sh`.
-- Build: `make run`, `make test`, `make app`, `make release` (see `BUILDING.md`).
+- Build: `make run`, `make test`, `make ship` (see `BUILDING.md`). This personal line does not notarize.
 - Full reference: `ARCHITECTURE.md`, agent entry: `AGENTS.md`.
 
 ## When editing

@@ -38,7 +38,9 @@ stores, minimize scope, and match surrounding Swift/SwiftUI conventions.
   `make test`.
 - Package, sign, and install only through `make`; final acceptance uses `make ship`.
   It must prove stamp == HEAD, `dirty=false` on the committed build, dist/installed
-  byte parity, deep/strict signing under Team `DD2GCQJVB4`, and no quarantine.
+  byte parity, deep/strict signing under Apple Development Team `DD2GCQJVB4`, and
+  no quarantine. This personal line does not notarize or publish GitHub
+  `(Notarized)` releases.
 - Rebuild/relaunch and perform focused Computer Use acceptance against the real
   `/Applications/GrokBuild.app`. Reach the changed state and verify meaningful AX
   names/roles. Compilation or helper output is not installed-app proof.

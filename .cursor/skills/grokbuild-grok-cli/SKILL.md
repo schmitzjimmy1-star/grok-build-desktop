@@ -38,7 +38,7 @@ await GrokCLIService.versionDisplayLine()
 GrokProcess — grok agent … stdio, ACP events
 
 // Updates
-UpdateChecker.checkAppRelease()   // notarized GitHub releases only
+UpdateChecker.checkAppRelease()   // unused on this personal line; install with make ship
 UpdateChecker.checkGrokCLI()      // grok update --check --json
 ```
 

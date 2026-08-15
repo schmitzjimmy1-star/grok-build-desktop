@@ -1,6 +1,6 @@
 # GitHub Actions workflows
 
-CI/CD for GrokBuild on `macos-latest`. See [BUILDING.md](../../BUILDING.md#github-releases) for release prep, secrets setup, and the local `make release` alternative.
+CI/CD for GrokBuild on `macos-latest`. This personal line installs with `make ship` under Apple Development. Do not dispatch the Release workflow for a notarized GitHub title. See [BUILDING.md](../../BUILDING.md).
 
 | Workflow | File | When it runs |
 |----------|------|--------------|
@@ -169,12 +169,13 @@ Release title: **`v{VERSION} (Notarized)`**. **Required for in-app GrokBuild upd
 
 ### Local equivalent
 
+This personal line does not use the Release workflow. Install with:
+
 ```bash
-make release                                              # unsigned
-make release RELEASE_TYPE=notarized SIGN_IDENTITY="..." NOTARY_PROFILE=...
+make ship
 ```
 
-See [`scripts/release.sh`](../../scripts/release.sh) and [scripts/README.md](../../scripts/README.md).
+`make release RELEASE_TYPE=notarized` is refused.
 
 ---
 
@@ -183,8 +184,5 @@ See [`scripts/release.sh`](../../scripts/release.sh) and [scripts/README.md](../
 | Goal | Use |
 |------|-----|
 | Verify a PR before merge | **PR Checks** (automatic on PRs to `main`) |
-| Ship a version to GitHub | **Release** (manual dispatch) |
+| Install on this Mac | `make ship` |
 | Quick local validation | `make test && make app` |
-| Ship from your machine | `make release` instead of CI |
-
-Use **one release path per version** — do not run CI Release and local `make release` for the same tag.

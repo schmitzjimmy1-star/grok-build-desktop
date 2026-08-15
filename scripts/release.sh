@@ -3,14 +3,18 @@ set -euo pipefail
 
 # Build and publish a GitHub release (mirrors .github/workflows/release.yml).
 #
+# This personal line installs with `make ship` under Apple Development
+# (Team DD2GCQJVB4). It does not publish notarized GitHub releases.
+# `RELEASE_TYPE=notarized` is refused.
+#
 # Publication target is the personal remote only:
 #   personal → schmitzjimmy1-star/grok-build-desktop
 # `origin` (rimusz/grok-build-desktop) is read-only upstream. This script
 # never pushes tags to origin and never force-updates a release tag.
 #
 # Usage:
-#   make release
-#   make release RELEASE_TYPE=notarized SIGN_IDENTITY="Developer ID Application: ..."
+#   make ship
+#   make release                 # unsigned personal GitHub release only, if explicitly asked
 #   make release RELEASE_VERSION=v0.1.4   # must match VERSION file
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -41,6 +45,14 @@ fi
 
 if [ "$tag_name" != "$default_tag" ]; then
   echo "ERROR: Release tag '$tag_name' does not match VERSION '$default_tag'. Update VERSION or set RELEASE_VERSION."
+  exit 1
+fi
+
+if [ "$RELEASE_TYPE" = "notarized" ]; then
+  echo "ERROR: This personal line does not publish notarized GitHub releases."
+  echo "Install with: make ship"
+  echo "Signing identity is Apple Development on this Mac (Team DD2GCQJVB4)."
+  echo "Do not chase Developer ID or notary profiles."
   exit 1
 fi
 

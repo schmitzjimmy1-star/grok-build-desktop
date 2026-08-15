@@ -3,9 +3,11 @@
 # Uses SwiftPM (no Xcode project required).
 # See BUILDING.md for full packaging & signing instructions.
 #
-# Optional: copy .env.example to .env for local SIGN_IDENTITY / NOTARY_PROFILE / RELEASE_TYPE
+# Optional: copy .env.example to .env for local SIGN_IDENTITY.
+# This personal line installs with `make ship` under Apple Development.
+# It does not notarize or publish notarized GitHub releases.
 SIGN_IDENTITY ?=
-NOTARY_PROFILE ?= AC_PASSWORD
+NOTARY_PROFILE ?=
 RELEASE_TYPE ?= unsigned
 -include .env
 # Makefile $(...) parsing breaks TEAMID in parentheses — read identity via shell instead.
@@ -23,10 +25,10 @@ export SIGN_IDENTITY NOTARY_PROFILE RELEASE_TYPE
 #   make run            # Build + launch the app
 #   make app            # Package .app into dist/
 #   make install        # Package .app and copy to /Applications/ (signs when SIGN_IDENTITY in .env)
-#   make dmg            # Package .app + DMG (notarizes by default via NOTARY_PROFILE=AC_PASSWORD; pass NOTARY_PROFILE= to skip)
+#   make ship           # Test + install + verify Apple Development receipt
+#   make dmg            # Package .app + DMG (no notarization)
 #   make signed         # Codesigned build
-#   make notarize       # Notarize (NOTARY_PROFILE=...)
-#   make release        # Local only: build + publish GitHub release (gh auth); or push a v* tag for CI
+#   make release        # Unsigned personal GitHub release only if explicitly asked
 #   make open           # Restart + launch /Applications/GrokBuild.app
 
 APP_NAME       ?= GrokBuild
@@ -57,19 +59,16 @@ help: ## Show this help
 	@echo "  $(YELLOW)make run-debug$(NC)        Build debug + launch (dev tools, Simulate Updates)"
 	@echo "  $(YELLOW)make app$(NC)              Package .app into dist/"
 	@echo "  $(YELLOW)make install$(NC)          Package .app and copy to /Applications/ (signs if SIGN_IDENTITY in .env)"
-	@echo "  $(YELLOW)make dmg$(NC)              Build .app + DMG (notarizes by default; NOTARY_PROFILE= skips)"
-	@echo "  $(YELLOW)make signed$(NC)           Codesigned release"
-	@echo "  $(YELLOW)make notarize$(NC)         Notarize (NOTARY_PROFILE=...)"
-	@echo "  $(YELLOW)make release$(NC)          Local only: build + publish GitHub release (or push v* tag for CI)"
+	@echo "  $(YELLOW)make ship$(NC)             Test + install + verify Apple Development receipt"
+	@echo "  $(YELLOW)make dmg$(NC)              Build .app + DMG (no notarization)"
+	@echo "  $(YELLOW)make signed$(NC)           Codesigned local build"
+	@echo "  $(YELLOW)make release$(NC)          Unsigned personal GitHub release only if explicitly asked"
 	@echo "  $(YELLOW)make open$(NC)             Restart + launch /Applications/$(APP_NAME).app"
 	@echo "  $(YELLOW)make clean$(NC)            Remove build artifacts"
 	@echo ""
-	@echo "See BUILDING.md for full packaging & signing instructions."
+	@echo "See BUILDING.md for packaging. This personal line uses make ship."
 	@echo ""
-	@echo "Quick start: make run"
-	@echo "Notarize example: make dmg NOTARY_PROFILE=AC_PASSWORD SIGN_IDENTITY=..."
-	@echo "Release example: make release   # uses RELEASE_TYPE from .env when set"
-	@echo "Notarized release: make release RELEASE_TYPE=notarized SIGN_IDENTITY=... NOTARY_PROFILE=..."
+	@echo "Quick start: make ship && make open"
 
 build-debug: ## Build using SwiftPM (Debug) - includes Simulate Updates menu
 	@echo "$(GREEN)==> Building $(APP_NAME) with SwiftPM (debug)...$(NC)"
@@ -218,9 +217,11 @@ app: ## Build the .app bundle (with icon). Signs when SIGN_IDENTITY is set in .e
 	fi
 	@echo "$(GREEN)==> .app ready in dist/$(APP_NAME).app$(NC)"
 
-notarize: signed ## Notarize (builds + signs + notarizes). Set NOTARY_PROFILE=...
-	@./scripts/notarize.sh
-	@echo "$(GREEN)==> Notarization complete.$(NC)"
+notarize: ## Refused on this personal line. Use make ship.
+	@echo "$(RED)ERROR: This personal line does not notarize.$(NC)"
+	@echo "Install with: make ship"
+	@echo "Signing identity is Apple Development on this Mac (Team $(EXPECTED_TEAM))."
+	@exit 1
 
 release: ## Publish GitHub release (RELEASE_TYPE/SIGN_IDENTITY/NOTARY_PROFILE from .env)
 	@echo "==> Release: type=$(RELEASE_TYPE), sign=$$([ -n '$(SIGN_IDENTITY)' ] && echo yes || echo no), notary=$(NOTARY_PROFILE)"

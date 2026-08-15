@@ -1,8 +1,8 @@
 # GrokBuild Agentic Cockpit Campaign — 2026-08-15
 
-Status: **Phase 1 complete**; **Phase 2 deferred** (user skip, 2026-08-15); **Phase 3 complete** (merged as `a799bf5` / PR #98, Gate H green); **Phase 4 complete for Gates A–H** (merged as `b9bf633` / PR #99, post-merge ship `dirty=false`). True notarized `v0.1.22` is blocked: this machine has no Developer ID identity.
+Status: **Phase 1 complete**; **Phase 2 deferred** (user skip, 2026-08-15); **Phase 3 complete** (merged as `a799bf5` / PR #98, Gate H green); **Phase 4 complete** (merged as `b9bf633` / PR #99, post-merge ship `dirty=false`). No notarized GitHub release is outstanding. Install path is `make ship` under Apple Development.
 
-Baseline: `main == personal/main` at `b9bf633` (PR #99 on top of Phase 3 `a799bf5` / PR #98). Installed app stamp `b9bf633`, `dirty=false`, dist ↔ installed SHA-256 `03cb7111307ffebfd65ef38ed175cdc92b9960c6983efa05667dcb360a1fa025`. Personal GitHub still has no `v0.1.22` tag. Origin's unrelated `v0.1.22` at `8e60dfca` was left untouched.
+Baseline: `main == personal/main` at `b9bf633` (PR #99 on top of Phase 3 `a799bf5` / PR #98). Installed app stamp `b9bf633`, `dirty=false`, dist ↔ installed SHA-256 `03cb7111307ffebfd65ef38ed175cdc92b9960c6983efa05667dcb360a1fa025`. Personal GitHub has no `v0.1.22` tag. Origin's unrelated `v0.1.22` at `8e60dfca` was left untouched.
 
 Following the 2026-08-14 Residual Closeout Campaign (which closed all open leftovers, updated the official CLI to 1.0.4, modernized ACP contract tests, and published the notarized release with zero leftovers), this campaign elevates GrokBuild into a resilient, transparent cockpit for long-horizon agentic workloads.
 
@@ -17,7 +17,7 @@ This follows Gates A–H in [`docs/OUTSTANDING.md`](OUTSTANDING.md) and the iden
 | **Phase 1** | **Long-Horizon Task Retention & Scheduled Work Lifetime** | Implement `SessionRuntimeRetentionPolicy` to protect active scheduled and background sessions from LRU eviction; surface schedule indicators in session chrome. | 1 multi-tab retention verification turn (frozen marker) | LRU eviction tests pass, sessions with an authoritative runtime lease or live background work stay pinned, installed Computer Use proves retention across tab switching, Gate F cleanup & process-zero. |
 | **Phase 2** | **`ChatView` Component Decomposition** | Extract `TopBarView.swift`, `ComposerBarView.swift`, and `WelcomeStateView.swift` from monolithic `ChatView.swift` (~3,300 lines) with zero contract/visual regressions. | None (pure UI structural refactor) | `make test` green (880+ tests), all AX identifiers and layout metrics preserved, Computer Use verifies light/dark appearance, `make ship`. |
 | **Phase 3** | **Hostile Subagent Permutation Hardening & Delegation Tree** | Reducer permutations already shipped (forward Slice 1). Remaining increment: plumb per-worker `tokens_used`/`turns` into the Run Inspector, nest spawn→child delegation rows, add two-child hostile tests, surface finish-only receipts. | 1 native agentic smoke packet (3 tools + 2 concurrent children) | Two-child permutation tests passing, live worker metrics displayed in Run Inspector, zero event loss, Gate F exact cleanup & process-zero. |
-| **Phase 4** | **OpenRouter Catalog Pricing & Provider Routing Expansion** | Do **not** re-implement `ModelPricingStore` / `SessionUsageLedger` (shipped in `v0.1.21`). Live OpenRouter/custom-model probe, optional per-provider grouping only if still a real gap, notarized `v0.1.22`. | 1 live OpenRouter/custom model probe | Live HUD vs catalog rates verified without app-side fallback chains, Gate F cleanup, notarized release `v0.1.22`. |
+| **Phase 4** | **OpenRouter Catalog Pricing & Provider Routing Expansion** | Do **not** re-implement `ModelPricingStore` / `SessionUsageLedger` (shipped in `v0.1.21`). Live OpenRouter/custom-model probe. No notarized GitHub release. | 1 live OpenRouter/custom model probe | Live HUD vs catalog rates verified without app-side fallback chains, Gate F cleanup, `make ship` on this Mac. |
 
 ---
 
@@ -143,31 +143,26 @@ Unit tests passing, Run Inspector delegation tree verified via Computer Use, Gat
 ## Phase 4 — OpenRouter Catalog Pricing & Provider Routing Expansion
 
 ### Purpose
-Prove live OpenRouter/custom-model cost HUD against catalog rates and publish notarized `v0.1.22`. Do not rebuild pricing ingest.
+Prove live OpenRouter/custom-model cost HUD against catalog rates. Do not rebuild pricing ingest. Do not publish a notarized GitHub release.
 
 ### Scope
 - `ModelPricingStore` and `SessionUsageLedger` already shipped in `v0.1.21`. Do not re-implement them.
 - Optional: group custom/subagent models by provider only if Settings still has a real two-bucket gap after reading `AgentsSettingsPane` / `ChatStore.groupedModels`.
 - Live OpenRouter/custom-model probe. No app-side provider fallback chains or fabricated status claims.
-- Bump `VERSION` to `0.1.22` and publish personal notarized release `v0.1.22`.
+- Bump `VERSION` to `0.1.22` and install with `make ship`.
 
 ### Frozen packet
 Marker: `GB-C9-P4-ROUTING-<UTC_TIMESTAMP>`
 Live model probe verifying pricing calculation and role attribution.
 
 ### Exit
-Pricing tests passing, installed Computer Use verifying cost HUD and Settings, notarized release published, Gate F cleanup, process-zero.
+Pricing tests passing, installed Computer Use verifying cost HUD and Settings, `make ship`, Gate F cleanup, process-zero.
 
-> **Execution status (2026-08-15): Complete — Gates A–H green; notarized
-> tag blocked.** Merged as `b9bf633` (PR #99). Marker
-> `GB-C9-P4-ROUTING-20260815T101000Z` settled `P4-OK`. HUD
-> `12.3k tokens · 1 turn · ≈$0.0049–$0.0049 est.` on pinned
-> `openai/gpt-4.1-mini`. `release.sh` publishes to `personal` only.
-> Grouping skipped (two-bucket already shipped). Post-merge `make ship`
-> **890 tests, 0 failures**, version `0.1.22`, SHA-256 `03cb7111…`,
-> `dirty=false`, Settings → App `Personal • main @ b9bf633e`. Live
-> `make release RELEASE_TYPE=notarized` refused Apple Development.
-> `origin` already has an unrelated `v0.1.22` at `8e60dfca`; that tag
-> was not moved. Personal `v0.1.21 (Notarized)` is Apple Development
-> and not actually notarized. Full receipt in
-> [`docs/OUTSTANDING.md`](OUTSTANDING.md).
+> **Execution status (2026-08-15): Complete — Gates A–H green.** Merged
+> as `b9bf633` (PR #99). Marker `GB-C9-P4-ROUTING-20260815T101000Z`
+> settled `P4-OK`. HUD `12.3k tokens · 1 turn · ≈$0.0049–$0.0049 est.`
+> on pinned `openai/gpt-4.1-mini`. Grouping skipped. Post-merge
+> `make ship` **890 tests, 0 failures**, version `0.1.22`, SHA-256
+> `03cb7111…`, `dirty=false`, Settings → App
+> `Personal • main @ b9bf633e`. No notarized GitHub release is
+> outstanding. Full receipt in [`docs/OUTSTANDING.md`](OUTSTANDING.md).
