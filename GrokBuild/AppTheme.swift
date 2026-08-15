@@ -3,30 +3,30 @@ import AppKit
 
 /// Shared visual language for the main GrokBuild surface.
 ///
-/// The app stays neutral across System, Light, and Dark appearances.
-/// Dark mode uses a soft-black canvas; light mode keeps real boundaries instead
-/// of a dark palette pasted on white. `canvasNSColor` is the same token the
+/// The app stays cool-neutral across System, Light, and Dark appearances.
+/// Dark mode uses a cool soft-black canvas; light mode uses stone gray with a
+/// slight blue bias instead of cream. `canvasNSColor` is the same token the
 /// AppKit window uses so the transparent titlebar matches the work surface.
 enum AppTheme {
     enum Palette {
         static let canvasNSColor = adaptiveNSColor(
-            dark: NSColor(red: 0.08, green: 0.08, blue: 0.08, alpha: 1),
-            light: NSColor(red: 0.985, green: 0.985, blue: 0.98, alpha: 1)
+            dark: NSColor(red: 0.07, green: 0.07, blue: 0.075, alpha: 1),
+            light: NSColor(red: 0.961, green: 0.961, blue: 0.969, alpha: 1)
         )
         static let canvas = Color(nsColor: canvasNSColor)
         static let sidebarNSColor = adaptiveNSColor(
-            dark: NSColor(red: 0.05, green: 0.05, blue: 0.05, alpha: 1),
-            light: NSColor(red: 0.95, green: 0.95, blue: 0.945, alpha: 1)
+            dark: NSColor(red: 0.045, green: 0.045, blue: 0.05, alpha: 1),
+            light: NSColor(red: 0.925, green: 0.925, blue: 0.933, alpha: 1)
         )
         static let sidebar = Color(nsColor: sidebarNSColor)
         static let chrome = canvas
         static let surface = adaptive(
-            dark: NSColor(red: 0.165, green: 0.165, blue: 0.165, alpha: 1),
+            dark: NSColor(red: 0.155, green: 0.155, blue: 0.165, alpha: 1),
             light: NSColor.white
         )
         static let surfaceHover = adaptive(
-            dark: NSColor(red: 0.205, green: 0.205, blue: 0.205, alpha: 1),
-            light: NSColor(red: 0.92, green: 0.92, blue: 0.91, alpha: 1)
+            dark: NSColor(red: 0.195, green: 0.195, blue: 0.205, alpha: 1),
+            light: NSColor(red: 0.890, green: 0.890, blue: 0.898, alpha: 1)
         )
         static let glassTint = adaptive(
             dark: NSColor.white.withAlphaComponent(0.035),
@@ -66,6 +66,18 @@ enum AppTheme {
             dark: NSColor.black.withAlphaComponent(0.16),
             light: NSColor.black.withAlphaComponent(0.035)
         )
+        /// Muted amber for stall / attention. Not the system orange accent.
+        static let warningNSColor = adaptiveNSColor(
+            dark: NSColor(red: 0.86, green: 0.68, blue: 0.36, alpha: 1),
+            light: NSColor(red: 0.58, green: 0.40, blue: 0.12, alpha: 1)
+        )
+        static let warning = Color(nsColor: warningNSColor)
+        /// Cool slate for links and interactive emphasis that is not chrome accent.
+        static let linkNSColor = adaptiveNSColor(
+            dark: NSColor(red: 0.62, green: 0.72, blue: 0.84, alpha: 1),
+            light: NSColor(red: 0.28, green: 0.40, blue: 0.55, alpha: 1)
+        )
+        static let link = Color(nsColor: linkNSColor)
 
         private static func adaptiveNSColor(dark: NSColor, light: NSColor) -> NSColor {
             NSColor(name: nil) { appearance in

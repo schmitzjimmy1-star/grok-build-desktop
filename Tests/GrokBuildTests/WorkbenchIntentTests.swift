@@ -62,8 +62,14 @@ final class WorkbenchIntentTests: XCTestCase {
         XCTAssertTrue(source.contains("mode.displayName"))
         XCTAssertFalse(source.contains("default: return \"Agent\""),
                        "unknown ACP mode ids must not be relabeled Agent")
-        XCTAssertTrue(source.contains("Text(\"Grok agent runs in this folder.\")"))
-        XCTAssertTrue(source.contains("Text(item.detail)"))
+        XCTAssertFalse(source.contains("Text(\"Grok agent runs in this folder.\")"),
+                       "welcome no longer repeats the folder-as-cwd line")
+        XCTAssertFalse(source.contains("Text(item.detail)"),
+                       "Ask/Build/Review chips keep detail in VoiceOver, not on-canvas paragraphs")
+        XCTAssertTrue(source.contains("accessibilityLabel(\"\\(item.title). \\(item.detail)\")"))
+        XCTAssertTrue(source.contains(".frame(width: 24, height: 24)"))
+        XCTAssertTrue(source.contains("AppTheme.Typography.heading"))
+        XCTAssertTrue(source.contains(".padding(.vertical, 24)"))
         XCTAssertTrue(source.contains("private var showsTaskContextStrip"))
         XCTAssertFalse(source.contains("Text(\"Recent tasks\")"))
         XCTAssertFalse(source.contains("showComposerDetails"))

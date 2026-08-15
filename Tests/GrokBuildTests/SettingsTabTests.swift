@@ -191,6 +191,50 @@ final class SettingsTabTests: XCTestCase {
         XCTAssertTrue(source.contains("Image(systemName: \"checkmark\")"))
     }
 
+    func testAppThemeLightCanvasIsCoolNeutral() {
+        let light = NSAppearance(named: .aqua)!
+        let dark = NSAppearance(named: .darkAqua)!
+        let canvasLight = sRGBComponents(of: AppTheme.Palette.canvasNSColor, appearance: light)
+        let sidebarLight = sRGBComponents(of: AppTheme.Palette.sidebarNSColor, appearance: light)
+        let canvasDark = sRGBComponents(of: AppTheme.Palette.canvasNSColor, appearance: dark)
+
+        XCTAssertGreaterThanOrEqual(canvasLight.b, canvasLight.r - 0.001,
+                                    "Light canvas must not keep a warm/cream blue deficit")
+        XCTAssertGreaterThanOrEqual(sidebarLight.b, sidebarLight.r - 0.001,
+                                    "Light sidebar must not keep a warm/cream blue deficit")
+        XCTAssertGreaterThan(canvasDark.b, canvasDark.r,
+                             "Dark canvas keeps a cool bias so charcoal does not read brown")
+        XCTAssertNotEqual(AppTheme.Palette.warningNSColor, AppTheme.Palette.linkNSColor)
+        _ = AppTheme.Palette.warning
+        _ = AppTheme.Palette.link
+    }
+
+    func testAppThemeWarningAndLinkTokensExistInSource() throws {
+        let repositoryRoot = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        let source = try String(
+            contentsOf: repositoryRoot.appendingPathComponent("GrokBuild/AppTheme.swift"),
+            encoding: .utf8
+        )
+        XCTAssertTrue(source.contains("static let warning"))
+        XCTAssertTrue(source.contains("static let link"))
+        XCTAssertTrue(source.contains("static let warningNSColor"))
+        XCTAssertTrue(source.contains("static let linkNSColor"))
+    }
+
+    private func sRGBComponents(of color: NSColor, appearance: NSAppearance) -> (r: CGFloat, g: CGFloat, b: CGFloat) {
+        var r: CGFloat = 0
+        var g: CGFloat = 0
+        var b: CGFloat = 0
+        var a: CGFloat = 0
+        appearance.performAsCurrentDrawingAppearance {
+            color.usingColorSpace(.deviceRGB)?.getRed(&r, green: &g, blue: &b, alpha: &a)
+        }
+        return (r, g, b)
+    }
+
     func testSettingsLoadStatesAndStatusAccessibilityAreDistinct() {
         let states: [SettingsLoadState] = [
             .checking,

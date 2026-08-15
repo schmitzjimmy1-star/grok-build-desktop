@@ -1346,11 +1346,11 @@ struct ChatView: View {
                     .renderingMode(.template)
                     .resizable()
                     .scaledToFit()
-                    .frame(width: 40, height: 40)
+                    .frame(width: 24, height: 24)
                     .foregroundStyle(.secondary)
             } else {
                 Image(systemName: "sparkles")
-                    .font(.system(size: 34))
+                    .font(.system(size: 22))
                     .foregroundStyle(.secondary)
             }
         }
@@ -1473,23 +1473,16 @@ struct ChatView: View {
     }
 
     private var welcomeState: some View {
-        VStack(spacing: 18) {
+        VStack(spacing: 12) {
             brandMark
-                .frame(width: 34, height: 34)
+                .frame(width: 24, height: 24)
             Text("What do you want to work on?")
-                .font(.system(size: 24, weight: .semibold))
-            VStack(spacing: 4) {
-                Text(store.currentWorkspace?.displayName ?? "Choose a project to begin")
-                    .font(AppTheme.Typography.caption)
-                    .foregroundStyle(.secondary)
-                if store.currentWorkspace != nil {
-                    Text("Grok agent runs in this folder.")
-                        .font(AppTheme.Typography.caption)
-                        .foregroundStyle(.tertiary)
-                }
-            }
+                .font(AppTheme.Typography.heading)
+            Text(store.currentWorkspace?.displayName ?? "Choose a project to begin")
+                .font(AppTheme.Typography.caption)
+                .foregroundStyle(.secondary)
 
-            HStack(alignment: .top, spacing: 8) {
+            HStack(spacing: 8) {
                 ForEach(WorkbenchIntent.defaults) { item in
                     CodexPromptPill(item: item) {
                         input = item.prompt
@@ -1500,7 +1493,7 @@ struct ChatView: View {
         }
         .frame(maxWidth: 720)
         .frame(maxWidth: .infinity)
-        .padding(.vertical, 48)
+        .padding(.vertical, 24)
         .padding(.horizontal, 32)
     }
 
@@ -1526,7 +1519,7 @@ struct ChatView: View {
         }
         .frame(maxWidth: 440)
         .frame(maxWidth: .infinity)
-        .padding(.vertical, 64)
+        .padding(.vertical, 40)
         .padding(.horizontal, 24)
     }
 
@@ -3045,32 +3038,20 @@ private struct CodexPromptPill: View {
 
     var body: some View {
         Button(action: onSelect) {
-            VStack(alignment: .leading, spacing: 4) {
-                HStack(spacing: 7) {
-                    Image(systemName: item.icon)
-                        .font(.system(size: 11, weight: .semibold))
-                    Text(item.title)
-                        .font(AppTheme.Typography.label)
-                }
-                Text(item.detail)
-                    .font(AppTheme.Typography.caption)
-                    .foregroundStyle(.secondary)
-                    .multilineTextAlignment(.leading)
-                    .fixedSize(horizontal: false, vertical: true)
+            HStack(spacing: 6) {
+                Image(systemName: item.icon)
+                    .font(.system(size: 11, weight: .semibold))
+                Text(item.title)
+                    .font(AppTheme.Typography.label)
             }
             .foregroundStyle(isHovered ? Color.primary : Color.secondary)
-            .padding(.horizontal, 12)
-            .padding(.vertical, 10)
-            .frame(maxWidth: 200, alignment: .leading)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 6)
             .background(
                 isHovered ? AppTheme.Palette.surfaceHover : AppTheme.Palette.surface,
-                in: RoundedRectangle(cornerRadius: AppTheme.Radius.large, style: .continuous)
+                in: Capsule()
             )
-            .overlay(
-                RoundedRectangle(cornerRadius: AppTheme.Radius.large, style: .continuous)
-                    .stroke(AppTheme.Palette.glassBorder)
-            )
-            .contentShape(Rectangle())
+            .contentShape(Capsule())
         }
         .buttonStyle(.plain)
         .onHover { isHovered = $0 }

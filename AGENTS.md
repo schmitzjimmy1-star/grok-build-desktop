@@ -15,10 +15,10 @@ Before edits or acceptance, read and follow in order:
 1. `CANONICAL_WORKTREE.md` — canonical identity and mandatory live preflight.
 2. `ARCHITECTURE.md` — ownership, data flow, persistence, and file map.
 3. `docs/OUTSTANDING.md` — current slice scope and Gates A–H when a campaign slice is active.
-4. `docs/GROKBUILD_LEFTOVER_CLOSEOUT_2026-08-15.md` — current leftover closeout.
-   The 2026-08-15 Agentic Cockpit spec and earlier campaign specs are closed
-   except leftover Phase 3 (`ChatView` split), which stays deferred until
-   explicitly re-authorized.
+4. `docs/GROKBUILD_VISUAL_QUIET_CAMPAIGN_2026-08-15.md` — Visual Quiet
+   campaign. Phases 1–2 (cool tokens + Path A chips) are verified. Next is
+   Phase 3 (header/composer density), then Phase 4 accent sweep. Leftover
+   Phase 3 (`ChatView` split) stays deferred and is not the visual work.
 
 Stop on a path, branch, remote, installed-stamp, signing, hash, or dirty-state mismatch.
 
