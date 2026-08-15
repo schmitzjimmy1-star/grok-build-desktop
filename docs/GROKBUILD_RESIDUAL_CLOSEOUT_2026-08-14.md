@@ -1,6 +1,6 @@
 # GrokBuild residual closeout — 2026-08-14
 
-Status: **authorized, not started.** Phase 0 is the only next action.
+Status: **Phase 0 complete at shipped `fa44cb25`.** Phase 1 is the only next action.
 Jimmy authorized this campaign on 2026-08-14 after Slice 7 closed, including
 billable prompts in every phase that needs them. True closeout means installed
 proof, exact cleanup, and process-zero, not a green unit suite.
@@ -353,7 +353,7 @@ exact thread cleaned, process-zero. `origin` unchanged. Campaign complete.
 
 ## Current authorized phase
 
-Execute **Phase 0 only** from clean merged `main` after this spec is on
-`personal/main`. Re-derive identity live. Do not start Phase 1 until the
-installed stamp equals that HEAD. End every checkpoint with the three-sentence
-handoff.
+Execute **Phase 1 only** from the Phase 0 shipped binary `fa44cb25`. Re-derive
+identity live. Do not start Phase 2 until Light shots, composer AX, and the
+frozen packet are merged and cleaned. End every checkpoint with the
+three-sentence handoff.

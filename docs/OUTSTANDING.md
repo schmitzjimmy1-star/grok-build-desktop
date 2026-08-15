@@ -27,16 +27,15 @@
 > User conversations, historical acceptance evidence, unnamed sessions that were not
 > created by the current slice, and unrelated browser/app state are protected.
 >
-> **Current campaign:** 2026-08-14 residual closeout, Phase 0 not started.
+> **Current campaign:** 2026-08-14 residual closeout, Phase 0 complete, Phase 1 next.
 > Spec:
 > [`docs/GROKBUILD_RESIDUAL_CLOSEOUT_2026-08-14.md`](GROKBUILD_RESIDUAL_CLOSEOUT_2026-08-14.md).
-> The 2026-08-13 campaign (Slices 0–7) is complete at merge
-> `c0895eef092427d332c9c12eb4ed8211a1564626` (PR #86) with installed stamp
-> ancestor `150fbbe858a1c11f9447441bcbe717a88e59975b`. Numbered `## Slice N`
+> Phase 0 shipped stamp == `fa44cb2559735d2819789ed77d72a7a8f022abee` (PR #87).
+> The 2026-08-13 campaign (Slices 0–7) remains closed. Numbered `## Slice N`
 > headings below the 2026-08-14 harness receipt are historical campaigns. Do
 > not implement them.
 
-## Residual closeout — 2026-08-14 (Phase 0 authorized, not started)
+## Residual closeout — 2026-08-14 (Phase 0 complete, Phase 1 next)
 
 Authorized scope is
 [`docs/GROKBUILD_RESIDUAL_CLOSEOUT_2026-08-14.md`](GROKBUILD_RESIDUAL_CLOSEOUT_2026-08-14.md).
@@ -56,7 +55,29 @@ Phases, in order:
 | 5 | Replace remaining extracted-contract source-string pins | Slice 6-shaped smoke, 250k ceiling |
 | 6 | Personal notarized `v0.1.21` release; no `origin` | one no-tool marker unless Phase 5 already proved that binary |
 
-Execute Phase 0 only until its receipt is written here.
+Execute Phase 1 only after reading the Phase 0 receipt below.
+
+### Phase 0 receipt — 2026-08-15
+
+PR [#87](https://github.com/schmitzjimmy1-star/grok-build-desktop/pull/87)
+passed **Test and Build App** run `31865926922` and merged reviewed head
+`cf7c5b4` normally as `fa44cb2559735d2819789ed77d72a7a8f022abee`. Clean
+`make ship` from that `main`: **865 tests, 0 failures** in 38.875 s; stamp ==
+HEAD `fa44cb25`; `dirty=false`; dist/installed SHA-256
+`f5207d32d8d91d4c609122b0870c4151b00017653a801e35eb407fea555ea2d2`; Team
+`DD2GCQJVB4`; deep/strict; no quarantine. Origin remains
+`433ddf861a86447a8fee2b1cf13e6c674a8f2211`.
+
+Installed Computer Use (`agent-desktop`; Cursor MCP still unloaded) launched
+`/Applications/GrokBuild.app` PID `5840`. Settings → App showed
+**Personal • main @ fa44cb25**. No chat prompt. `osascript` quit at
+`2026-08-15T00:08:40-0500`. Process-zero at `00:08:40` and `00:08:45`.
+Protected config unchanged:
+`2cb4dcdaf0f1841aab54fb2ae10586381ca78b560eb9fc0477efb521e92140ae`, 2,894
+bytes, mode `0600`. CLI still `grok 1.0.3 (1a29d5bc12d4) [stable]`.
+
+This receipt PR is docs-only. Do not `make ship` it just to chase stamp ==
+HEAD. Phase 1 drives the `fa44cb25` installed binary.
 
 ## Slice 7 — refresh public evidence and onboarding (complete, PR #85 + closeout, 2026-08-14)
 

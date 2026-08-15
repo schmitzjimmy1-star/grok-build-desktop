@@ -15,8 +15,8 @@ Before edits or acceptance, read and follow in order:
 1. `CANONICAL_WORKTREE.md` — canonical identity and mandatory live preflight.
 2. `ARCHITECTURE.md` — ownership, data flow, persistence, and file map.
 3. `docs/OUTSTANDING.md` — current slice scope and Gates A–H when a campaign slice is active.
-4. `docs/GROKBUILD_RESIDUAL_CLOSEOUT_2026-08-14.md` — current campaign (Phase 0
-   identity ship). Historical `## Slice N` headings later in `OUTSTANDING.md`
+4. `docs/GROKBUILD_RESIDUAL_CLOSEOUT_2026-08-14.md` — current campaign (Phase 1
+   Light evidence). Historical `## Slice N` headings later in `OUTSTANDING.md`
    and the 2026-08-13 spec are closed campaigns, not current scope.
 
 Stop on a path, branch, remote, installed-stamp, signing, hash, or dirty-state mismatch.
