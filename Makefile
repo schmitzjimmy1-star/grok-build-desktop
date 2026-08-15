@@ -114,17 +114,13 @@ run-app:
 	@open "$(BUILD_DIR)/$(APP_NAME).app"
 	@echo "$(GREEN)==> GrokBuild launched from .build/$(APP_NAME).app$(NC)"
 
-dmg: ## Build the .app and package it into a DMG.
-	@if [ -n "$(NOTARY_PROFILE)" ]; then \
-		$(MAKE) notarize; \
-		$(MAKE) dmg-package; \
+dmg: ## Build the .app and package it into a DMG. Never notarizes.
+	@if [ -n "$(SIGN_IDENTITY)" ]; then \
+		./scripts/build-macos-app.sh --sign "$(SIGN_IDENTITY)"; \
 	else \
-		if [ -n "$(SIGN_IDENTITY)" ]; then \
-			./scripts/build-macos-app.sh --sign "$(SIGN_IDENTITY)"; \
-		else \
-			./scripts/build-macos-app.sh; \
-		fi; \
+		./scripts/build-macos-app.sh; \
 	fi
+	@$(MAKE) dmg-package
 
 dmg-package: ## Package dist/$(APP_NAME).app into a DMG (no rebuild)
 	@echo "$(GREEN)==> Packaging DMG from dist/$(APP_NAME).app...$(NC)"

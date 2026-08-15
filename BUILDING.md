@@ -153,47 +153,10 @@ The main app carries the minimal unsigned-executable-memory entitlement needed f
 
 ## Notarization
 
-To allow users to run the app on modern macOS without Gatekeeper blocking it, notarize the signed app.
-
-### One-liner from Makefile
-
-```bash
-make notarize NOTARY_PROFILE=AC_PASSWORD
-```
-
-Or let `make dmg` handle it automatically:
-
-```bash
-make dmg NOTARY_PROFILE=AC_PASSWORD SIGN_IDENTITY="Developer ID Application: ..."
-```
-
-When `NOTARY_PROFILE` is set, `make dmg` will automatically:
-- Build + sign the app (if `SIGN_IDENTITY` provided)
-- Run notarization (staple the app)
-- Rebuild the DMG containing the final stapled app
-
-You only need to set `NOTARY_PROFILE` once per shell or in your environment.
-
-### Manual / Script
-
-You can also run directly:
-
-```bash
-./scripts/notarize.sh dist/GrokBuild.app
-```
-
-With custom profile:
-
-```bash
-NOTARY_PROFILE=myprofile ./scripts/notarize.sh dist/GrokBuild.app
-```
-
-Create the keychain profile once:
-
-```bash
-xcrun notarytool store-credentials "APPLE_CONNECT_PASSWORD" \
-  --apple-id your@email.com --team-id YOURTEAMID
-```
+This personal line does **not** notarize. `make notarize` is refused.
+`make dmg` packages a local DMG and never calls the notary. Install with
+`make ship` under Apple Development. `scripts/notarize.sh` remains for
+upstream/CI parity only.
 
 ## In-app updates
 
@@ -227,20 +190,21 @@ In-app install requires:
 
 ## GitHub Releases
 
-There are two ways to publish a release: **GitHub Actions** (recommended) or **local `make release`**. Use one path per version — not both at once.
+This personal line does **not** publish GitHub releases as the install path.
+Use `make ship`. The Actions Release workflow is upstream heritage. Do not
+dispatch it for a `(Notarized)` title on this fork.
 
-Release title format (both paths):
-- `v{VERSION} (Notarized)` — signed + notarized; **required for in-app app updates**
-- `v{VERSION} (Unsigned)` — development builds; Gatekeeper workarounds in release notes
+### CI (upstream heritage — leftover Phase 2)
 
-### CI (recommended)
+Do not dispatch this workflow on the personal line. The install path is
+`make ship`. The steps below document upstream/CI heritage only.
 
 Workflow: `.github/workflows/release.yml`
 
 **Trigger:** **Actions → Release → Run workflow** (manual dispatch only). Tag push auto-release is currently disabled in the workflow file.
 
 Inputs:
-- `release_type`: `notarized` (default) or `unsigned`
+- `release_type`: `unsigned` (default) or `notarized`. This personal fork refuses `notarized`.
 - `version`: optional tag override; must match `VERSION` (e.g. `v0.1.11`)
 
 Steps before dispatch:

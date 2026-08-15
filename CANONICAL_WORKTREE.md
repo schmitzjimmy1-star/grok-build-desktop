@@ -13,8 +13,7 @@
 | Jimmy's repository | `https://github.com/schmitzjimmy1-star/grok-build-desktop` (`personal`) |
 | Preserved upstream | `https://github.com/rimusz/grok-build-desktop` (`origin`, fetch/reference only) |
 | Active release branch | `main` |
-| Merged feature PR | `https://github.com/schmitzjimmy1-star/grok-build-desktop/pull/1` |
-| Merged provider-routing repair PR | `https://github.com/schmitzjimmy1-star/grok-build-desktop/pull/2` |
+| Merged PR history | `https://github.com/schmitzjimmy1-star/grok-build-desktop/pulls?q=is%3Apr+is%3Amerged` |
 | Installed app | `/Applications/GrokBuild.app` |
 
 The commit changes whenever work is committed, so never freeze a mutable HEAD in

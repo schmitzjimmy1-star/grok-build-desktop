@@ -15,9 +15,10 @@ Before edits or acceptance, read and follow in order:
 1. `CANONICAL_WORKTREE.md` — canonical identity and mandatory live preflight.
 2. `ARCHITECTURE.md` — ownership, data flow, persistence, and file map.
 3. `docs/OUTSTANDING.md` — current slice scope and Gates A–H when a campaign slice is active.
-4. `docs/GROKBUILD_AGENTIC_COCKPIT_CAMPAIGN_2026-08-15.md` — current campaign.
-   Historical campaign specs (`GROKBUILD_RESIDUAL_CLOSEOUT_2026-08-14.md` and the
-   2026-08-13 spec) are closed campaigns, not current scope.
+4. `docs/GROKBUILD_LEFTOVER_CLOSEOUT_2026-08-15.md` — current leftover closeout.
+   The 2026-08-15 Agentic Cockpit spec and earlier campaign specs are closed
+   except leftover Phase 3 (`ChatView` split), which stays deferred until
+   explicitly re-authorized.
 
 Stop on a path, branch, remote, installed-stamp, signing, hash, or dirty-state mismatch.
 
@@ -36,11 +37,12 @@ stores, minimize scope, and match surrounding Swift/SwiftUI conventions.
 
 - Add or update behavioral tests in `Tests/GrokBuildTests/`; run focused tests, then
   `make test`.
-- Package, sign, and install only through `make`; final acceptance uses `make ship`.
-  It must prove stamp == HEAD, `dirty=false` on the committed build, dist/installed
-  byte parity, deep/strict signing under Apple Development Team `DD2GCQJVB4`, and
-  no quarantine. This personal line does not notarize or publish GitHub
-  `(Notarized)` releases.
+- Package, sign, and install only through `make`; final acceptance uses `make ship`
+  after a product/code change. It must prove stamp == HEAD, `dirty=false` on the
+  committed build, dist/installed byte parity, deep/strict signing under Apple
+  Development Team `DD2GCQJVB4`, and no quarantine. Do **not** `make ship` a
+  docs-only successor just to chase stamp == HEAD. This personal line does not
+  notarize or publish GitHub `(Notarized)` releases.
 - Rebuild/relaunch and perform focused Computer Use acceptance against the real
   `/Applications/GrokBuild.app`. Reach the changed state and verify meaningful AX
   names/roles. Compilation or helper output is not installed-app proof.

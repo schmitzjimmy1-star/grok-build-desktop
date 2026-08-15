@@ -1,13 +1,14 @@
 ---
 title: GrokBuild frontend and backend parity repair slices
-status: ready for scoped execution
+status: historical — not current work
 audited: 2026-08-02
 ---
 
 # GrokBuild frontend and backend parity repair slices
 
-> Historical 2026-08-02 execution map. Live chrome is **Run inspector**;
-> open work lives in `docs/OUTSTANDING.md`.
+> Historical 2026-08-02 execution map. Live chrome is **Run inspector**.
+> Current leftover list:
+> [`docs/GROKBUILD_LEFTOVER_CLOSEOUT_2026-08-15.md`](GROKBUILD_LEFTOVER_CLOSEOUT_2026-08-15.md).
 
 ## Purpose
 

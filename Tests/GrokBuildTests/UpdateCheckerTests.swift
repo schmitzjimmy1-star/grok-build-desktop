@@ -204,17 +204,30 @@ final class UpdateCheckerTests: XCTestCase {
         XCTAssertTrue(script.contains("--repo \"$PERSONAL_SLUG\""))
         XCTAssertTrue(script.contains("git push \"$remote\" \"$tag\""))
         XCTAssertTrue(script.contains("This personal line does not publish notarized GitHub releases"))
+        XCTAssertTrue(script.contains("This personal line installs with"))
         XCTAssertTrue(script.contains("make ship"))
         XCTAssertTrue(script.contains("Apple Development"))
         XCTAssertTrue(script.contains("git tag -d"))
+        XCTAssertFalse(script.contains("For a signed + notarized version with no warnings"))
         XCTAssertFalse(script.contains("git push origin"))
         XCTAssertFalse(script.contains("git push --force origin"))
         XCTAssertFalse(script.contains("git tag -f"))
 
         let makefile = try String(contentsOf: root.appendingPathComponent("Makefile"), encoding: .utf8)
         XCTAssertTrue(makefile.contains("This personal line does not notarize"))
+        XCTAssertTrue(makefile.contains("Never notarizes"))
         XCTAssertTrue(makefile.contains("make ship"))
+        XCTAssertFalse(makefile.contains("$(MAKE) notarize"))
         XCTAssertFalse(makefile.contains("Notarized release: make release RELEASE_TYPE=notarized"))
+
+        let workflow = try String(contentsOf: root.appendingPathComponent(".github/workflows/release.yml"), encoding: .utf8)
+        XCTAssertTrue(workflow.contains("default: unsigned"))
+        XCTAssertFalse(workflow.contains("default: notarized"))
+        XCTAssertTrue(workflow.contains("Refuse notarized releases on the personal line"))
+        XCTAssertTrue(workflow.contains("schmitzjimmy1-star/grok-build-desktop"))
+        XCTAssertTrue(workflow.contains("This personal line does not publish notarized GitHub releases"))
+        XCTAssertTrue(workflow.contains("make ship"))
+        XCTAssertFalse(workflow.contains("For a signed + notarized version with no warnings"))
     }
 }
 

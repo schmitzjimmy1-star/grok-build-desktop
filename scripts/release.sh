@@ -105,15 +105,8 @@ macOS may block unsigned apps.
 2. Terminal: \`xattr -cr ~/Applications/GrokBuild.app\`
 3. System Settings → Privacy & Security → "Open Anyway"
 
----
-
-For a signed + notarized version with no warnings, set in \`.env\`:
-
-    RELEASE_TYPE=notarized
-    SIGN_IDENTITY=Developer ID Application: ...
-    NOTARY_PROFILE=AC_PASSWORD
-
-Then run \`make release\`.
+This personal line installs with \`make ship\` under Apple Development.
+It does not publish notarized GitHub releases.
 EOF
   fi
 }

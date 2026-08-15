@@ -1,5 +1,9 @@
 # GrokBuild archival record
 
+> **Superseded.** GrokBuild is active again on the personal line
+> (`/Applications/GrokBuild.app`, `make ship`). This folder is a historical
+> receipt from 2026-08-05, not a stop rule.
+
 GrokBuild Desktop was retired from Jimmy Schmitz's active local toolchain on
 2026-08-05. This directory preserves the substantial review, repair, repository,
 and next-session handoff documents that previously lived outside the tracked

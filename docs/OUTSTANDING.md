@@ -29,22 +29,66 @@
 > User conversations, historical acceptance evidence, unnamed sessions that were not
 > created by the current slice, and unrelated browser/app state are protected.
 >
-> **Current campaign:** 2026-08-15 Agentic Cockpit Campaign — Phase 1 complete
-> (merged as `2b7f377`, PR #96; ledger closeout PR #97 merged as `1d2b6d5`).
-> Phase 2 deferred by explicit user skip (2026-08-15). Phase 3 complete
-> (merged as `a799bf5`, PR #98; Gate H green). Phase 4 complete for
-> Gates A–H (merged as `b9bf633`, PR #99; post-merge ship
-> `dirty=false`, SHA `03cb7111…`). No notarized GitHub release is
-> outstanding. Install path is `make ship` on this Mac.
-> Spec: [`docs/GROKBUILD_AGENTIC_COCKPIT_CAMPAIGN_2026-08-15.md`](GROKBUILD_AGENTIC_COCKPIT_CAMPAIGN_2026-08-15.md).
-> Target: Elevate GrokBuild into a resilient, transparent agentic cockpit across 4 phases:
-> Phase 1 (Task Retention & /loop Lifetime Policy), Phase 2 (ChatView Decomposition),
-> Phase 3 (Hostile Subagent Permutation Hardening & Delegation Tree), and Phase 4 (OpenRouter Pricing & Routing Expansion).
+> **Current campaign:** 2026-08-15 leftover closeout —
+> [`docs/GROKBUILD_LEFTOVER_CLOSEOUT_2026-08-15.md`](GROKBUILD_LEFTOVER_CLOSEOUT_2026-08-15.md).
+> Phases 1–2 complete on `codex/grokbuild-leftover-p1-truth` and awaiting
+> merge. ChatView decomposition remains leftover Phase 3 and must not start
+> here. Install path is `make ship` on this Mac.
 >
 > Prior campaigns: 2026-08-14 Residual Closeout (Phases 0–6) complete and merged as `4613bde` (PR #94);
 > 2026-08-13 campaign (Slices 0–7) closed at merge `c0895ee` (PR #86).
 
-## Agentic Cockpit Campaign — 2026-08-15 (Authorized & Planned)
+## Leftover closeout — 2026-08-15 (Phases 1–2 complete, awaiting merge)
+
+Authorized spec is
+[`docs/GROKBUILD_LEFTOVER_CLOSEOUT_2026-08-15.md`](GROKBUILD_LEFTOVER_CLOSEOUT_2026-08-15.md).
+Do not start leftover Phase 3 (`ChatView` split) or Phase 4 optional
+architecture from this header.
+
+### Leftover Phase 1 — Ledger truth, dead stub, notarize-doc poison (complete)
+
+Branch: `codex/grokbuild-leftover-p1-truth`.
+
+- Deleted empty `GrokBuild/Models/Agent.swift`. `CodexShellParityTests` asserts it stays gone.
+- `Makefile` `dmg` never calls `notarize`; it always packages the DMG.
+- Unsigned `scripts/release.sh` notes no longer tell people to notarize.
+- Historical docs and agent entry now point at this leftover closeout so they cannot authorize new product work or a notarized GitHub release.
+
+Billable packet: one new-chat no-tool marker `GB-LEFTOVER-P1-<UTC>`. Reply exactly `GB_LEFTOVER_P1_OK` and stop. Gate F deletes only that exact session. Leave protected `OK-F` and Aug 14 `(no summary)` `019ffdad-0d4f-7f42-a429-7ac12ad8198d` alone. Pause after the packet until Jimmy confirms Phase 1 finished. Do not commit until asked.
+
+#### Leftover Phase 1 receipt — confirmed 2026-08-15
+
+- Branch `codex/grokbuild-leftover-p1-truth` from `490ceec`. Uncommitted. Not pushed.
+- `make test` **890 tests, 0 failures**.
+- Candidate `make ship` to `/Applications/GrokBuild.app`: stamp `490ceec` == HEAD, `dirty=true` (expected), SHA-256 `4003a2b671639aac3c799a8a702f0792c640b96f73739062d08fb3be94fe256c`, Team `DD2GCQJVB4`, deep/strict PASS, no quarantine. Installed exec is `/Applications/GrokBuild.app/Contents/MacOS/GrokBuild`.
+- Computer Use Settings → App: version `0.1.22`, `Personal • codex/grokbuild-leftover-p1-truth @ 490ceecc (dirty)`.
+- Marker `GB-LEFTOVER-P1-20260815T112206Z` in a **new chat** (not OK-F). Assistant group `GB_LEFTOVER_P1_OK`. Thought 1s. No tool list. Settled. Live Grok 4.6.
+- Backend search hit `01a00528-8ed9-7080-96ec-9f9f0aec58af`. Close Session removed the tab. `grok sessions delete` then reported the id already gone. `grok sessions search GB-LEFTOVER-P1` **Total: 0**.
+- Protected OK-F tab still selected in the sidebar after close. Aug 14 `019ffdad-0d4f-7f42-a429-7ac12ad8198d` still searchable (Total: 1). `grok sessions search OK-F` is Total: 0 and is not proof of deletion; the live sidebar row remains.
+- CLI `grok 1.0.4 (d846eb93d94d) [stable]`. No leftover `grok`/`agent-desktop` children after close.
+
+### Leftover Phase 2 — Process hygiene (complete)
+
+Jimmy authorized Phase 2 plus commit/push/merge on 2026-08-15. No product UI.
+No billable packet.
+
+- `release.yml` default is `unsigned`. Personal fork
+  `schmitzjimmy1-star/grok-build-desktop` refuses `notarized` and tells agents
+  to `make ship`. Unsigned notes no longer advertise a notarized CTA.
+- Branch protection on personal `main` re-checked live: required check
+  **Test and Build App**, GitHub Actions app ID `15368`, `strict=true`,
+  `enforce_admins=true`. No waiver.
+- `CANONICAL_WORKTREE.md` no longer freezes PR #1 / #2; it points at merged
+  PR history.
+- Local rimusz-aligned tags `v0.1.21` / `v0.1.22` were deleted here. Origin
+  tags were not touched. A later `git fetch personal` restored this worktree's
+  `v0.1.21` to the personal tag `ec5624d`, which is the intended local
+  pointer. There is still no local `v0.1.22`.
+- Deleted 87 stale `personal` feature branches (86 already on `main`, plus
+  closed-campaign residue `codex/grokbuild-c8-p0-2-leftover-close`). `main`
+  stays. This leftover branch is created at push. Origin was not written.
+
+## Agentic Cockpit Campaign — 2026-08-15 (Closed except deferred Phase 2)
 
 Authorized spec is [`docs/GROKBUILD_AGENTIC_COCKPIT_CAMPAIGN_2026-08-15.md`](GROKBUILD_AGENTIC_COCKPIT_CAMPAIGN_2026-08-15.md).
 Phase 3 merged as `a799bf57f2cb19196919fdb7dba745aec43bd555` (PR #98). Phase 2 remains deferred. Phase 4 merged as `b9bf633e75dd82287242442bc1b3d867b0b7eaae` (PR #99). Installed stamp is `b9bf633`, `dirty=false`.
@@ -5281,10 +5325,13 @@ them:
 
 ## One-sentence new-session handoff
 
-The GrokBuild ledger is all clear: begin no new slice unless Jimmy explicitly authorizes
-one, re-derive canonical repository and installed-app identity before any future work,
-and preserve the upstream Grok CLI session visibility/deletion gap without inventing a
-GrokBuild-side workaround or deletion proof.
+Leftover closeout Phases 1–2 are complete and awaiting merge
+([`docs/GROKBUILD_LEFTOVER_CLOSEOUT_2026-08-15.md`](GROKBUILD_LEFTOVER_CLOSEOUT_2026-08-15.md)).
+Do not start leftover Phase 3 (`ChatView` split) or Phase 4 optional architecture
+unless Jimmy explicitly authorizes them. Re-derive canonical repository and
+installed-app identity before any future work, and preserve the upstream Grok CLI
+session visibility/deletion gap without inventing a GrokBuild-side workaround or
+deletion proof.
 
 ## Hard stop conditions
 
