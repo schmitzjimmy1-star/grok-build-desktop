@@ -42,7 +42,13 @@ def _tool_name(entry: dict[str, Any]) -> tuple[str, str | None]:
     if (
         "spawn" in blob
         or "subagent" in blob
-        or (identity in {"LEFT", "RIGHT"} and "echo" not in blob and "/bin/" not in blob)
+        or (
+            identity in {"LEFT", "RIGHT"}
+            and (
+                "child" in blob
+                or ("echo" not in blob and "/bin/" not in blob)
+            )
+        )
     ):
         return "spawn_subagent", identity
     if "terminal" in blob or "bash" in blob or "shell" in blob or "execute" in blob or "/bin/" in blob:
