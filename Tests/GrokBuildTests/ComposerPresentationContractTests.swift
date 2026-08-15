@@ -124,4 +124,30 @@ final class ComposerPresentationContractTests: XCTestCase {
         XCTAssertTrue(topBar.contains("tasksStatus"))
         XCTAssertFalse(chatView.contains("private func openInButton"))
     }
+
+    func testEmptyComposerAccessibilityValueIncludesDescribeATask() {
+        XCTAssertEqual(ChatComposerAccessibility.identifier, "grok-message-composer")
+        XCTAssertEqual(ChatComposerAccessibility.label, "Message composer")
+        XCTAssertEqual(ChatComposerAccessibility.value(forDraft: ""), "Describe a task")
+        XCTAssertTrue(
+            ChatComposerAccessibility.value(forDraft: "").contains("Describe a task")
+        )
+        XCTAssertEqual(ChatComposerAccessibility.value(forDraft: "hello"), "5 characters")
+        XCTAssertFalse(ChatComposerAccessibility.value(forDraft: "hello").contains("Empty"))
+    }
+
+    func testComposerKeepsStableIdentifierAndDoesNotAnnounceEmpty() throws {
+        let composer = try source("GrokBuild/Views/ChatComposer.swift")
+        XCTAssertTrue(composer.contains("ChatComposerAccessibility.identifier"))
+        XCTAssertTrue(composer.contains("ChatComposerAccessibility.label"))
+        XCTAssertTrue(composer.contains("ChatComposerAccessibility.value(forDraft: input)"))
+        XCTAssertFalse(
+            composer.contains("input.isEmpty ? \"Empty\""),
+            "empty composer AX value must include Describe a task, not Empty"
+        )
+        XCTAssertFalse(
+            composer.contains("accessibilityIdentifier(\"grok-message-composer\")"),
+            "identifier must stay on ChatComposerAccessibility so the contract has one owner"
+        )
+    }
 }

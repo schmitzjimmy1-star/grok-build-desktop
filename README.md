@@ -11,11 +11,15 @@ GrokBuild is a native SwiftUI macOS workbench for the [`grok`](https://grok.com)
 
 Work lives in a project folder as durable session tabs you can resume. New chat stays idle until Send. **Ask**, **Build**, and **Review** only seed an editable draft. After a turn, the transcript and **Run inspector** show the exact tools, children, and model/route receipts for that tab and process generation. GrokBuild does not invent a fallback provider or rewrite an older launch.
 
-![GrokBuild New chat with project sidebar, Ask/Build/Review starters, and Describe a task composer](docs/images/grokbuild-app.png)
+![GrokBuild New chat with project sidebar, Ask/Build/Review starters, and Describe a task composer (Dark)](docs/images/grokbuild-app.png)
 
-![Settled Run inspector after a native multi-tool, two-child turn](docs/images/grokbuild-run-inspector.png)
+![GrokBuild New chat with project sidebar, Ask/Build/Review starters, and Describe a task composer (Light)](docs/images/grokbuild-app-light.png)
 
-These screenshots are from the signed `/Applications/GrokBuild.app` on the installed Dark appearance, the existing-install default. Settings → App still offers System, Light, and Dark. Acceptance history, Gates A–H, and campaign receipts live in [`ARCHITECTURE.md`](ARCHITECTURE.md) and [`docs/OUTSTANDING.md`](docs/OUTSTANDING.md).
+![Settled Run inspector after a native multi-tool, two-child turn (Dark)](docs/images/grokbuild-run-inspector.png)
+
+![Settled Run inspector after a native multi-tool, two-child turn (Light)](docs/images/grokbuild-run-inspector-light.png)
+
+These screenshots are from the signed `/Applications/GrokBuild.app`. Dark is the existing-install default; Light is a real Settings → App appearance, not a recolored Dark PNG. Settings → App still offers System, Light, and Dark. The composer identifier is `grok-message-composer` and its accessibility label is **Message composer**. The visible placeholder is **Describe a task**; when the field is empty, that same phrase is the accessibility value. Welcome copy remains **What do you want to work on?** Acceptance history, Gates A–H, and campaign receipts live in [`ARCHITECTURE.md`](ARCHITECTURE.md) and [`docs/OUTSTANDING.md`](docs/OUTSTANDING.md).
 
 ## Requirements
 

@@ -27,15 +27,15 @@
 > User conversations, historical acceptance evidence, unnamed sessions that were not
 > created by the current slice, and unrelated browser/app state are protected.
 >
-> **Current campaign:** 2026-08-14 residual closeout, Phase 0 complete, Phase 1 next.
-> Spec:
+> **Current campaign:** 2026-08-14 residual closeout, Phase 1 complete pending
+> merge, Phase 2 next. Spec:
 > [`docs/GROKBUILD_RESIDUAL_CLOSEOUT_2026-08-14.md`](GROKBUILD_RESIDUAL_CLOSEOUT_2026-08-14.md).
 > Phase 0 shipped stamp == `fa44cb2559735d2819789ed77d72a7a8f022abee` (PR #87).
-> The 2026-08-13 campaign (Slices 0–7) remains closed. Numbered `## Slice N`
-> headings below the 2026-08-14 harness receipt are historical campaigns. Do
-> not implement them.
+> Do not `make ship` this Phase 1 PR just to chase stamp == HEAD. The 2026-08-13
+> campaign (Slices 0–7) remains closed. Numbered `## Slice N` headings below the
+> 2026-08-14 harness receipt are historical campaigns. Do not implement them.
 
-## Residual closeout — 2026-08-14 (Phase 0 complete, Phase 1 next)
+## Residual closeout — 2026-08-14 (Phase 1 complete pending merge, Phase 2 next)
 
 Authorized scope is
 [`docs/GROKBUILD_RESIDUAL_CLOSEOUT_2026-08-14.md`](GROKBUILD_RESIDUAL_CLOSEOUT_2026-08-14.md).
@@ -55,7 +55,10 @@ Phases, in order:
 | 5 | Replace remaining extracted-contract source-string pins | Slice 6-shaped smoke, 250k ceiling |
 | 6 | Personal notarized `v0.1.21` release; no `origin` | one no-tool marker unless Phase 5 already proved that binary |
 
-Execute Phase 1 only after reading the Phase 0 receipt below.
+Execute Phase 2 only after this Phase 1 PR merges. Do not `make ship` Phase 1
+to chase stamp == HEAD; drive the `fa44cb25` binary until a later authorized
+ship. Cursor `user-grokbuild-computer-use` was still unloaded, so Phase 1 used
+`agent-desktop` and Phase 2 still owns the MCP proof.
 
 ### Phase 0 receipt — 2026-08-15
 
@@ -78,6 +81,110 @@ bytes, mode `0600`. CLI still `grok 1.0.3 (1a29d5bc12d4) [stable]`.
 
 This receipt PR is docs-only. Do not `make ship` it just to chase stamp ==
 HEAD. Phase 1 drives the `fa44cb25` installed binary.
+
+### Phase 1 receipt — 2026-08-15
+
+Gate A: clean `main == personal/main` at
+`9d71e6424eae9b584e855b26577696fcc0643fa1` (tree `55ba8ac78c4bcff57343a7906d560304c39e2dbe`).
+Installed stamp ancestor `fa44cb2559735d2819789ed77d72a7a8f022abee` /
+`dirty=false` / SHA-256
+`f5207d32d8d91d4c609122b0870c4151b00017653a801e35eb407fea555ea2d2` / Team
+`DD2GCQJVB4`. Product diff `fa44cb25..HEAD` across `GrokBuild`, helpers,
+`Package.swift`, `VERSION`, `Makefile`, and `scripts` was empty. Origin
+remained `433ddf861a86447a8fee2b1cf13e6c674a8f2211`. Process-zero at start.
+CLI `grok 1.0.3 (1a29d5bc12d4) [stable]`. Protected config
+`2cb4dcdaf0f1841aab54fb2ae10586381ca78b560eb9fc0477efb521e92140ae`, 2,894
+bytes, mode `0600`.
+
+Branch: `codex/grokbuild-c8-p1-light-ax`.
+
+Composer AX: `ChatComposerAccessibility` keeps identifier
+`grok-message-composer` and label **Message composer**. Empty accessibility
+value is **Describe a task** (replaces `Empty`). Send behavior unchanged.
+Focused tests in `ComposerPresentationContractTests`. README first screenful
+now shows Dark and Light and states that AX contract. Live AX of the
+`fa44cb25` binary still reported empty value `Empty`; the new value is in
+this source change and is not in the installed binary until a later ship.
+
+#### Frozen packet
+
+| Field | Value |
+|---|---|
+| Run ID | `20260815T052342Z` |
+| Marker | `GB-C8-P1-LIGHT-20260815T052342Z` |
+| Model / route | inherited New chat default `grok-4.6`, native xAI through the Grok CLI |
+| Effort | CLI launch `--reasoning-effort low` |
+| Turns / children | 1 parent turn, exactly 2 concurrent children, one `wait_all` |
+| Allowed tools | `terminal`, `spawn_subagent`, `wait_all` |
+| Forbidden | `update_plan`, search/web, browser, Computer Use, write/edit, git, retries |
+| Suggested ceiling | 200k actual tokens |
+| Prompt | 841-character composer text: one-turn Light inspector packet; sequential `/bin/echo ALPHA`, `BETA`, `GAMMA`; concurrent LEFT/RIGHT children each echoing once; one `wait_all`; reply `GB-C8-P1-LIGHT-20260815T052342Z-PARENT ALPHA\|BETA\|GAMMA LEFT+RIGHT` |
+
+Computer Use used `agent-desktop` session `run-1786771422425-9846-0` against
+`/Applications/GrokBuild.app` PID `9875` (executable
+`/Applications/GrokBuild.app/Contents/MacOS/GrokBuild`). Cursor
+`user-grokbuild-computer-use` was still unloaded. Settings → App appearance
+was **Dark** (`Selected. Always dark`); **Light** was Applied for shots, then
+Dark was restored (`Apply` disabled). Window `w-3910` at 1440×819.
+
+New-chat Light AX before Send: **Session dashboard**, **What do you want to
+work on?**, Ask/Build/Review, sidebar shown, composer **Message composer**
+(`grok-message-composer`) with visible placeholder **Describe a task** and
+empty value `Empty`. After settle, inspector toggle value **Settled: Turn
+completed**.
+
+| Identity | Value |
+|---|---|
+| Local tab | `754C89E0-0EBC-43FB-BC06-BDEF0AF76F53` |
+| Parent backend | `01a003e4-a8af-7ef1-819f-559802e00d77` |
+| LEFT child | `01a003e4-cfcf-7831-b43b-fb11fe0d5ebb` |
+| RIGHT child | `01a003e4-cfd2-7940-a58c-77e6cd683f52` |
+| Process generation | 1 |
+| Live model | `grok-4.6` / usage alias `grok-4.6-build` |
+| Route receipt | `Route: native xAI through the Grok CLI.` |
+| Outcome | Settled: Turn completed |
+| Tools | ALPHA, BETA, GAMMA, LEFT child echo, RIGHT child echo, `multi-wait (wait_all)` — 6 succeeded, 0 failed |
+| Coordination | 2 requested • 2 spawned • 2 finished • max 2 concurrent |
+| Parent usage | 147,406 tokens • 10 model calls • $0.32 provider-reported |
+| Child usage | 23,454 tokens • 2 child tool calls |
+| Reply | `GB-C8-P1-LIGHT-20260815T052342Z-PARENT ALPHA\|BETA\|GAMMA LEFT+RIGHT` (parent also prefixed one sentence of status prose; marker present; no retry) |
+
+Variance: parent actual tokens 147,406 sit in the expected ~148k Grok 4.6
+first-turn band, under the 200k ceiling. No second prompt. No Slice 6/7
+markers reused.
+
+Public images from this `fa44cb25` Light pass:
+`docs/images/grokbuild-app-light.png` (New chat, sidebar shown) and
+`docs/images/grokbuild-run-inspector-light.png` (settled docked inspector,
+sidebar hidden for compactness). Existing Dark images kept.
+
+`make test` on this branch: **867 tests, 0 failures** in 37.453 seconds
+(two new composer AX tests). `git diff --check` is clean.
+
+#### Gate F–G
+
+Exact **Close Session** removed local tab
+`754C89E0-0EBC-43FB-BC06-BDEF0AF76F53` and parent backend
+`01a003e4-a8af-7ef1-819f-559802e00d77`. Transcript files are absent.
+`grok sessions delete` for leftover children
+`01a003e4-cfcf-7831-b43b-fb11fe0d5ebb` and
+`01a003e4-cfd2-7940-a58c-77e6cd683f52` reported `No session found` while the
+directories remained. Those two paths were proven non-symlinks with canonical
+cwd and `session_kind=subagent`, then moved recoverably to
+`~/.Trash/GrokBuild-C8-P1-child-backends-20260815T053440Z`. Live backend
+directories for all three IDs are absent. CLI `grok sessions search
+GB-C8-P1-LIGHT-20260815T052342Z` returned `Total: 0`. **Clear Empty** was
+not used. `prompt_history.jsonl` and `session_search.sqlite` were not edited.
+Protected user sessions were not touched. Appearance restored to Dark.
+
+Normal `osascript` quit exited at `2026-08-15T00:35:23-0500`. Process-zero
+samples at `2026-08-15T00:35:23-0500` and `2026-08-15T00:35:28-0500` found no
+`GrokBuild`, `grok`, `GrokBuildComputerUseMCP`, or `agent-desktop`. Origin
+untouched. Installed stamp still `fa44cb25` / `dirty=false`. Config hash
+unchanged.
+
+Do not start Phase 2 until this PR merges. Do not `make ship` this product+docs
+PR just to chase stamp == HEAD.
 
 ## Slice 7 — refresh public evidence and onboarding (complete, PR #85 + closeout, 2026-08-14)
 
