@@ -1231,8 +1231,10 @@ private struct MarkdownTableView: View {
         .background {
             GeometryReader { proxy in
                 Color.clear
-                    .onAppear { availableWidth = proxy.size.width }
-                    .onChange(of: proxy.size.width) { _, width in availableWidth = width }
+                    .onAppear { commitAvailableWidth(proxy.size.width) }
+                    .onChange(of: proxy.size.width) { _, width in
+                        commitAvailableWidth(width)
+                    }
             }
         }
         .background(AppTheme.Palette.richTableBackground, in: RoundedRectangle(cornerRadius: AppTheme.Radius.small))
@@ -1246,6 +1248,15 @@ private struct MarkdownTableView: View {
         .accessibilityChildren {
             Text(MarkdownTableAccessibility.linearDescription(headers: headers, rows: rows))
         }
+    }
+
+    private func commitAvailableWidth(_ width: CGFloat) {
+        guard width.isFinite, width > 0 else { return }
+        guard ResponsiveLayoutPolicy.shouldCommitMeasuredWidth(
+            current: Double(availableWidth),
+            next: Double(width)
+        ) else { return }
+        availableWidth = width
     }
 
     private func tableRow(

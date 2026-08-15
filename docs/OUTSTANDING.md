@@ -68,10 +68,17 @@ Stop, close, quit, and process-zero. Neutral-extraction smoke is one agentic pac
 (three ordered tools, two parallel read-only children, one follow-up turn, one
 deliberate Stop) under a **250k** actual-token ceiling. After T1 of that packet
 the installed app pinned the main thread at 100% in SwiftUI `ScrollView`
-`sizeThatFits` with Run inspector open and AppleScript quit wedged; the
-follow-up hotfix is `ResponsiveLayoutPolicy.shouldCommitMeasuredWidth` plus
-`inspectorPlacement` hysteresis, not Slice 7. Slice 7, releases, tags,
-origin, force-push, branch deletion, and configuration changes remain forbidden.
+`sizeThatFits` with Run inspector open and AppleScript quit wedged. The first
+hotfix (`ResponsiveLayoutPolicy.shouldCommitMeasuredWidth` plus inspector
+hysteresis) made idle New chat + inspector settle at 0% CPU, but installed
+restore/Resume of the populated T1 tab then reproduced the pin at
+`LazySubviewPlacements` → `ChatTranscriptLayout.MessageBlock` with grok idle.
+The bounded follow-up separates selectable transcript content from
+Resume/Continue/recovery-Send transactions, gives message blocks composite
+identities, coalesces settled-scroll requests, removes selectable settled tool
+output from the lazy transcript, and epsilon-gates table width. This remains the
+Slice 6 stop-the-line repair, not Slice 7. Slice 7, releases, tags, origin,
+force-push, branch deletion, and configuration changes remain forbidden.
 
 ## Slice 5 — first-class agentic acceptance harness (complete, 2026-08-14)
 
