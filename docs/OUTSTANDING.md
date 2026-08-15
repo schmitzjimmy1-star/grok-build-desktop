@@ -27,20 +27,21 @@
 > User conversations, historical acceptance evidence, unnamed sessions that were not
 > created by the current slice, and unrelated browser/app state are protected.
 >
-> **Current campaign:** 2026-08-14 residual closeout, Phases 0–3 complete,
-> Phase 4 next after the Phase 3 docs PR merges (or Jimmy explicitly continues
+> **Current campaign:** 2026-08-14 residual closeout, Phases 0–4 complete,
+> Phase 5 next after the Phase 4 docs PR merges (or Jimmy explicitly continues
 > without merging). Spec:
 > [`docs/GROKBUILD_RESIDUAL_CLOSEOUT_2026-08-14.md`](GROKBUILD_RESIDUAL_CLOSEOUT_2026-08-14.md).
 > Phase 0 shipped `fa44cb2559735d2819789ed77d72a7a8f022abee` (PR #87). Phase 1
 > merged as `fb095d14844f76367659ecec7ea7566fd9517b5c` (PR #89). Phase 2 merged
-> as `27c146e6693927474e34e47238b3480e35429443` (PR #90). Leftover-close shipped
+> as `27c146e6693927474e34e47238b3480e35429443` (PR #90). Phase 3 merged as
+> `90510526faea91219fc79bfe9d9cff3780bf6129` (PR #92). Leftover-close shipped
 > stamp == that Phase 2 merge. Live empty composer AX is **Describe a task**.
-> Do not `make ship` the Phase 3 docs PR just to chase stamp == HEAD.
+> Do not `make ship` docs PRs just to chase stamp == HEAD.
 > The 2026-08-13 campaign (Slices 0–7) remains closed. Numbered `## Slice N`
 > headings below the 2026-08-14 harness receipt are historical campaigns. Do
 > not implement them.
 
-## Residual closeout — 2026-08-14 (Phases 0–3 complete, Phase 4 next)
+## Residual closeout — 2026-08-14 (Phases 0–4 complete, Phase 5 next)
 
 Authorized scope is
 [`docs/GROKBUILD_RESIDUAL_CLOSEOUT_2026-08-14.md`](GROKBUILD_RESIDUAL_CLOSEOUT_2026-08-14.md).
@@ -60,9 +61,9 @@ Phases, in order:
 | 5 | Replace remaining extracted-contract source-string pins | Slice 6-shaped smoke, 250k ceiling |
 | 6 | Personal notarized `v0.1.21` release; no `origin` | one no-tool marker unless Phase 5 already proved that binary |
 
-Execute Phase 4 only after the Phase 3 docs PR merges, or if Jimmy explicitly
+Execute Phase 5 only after the Phase 4 docs PR merges, or if Jimmy explicitly
 continues without merging it. Installed stamp is `27c146e`. Do not `make ship`
-the Phase 3 docs PR just to chase stamp == HEAD. Do not start Phase 5–6.
+the Phase 4 docs PR just to chase stamp == HEAD. Do not start Phase 5–6 without authorization.
 
 ### Phase 0 receipt — 2026-08-15
 
@@ -440,9 +441,61 @@ Process-zero samples at `01:46:39` and `01:46:44` found no `GrokBuild`,
 user MCP, not a GrokBuild session leak. Origin untouched. Installed stamp
 still `27c146e` / `dirty=false`. Config hash unchanged.
 
-This Phase 3 PR is docs-only. Do not `make ship` it just to chase stamp ==
-HEAD. Jimmy asked to leave it unmerged; do not start Phase 4 until it merges
-or Jimmy explicitly continues without merging.
+This Phase 3 PR was docs-only. It merged into `main` as `90510526faea91219fc79bfe9d9cff3780bf6129` (PR #92).
+
+### Phase 4 receipt — 2026-08-15
+
+PR [#92](https://github.com/schmitzjimmy1-star/grok-build-desktop/pull/92)
+merged into `main` as `90510526faea91219fc79bfe9d9cff3780bf6129`. Phase 4
+started on branch `codex/grokbuild-c8-p4-cli-104` from that `main`.
+
+Pre-update state recorded at `2026-08-15T02:02:47-0500`:
+- `grok --version` → `grok 1.0.3 (1a29d5bc12d4) [stable]`
+- `~/.grok/config.toml` SHA-256 `2cb4dcdaf0f1841aab54fb2ae10586381ca78b560eb9fc0477efb521e92140ae`,
+  2894 bytes, mode `0600`
+- Installed GrokBuild Settings → App CLI line: `Installed: 1.0.3`, `Latest: 1.0.4`,
+  `Status: Update available.`
+
+Update executed via official `grok update`:
+- Output: `Updating Grok 1.0.3 → 1.0.4`, `Downloading grok v1.0.4 (macos-aarch64)...`,
+  `✓ grok v1.0.4 installed successfully!`
+
+Post-update verification:
+- `grok --version` → `grok 1.0.4 (d846eb93d94d) [stable]`
+- `~/.grok/config.toml` SHA-256 `2cb4dcdaf0f1841aab54fb2ae10586381ca78b560eb9fc0477efb521e92140ae`,
+  2894 bytes, mode `0600` (bit-for-bit identical; 85 key paths; zero unexpected provider,
+  credential, or MCP stanzas).
+- `grok inspect --json` reports `grokVersion: "1.0.4"`, `channel: "stable"`, 3 builtin agents,
+  13 externalCompat cells.
+- GrokBuild Settings → App Check for Updates → `Installed: 1.0.4`, `Latest: 1.0.4`,
+  `Status: Up to date.`
+- `make test` passed (**865 tests, 0 failures** in 36.331 s) against unchanged installed app
+  `27c146e`. Zero test regressions.
+
+Frozen native no-tool marker packet:
+- Marker: `GB-C8-P4-CLI104-20260815T070258Z`
+- Prompt: `GB-C8-P4-CLI104-20260815T070258Z: Without using tools, reply with exact GB_C8_P4_CLI104_RECEIPT_OK and do nothing else.`
+- Assistant response: `GB_C8_P4_CLI104_RECEIPT_OK`
+- Run Inspector & session metadata receipt:
+  - Model: `grok-4.6` (`grok-4.6-build`)
+  - Reasoning effort: `low` (1s thought, 38 reasoning tokens)
+  - Route: `Route: native xAI through the Grok CLI.`
+  - Process generation: 1
+  - Session UUID: `01a0043b-886a-7e73-96eb-d66a9d4d5d9b`
+  - Usage: 15,984 tokens (15,927 in • 57 out • 6,144 cached read • 38 reasoning)
+  - Cost: $0.04 ($0.039066)
+  - Duration: 35.5s, 1 model call, 0 tools
+
+Gate F cleanup & process-zero:
+- `grok sessions delete 01a0043b-886a-7e73-96eb-d66a9d4d5d9b` deleted backend directory;
+  `grok sessions search GB-C8-P4-` returned `Total: 0`.
+- GrokBuild local transcript `DBBA083C-3B99-4979-9578-7F5B44A3C580.json` removed.
+- `computer_close_app` graceful quit; process-zero samples at `02:18:24` confirmed
+  no `GrokBuild`, `grok`, or `agent-desktop` running.
+- Origin untouched. Shipped stamp still `27c146e`.
+
+This Phase 4 PR is docs-only. Do not `make ship` it just to chase stamp == HEAD.
+Do not start Phase 5–6 until this PR merges or Jimmy explicitly continues without merging.
 
 ## Slice 7 — refresh public evidence and onboarding (complete, PR #85 + closeout, 2026-08-14)
 
