@@ -6,15 +6,15 @@
 
 ---
 
-## Repo HEAD (authoritative)
+## P3D release snapshot (authoritative)
 
 | Field | Value |
 |---|---|
 | **Remote** | `personal` → `schmitzjimmy1-star/grok-build-desktop` |
-| **Branch** | `codex/grokbuild-vq-p3d-live-activity` (publication closeout in progress) |
-| **HEAD** | code/test commit `2e1deb7e2d135a007334096e5deace53a409dc6f` (`2e1deb7`) plus P3D receipt documentation |
-| **Last merged main** | `e761dc0c936969125ec2c9984157301bcd3a76c5` (PR #106, P3C) |
-| **P3D publication** | PR #107 — *Promote live workers into the activity canvas* |
+| **Release branch** | `main` |
+| **P3D merge** | `1e11be228dba6321ba12bdd2933b9a240011a133` (`1e11be2`) |
+| **Code/test commit** | `2e1deb7e2d135a007334096e5deace53a409dc6f` (`2e1deb7`) |
+| **P3D publication** | PR #107 — *Promote live workers into the activity canvas* — merged |
 | **P3 code merge** | PR #104 — *Visual Quiet Phase 3: overlay sidebar and quiet workbench chrome* |
 | **Prior** | P1–P2 at `7a3006d` (PR #102) |
 | **Worktree** | `/Users/jimmyschmitz/Desktop/Projects/MCP Servers/Grok Build/grok-build-desktop` |
@@ -22,9 +22,9 @@
 | **Version file** | `0.1.22` (identity is stamp + commit, not version alone) |
 | **Upstream (read-only)** | `origin` → `rimusz/grok-build-desktop` — do not push |
 
-Before P3D publication, local `main` and `personal/main` match at `e761dc0`; the
-clean code-bearing P3D candidate is `2e1deb7`. Run the canonical preflight in
-`CANONICAL_WORKTREE.md` before editing.
+At P3D closeout, local `main` and `personal/main` matched at `1e11be2`; the
+code-bearing commit is `2e1deb7`. Run the canonical preflight in
+`CANONICAL_WORKTREE.md` before any later work because HEAD may advance.
 
 ---
 
@@ -39,7 +39,7 @@ GrokBuild is a native SwiftUI macOS workbench for `grok agent stdio`. The CLI st
 | **P1** Cool tokens | Light loses cream; Dark cooler ink | **Merged** (`7a3006d`). Cool-neutral canvas/sidebar tokens in `AppTheme.swift`. |
 | **P2** Quiet welcome | Smaller mark, compact chips | **Merged** (`7a3006d`). Path A: Ask/Build/Review chips, no detail paragraphs. |
 | **P3** Header + composer *(screenshot)* | Icon-only Tasks/Review/inspector; slim task strip; tighter composer | **Accepted in two bounded pieces:** overlay/quiet chrome at `bb01c58`, closeout at `aff384c`, and P3C density at `6697530`. |
-| **P3D** Live activity composition | Remove duplicate live Run card; show active workers confidently at right | **Accepted candidate** (`2e1deb7`, PR #107 publication closeout in progress). |
+| **P3D** Live activity composition | Remove duplicate live Run card; show active workers confidently at right | **Merged and installed** (`1e11be2`, PR #107). |
 | **P4** Accent sweep | Send/chips/CTAs stop macOS orange/brown | **Not started** |
 | **P5** Cheap size | Sharper Dock icon; drop dead Workflows pill | **Not started** |
 | **P6** Optional | Welcome-only file extract (not full ChatView split) | **Deferred** |
@@ -115,6 +115,9 @@ Jimmy redirected P3 twice on 2026-08-15. The shipped slice is **overlay sidebar 
 - Exact Close Session removed all five parent tabs/backends; eight validated
   child directories were moved recoverably to the P3D Trash receipt. Marker
   files are zero and protected OK-F remains.
+- Required **Test and Build App** passed on exact head `34e9520`; PR #107 merged
+  as `1e11be2`. Merged-main `make ship` passed 897/897, and fresh installed UI
+  proof reported `Personal • main @ 1e11be22` in the full Dark workbench.
 
 ---
 
@@ -183,4 +186,4 @@ Jimmy attached a **six-phase roadmap** (cool tokens → quiet welcome → header
 
 ## One-line prompt for Codex
 
-> Read `docs/GROKBUILD_CODEX_HANDOFF_2026-08-15.md` and `docs/GROKBUILD_VISUAL_QUIET_CAMPAIGN_2026-08-15.md`. P1–P3, P3C, and P3D are accepted; verify merged-main identity after the P3D publication receipt. Phase 4 is proposed next, but do not start it without Jimmy's explicit authorization. Icon work, Settings redesign, provider/backend changes, and broad structural work remain out of scope.
+> Read `docs/GROKBUILD_CODEX_HANDOFF_2026-08-15.md` and `docs/GROKBUILD_VISUAL_QUIET_CAMPAIGN_2026-08-15.md`. P1–P3, P3C, and P3D are accepted and P3D is merged as `1e11be2` in PR #107. Phase 4 is proposed next, but do not start it without Jimmy's explicit authorization. Icon work, Settings redesign, provider/backend changes, and broad structural work remain out of scope.

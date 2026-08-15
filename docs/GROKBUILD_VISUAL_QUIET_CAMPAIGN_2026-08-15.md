@@ -440,7 +440,7 @@ rows in a 260-point receipt rail, visually tucked away from the work they owned.
 
 **Receipt**
 
-- PR #107 carries code/test commit
+- PR #107 merged as `1e11be228dba6321ba12bdd2933b9a240011a133` and carries code/test commit
   `2e1deb7e2d135a007334096e5deace53a409dc6f`. `ChatStore`, `GrokProcess`, ACP,
   routing, credentials, Settings layout, accent tokens, and structural extraction
   stayed untouched.
@@ -469,6 +469,10 @@ rows in a 260-point receipt rail, visually tucked away from the work they owned.
   child directories moved recoverably to Trash. Active marker files are zero,
   `prompt_history.jsonl` was not edited, and protected OK-F/backend
   `019ffdad-0d4f-7f42-a429-7ac12ad8198d` remain.
+- Required **Test and Build App** passed on exact PR head `34e9520`. Merged-main
+  `make ship` then passed 897/897 and installed exact `1e11be2`, `dirty=false`,
+  with signed/hash parity. Fresh installed UI proof kept the full screen-filling
+  Dark workbench, usable left sidebar, and App receipt `Personal • main @ 1e11be22`.
 
 ---
 

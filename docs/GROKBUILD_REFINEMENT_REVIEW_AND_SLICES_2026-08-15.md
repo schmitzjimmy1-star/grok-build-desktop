@@ -1,9 +1,9 @@
 # GrokBuild refinement review and remaining slices — 2026-08-15
 
-Status: **Slices 0–2 complete; Slice 3 proposed and not started**. P3D is accepted
-from clean installed candidate `2e1deb7`, its five bounded billable receipts are
-ledgered, and only their exact parent/child sessions were removed. The semantic
-accent sweep is next but remains unauthorized.
+Status: **Slices 0–2 complete; Slice 3 proposed and not started**. P3D is merged
+as `1e11be2` in PR #107, its five bounded billable receipts are ledgered, and
+only their exact parent/child sessions were removed. The semantic accent sweep
+is next but remains unauthorized.
 
 ## Verdict
 
@@ -24,13 +24,13 @@ build emits three unused-local warnings in `SettingsTabTests.swift`.
 
 | Surface | Current evidence | Judgment |
 |---|---|---|
-| Local source | `codex/grokbuild-vq-p3d-live-activity`; code/test commit `2e1deb7e2d135a007334096e5deace53a409dc6f`, based on merged P3C `e761dc0` | Canonical Slice 2 candidate |
-| GitHub | PR #107, **Promote live workers into the activity canvas** | Focused P3D publication lane |
-| Installed app | `Personal • codex/grokbuild-vq-p3d-live-activity @ 2e1deb7e` (`dirty=false`) | Clean P3D candidate acceptance |
+| Local source | `main == personal/main == 1e11be228dba6321ba12bdd2933b9a240011a133`; code/test commit `2e1deb7e2d135a007334096e5deace53a409dc6f` | Canonical merged Slice 2 |
+| GitHub | PR #107, **Promote live workers into the activity canvas**, merged as `1e11be2` | Required `Test and Build App` passed on exact head `34e9520` |
+| Installed app | `Personal • main @ 1e11be22` (`dirty=false`) | Clean merged-main acceptance |
 | Installed bytes | `dist` and installed executable match byte-for-byte | Package/install parity passes |
 | Signing | Deep/strict valid, Team `DD2GCQJVB4`, no quarantine | Packaging integrity passes |
-| Automated tests | focused 61/0; candidate `make ship`: 897/0 | Regression gates pass |
-| Worktree | Clean after commit `2e1deb7`; paid probes made no source/configuration changes | Scope stayed exact |
+| Automated tests | focused 61/0; candidate and merged-main `make ship`: 897/0 each | Regression gates pass |
+| Worktree | Clean at merged P3D `1e11be2`; paid probes made no source/configuration changes | Scope stayed exact |
 | Bundle | 26 MB total: 24 MB app binary, 2.1 MB `agent-desktop`, 216 KB Computer Use MCP, 300 KB icon | No large cheap deletion exists |
 
 ## Live UI review
@@ -212,8 +212,9 @@ occupies a deliberate right-side surface instead of duplicating state in a card.
 
 **Receipt**
 
-PR #107 carries code/test commit `2e1deb7`. Focused tests passed 61/61 and the
-candidate ship passed 897/897 with an exact clean signed install. Installed
+PR #107 carries code/test commit `2e1deb7` and merged as `1e11be2` after the
+required exact-head check passed. Focused tests passed 61/61; candidate and
+merged-main ships each passed 897/897 with exact clean signed installs. Installed
 acceptance proved the compact four-worker Light canvas, readable tool text,
 two-worker live/settled Dark canvas, full-width left/right coexistence, and the
 900/1,180 responsive boundaries. BETA's failed typed child tool forced **Needs
@@ -225,6 +226,8 @@ packets passed; ordered-tool and four-worker behavior passed with final-only pro
 partial because each added one progress sentence. Exact cleanup removed five tabs
 and parents, moved eight validated children recoverably to Trash, left active
 marker counts at zero, preserved `prompt_history.jsonl`, and protected OK-F.
+Fresh merged-main UI proof kept the screen-filling Dark workbench and usable left
+sidebar, while App settings reported `Personal • main @ 1e11be22`.
 
 **Three-sentence handoff after completion**
 
