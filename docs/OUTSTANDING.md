@@ -35,9 +35,9 @@
 > quiet chrome) are verified and merged. Phase 3 merged as `bb01c58` (PR
 > #104) and its clean merged-main install, bounded packet, exact cleanup,
 > and process-zero closeout are recorded below. **P3C composer/task-strip
-> density is merged. P3D live activity composition is accepted in PR #107 and
-> awaiting its required CI/merge and merged-main install closeout.** The Phase 4
-> accent sweep follows P3D but is not authorized.
+> density is merged. P3D live activity composition is accepted and merged as
+> `1e11be2` in PR #107; required CI, merged-main install, and installed UI
+> closeout passed.** The Phase 4 accent sweep follows P3D but is not authorized.
 > Leftover closeout Phases 1–2 are merged on `main` as `7a3006d`
 > (PR #102). Leftover Phase 3 (`ChatView` split) stays deferred.
 > Install path is `make ship` on this Mac.
@@ -50,7 +50,7 @@
 Authorized spec is
 [`docs/GROKBUILD_VISUAL_QUIET_CAMPAIGN_2026-08-15.md`](GROKBUILD_VISUAL_QUIET_CAMPAIGN_2026-08-15.md).
 Phases 1–3 and **P3C** are merged and verified. **P3D** is the accepted live
-activity closeout in PR #107: the duplicate transcript Run card is gone and
+activity closeout merged as `1e11be2` in PR #107: the duplicate transcript Run card is gone and
 active workers occupy a compact truthful right-side canvas. It does not redesign
 Settings or runtime behavior and is not leftover Phase 3. Phase 4 accent work is
 proposed but not authorized.
@@ -109,6 +109,16 @@ packet retains a recovery copy of all exact targets and the pre-cleanup app
 preferences. Active app/backend marker files are zero, `prompt_history.jsonl`
 was not edited, `Clear Empty` was not used, and protected OK-F/backend
 `019ffdad-0d4f-7f42-a429-7ac12ad8198d` remain.
+
+Gate G/H: GitHub's required **Test and Build App** check passed on exact PR head
+`34e9520174ec97801bd954d7464f866cff260a38`; PR #107 merged without history
+rewrite as `1e11be228dba6321ba12bdd2933b9a240011a133`. Local `main` and
+`personal/main` then matched exactly. Merged-main `make ship` passed **897/897**
+and installed `/Applications/GrokBuild.app` with stamp `1e11be2`, `dirty=false`,
+dist/install parity, Team `DD2GCQJVB4`, deep/strict signing, and no quarantine.
+Fresh installed Computer Use opened the screen-filling 1365×768 Dark workbench
+with the left project sidebar usable and App settings reporting
+`Personal • main @ 1e11be22`; the protected OK-F tab remained intact.
 
 ### Visual Quiet P3C receipt — 2026-08-15
 
