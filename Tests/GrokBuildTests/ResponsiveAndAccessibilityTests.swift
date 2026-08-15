@@ -139,8 +139,10 @@ final class ResponsiveAndAccessibilityTests: XCTestCase {
                       "both mounts share the one inspector instance")
         XCTAssertTrue(chatView.contains("activityInspectorCollapsedStrip()"),
                       "below 900 the open inspector collapses instead of hiding")
-        XCTAssertTrue(chatView.contains("Text(\"Run inspector\")"),
-                      "header toggle speaks Run inspector")
+        XCTAssertTrue(chatView.contains("accessibilityLabel(\"Run inspector\")"),
+                      "header menu speaks Run inspector")
+        XCTAssertTrue(chatView.contains(".menuIndicator(.hidden)"),
+                      "the inspector menu is one tiny hit target")
         XCTAssertTrue(chatView.contains(".onScrollGeometryChange(for: Bool.self)"),
                       "scroll attachment projects a Bool so sub-point distance jitter cannot rebuild the transcript")
     }
@@ -247,7 +249,9 @@ final class ResponsiveAndAccessibilityTests: XCTestCase {
     func testAuditedIconOnlyControlsCarryExplicitLabels() throws {
         let expectations: [(file: String, labels: [String])] = [
             ("GrokBuild/Views/SidebarView.swift",
-             ["Filter projects", "Session dashboard", "New project"]),
+             ["New project"]),
+            ("GrokBuild/Views/ChatTopBar.swift",
+             ["Filter projects", "Session dashboard"]),
             ("GrokBuild/Views/PreviewPane.swift", ["Close review pane"]),
             ("GrokBuild/Views/SessionsBrowserPanel.swift", ["Delete session"]),
             ("GrokBuild/Views/MemoryBrowserPanel.swift", ["Reveal in Finder"]),

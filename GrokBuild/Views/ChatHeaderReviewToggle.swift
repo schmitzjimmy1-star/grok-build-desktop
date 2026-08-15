@@ -14,23 +14,18 @@ struct ChatHeaderReviewToggle: View {
     var body: some View {
         if reviewFileCount > 0 || isReviewVisible {
             Button(action: onToggleReview) {
-                HStack(spacing: 6) {
-                    Image(systemName: "doc.on.doc")
-                        .font(.system(size: 12, weight: .semibold))
-                    Text("Review")
-                        .font(AppTheme.Typography.label)
+                HStack(spacing: 3) {
+                    TitlebarGlyph(systemName: "doc.on.doc")
                     if reviewFileCount > 0 {
                         Text("\(reviewFileCount)")
-                            .font(AppTheme.Typography.label)
-                            .foregroundStyle(.secondary)
+                            .font(AppTheme.Typography.caption)
                     }
                 }
-                .padding(.horizontal, 8)
-                .frame(minHeight: ComposerControlMetrics.minimumHitTarget)
+                .frame(minWidth: 22, minHeight: 22)
                 .contentShape(Rectangle())
             }
             .buttonStyle(GrokChromeButtonStyle())
-            .foregroundStyle(.secondary)
+            .foregroundStyle(AppTheme.Palette.titlebarControl)
             .help(isReviewVisible
                 ? "Hide the Git review pane"
                 : "Show the Git review pane. Counts refresh at selection and turn boundaries.")

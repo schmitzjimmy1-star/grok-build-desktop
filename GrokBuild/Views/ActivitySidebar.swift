@@ -237,15 +237,12 @@ struct ActivitySidebar: View {
     /// Codex parity Slice 5: the compact grouped presentation (Subagents,
     /// Computer Use, Sources, Run details) built by `ContextInspectorProjection`.
     var inspector: ContextInspectorProjection.Model = .empty
-    /// When true the panel mounts as a workbench column, not a floating overlay.
-    var docked: Bool = false
 
     @State private var confirmsContinueAsNew = false
-    /// The run-evidence ledger opens in view by default (owner decision,
-    /// 2026-08-08): the collapsed disclosure hid the most information-dense
-    /// receipts behind an extra click every time the inspector opened.
-    @State private var showsExecutionReceipts = true
-    @State private var subagentRowsExpanded = false
+    /// Deep MCP / usage / tool ledger stays in source for tests and the
+    /// header quick-look. The right rail is a subagent tracker.
+    private var showsDebugLedger: Bool { false }
+    @State private var showsExecutionReceipts = false
 
     var body: some View {
         // Codex parity Slice 5: a compact contextual inspector, not a dashboard.
@@ -269,11 +266,11 @@ struct ActivitySidebar: View {
                 // (`inspector.computerUse`) for tests and future surfaces;
                 // Settings → Computer Use remains the control surface.
 
-                if let capabilities = inspector.mcpCapabilities {
+                if showsDebugLedger, let capabilities = inspector.mcpCapabilities {
                     mcpCapabilitiesSection(capabilities)
                 }
 
-                if let sources = inspector.sources {
+                if showsDebugLedger, let sources = inspector.sources {
                     sourcesSection(sources)
                 }
 
@@ -281,7 +278,7 @@ struct ActivitySidebar: View {
                     unresolvedErrorsLine
                 }
 
-                if inspector.hasRunDetails {
+                if showsDebugLedger, inspector.hasRunDetails {
                     Divider()
                     DisclosureGroup(isExpanded: $showsExecutionReceipts) {
                         ScrollView {
@@ -317,7 +314,7 @@ struct ActivitySidebar: View {
         .frame(minWidth: 240, idealWidth: 260, maxWidth: 300)
         .fixedSize(horizontal: false, vertical: true)
         .background(AppTheme.Palette.sidebar)
-        .modifier(ActivitySidebarChrome(docked: docked))
+        .modifier(ActivitySidebarChrome())
         .accessibilityElement(children: .contain)
         .accessibilityLabel("Run inspector")
         .accessibilityIdentifier("grok-run-inspector")
@@ -329,41 +326,37 @@ struct ActivitySidebar: View {
         }
     }
 
-    /// Compact Subagents section: status counts with an optional row disclosure.
+    /// Live tracker: counts plus the visible worker rows, no extra disclosure.
     private func subagentsSection(_ subagents: ContextInspectorProjection.Subagents) -> some View {
         VStack(alignment: .leading, spacing: 5) {
             Text("Subagents").font(AppTheme.Typography.captionStrong)
-            DisclosureGroup(isExpanded: $subagentRowsExpanded) {
-                VStack(alignment: .leading, spacing: 4) {
-                    ForEach(subagents.rows.prefix(ContextInspectorProjection.visibleSubagentRowLimit)) { row in
-                        HStack(spacing: 6) {
-                            Circle()
-                                .fill(row.isActive ? Color.green : AppTheme.Palette.textMuted)
-                                .frame(width: 5, height: 5)
-                            Text(row.name)
-                                .font(AppTheme.Typography.caption)
-                                .lineLimit(1)
-                            Spacer(minLength: 4)
-                            Text(row.statusLabel)
-                                .font(AppTheme.Typography.caption)
-                                .foregroundStyle(.secondary)
-                        }
-                        .accessibilityElement(children: .combine)
-                    }
-                    if subagents.rows.count > ContextInspectorProjection.visibleSubagentRowLimit {
-                        Text("\(subagents.rows.count - ContextInspectorProjection.visibleSubagentRowLimit) more in Run details")
+            Text(subagents.compactLabel)
+                .font(AppTheme.Typography.caption)
+                .foregroundStyle(.secondary)
+            VStack(alignment: .leading, spacing: 4) {
+                ForEach(subagents.rows.prefix(ContextInspectorProjection.visibleSubagentRowLimit)) { row in
+                    HStack(spacing: 6) {
+                        Circle()
+                            .fill(row.isActive ? Color.green : AppTheme.Palette.textMuted)
+                            .frame(width: 5, height: 5)
+                        Text(row.name)
                             .font(AppTheme.Typography.caption)
-                            .foregroundStyle(.tertiary)
+                            .lineLimit(1)
+                        Spacer(minLength: 4)
+                        Text(row.statusLabel)
+                            .font(AppTheme.Typography.caption)
+                            .foregroundStyle(.secondary)
                     }
+                    .accessibilityElement(children: .combine)
                 }
-                .padding(.top, 4)
-            } label: {
-                Text(subagents.compactLabel)
-                    .font(AppTheme.Typography.caption)
-                    .foregroundStyle(.secondary)
+                if subagents.rows.count > ContextInspectorProjection.visibleSubagentRowLimit {
+                    Text("\(subagents.rows.count - ContextInspectorProjection.visibleSubagentRowLimit) more")
+                        .font(AppTheme.Typography.caption)
+                        .foregroundStyle(.tertiary)
+                }
             }
-            .accessibilityIdentifier("grok-inspector-subagents")
         }
+        .accessibilityIdentifier("grok-inspector-subagents")
     }
 
     /// Sources/Context: attachments and requested MCPs are intents; only
@@ -487,8 +480,9 @@ struct ActivitySidebar: View {
     private var header: some View {
         HStack(spacing: 8) {
             VStack(alignment: .leading, spacing: 2) {
-                HStack(spacing: 7) {
-                    Text("Run inspector").font(AppTheme.Typography.heading)
+                HStack(spacing: 6) {
+                    Text(inspector.subagents == nil ? "Run" : "Subagents")
+                        .font(AppTheme.Typography.captionStrong)
                     if snapshot != nil {
                         evidencePhaseBadge("Finished", color: .secondary)
                     } else if liveProjection != nil {
@@ -499,18 +493,19 @@ struct ActivitySidebar: View {
                     ? "Happening now — not final"
                     : "Workspace")
                 .font(AppTheme.Typography.caption)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(.tertiary)
             }
             Spacer()
             Button(action: onClose) {
                 Image(systemName: "xmark")
-                    .frame(width: ComposerControlMetrics.minimumHitTarget, height: ComposerControlMetrics.minimumHitTarget)
+                    .font(.system(size: 10, weight: .semibold))
+                    .frame(width: 22, height: 22)
                     .contentShape(Rectangle())
             }
             .buttonStyle(.plain).foregroundStyle(.secondary)
             .help("Hide run inspector").accessibilityLabel("Hide run inspector")
         }
-        .padding(.horizontal, 14).padding(.vertical, 11)
+        .padding(.horizontal, 12).padding(.vertical, 8)
     }
 
     private func evidencePhaseBadge(_ label: String, color: Color) -> some View {
@@ -1039,24 +1034,12 @@ struct ActivitySidebar: View {
     }
 }
 
-/// Overlay chrome reads as a floating card; docked chrome reads as a column.
+/// Overlay and docked chrome both read as a quiet trailing column.
 private struct ActivitySidebarChrome: ViewModifier {
-    let docked: Bool
-
     func body(content: Content) -> some View {
-        if docked {
-            content
-                .overlay(alignment: .leading) {
-                    Divider()
-                }
-        } else {
-            content
-                .clipShape(RoundedRectangle(cornerRadius: AppTheme.Radius.composer, style: .continuous))
-                .overlay {
-                    RoundedRectangle(cornerRadius: AppTheme.Radius.composer, style: .continuous)
-                        .stroke(AppTheme.Palette.glassBorder)
-                }
-                .shadow(color: AppTheme.Palette.shadow, radius: 12, y: 4)
-        }
+        content
+            .overlay(alignment: .leading) {
+                Divider()
+            }
     }
 }

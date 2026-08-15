@@ -119,7 +119,6 @@ final class CodexShellParityTests: XCTestCase {
             "CodexRailButton(title: \"Sessions\"",
             "CodexRailButton(title: \"Plugins\"",
             "CodexRailButton(title: \"Security\"",
-            "Button(action: onOpenActivity) {",   // header bell
             "Text(\"Projects\")",
             "sessionRow(",
             "TextField(\"Filter projects\"",
@@ -144,7 +143,13 @@ final class CodexShellParityTests: XCTestCase {
         XCTAssertTrue(sidebar.contains("visibleSelectedSessionID"),
                       "a hidden or unavailable session row must fall back to project selection")
         XCTAssertFalse(sidebar.contains("Help and settings"),
-                       "Settings lives in the session header and Command-comma, not the sidebar footer")
+                       "the old footer Help-and-settings copy must not return")
+        XCTAssertTrue(sidebar.contains("grok-sidebar-account-settings"),
+                      "the account row opens Settings; Command-comma still works")
+        XCTAssertTrue(sidebar.contains("ownsSelectedSession"),
+                      "the project that owns the current session expands even if workspace id is stale")
+        XCTAssertFalse(sidebar.contains("selectedWorkspaceID == ws.id || !projectSessions.isEmpty"),
+                       "unselected projects must not keep their session lists open")
         XCTAssertFalse(sidebar.contains("Text(workspace.path.path)"),
                        "project rows keep the path as a tooltip, not a second line of chrome")
 
@@ -334,18 +339,82 @@ final class CodexShellParityTests: XCTestCase {
         XCTAssertFalse(chatView.contains("HStack(spacing: 0) {\n            VStack(spacing: 0) {\n            topBar"),
                        "the old third-column body layout must not return")
 
-        // Compact contextual header: Review state, inspector toggle, Settings.
+        // Compact contextual header: Review and inspector. Settings is the
+        // sidebar account row, not a trailing gear.
         XCTAssertTrue(reviewToggle.contains("grok-header-review-toggle"),
                       "the header carries the contextual Review control")
         XCTAssertTrue(chatView.contains("headerReviewToggle"),
                       "ChatView still hosts the Review toggle in the extracted top bar")
-        let trailingCluster = try XCTUnwrap(topBar.range(of: "reviewToggle\n\n            inspectorToggle"),
-                                            "header trailing order is Review, then inspector toggle, then Settings")
-        XCTAssertTrue(
-            topBar[trailingCluster.upperBound...]
-                .prefix(300)
-                .contains("Image(systemName: \"gearshape\")"),
-            "Settings stays the last trailing header control"
-        )
+        XCTAssertTrue(topBar.contains("reviewToggle\n\n            inspectorToggle"),
+                      "header trailing order is Review, then inspector toggle")
+        XCTAssertFalse(topBar.contains("Image(systemName: \"gearshape\")"),
+                       "Settings is the sidebar account row, not a header gear")
+        XCTAssertTrue(topBar.contains("TitlebarMetrics.trafficLightLeading"),
+                      "the header sits beside the traffic lights")
+        XCTAssertTrue(topBar.contains("TitlebarMetrics.height"),
+                      "the header is one control row")
+        XCTAssertTrue(topBar.contains("TitlebarMetrics.contentTopInset"),
+                      "the header sits just under the traffic lights, not inside the vibrant titlebar")
+        XCTAssertTrue(topBar.contains("TitlebarMetrics.headerIconGap"),
+                      "filter and dashboard sit to the right of the session title with a gap")
+        XCTAssertTrue(topBar.contains("TitlebarGlyph(systemName: \"magnifyingglass\")"),
+                      "Filter projects is a workbench header icon")
+        XCTAssertTrue(topBar.contains("TitlebarGlyph(systemName: \"bell\")"),
+                      "Session dashboard is a workbench header icon")
+        XCTAssertTrue(topBar.contains("sidebarOverlayWidth + TitlebarMetrics.headerIconGap"),
+                      "an open sidebar cannot cover the session title")
+        XCTAssertFalse(topBar.contains(".offset(y: -TitlebarMetrics.height)"),
+                       "the header no longer lifts into the traffic-light row")
+        XCTAssertTrue(topBar.contains(".menuIndicator(.hidden)"),
+                      "More actions is one tiny ellipsis, not ellipsis plus a chevron")
+        XCTAssertTrue(topBar.contains("TitlebarGlyph(systemName: \"sidebar.left\")"),
+                      "titlebar icons are non-template glyphs so Dark vibrancy cannot hide them")
+        XCTAssertTrue(topBar.contains("TitlebarGlyph(systemName: \"ellipsis\")"),
+                      "More actions uses the same baked titlebar glyph")
+        XCTAssertTrue(topBar.contains("AppTheme.Palette.titlebarControl"),
+                      "titlebar icons use the readable titlebar token, not system secondary")
+        XCTAssertTrue(reviewToggle.contains("TitlebarGlyph(systemName: \"doc.on.doc\")"),
+                      "Review uses a baked titlebar glyph")
+        XCTAssertTrue(reviewToggle.contains("AppTheme.Palette.titlebarControl"),
+                      "Review stays visible in the transparent titlebar")
+        XCTAssertTrue(chatView.contains("TitlebarGlyph(systemName: \"sidebar.right\")"),
+                      "the inspector menu uses a baked titlebar glyph")
+        XCTAssertTrue(chatView.contains("AppTheme.Palette.titlebarControl"),
+                      "the inspector menu uses the same readable titlebar token")
+        XCTAssertFalse(topBar.contains(".overlay(alignment: .bottom) { Divider() }"),
+                       "the titlebar has no hairline under the characters")
+        XCTAssertTrue(chatView.contains("RunInspectorQuickLook"),
+                      "run facts live in the header dropdown")
+        XCTAssertTrue(chatView.contains("Show subagents"),
+                      "the dropdown can open the right-side subagent tracker")
+        XCTAssertTrue(chatView.contains("hasLiveSubagents"),
+                      "live workers auto-open the right-side tracker")
+        XCTAssertFalse(chatView.contains("Color.primary.opacity(0.035), in: RoundedRectangle"),
+                       "launch choices are not a tinted banner")
+        XCTAssertTrue(chatView.contains("LaunchSessionChoices("),
+                      "saved-task choices remain")
+        XCTAssertTrue(chatView.contains(".frame(maxWidth: AppTheme.Layout.composerMaxWidth, alignment: .leading)"),
+                      "launch choices sit in the composer column, not a full-width bar")
+        XCTAssertTrue(chatView.contains("case .ready, .idle, .failed:"),
+                      "the task strip stays off on idle connected sessions")
+
+        XCTAssertTrue(contentView.contains("ZStack(alignment: .leading)"),
+                      "the project sidebar overlays the full-width canvas")
+        XCTAssertTrue(contentView.contains(".move(edge: .leading)"),
+                      "the sidebar slides in from the leading edge")
+        XCTAssertTrue(contentView.contains("TitlebarMetrics.sidebarOverlayWidth"),
+                      "the overlay uses the titlebar sidebar width, not a split pane")
+        XCTAssertTrue(contentView.contains("TitlebarMetrics.overlayTopInset"),
+                      "the overlay skips the lowered workbench row")
+        XCTAssertTrue(contentView.contains("onOpenSettings: { openSettings(tab: selectedSettingsTab) }"),
+                      "the account row routes through the existing Settings owner")
+        XCTAssertFalse(contentView.contains("HSplitView {\n            if SidebarVisibility.shouldShow"),
+                       "the project sidebar must not steal canvas width from an HSplitView")
+
+        let appDelegate = try source("GrokBuild/AppDelegate.swift")
+        XCTAssertTrue(appDelegate.contains(".fullSizeContentView"),
+                      "the main window draws content under the traffic lights")
+        XCTAssertTrue(appDelegate.contains("hosting.safeAreaRegions = []"),
+                      "the hosting controller must not keep a titlebar-only safe area")
     }
 }

@@ -153,14 +153,14 @@ struct SidebarView: View {
     var onOpenActivity: () -> Void = {}
     var onOpenPlugins: () -> Void = {}
     var onOpenSecurity: () -> Void = {}
+    var onOpenSettings: () -> Void = {}
+    @Binding var isFilterVisible: Bool
 
     @State private var filter = ""
-    @State private var isFilterVisible = false
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var renamingSessionID: UUID?
     @State private var renameText = ""
 
-    private let collapsedSessionLimit = 5
+    private let collapsedSessionLimit = 3
 
     private var filtered: [Workspace] {
         let base = filter.isEmpty ? orderedWorkspaces : orderedWorkspaces.filter {
@@ -226,37 +226,9 @@ struct SidebarView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            HStack(spacing: 6) {
-                Spacer()
-                Button {
-                    withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.16)) { isFilterVisible.toggle() }
-                } label: {
-                    Image(systemName: "magnifyingglass")
-                        .frame(width: 24, height: 24)
-                        .contentShape(Rectangle().inset(by: -6))
-                }
-                .buttonStyle(.plain)
-                .foregroundStyle(.secondary)
-                .accessibilityLabel("Filter projects")
-                .accessibilityHint(isFilterVisible ? "Hides the project filter field." : "Shows a field that filters projects by name.")
-                .accessibilityValue(isFilterVisible ? "Visible" : "Hidden")
-                Button(action: onOpenActivity) {
-                    Image(systemName: "bell")
-                        .frame(width: 24, height: 24)
-                        .contentShape(Rectangle().inset(by: -6))
-                }
-                .buttonStyle(.plain)
-                .foregroundStyle(.secondary)
-                .accessibilityLabel("Session dashboard")
-                .accessibilityHint("Opens the session dashboard.")
-            }
-            .padding(.horizontal, 14)
-            .padding(.top, 12)
-            .padding(.bottom, 8)
-
-            // Navigation-only rail (Codex parity Slice 1): Session dashboard is
-            // the header bell; Run inspector is the ChatView header toggle.
-            // Workflows lives in Settings and the composer command menu.
+            // Filter and Session dashboard live in ChatTopBar, to the right of
+            // the session title. The rail starts here so those icons cannot
+            // collide with the description.
             VStack(spacing: 2) {
                 CodexRailButton(title: "New chat", systemImage: "square.and.pencil", railAction: .newChat, action: onNewChat)
                 CodexRailButton(title: "Sessions", systemImage: "clock.arrow.circlepath", railAction: .sessions, action: onBrowseSessions)
@@ -264,6 +236,7 @@ struct SidebarView: View {
                 CodexRailButton(title: "Security", systemImage: "checkmark.shield", railAction: .security, action: onOpenSecurity)
             }
             .padding(.horizontal, 8)
+            .padding(.top, 8)
             .padding(.bottom, 8)
 
             if isFilterVisible {
@@ -325,14 +298,17 @@ struct SidebarView: View {
                                 isConversationRouteActive: isConversationRouteActive
                             ) ? [] : .isSelected
                         )
-                        .listRowInsets(EdgeInsets(top: 2, leading: 8, bottom: 2, trailing: 8))
+                        .listRowInsets(EdgeInsets(top: 1, leading: 8, bottom: 1, trailing: 8))
                         .listRowBackground(Color.clear)
                         .contextMenu {
                             projectContextMenu(for: ws)
                         }
 
                         let projectSessions = sessions(for: ws.id)
-                        if (selectedWorkspaceID == ws.id || !projectSessions.isEmpty),
+                        let ownsSelectedSession = selectedSessionID.map { id in
+                            projectSessions.contains { $0.id == id }
+                        } ?? false
+                        if (selectedWorkspaceID == ws.id || ownsSelectedSession),
                            !hiddenSessionWorkspaceIDs.contains(ws.id) {
                             let isExpanded = isSessionsExpanded(for: ws.id)
                             let shownSessions = isExpanded ? projectSessions : collapsedSessions(from: projectSessions)
@@ -410,24 +386,32 @@ struct SidebarView: View {
 
             Divider()
 
-            HStack(spacing: 9) {
-                Circle()
-                    .fill(Color.blue.opacity(0.9))
-                    .frame(width: 22, height: 22)
-                    .overlay {
-                        Text(String(NSFullUserName().prefix(1)).uppercased())
-                            .font(.system(size: 9, weight: .bold))
-                            .foregroundStyle(.white)
-                    }
-                Text(NSFullUserName().isEmpty ? NSUserName() : NSFullUserName())
-                    .font(AppTheme.Typography.captionStrong)
-                    .lineLimit(1)
-                Spacer()
+            Button(action: onOpenSettings) {
+                HStack(spacing: 8) {
+                    Circle()
+                        .fill(Color.blue.opacity(0.9))
+                        .frame(width: 20, height: 20)
+                        .overlay {
+                            Text(String(NSFullUserName().prefix(1)).uppercased())
+                                .font(.system(size: 9, weight: .bold))
+                                .foregroundStyle(.white)
+                        }
+                    Text(NSFullUserName().isEmpty ? NSUserName() : NSFullUserName())
+                        .font(AppTheme.Typography.captionStrong)
+                        .lineLimit(1)
+                    Spacer()
+                }
+                .padding(.horizontal, 12)
+                .frame(height: 36)
+                .contentShape(Rectangle())
             }
-            .padding(.horizontal, 12)
-            .frame(height: 44)
+            .buttonStyle(.plain)
+            .help("Open Settings")
             .accessibilityElement(children: .combine)
-            .accessibilityLabel(NSFullUserName().isEmpty ? NSUserName() : NSFullUserName())
+            .accessibilityLabel("Open Settings")
+            .accessibilityValue(NSFullUserName().isEmpty ? NSUserName() : NSFullUserName())
+            .accessibilityHint("Opens Settings.")
+            .accessibilityIdentifier("grok-sidebar-account-settings")
         }
         .background(AppTheme.Palette.sidebar)
         .navigationTitle("GrokBuild")
@@ -477,7 +461,7 @@ struct SidebarView: View {
             onClose: { onCloseSession(session.id) }
         )
         .tag(SidebarPersistentSelection.session(session.id))
-        .listRowInsets(EdgeInsets(top: 2, leading: 18, bottom: 2, trailing: 10))
+        .listRowInsets(EdgeInsets(top: 1, leading: 16, bottom: 1, trailing: 8))
         .listRowBackground(Color.clear)
         .contextMenu {
             Button("Rename…") {
@@ -578,7 +562,7 @@ private struct SessionSidebarRow: View {
                 .frame(width: 10)
 
                 Text(session.title)
-                    .font(.callout.weight(isSelected ? .semibold : .regular))
+                    .font(isSelected ? AppTheme.Typography.captionStrong : AppTheme.Typography.caption)
                     .lineLimit(1)
                     .foregroundStyle(isSelected ? .primary : .secondary)
                 Spacer()
@@ -591,8 +575,8 @@ private struct SessionSidebarRow: View {
                         .accessibilityIdentifier("grok-sidebar-session-schedule")
                 }
                 }
-                .padding(.horizontal, 8)
-                .padding(.vertical, 5)
+                .padding(.horizontal, 6)
+                .padding(.vertical, 3)
                 .contentShape(Rectangle())
                 .background(
                     isSelected ? AppTheme.Palette.accentSoft : Color.clear,
@@ -640,13 +624,14 @@ private struct WorkspaceRow: View {
     var onToggleSessions: () -> Void = {}
 
     var body: some View {
-        HStack(spacing: 10) {
+        HStack(spacing: 6) {
             Image(systemName: isPinned ? "pin.fill" : "folder")
+                .font(.caption.weight(.semibold))
                 .foregroundStyle(isPinned || isSelected ? Color.primary : .secondary)
             VStack(alignment: .leading, spacing: 1) {
                 HStack(spacing: 6) {
                     Text(workspace.displayName)
-                        .font(isSelected ? .body.weight(.semibold) : .body)
+                        .font(isSelected ? AppTheme.Typography.captionStrong : AppTheme.Typography.caption)
                         .foregroundStyle(isSelected ? .primary : .secondary)
                     if hasSessions {
                         Image(systemName: areSessionsHidden ? "chevron.right" : "chevron.down")
@@ -666,8 +651,8 @@ private struct WorkspaceRow: View {
             .help(workspace.path.path)
             .accessibilityValue(workspace.path.path)
         }
-        .padding(.horizontal, 8)
-        .padding(.vertical, 6)
+        .padding(.horizontal, 6)
+        .padding(.vertical, 3)
         .frame(maxWidth: .infinity, alignment: .leading)
         .contentShape(Rectangle())
         .background(

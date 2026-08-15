@@ -502,7 +502,6 @@ struct ThreadTaskContractView: View {
         .foregroundStyle(.secondary)
         .padding(.horizontal, 12)
         .background(AppTheme.Palette.canvas)
-        .overlay(alignment: .bottom) { Divider() }
     }
 
     private var contractDetails: some View {

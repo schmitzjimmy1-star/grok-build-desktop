@@ -147,18 +147,23 @@ struct SettingsView: View {
                 Button {
                     onBackToChat()
                 } label: {
-                    Label("Session", systemImage: "chevron.left")
+                    HStack(spacing: 4) {
+                        TitlebarGlyph(systemName: "chevron.left", pointSize: 12)
+                        Text("Session")
+                    }
                 }
                 .buttonStyle(GrokChromeButtonStyle())
-                .foregroundStyle(.secondary)
+                .foregroundStyle(AppTheme.Palette.titlebarControl)
                 .keyboardShortcut(.cancelAction)
 
                 Text("Settings")
                     .font(AppTheme.Typography.heading)
                 Spacer()
             }
-            .padding(.horizontal, 18)
-            .padding(.vertical, 10)
+            .padding(.leading, TitlebarMetrics.trafficLightLeading)
+            .padding(.trailing, 18)
+            .padding(.top, TitlebarMetrics.contentTopInset)
+            .frame(height: TitlebarMetrics.overlayTopInset)
             .background(AppTheme.Palette.chrome)
             .accessibilityElement(children: .contain)
             .accessibilityLabel("Settings header")

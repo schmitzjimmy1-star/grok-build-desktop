@@ -325,3 +325,61 @@ enum ContextInspectorProjection {
             .sorted()
     }
 }
+
+/// Header dropdown facts for a developer glance. The right rail tracks
+/// subagents; this list never invents workers, usage, or failures.
+enum RunInspectorQuickLook {
+    struct Fact: Equatable {
+        let phase: String
+        let lines: [String]
+    }
+
+    static func make(
+        inspector: ContextInspectorProjection.Model,
+        modelLabel: String,
+        tokenCount: Int?
+    ) -> Fact {
+        let phase: String
+        if inspector.isLive {
+            phase = "Live"
+        } else if inspector.isSettled {
+            phase = "Finished"
+        } else {
+            phase = "Idle"
+        }
+
+        var lines: [String] = []
+        let model = modelLabel.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !model.isEmpty {
+            lines.append(model)
+        }
+        if let tokenCount {
+            lines.append("\(compactTokens(tokenCount)) tokens")
+        }
+        if let workers = inspector.subagents {
+            lines.append(workers.compactLabel)
+        }
+        if inspector.failedToolCount > 0 {
+            let count = inspector.failedToolCount
+            lines.append("\(count) failed \(count == 1 ? "tool" : "tools")")
+        }
+        if !inspector.unresolvedErrors.isEmpty {
+            let count = inspector.unresolvedErrors.count
+            lines.append("\(count) unresolved \(count == 1 ? "error" : "errors")")
+        }
+        if lines.isEmpty {
+            lines.append("No run evidence")
+        }
+        return Fact(phase: phase, lines: lines)
+    }
+
+    static func compactTokens(_ total: Int) -> String {
+        if total >= 1_000_000 {
+            return "\((Double(total) / 1_000_000).formatted(.number.precision(.fractionLength(1))))M"
+        }
+        if total >= 1_000 {
+            return "\((Double(total) / 1_000).formatted(.number.precision(.fractionLength(1))))K"
+        }
+        return total.formatted()
+    }
+}

@@ -281,5 +281,30 @@ final class ContextInspectorProjectionTests: XCTestCase {
         XCTAssertTrue(model.hasRunDetails)
         XCTAssertTrue(model.isSettled)
         XCTAssertFalse(model.isEmpty)
+
+        let look = RunInspectorQuickLook.make(
+            inspector: model,
+            modelLabel: "Grok 4.6 · Default",
+            tokenCount: 1_200
+        )
+        XCTAssertEqual(look.phase, "Finished")
+        XCTAssertEqual(look.lines, [
+            "Grok 4.6 · Default",
+            "1.2K tokens",
+            "2 failed tools",
+            "1 unresolved error",
+        ])
+    }
+
+    func testQuickLookStaysIdleWithoutEvidence() {
+        let look = RunInspectorQuickLook.make(
+            inspector: .empty,
+            modelLabel: "  ",
+            tokenCount: nil
+        )
+        XCTAssertEqual(look.phase, "Idle")
+        XCTAssertEqual(look.lines, ["No run evidence"])
+        XCTAssertEqual(RunInspectorQuickLook.compactTokens(31), "31")
+        XCTAssertEqual(RunInspectorQuickLook.compactTokens(1_000_000), "1.0M")
     }
 }
