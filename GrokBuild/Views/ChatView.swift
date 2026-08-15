@@ -1265,133 +1265,26 @@ struct ChatView: View {
     }
 
     private var topBar: some View {
-        HStack(spacing: 8) {
-            Button(action: onToggleSidebar) {
-                Image(systemName: "sidebar.left")
-            }
-            .buttonStyle(GrokChromeButtonStyle())
-            .help(isSidebarVisible ? "Hide sidebar" : "Show sidebar")
-            .accessibilityLabel(isSidebarVisible ? "Hide sidebar" : "Show sidebar")
-
-            Image(systemName: "folder")
-                .font(.system(size: 12, weight: .medium))
-                .foregroundStyle(.secondary)
-            Text(sessionTitle)
-                .font(AppTheme.Typography.captionStrong)
-                .lineLimit(1)
-
-            Menu {
-                Button("Browse sessions", systemImage: "clock") {
-                    onBrowseSessions()
-                }
-                Button("Session dashboard", systemImage: "square.grid.2x2") {
-                    onOpenDashboard()
-                }
-
-                if store.currentWorkspace != nil {
-                    Divider()
-                }
-                if store.isResumedSessionTab || store.grokSessionId != nil {
-                    Button("Fork session", systemImage: "arrow.triangle.branch") {
-                        onForkSession()
-                    }
-                }
-                if store.hasShareCommand {
-                    Button("Share session", systemImage: "square.and.arrow.up") {
-                        Task { _ = await store.shareSession() }
-                    }
-                    .disabled(store.isStreaming)
-                }
-                if store.hasGoalCommand {
-                    Button("Set goal…", systemImage: "target") {
-                        showSetGoal = true
-                    }
-                    .disabled(store.isStreaming)
-                }
-                if store.hasCreateSkillCommand {
-                    Button("Create skill…", systemImage: "hammer") {
-                        createSkillName = ""
-                        showCreateSkill = true
-                    }
-                    .disabled(store.isStreaming)
-                }
-
-                if store.currentWorkspace != nil {
-                    Divider()
-
-                    // Branch/worktree switching relocated here from the deleted
-                    // composer project-status row (Codex parity Slice 4).
-                    Button("Branches & Worktrees…", systemImage: "point.topleft.down.curvedto.point.bottomright.up") {
-                        onSwitchBranch()
-                    }
-
-                    Menu("Open project in", systemImage: "arrow.up.forward.app") {
-                        openInButton(title: "Finder", target: .finder, appURL: InstalledAppFinder.finderURL, fallbackSystemImage: "finder")
-                        if let app = InstalledAppFinder.installedApp(bundleIdentifiers: ["com.todesktop.230313mzl4w4u92", "com.cursor.Cursor"], appNames: ["Cursor"]) {
-                            openInButton(title: "Cursor", target: .cursor, appURL: app, fallbackSystemImage: "cursorarrow")
-                        }
-                        if let app = InstalledAppFinder.installedApp(bundleIdentifiers: ["com.microsoft.VSCode", "com.microsoft.VSCodeInsiders"], appNames: ["Visual Studio Code", "Visual Studio Code - Insiders"]) {
-                            openInButton(title: "VS Code", target: .vsCode, appURL: app, fallbackSystemImage: "chevron.left.forwardslash.chevron.right")
-                        }
-                        Divider()
-                        if let app = InstalledAppFinder.installedApp(bundleIdentifiers: ["com.apple.Terminal"], appNames: ["Terminal"]) {
-                            openInButton(title: "Terminal", target: .terminal, appURL: app, fallbackSystemImage: "terminal")
-                        }
-                        if let app = InstalledAppFinder.installedApp(bundleIdentifiers: ["com.googlecode.iterm2"], appNames: ["iTerm", "iTerm2"]) {
-                            openInButton(title: "iTerm", target: .iTerm, appURL: app, fallbackSystemImage: "terminal.fill")
-                        }
-                        if let app = InstalledAppFinder.installedApp(bundleIdentifiers: ["dev.zed.Zed", "dev.zed.Zed-Preview", "com.zed.Zed"], appNames: ["Zed", "Zed Preview"]) {
-                            Divider()
-                            openInButton(title: "Zed", target: .zed, appURL: app, fallbackSystemImage: "square.and.pencil")
-                        }
-                    }
-                }
-            } label: {
-                Image(systemName: "ellipsis")
-            }
-            .menuStyle(.borderlessButton)
-            .help("More actions")
-            .accessibilityLabel("More actions")
-
+        ChatTopBar(
+            store: store,
+            sessionTitle: sessionTitle,
+            isSidebarVisible: isSidebarVisible,
+            onToggleSidebar: onToggleSidebar,
+            onBrowseSessions: onBrowseSessions,
+            onOpenDashboard: onOpenDashboard,
+            onForkSession: onForkSession,
+            onSwitchBranch: onSwitchBranch,
+            onOpenProjectIn: onOpenProjectIn,
+            onOpenSettings: onOpenSettings,
+            showSetGoal: $showSetGoal,
+            createSkillName: $createSkillName,
+            showCreateSkill: $showCreateSkill
+        ) {
             tasksStatusPill
-
-            Spacer()
-
+        } reviewToggle: {
             headerReviewToggle
-
+        } inspectorToggle: {
             activitySidebarToggle
-
-            Button(action: onOpenSettings) {
-                Image(systemName: "gearshape")
-            }
-            .buttonStyle(GrokChromeButtonStyle())
-            .help("Settings")
-            .accessibilityLabel("Open Settings")
-        }
-        .padding(.horizontal, 12)
-        .frame(height: 44)
-        .background(AppTheme.Palette.canvas)
-        .overlay(alignment: .bottom) { Divider() }
-        .focusSection()
-        .accessibilityElement(children: .contain)
-        .accessibilityLabel("Workbench controls")
-        .accessibilitySortPriority(4)
-    }
-
-    private func openInButton(
-        title: String,
-        target: ProjectOpenTarget,
-        appURL: URL,
-        fallbackSystemImage: String
-    ) -> some View {
-        Button {
-            onOpenProjectIn(target)
-        } label: {
-            Label {
-                Text(title)
-            } icon: {
-                InstalledAppFinder.appIcon(for: appURL, fallbackSystemImage: fallbackSystemImage)
-            }
         }
     }
 
@@ -1668,176 +1561,49 @@ struct ChatView: View {
     }
 
     private var composer: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            if !store.fileAttachments.isEmpty {
-                FileChipBar(
-                    attachments: store.fileAttachments,
-                    onToggleHidden: { store.toggleFileAttachmentHidden(id: $0) },
-                    onRemove: { store.removeFileAttachment(id: $0) }
-                )
-            }
-
-            if !store.selectedPromptMCPOptions.isEmpty {
-                PromptMCPChipBar(
-                    names: store.selectedPromptMCPOptions.map(\.name),
-                    onRemove: { store.removePromptMCPAttachment(named: $0) }
-                )
-            }
-
-            if !store.promptQueue.isEmpty {
-                promptQueueBar
-            }
-
-            VStack(alignment: .leading, spacing: 10) {
-                if let stage = store.pendingSubmitStageText {
-                    HStack(spacing: 8) {
-                        ProgressView()
-                            .controlSize(.small)
-                        Text("Preparing task…")
-                            .font(.callout.weight(.medium))
-                        Text(stage)
-                            .font(.callout)
-                            .foregroundStyle(.secondary)
-                        Spacer(minLength: 8)
-                        Text("Esc to cancel")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
-                    .accessibilityElement(children: .contain)
-                    .accessibilityIdentifier("grok-pending-submit-status")
-                } else if let stage = store.sendOwnedStartupStageText {
-                    HStack(spacing: 8) {
-                        ProgressView()
-                            .controlSize(.small)
-                        Text(stage)
-                            .font(.callout)
-                            .foregroundStyle(.secondary)
-                    }
-                    .accessibilityElement(children: .contain)
-                    .accessibilityIdentifier("grok-send-startup-status")
-                }
-
-                VStack(alignment: .leading, spacing: 6) {
-                    if showSlashPopover {
-                        SlashAutocompleteView(
-                            entries: slashMenuEntries,
-                            activeIndex: slashActiveIndex,
-                            onSelect: pickSlashCommand,
-                            onShowMoreSkills: {
-                                slashSkillsExpanded = true
-                                clampSlashActiveIndex()
-                            },
-                            onShowMoreCommands: {
-                                slashCommandsExpanded = true
-                                clampSlashActiveIndex()
-                            }
-                        )
-                    }
-
-                    TextField("Describe a task", text: $input, axis: .vertical)
-                    .textFieldStyle(.plain)
-                    .font(AppTheme.Typography.composer)
-                    .lineSpacing(4)
-                    .focused($inputFocused)
-                    .lineLimit(ComposerDensityPolicy.minimumLineCount...ComposerDensityPolicy.maximumLineCount)
-                    .frame(minHeight: ComposerDensityPolicy.editorMinimumHeight, alignment: .topLeading)
-                    .contentShape(Rectangle())
-                    .overlay(ComposerCursorRegion())
-                    .submitLabel(.send)
-                    .accessibilityLabel("Message composer")
-                    .accessibilityValue(input.isEmpty ? "Empty" : "\(input.count) characters")
-                    .accessibilityHint("Enter a question, build request, or review request. Return sends; Shift-Return adds a line.")
-                    .accessibilityIdentifier("grok-message-composer")
-                    .disabled(store.isPreparingSubmit)
-                    .onSubmit {
-                        if showSlashPopover {
-                            activateSlashEntry(at: slashActiveIndex)
-                        } else {
-                            submit()
-                        }
-                    }
-                    .onChange(of: input) { _, _ in
-                        slashActiveIndex = 0
-                        slashSkillsExpanded = false
-                        slashCommandsExpanded = false
-                    }
-                    .onKeyPress { press in
-                        if press.key == .tab, showSlashPopover, !slashMenuEntries.isEmpty {
-                            activateSlashEntry(at: slashActiveIndex)
-                            return .handled
-                        }
-                        if press.key == .return && !press.modifiers.contains(.shift) {
-                            if showSlashPopover {
-                                activateSlashEntry(at: slashActiveIndex)
-                            } else {
-                                submit()
-                            }
-                            return .handled
-                        }
-                        return .ignored
-                    }
-                    .onKeyPress(keys: [.upArrow]) { press in
-                        guard press.modifiers.isEmpty else { return .ignored }
-                        if showSlashPopover, !slashMenuEntries.isEmpty {
-                            moveSlashSelection(by: -1)
-                            return .handled
-                        }
-                        // History only when the caret has no line above it —
-                        // multi-line drafts keep native caret movement
-                        // (returning .handled unconditionally made arrows
-                        // dead inside long drafts).
-                        guard !input.contains("\n"),
-                              let prev = store.previousHistory(from: input) else {
-                            return .ignored
-                        }
-                        input = prev
-                        return .handled
-                    }
-                    .onKeyPress(keys: [.downArrow]) { press in
-                        guard press.modifiers.isEmpty else { return .ignored }
-                        if showSlashPopover, !slashMenuEntries.isEmpty {
-                            moveSlashSelection(by: 1)
-                            return .handled
-                        }
-                        guard !input.contains("\n"),
-                              let next = store.nextHistory(from: input) else {
-                            return .ignored
-                        }
-                        input = next
-                        return .handled
-                    }
-                }
-
-                // Codex parity Slice 4: the bottom row carries only immediate
-                // authoring/run controls — add/context, run mode, then model,
-                // voice, and send. No keyboard-hint prose, no Details shelf.
-                ViewThatFits(in: .horizontal) {
-                    HStack(spacing: 9) {
-                        composerPrimaryControls
-                        Spacer(minLength: 12)
-                        composerActionControls
-                    }
-                    VStack(alignment: .leading, spacing: 5) {
-                        composerPrimaryControls
-                        composerActionControls
-                    }
-                }
-            }
-            .padding(.horizontal, 11)
-            .padding(.vertical, 10)
-            .frame(maxWidth: AppTheme.Layout.composerMaxWidth, alignment: .leading)
-            .grokGlassSurface(
-                cornerRadius: AppTheme.Radius.composer,
-                emphasized: isFileDropTargeted,
-                shadowed: true
-            )
-            .onDrop(of: [UTType.fileURL.identifier], isTargeted: $isFileDropTargeted) { providers in
-                handleFileDrop(providers)
-            }
-            .frame(maxWidth: .infinity, alignment: .center)
+        ChatComposer(
+            store: store,
+            input: $input,
+            isFileDropTargeted: $isFileDropTargeted,
+            inputFocused: $inputFocused,
+            showSlashPopover: showSlashPopover,
+            slashMenuEntries: slashMenuEntries,
+            slashActiveIndex: slashActiveIndex,
+            onSelectSlash: pickSlashCommand,
+            onShowMoreSkills: {
+                slashSkillsExpanded = true
+                clampSlashActiveIndex()
+            },
+            onShowMoreCommands: {
+                slashCommandsExpanded = true
+                clampSlashActiveIndex()
+            },
+            onSubmit: submit,
+            onActivateSlash: { activateSlashEntry(at: $0) },
+            onMoveSlashSelection: { moveSlashSelection(by: $0) },
+            onInputChanged: {
+                slashActiveIndex = 0
+                slashSkillsExpanded = false
+                slashCommandsExpanded = false
+            },
+            onPreviousHistory: {
+                guard let prev = store.previousHistory(from: input) else { return false }
+                input = prev
+                return true
+            },
+            onNextHistory: {
+                guard let next = store.nextHistory(from: input) else { return false }
+                input = next
+                return true
+            },
+            onFileDrop: handleFileDrop
+        ) {
+            promptQueueBar
+        } primaryControls: {
+            composerPrimaryControls
+        } actionControls: {
+            composerActionControls
         }
-        .padding(.horizontal, 20)
-        .padding(.vertical, 8)
     }
 
     private var composerPrimaryControls: some View {
@@ -1952,40 +1718,15 @@ struct ChatView: View {
         }
     }
 
-    /// Contextual header Review control (Codex parity Slice 2). Rendered only when
-    /// the generation-bound Git snapshot reports changed files, or the pane is
-    /// already open so it can always be closed from the header. It targets the real
-    /// Git review split — the same `onToggleReview` destination the changed-files
-    /// entry uses — never a duplicate surface.
+    /// Contextual header Review control (Codex parity Slice 2). ChatView still
+    /// owns the count and visibility; `ChatHeaderReviewToggle` renders the control.
     @ViewBuilder
     private var headerReviewToggle: some View {
-        if reviewFileCount > 0 || isReviewVisible {
-            Button(action: onToggleReview) {
-                HStack(spacing: 6) {
-                    Image(systemName: "doc.on.doc")
-                        .font(.system(size: 12, weight: .semibold))
-                    Text("Review")
-                        .font(AppTheme.Typography.label)
-                    if reviewFileCount > 0 {
-                        Text("\(reviewFileCount)")
-                            .font(AppTheme.Typography.label)
-                            .foregroundStyle(.secondary)
-                    }
-                }
-                .padding(.horizontal, 8)
-                .frame(minHeight: ComposerControlMetrics.minimumHitTarget)
-                .contentShape(Rectangle())
-            }
-            .buttonStyle(GrokChromeButtonStyle())
-            .foregroundStyle(.secondary)
-            .help(isReviewVisible
-                ? "Hide the Git review pane"
-                : "Show the Git review pane. Counts refresh at selection and turn boundaries.")
-            .accessibilityLabel(isReviewVisible ? "Hide changed files review" : "Show changed files review")
-            .accessibilityValue("\(reviewFileCount) changed \(reviewFileCount == 1 ? "file" : "files")")
-            .accessibilityHint("Counts refresh when you switch sessions or a turn completes, not on external edits.")
-            .accessibilityIdentifier("grok-header-review-toggle")
-        }
+        ChatHeaderReviewToggle(
+            reviewFileCount: reviewFileCount,
+            isReviewVisible: isReviewVisible,
+            onToggleReview: onToggleReview
+        )
     }
 
     private var activitySidebarToggle: some View {

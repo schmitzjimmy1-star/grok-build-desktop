@@ -2441,6 +2441,11 @@ final class ACPClientContractTests: XCTestCase {
             contentsOf: repositoryRoot.appendingPathComponent("GrokBuild/Views/ChatView.swift"),
             encoding: .utf8
         )
+        let composerSource = try String(
+            contentsOf: repositoryRoot.appendingPathComponent("GrokBuild/Views/ChatComposer.swift"),
+            encoding: .utf8
+        )
+        let chromeSource = chatSource + "\n" + composerSource
         let contentSource = try String(
             contentsOf: repositoryRoot.appendingPathComponent("GrokBuild/ContentView.swift"),
             encoding: .utf8
@@ -2470,8 +2475,8 @@ final class ACPClientContractTests: XCTestCase {
         XCTAssertTrue(chatSource.contains("private struct CodexPromptPill"))
         XCTAssertTrue(chatSource.contains("private var browserStatusIndicator"))
         XCTAssertTrue(chatSource.contains("private var computerUseStatusIndicator"))
-        XCTAssertTrue(chatSource.contains("TextField(\"Describe a task\""))
-        XCTAssertTrue(chatSource.contains("ComposerDensityPolicy.minimumLineCount...ComposerDensityPolicy.maximumLineCount"))
+        XCTAssertTrue(chromeSource.contains("TextField(\"Describe a task\""))
+        XCTAssertTrue(chromeSource.contains("ComposerDensityPolicy.minimumLineCount...ComposerDensityPolicy.maximumLineCount"))
         // Codex parity Slice 4: the composer Details shelf and project status row
         // were deleted; no telemetry shelf may return below the composer.
         XCTAssertFalse(chatSource.contains("showComposerDetails"))

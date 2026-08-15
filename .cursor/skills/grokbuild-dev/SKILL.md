@@ -50,7 +50,7 @@ Full checklist: `.cursor/rules/docs-and-tests.mdc`.
 | Slice 4 provenance / explicit recovery tests | `swift test --filter 'GrokSessionTranscriptImporterTests|SessionLifecycleV3Tests|ACPClientContractTests'` |
 | Coherence Settings apply / reload / LRU tests | `swift test --filter 'SettingsTabTests|SettingsRuntimeContractTests|SessionLifecycleTests'` |
 | Forward-slices Slice 5 agentic acceptance harness | `swift test --filter AcceptanceHarnessTests` |
-| Forward-slices Slice 6 coordination seams | `swift test --filter 'SessionRuntimeRetentionTests|RunHistoryTests|AcceptanceHarnessTests|ACPClientContractTests|LifecycleAndSubprocessTests|BackgroundTaskTests|UsageAndRoutingTests'` |
+| Forward-slices Slice 6 coordination seams | `swift test --filter 'SessionRuntimeRetentionTests|RunHistoryTests|AcceptanceHarnessTests|ACPClientContractTests|LifecycleAndSubprocessTests|BackgroundTaskTests|UsageAndRoutingTests|ComposerPresentationContractTests|CodexShellParityTests|SessionDashboardNavigationTests'` |
 | Slice 7 Settings extensions / schema / cancellation tests | `swift test --filter 'SettingsExtensionContractTests|SettingsTabTests|CompatConfigTests|WorkflowRunTests|SessionLifecycleTests|SubprocessHygieneTests'` |
 | Slice 0 synthetic fixtures | `Tests/GrokBuildTests/Fixtures/CoherenceRepair/` |
 

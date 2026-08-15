@@ -29,6 +29,15 @@ final class CodexShellParityTests: XCTestCase {
         )
     }
 
+    private func chromeSource() throws -> String {
+        try [
+            "GrokBuild/Views/ChatView.swift",
+            "GrokBuild/Views/ChatTopBar.swift",
+            "GrokBuild/Views/ChatComposer.swift",
+            "GrokBuild/Views/ChatHeaderReviewToggle.swift",
+        ].map(source).joined(separator: "\n")
+    }
+
     /// Slice 4 presentation contract (replaced the Slice 0 red-baseline
     /// inventory): the composer is Codex-shaped. No Details shelf, no center
     /// hint prose, no project status row, no duplicate Review/Activity controls
@@ -36,6 +45,7 @@ final class CodexShellParityTests: XCTestCase {
     /// and project tools; telemetry lives in the model popover.
     func testComposerIsCodexShaped() throws {
         let chatView = try source("GrokBuild/Views/ChatView.swift")
+        let chrome = try chromeSource()
 
         for removed in [
             "showComposerDetails",
@@ -71,7 +81,7 @@ final class CodexShellParityTests: XCTestCase {
             "grok-model-route-contract",
         ] {
             XCTAssertTrue(
-                chatView.contains(retained),
+                chrome.contains(retained),
                 "Slice 4 contract: authoring/telemetry surface `\(retained)` must remain reachable"
             )
         }
@@ -247,7 +257,8 @@ final class CodexShellParityTests: XCTestCase {
     /// changed-files card. The Details-shelf duplicate is gone for good.
     func testReviewLivesOnlyInHeaderAndInlineCard() throws {
         let chatView = try source("GrokBuild/Views/ChatView.swift")
-        XCTAssertTrue(chatView.contains("grok-header-review-toggle"),
+        let reviewToggle = try source("GrokBuild/Views/ChatHeaderReviewToggle.swift")
+        XCTAssertTrue(reviewToggle.contains("grok-header-review-toggle"),
                       "the contextual header Review control remains")
         XCTAssertTrue(chatView.contains("ChangedFilesSummaryCard("),
                       "the inline changed-files card remains the in-conversation Review entry")
@@ -306,6 +317,8 @@ final class CodexShellParityTests: XCTestCase {
         )
 
         let chatView = try source("GrokBuild/Views/ChatView.swift")
+        let topBar = try source("GrokBuild/Views/ChatTopBar.swift")
+        let reviewToggle = try source("GrokBuild/Views/ChatHeaderReviewToggle.swift")
 
         // The inspector docks at the default window width; overlay is mid-band only.
         XCTAssertTrue(chatView.contains("ZStack(alignment: .topTrailing) {"),
@@ -318,12 +331,14 @@ final class CodexShellParityTests: XCTestCase {
                        "the old third-column body layout must not return")
 
         // Compact contextual header: Review state, inspector toggle, Settings.
-        XCTAssertTrue(chatView.contains("grok-header-review-toggle"),
+        XCTAssertTrue(reviewToggle.contains("grok-header-review-toggle"),
                       "the header carries the contextual Review control")
-        let trailingCluster = try XCTUnwrap(chatView.range(of: "headerReviewToggle\n\n            activitySidebarToggle"),
+        XCTAssertTrue(chatView.contains("headerReviewToggle"),
+                      "ChatView still hosts the Review toggle in the extracted top bar")
+        let trailingCluster = try XCTUnwrap(topBar.range(of: "reviewToggle\n\n            inspectorToggle"),
                                             "header trailing order is Review, then inspector toggle, then Settings")
         XCTAssertTrue(
-            chatView[trailingCluster.upperBound...]
+            topBar[trailingCluster.upperBound...]
                 .prefix(300)
                 .contains("Image(systemName: \"gearshape\")"),
             "Settings stays the last trailing header control"

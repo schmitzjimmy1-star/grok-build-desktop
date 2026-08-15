@@ -605,13 +605,18 @@ final class ActivitySidebarTests: XCTestCase {
             contentsOf: repositoryRoot.appendingPathComponent("GrokBuild/Views/ChatView.swift"),
             encoding: .utf8
         )
+        let composer = try String(
+            contentsOf: repositoryRoot.appendingPathComponent("GrokBuild/Views/ChatComposer.swift"),
+            encoding: .utf8
+        )
+        let chrome = chat + "\n" + composer
         XCTAssertTrue(chat.contains("addCursorRect(bounds, cursor: .iBeam)"))
-        XCTAssertTrue(chat.contains(".overlay(ComposerCursorRegion())"))
-        XCTAssertTrue(chat.contains("window?.invalidateCursorRects(for: self)"))
-        XCTAssertTrue(chat.contains(".cursorUpdate"))
-        XCTAssertTrue(chat.contains("NSCursor.iBeam.set()"))
-        XCTAssertTrue(chat.contains("NSCursor.arrow.set()"))
-        XCTAssertFalse(chat.contains("NSCursor.iBeam.push()"))
-        XCTAssertFalse(chat.contains("NSCursor.pop()"))
+        XCTAssertTrue(composer.contains(".overlay(ComposerCursorRegion())"))
+        XCTAssertTrue(chrome.contains("window?.invalidateCursorRects(for: self)"))
+        XCTAssertTrue(chrome.contains(".cursorUpdate"))
+        XCTAssertTrue(chrome.contains("NSCursor.iBeam.set()"))
+        XCTAssertTrue(chrome.contains("NSCursor.arrow.set()"))
+        XCTAssertFalse(chrome.contains("NSCursor.iBeam.push()"))
+        XCTAssertFalse(chrome.contains("NSCursor.pop()"))
     }
 }

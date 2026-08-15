@@ -109,13 +109,14 @@ final class SessionDashboardNavigationTests: XCTestCase {
             contentsOf: repositoryRoot.appendingPathComponent("GrokBuild/Views/ChatView.swift"),
             encoding: .utf8
         )
-        let topBarStart = try XCTUnwrap(chatView.range(of: "private var topBar: some View"))
-        let topBarEnd = try XCTUnwrap(
-            chatView.range(of: "private func openInButton", range: topBarStart.upperBound..<chatView.endIndex)
+        let topBar = try String(
+            contentsOf: repositoryRoot.appendingPathComponent("GrokBuild/Views/ChatTopBar.swift"),
+            encoding: .utf8
         )
-        let topBar = String(chatView[topBarStart.lowerBound..<topBarEnd.lowerBound])
-
-        XCTAssertTrue(topBar.contains("tasksStatusPill"), "the runtime lease menu must be mounted, not dead SwiftUI code")
+        XCTAssertTrue(chatView.contains("ChatTopBar("))
+        XCTAssertTrue(chatView.contains("tasksStatusPill"), "the runtime lease menu must be mounted, not dead SwiftUI code")
+        XCTAssertTrue(topBar.contains("tasksStatus"), "the extracted top bar still hosts the Tasks slot")
+        XCTAssertTrue(topBar.contains("private func openInButton"))
     }
 
     private func entry(

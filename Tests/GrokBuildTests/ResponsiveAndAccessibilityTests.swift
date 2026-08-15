@@ -116,10 +116,12 @@ final class ResponsiveAndAccessibilityTests: XCTestCase {
 
     func testFocusOrderSectionsRemainDeclared() throws {
         let chatView = try source("GrokBuild/Views/ChatView.swift")
+        let topBar = try source("GrokBuild/Views/ChatTopBar.swift")
+        let chrome = chatView + "\n" + topBar
         XCTAssertTrue(chatView.contains("accessibilitySortPriority(3)"))
         XCTAssertTrue(chatView.contains(".accessibilitySortPriority(2)"))
         XCTAssertTrue(chatView.contains(".accessibilitySortPriority(1)"))
-        XCTAssertEqual(chatView.components(separatedBy: ".focusSection()").count - 1, 3,
+        XCTAssertEqual(chrome.components(separatedBy: ".focusSection()").count - 1, 3,
                        "workbench controls, transcript, and composer each own one focus section")
     }
 

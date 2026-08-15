@@ -18,13 +18,13 @@
 > created by the current slice, and unrelated browser/app state are protected.
 >
 > **Current campaign slice:** Slice 6, extract coordination seams, authorized.
-> PR 1 merged as `6f2d0eb` (PR #77). PR 2 extracts remaining Run history
-> snapshot/presentation from `ContentView` / `SessionDashboardPanel`. Spec:
+> PR 1 merged as `6f2d0eb` (PR #77). PR 2 merged as `f7246f4` (PR #78).
+> PR 3 extracts `ChatTopBar` / `ChatComposer` / `ChatHeaderReviewToggle`. Spec:
 > [`docs/GROKBUILD_VERIFICATION_AND_FORWARD_SLICES_2026-08-13.md`](GROKBUILD_VERIFICATION_AND_FORWARD_SLICES_2026-08-13.md).
 > Numbered `## Slice N` headings below the 2026-08-14 harness receipt are historical
 > campaigns. Do not implement them.
 
-## Slice 6 — extract coordination seams and replace brittle test pins (authorized, PR 1 merged, 2026-08-14)
+## Slice 6 — extract coordination seams and replace brittle test pins (authorized, PR 1–2 merged, 2026-08-14)
 
 Authorized scope is the Slice 6 section in
 `docs/GROKBUILD_VERIFICATION_AND_FORWARD_SLICES_2026-08-13.md`. Product identity is
@@ -46,7 +46,7 @@ export layer):
 | 1. Subagent/lifecycle correlation | `BackgroundTaskTracker` in `GrokBuild/Services/BackgroundTaskStore.swift`, including `evidenceWorkers(...)` | `ChatStore.backgroundTaskTracker`, thin `ChatStore.currentTurnEvidenceWorkers()` delegate, `ChatStore` turn-scoped worker ID sets |
 | 2. Session-retention/LRU | `SessionRuntimeRetentionPolicy` in `GrokBuild/Models/SessionProcessIdentity.swift` | `ContentView.runtimeRetentionDecision`, `ContentView.enforceConnectionCap()` in `GrokBuild/ContentView.swift` |
 | 3. Run-history/export | `RunHistory` in `GrokBuild/Models/RunHistory.swift`, including `snapshots(for:)` and `Presentation`; `RunHistorySection` / `RedactedRunHistoryDocument` in `GrokBuild/Views/RunHistorySection.swift` | `ContentView.openActivityDashboard()` still decides when to snapshot; `SessionDashboardPanel` still hosts the section |
-| 4. Top bar and composer | none as small components yet | `ChatView.topBar`, `ChatView.composer`, `ChatView.headerReviewToggle` in `GrokBuild/Views/ChatView.swift` |
+| 4. Top bar and composer | `ChatTopBar.swift`, `ChatComposer.swift`, `ChatHeaderReviewToggle.swift` | thin `ChatView.topBar` / `composer` / `headerReviewToggle` wrappers; Tasks pill, add menu, slash matching, and send stay on `ChatView` / `ChatStore` |
 | 5. Source-string pins for touched contracts | keep a few architecture tripwires | `Tests/GrokBuildTests/ACPClientContractTests.swift` methods that `String(contentsOf:)` `ChatStore.swift`, `ContentView.swift`, `ChatView.swift`, or `GrokChatChrome.swift` |
 
 Supporting tests already in tree: `Tests/GrokBuildTests/SessionRuntimeRetentionTests.swift`,
