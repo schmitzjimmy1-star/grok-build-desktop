@@ -148,6 +148,58 @@ final class RunHistoryTests: XCTestCase {
         }
     }
 
+    func testSnapshotsKeepEachSessionIndependent() {
+        let firstID = UUID()
+        let secondID = UUID()
+        let snapshots = RunHistory.snapshots(for: [
+            (id: firstID, messages: [message(backend: "backend-a", timestamp: 1, outcome: .completed)]),
+            (id: secondID, messages: [
+                message(backend: "backend-b", timestamp: 2, outcome: .completed),
+                message(backend: "backend-b", timestamp: 3, outcome: .userStopped)
+            ])
+        ])
+
+        XCTAssertEqual(snapshots[firstID]?.count, 1)
+        XCTAssertEqual(snapshots[secondID]?.count, 1)
+        XCTAssertEqual(snapshots[firstID]?.first?.backendSessionID, "backend-a")
+        XCTAssertEqual(snapshots[secondID]?.first?.turns.count, 2)
+        XCTAssertTrue(snapshots[secondID]?.first?.hasStopResumeBoundary ?? false)
+    }
+
+    func testDashboardPresentationLinesStayHonestAboutMissingReceipts() throws {
+        let record = try XCTUnwrap(RunHistory.records(from: [
+            message(backend: "backend-a", timestamp: 1, outcome: .completed)
+        ]).first)
+        let latest = try XCTUnwrap(record.latest)
+
+        XCTAssertEqual(
+            RunHistory.Presentation.checkpointSummary(for: record),
+            "1 historical checkpoint • Turn completed • grok-4.6"
+        )
+        XCTAssertEqual(RunHistory.Presentation.routeLine(for: record), "Route: not retained")
+        XCTAssertTrue(RunHistory.Presentation.toolsLine(for: latest).hasPrefix("Tools: "))
+        XCTAssertTrue(RunHistory.Presentation.toolsLine(for: latest).contains(latest.topology))
+    }
+
+    func testContentViewSnapshotsThroughRunHistoryHelper() throws {
+        let repositoryRoot = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        let content = try String(
+            contentsOf: repositoryRoot.appendingPathComponent("GrokBuild/ContentView.swift"),
+            encoding: .utf8
+        )
+        let panel = try String(
+            contentsOf: repositoryRoot.appendingPathComponent("GrokBuild/Views/SessionDashboardPanel.swift"),
+            encoding: .utf8
+        )
+        XCTAssertTrue(content.contains("RunHistory.snapshots("))
+        XCTAssertFalse(content.contains("RunHistory.records(from: session.store.messages)"))
+        XCTAssertTrue(panel.contains("RunHistorySection("))
+        XCTAssertFalse(panel.contains("private var runHistorySection"))
+    }
+
     private func message(backend: String, timestamp: TimeInterval, outcome: ChatStore.TurnOutcome) -> Message {
         Message(
             role: .assistant,

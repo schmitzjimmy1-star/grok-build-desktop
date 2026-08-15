@@ -1165,7 +1165,7 @@ See `BUILDING.md` for signing, notarization, CI workflow.
 | **Sidebar sessions** | `ContentView` (`selectSession`, `persistSessionLayout`, LRU) |
 | **Browse Sessions** | `ContentView` sheet (`workspaceStore.workspaces`), `SessionBrowserView`, `SessionsBrowserPanel` (cwd-bound Resume; empty copy distinguishes no project vs no sessions) |
 | **Session restore at launch** | `ContentView.restorePersistedSessions`, `ContentView.selectSession`, `SessionRestorePolicy`, `SessionTranscriptRecovery`, `ChatStore.deliverPrompt` |
-| **Slice 6 coordination seams (2026-08-13 campaign)** | `BackgroundTaskTracker.evidenceWorkers` in `BackgroundTaskStore.swift` plus thin `ChatStore.currentTurnEvidenceWorkers()`; `SessionRuntimeRetentionPolicy` in `SessionProcessIdentity.swift` plus `ContentView.enforceConnectionCap()`; `RunHistory.swift` plus `SessionDashboardPanel.swift`; `ChatView.topBar` / `composer` / `headerReviewToggle`; source-string pins in `ACPClientContractTests.swift` |
+| **Slice 6 coordination seams (2026-08-13 campaign)** | `BackgroundTaskTracker.evidenceWorkers` in `BackgroundTaskStore.swift` plus thin `ChatStore.currentTurnEvidenceWorkers()`; `SessionRuntimeRetentionPolicy` in `SessionProcessIdentity.swift` plus `ContentView.enforceConnectionCap()`; `RunHistory.snapshots` / `RunHistory.Presentation` plus `RunHistorySection.swift`; `ChatView.topBar` / `composer` / `headerReviewToggle`; source-string pins in `ACPClientContractTests.swift` |
 | **Continuity verifier / send gate** | `GrokSessionTranscriptImporter.importMessagesBounded`, `SessionTranscriptRecovery.verifyContinuity`, `SessionSendGate`, `ChatStore.verifyContinuityBeforeResume`, `ChatStore.continuityRequiresRecovery` / `continuityIsResuming` / `isResumedSessionTab`, `ChatView.LaunchSessionChoices`, `ActivitySidebar` |
 | **Recovery candidate review / Continue as New / Relink** | `GrokSessionTranscriptImporter.importTranscriptBounded`, `SessionTranscriptRecovery.recoveryCandidates`, `ChatStore.reviewRecoveryCandidates` / `continueAsNew` / `relink`, `RecoveryCandidateReviewSheet` |
 | **Lifecycle migration/integrity** | `SessionLayoutStore`, `SessionLifecycleIntegrity`, `SessionLifecycleV3Tests` |
@@ -1190,7 +1190,7 @@ arguments, credentials, URLs, or environment contents.
 | **Run evidence projection and snapshot** | `RunEvidenceLiveProjection.swift`, `RunEvidenceSnapshot.swift`, `ChatStore.liveRunEvidenceProjection`, `ChatStore.runEvidenceSnapshot`, ordered `AcpEvent.turnCompleted`, `ContentView.recordGitReviewFiles` |
 | **Rhai workflows** | `WorkflowsConfigStore`, `WorkflowRunStore`, `SavedWorkflowStore`, composer command menu, `.workflowsConfigChanged` |
 | **Fork / share / queue** | `GrokLaunchOptions.forkSession`, `ChatStore.startForked`, `shareSession`, `promptQueue`, `btwAsideText` |
-| **Dashboard** | `SessionDashboardPanel.swift`, `ContentView.dashboardEntries` |
+| **Dashboard** | `SessionDashboardPanel.swift`, `RunHistorySection.swift`, `ContentView.dashboardEntries`, `RunHistory.snapshots` |
 | **Compat** | `CompatConfigStore`, `CompatibilitySettingsPane`, `listExternalCompat` |
 | **MCP Settings editor** | `GrokMCPServerDraft`, `GrokCLIService.mcpAddArguments` / `listMCPServers` / `doctorMCPServer`, `MCPSettingsPane` |
 | **Extension Settings inventories** | `SettingsInventoryState`, `SettingsRowOperationReceipt`, Skills/Plugins/Marketplace/Hooks panes |

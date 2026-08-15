@@ -602,9 +602,11 @@ struct ContentView: View {
     }
 
     private func openActivityDashboard() {
-        dashboardRunHistoryBySessionID = Dictionary(uniqueKeysWithValues: liveSessions.map { session in
-            (session.id, RunHistory.records(from: session.store.messages))
-        })
+        dashboardRunHistoryBySessionID = RunHistory.snapshots(
+            for: liveSessions.map { session in
+                (id: session.id, messages: session.store.messages)
+            }
+        )
         sessionModal = .activityDashboard
     }
 
