@@ -1,6 +1,6 @@
 # GrokBuild agentic-performance verification and forward slices — 2026-08-13
 
-Status: **Slices 0–6 complete after the final closeout receipt merges; Slice 7 is next for a new session only.**
+Status: **Slices 0–6 complete at merged `150fbbe8`; Slice 7 public-evidence refresh is the current authorized slice.**
 
 This plan follows the canonical identity and Gates A–H in
 [`CANONICAL_WORKTREE.md`](../CANONICAL_WORKTREE.md) and
@@ -629,6 +629,18 @@ ships.
   anomaly ceiling: **100k actual tokens**; reuse no prior provider history.
 - The final public example should show a settled multi-tool/two-child run with readable
   parent/child and tool evidence, not another chatbot answering a one-line prompt.
+
+### Slice 7 progress — 2026-08-14
+
+Gate A re-derived clean merged `150fbbe8` with stamp == HEAD, matching
+dist/installed SHA-256 `350b2f1487afa222bff043eeeae9fbde07f4cd8bb8ece9bea583ded35c41b01b`,
+Team `DD2GCQJVB4`, and process-zero at `23:15:33` / `23:16:38`. Branch
+`codex/grokbuild-audit-s7-public-evidence`. One native visual packet
+`20260815T041847Z` settled on tab `C7B29221-4B7B-4C3E-BE03-542BB213738F` with
+two completed children, six successful tools, and exact parent marker
+`GB-S7-VIS-20260815T041847Z-PARENT`. Public images and the README first
+screenful now match that signed installed chrome. Parent usage was 147,946
+actual tokens; no second prompt.
 
 ## Ideas deliberately rejected
 

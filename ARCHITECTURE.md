@@ -1194,6 +1194,7 @@ Slice 7 adds an opt-in redacted JSONL stage ledger driven by
 spawn/ACP/session/model/MCP readiness, submit/dispatch/first-chunk/settled boundaries
 using only stage, time, and PID. It never records prompts, response bodies, tool
 arguments, credentials, URLs, or environment contents.
+| **Public README screenshots (2026-08-13 campaign Slice 7)** | `docs/images/grokbuild-app.png` (signed-installed New chat), `docs/images/grokbuild-run-inspector.png` (settled multi-tool/two-child Run inspector); first-screenful copy in `README.md` |
 | **Agentic acceptance harness** | `scripts/acceptance/run.py`, `scripts/acceptance/schema/v1.json`, `scripts/acceptance/manifests/installed-three-route-v1.json`, `scripts/acceptance/manifests/installed-slice6-packet-v1.json`; dry-run default, `--billable` after preflight, fixture-mode rejection, exact-ID cleanup, Slice 6 250k Stop packet |
 | **Add/remove project** | `WorkspaceStore`, `WorkspacePicker` |
 | **Browser tools** | `AgentBrowserService`, `BrowserSettingsStore`, settings `.browser` (agent-browser CLI over MCP) |
@@ -1298,7 +1299,7 @@ Prefer extending existing test files. Test pure logic without launching real `gr
 | `README.md` | User-facing features |
 | `BUILDING.md` | Signing, notarization, release CI |
 | `docs/OUTSTANDING.md` | Canonical current-slice ledger and Gates A–H |
-| `docs/GROKBUILD_VERIFICATION_AND_FORWARD_SLICES_2026-08-13.md` | Current campaign spec (Slice 6 seams) |
+| `docs/GROKBUILD_VERIFICATION_AND_FORWARD_SLICES_2026-08-13.md` | Current campaign spec (Slice 7 public evidence) |
 | `.cursor/rules/` | Architecture, SwiftUI, CLI integration, AppKit panels |
 | `.cursor/skills/grokbuild-*` | Dev workflow, release, CLI checks |
 | `GrokBuild/Resources/Skills/` | Bundled runtime skills only; the unused `grokbuild-desktop` editing skill was retired |

@@ -7,11 +7,15 @@
 > project is retired and must not be built or installed. See
 > [`CANONICAL_WORKTREE.md`](CANONICAL_WORKTREE.md) before making changes.
 
-GrokBuild Desktop App is a native SwiftUI macOS workbench for the [`grok`](https://grok.com) CLI. It is built for project work: persistent workspaces, resumable build sessions, git branches and worktrees, agents, tools, workflows, tasks, memory, skills, plugins, and reviewable output.
+GrokBuild is a native SwiftUI macOS workbench for the [`grok`](https://grok.com) CLI. It is a thin wrapper, not a second agent runtime. The CLI still owns ACP, MCP tools, skills, permissions, memory, plan mode, and subagents.
 
-You can also install GrokBuild just to manage custom OpenAI-compatible models in **Settings → Models** (Keychain-backed provider credentials plus a CLI-compatible `~/.grok/config.toml`; no project or session needed), then use them in the grok TUI.
+Work lives in a project folder as durable session tabs you can resume. New chat stays idle until Send. **Ask**, **Build**, and **Review** only seed an editable draft. After a turn, the transcript and **Run inspector** show the exact tools, children, and model/route receipts for that tab and process generation. GrokBuild does not invent a fallback provider or rewrite an older launch.
 
-![GrokBuild Desktop App showing the project sidebar, session UI, and composer](docs/images/grokbuild-app.png)
+![GrokBuild New chat with project sidebar, Ask/Build/Review starters, and Describe a task composer](docs/images/grokbuild-app.png)
+
+![Settled Run inspector after a native multi-tool, two-child turn](docs/images/grokbuild-run-inspector.png)
+
+These screenshots are from the signed `/Applications/GrokBuild.app` on the installed Dark appearance, the existing-install default. Settings → App still offers System, Light, and Dark. Acceptance history, Gates A–H, and campaign receipts live in [`ARCHITECTURE.md`](ARCHITECTURE.md) and [`docs/OUTSTANDING.md`](docs/OUTSTANDING.md).
 
 ## Requirements
 
@@ -24,10 +28,9 @@ You can also install GrokBuild just to manage custom OpenAI-compatible models in
 ### Start with a project
 
 1. Install and sign in to the `grok` CLI (`grok login`).
-2. Use the signed personal build at `/Applications/GrokBuild.app`, or build it from this canonical checkout. Upstream releases do not contain the personal repair line.
-3. Open GrokBuild Desktop App and choose **Add Project**.
-4. Pick a folder. It can be a code repo, a docs folder, or a scratch workspace.
-5. Start a session, choose **Ask**, **Build**, or **Review** to seed an editable draft in that project folder — or type your own. Those starters do not send. Send is what talks to grok. Pick your model from the composer's grouped menu (Grok and your providers side by side); reasoning effort, context, usage, and the route/process receipt live in that same model menu.
+2. Open the signed personal build at `/Applications/GrokBuild.app`. Upstream releases do not contain this repair line.
+3. Choose **Add Project** and pick a folder. It can be a code repo, a docs folder, or a scratch workspace.
+4. Start a session. **Ask**, **Build**, or **Review** seed an editable draft; they do not send. Send is what talks to grok. The composer model menu holds the grouped model list plus reasoning effort, usage, and the exact route/process receipt.
 
 ### Custom models only
 
