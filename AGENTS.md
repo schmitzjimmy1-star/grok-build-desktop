@@ -16,9 +16,9 @@ Before edits or acceptance, read and follow in order:
 2. `ARCHITECTURE.md` — ownership, data flow, persistence, and file map.
 3. `docs/OUTSTANDING.md` — current slice scope and Gates A–H when a campaign slice is active.
 4. `docs/GROKBUILD_VISUAL_QUIET_CAMPAIGN_2026-08-15.md` — Visual Quiet.
-   Phases 1–3 and P3C are accepted. P3D (remove the duplicate live Run bar;
-   promote workers into a right canvas) is proposed but not authorized. Accent
-   sweep follows; broad `ChatView` split stays deferred.
+   Phases 1–3, P3C, and P3D are accepted. P3D removed the duplicate live Run
+   card and promoted workers into a compact right canvas. The Phase 4 accent
+   sweep is proposed but not authorized; broad `ChatView` split stays deferred.
 
 Stop on a path, branch, remote, installed-stamp, signing, hash, or dirty-state mismatch.
 

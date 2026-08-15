@@ -35,9 +35,9 @@
 > quiet chrome) are verified and merged. Phase 3 merged as `bb01c58` (PR
 > #104) and its clean merged-main install, bounded packet, exact cleanup,
 > and process-zero closeout are recorded below. **P3C composer/task-strip
-> density is accepted and awaiting publication closeout. P3D live activity
-> composition is the proposed next slice but is not authorized to start.**
-> The Phase 4 accent sweep follows P3D.
+> density is merged. P3D live activity composition is accepted in PR #107 and
+> awaiting its required CI/merge and merged-main install closeout.** The Phase 4
+> accent sweep follows P3D but is not authorized.
 > Leftover closeout Phases 1–2 are merged on `main` as `7a3006d`
 > (PR #102). Leftover Phase 3 (`ChatView` split) stays deferred.
 > Install path is `make ship` on this Mac.
@@ -45,16 +45,70 @@
 > Prior campaigns: 2026-08-14 Residual Closeout (Phases 0–6) complete and merged as `4613bde` (PR #94);
 > 2026-08-13 campaign (Slices 0–7) closed at merge `c0895ee` (PR #86).
 
-## Visual Quiet — 2026-08-15 (P3C accepted; P3D proposed next)
+## Visual Quiet — 2026-08-15 (P3D accepted; Phase 4 proposed next)
 
 Authorized spec is
 [`docs/GROKBUILD_VISUAL_QUIET_CAMPAIGN_2026-08-15.md`](GROKBUILD_VISUAL_QUIET_CAMPAIGN_2026-08-15.md).
-Phases 1–3 are merged and verified. **P3C** is the accepted narrow composer and
-post-send task-strip density closeout. It preserves all composer controls and
-receipt identity, does not redesign Settings or runtime behavior, and is not
-leftover Phase 3. **P3D**, proposed from Jimmy's installed two-worker review,
-would remove the redundant live transcript Run card and promote active workers
-into a first-class right-side canvas; do not start it without explicit authority.
+Phases 1–3 and **P3C** are merged and verified. **P3D** is the accepted live
+activity closeout in PR #107: the duplicate transcript Run card is gone and
+active workers occupy a compact truthful right-side canvas. It does not redesign
+Settings or runtime behavior and is not leftover Phase 3. Phase 4 accent work is
+proposed but not authorized.
+
+### Visual Quiet P3D receipt — 2026-08-15
+
+Gate A/B: canonical branch `codex/grokbuild-vq-p3d-live-activity` from merged
+P3C `e761dc0c936969125ec2c9984157301bcd3a76c5`. Code/test commit
+`2e1deb7e2d135a007334096e5deace53a409dc6f` changes only `ChatView`,
+`ActivitySidebar`, `ResponsiveLayoutPolicy`, settled tool-trace presentation,
+and focused tests. No `ChatStore`, `GrokProcess`, ACP, provider, credential,
+Settings, accent-token, or structural owner changed. Publication is PR #107.
+
+Implementation: `ThreadRunSpineView` no longer mounts in the live transcript.
+The right worker canvas is 340 points, docks at ≥1,180, overlays from
+900..<1,180, and becomes a named/count strip below 900. Worker faces show one
+assignment, one status, and only a distinct current action; the full parent
+request plus parent/spawn/child/model/usage/tool reconciliation stays behind
+disclosures. A completed worker with a failed/unreconciled typed child tool is
+**Needs Review**, never clean green. Light-mode tool titles, statuses, and settled
+output also moved out of unreadable low-contrast styling.
+
+Gate C/E: focused `ActivitySidebarTests` and `ChatTranscriptLayoutTests` passed
+**61/61**. Candidate `make ship` passed **897/897** and installed
+`Personal • codex/grokbuild-vq-p3d-live-activity @ 2e1deb7e`, `dirty=false`;
+dist/installed executable parity, deep/strict signing, Team `DD2GCQJVB4`, and no
+quarantine all passed.
+
+Installed Computer Use proved compact four-worker settled Light, readable tool
+text, two-worker live/settled Dark, wide docking with the left sidebar open,
+mid overlay, narrow named/count collapse, and no duplicate Run card. BETA's one
+failed child tool stayed amber **Needs Review** while the other three workers
+were Completed. The successful Dark packet returned exactly
+`GB_VQ_P3D_DARK_OK`.
+
+Billable ledger: standard parent `01a00656-fb76-7473-a907-f32ee5ffd8e6`
+reported 16,055 tokens and exact `GB_VQ_P3D_OK`; ordered-tool parent
+`01a00657-9c0d-7101-bd3a-7282ab3acc87` reported 65,740 tokens and three
+sequential read-only successes; four-worker parent
+`01a00658-8277-7f00-85ac-ec21832a67fd` reported 146,210 tokens and useful
+concurrency four; stopped parent `01a00665-98cd-74a2-8b41-04299d65af31`
+reported 33,288 incomplete tokens; Dark parent
+`01a00667-09c4-7831-a2b4-20dbae385a9d` reported 97,344 tokens. Total reported
+parent usage is **358,637**. Ordered-tool and four-worker behavior passed, but
+each answer added one progress sentence before its requested token, so exact
+final-only prose is partial.
+
+Stop acceptance settled **Stopped by you** in roughly five seconds. OMEGA was
+**Cancelled** and SIGMA was **No final report (orphaned)**; both remained visible
+as needing review rather than disappearing or becoming false success.
+
+Gate F: exact Close Session removed five local tabs and parent backends. Eight
+validated child directories moved recoverably to
+`~/.Trash/GrokBuild-P3D-20260815T171100Z/RemovedChildBackends`; the same Trash
+packet retains a recovery copy of all exact targets and the pre-cleanup app
+preferences. Active app/backend marker files are zero, `prompt_history.jsonl`
+was not edited, `Clear Empty` was not used, and protected OK-F/backend
+`019ffdad-0d4f-7f42-a429-7ac12ad8198d` remain.
 
 ### Visual Quiet P3C receipt — 2026-08-15
 

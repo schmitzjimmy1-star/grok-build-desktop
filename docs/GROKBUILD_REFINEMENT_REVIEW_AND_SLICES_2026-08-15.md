@@ -1,21 +1,20 @@
 # GrokBuild refinement review and remaining slices — 2026-08-15
 
-Status: **Slices 0–1 complete; Slice 2 proposed and not started**. P3C is accepted
-from the clean installed candidate, its three bounded billable receipts are
-ledgered, and only their exact parent/child sessions were removed. Jimmy's live
-feedback adds a focused activity-composition slice before the accent sweep.
+Status: **Slices 0–2 complete; Slice 3 proposed and not started**. P3D is accepted
+from clean installed candidate `2e1deb7`, its five bounded billable receipts are
+ledgered, and only their exact parent/child sessions were removed. The semantic
+accent sweep is next but remains unauthorized.
 
 ## Verdict
 
 The screenshot's direction fits GrokBuild. Cool tokens, the quiet welcome, the
 overlay sidebar, and the tiny header all push the app toward a native agent
 workbench instead of a dashboard wearing a chat costume. The remaining useful
-work is narrower than the screenshot implies: close Phase 3 truthfully, tighten
-the composer and post-send strip, sweep semantic accent leaks, then do icon and
-dead-code housekeeping.
+work is narrower than the screenshot implies: sweep semantic accent leaks, then
+do icon and dead-code housekeeping.
 
 The backend does not present an immediate correctness fire. The current suite
-passes **894 tests with 0 failures**, the ACP/process/session boundaries are
+passes **897 tests with 0 failures**, the ACP/process/session boundaries are
 explicit and fail closed, and the live UI exposed truthful idle/model/run state.
 The maintenance smell is concentration rather than obvious breakage:
 `ChatView.swift` is 3,485 lines, `ContentView.swift` is 2,125 lines, and the test
@@ -25,13 +24,13 @@ build emits three unused-local warnings in `SettingsTabTests.swift`.
 
 | Surface | Current evidence | Judgment |
 |---|---|---|
-| Local source | `codex/grokbuild-vq-p3c-composer-density`; code/test commit `6697530531e6e3f65f80f848fcb86d4bcb7055c1`, based on `main == personal/main == aff384c` | Canonical Slice 1 candidate |
-| GitHub | PR #104 merged Phase 3 as `bb01c58`; PR #105 merged its closeout as `aff384c`; P3C publication is PR #106 | Phase 3 is closed; P3C has its focused publication lane |
-| Installed app | `Personal • codex/grokbuild-vq-p3c-composer-density @ 66975305` (`dirty=false`) | Clean P3C candidate acceptance |
-| Installed bytes | `dist` and installed executable SHA-256 both `2bb91f51c1c2d8d10e433b10adff2775ee058a07f654dcddb1524a44dd8ae74f` | Package/install parity passes |
+| Local source | `codex/grokbuild-vq-p3d-live-activity`; code/test commit `2e1deb7e2d135a007334096e5deace53a409dc6f`, based on merged P3C `e761dc0` | Canonical Slice 2 candidate |
+| GitHub | PR #107, **Promote live workers into the activity canvas** | Focused P3D publication lane |
+| Installed app | `Personal • codex/grokbuild-vq-p3d-live-activity @ 2e1deb7e` (`dirty=false`) | Clean P3D candidate acceptance |
+| Installed bytes | `dist` and installed executable match byte-for-byte | Package/install parity passes |
 | Signing | Deep/strict valid, Team `DD2GCQJVB4`, no quarantine | Packaging integrity passes |
-| Automated tests | focused 52/0; `make test` and candidate `make ship`: 896/0 | Regression gates pass |
-| Worktree | Clean after commit `6697530`; paid probes made no source/configuration changes | Scope stayed exact |
+| Automated tests | focused 61/0; candidate `make ship`: 897/0 | Regression gates pass |
+| Worktree | Clean after commit `2e1deb7`; paid probes made no source/configuration changes | Scope stayed exact |
 | Bundle | 26 MB total: 24 MB app binary, 2.1 MB `agent-desktop`, 216 KB Computer Use MCP, 300 KB icon | No large cheap deletion exists |
 
 ## Live UI review
@@ -55,13 +54,11 @@ build emits three unused-local warnings in `SettingsTabTests.swift`.
    Phase 3 at `bb01c58`; the next real problem is composer/task-strip density.
 2. **P3C fixed the empty-composer island.** It now uses 11×7 inner and 20×5
    outer padding with no decorative shadow while retaining every 36×36 target.
-3. **The live transcript still repeats run state.** The top task summary, trace,
-   Stop control, and inspector already own live truth, yet `ThreadRunSpineView`
-   adds a full-width **Run / Working / Run inspector** card under the trace.
-4. **Subagents still look tucked away.** They auto-open correctly, but the
-   260-point `ActivitySidebar` presents only tiny name/status rows. The live
-   workers deserve a first-class right-side activity canvas when space permits,
-   with narrow-width fallback that never covers the transcript.
+3. **P3D removed duplicate live run chrome.** The task summary, trace, Stop, and
+   inspector remain; `ThreadRunSpineView` no longer mounts in the transcript.
+4. **Workers now own a real canvas.** Compact cards show one assignment and one
+   truthful status, raw parent/identity/usage detail stays disclosed, and a failed
+   typed child tool forces **Needs Review** instead of false green completion.
 5. **Accent behavior is still fragmented.** High-traffic views retain raw
    `Color.accentColor`, `.orange`, and `.borderedProminent` call sites, so macOS
    appearance/accent choices can still punch warm color into an otherwise cool
@@ -79,8 +76,8 @@ build emits three unused-local warnings in `SettingsTabTests.swift`.
 8. **The “cheap size” claim is overstated.** Deleting three tiny loose brand PNGs
    and the dead `workflowsStatusPill` improves hygiene, not the 26 MB bundle in a
    meaningful way. Keep `agent-desktop`; it is a required first-class capability.
-9. **Campaign ledgers are reconciled through Slice 1.** They now name P3C
-   complete and P3D live activity composition as the proposed next slice.
+9. **Campaign ledgers are reconciled through Slice 2.** They now name P3D
+   complete and the Phase 4 semantic accent sweep as the proposed next slice.
 
 ## Slice rules
 
@@ -181,7 +178,7 @@ normal-quit process-zero samples passed at `11:18:21` and `11:18:29 -0500`.
 
 Slice 1 is complete: the composer and post-send strip are quieter without losing any authoring, accessibility, or receipt control. The next proposed slice is P3D live activity composition: remove the redundant live Run card and make active subagents first-class in the right-side canvas. Do not start P3D, the accent sweep, icon work, Settings redesign, or file decomposition until Jimmy explicitly authorizes the next slice.
 
-## Slice 2 — live activity composition (P3D, proposed next)
+## Slice 2 — live activity composition (P3D, complete 2026-08-15)
 
 **Goal:** let the transcript show the work and answer while live coordination
 occupies a deliberate right-side surface instead of duplicating state in a card.
@@ -212,6 +209,22 @@ occupies a deliberate right-side surface instead of duplicating state in a card.
   including the 1100-point sidebar-overlay case observed during P3C.
 - `make test`, candidate/merged-main `make ship`, and a two-worker fresh-chat
   packet under the 200k ceiling with live and settled Light/Dark screenshots.
+
+**Receipt**
+
+PR #107 carries code/test commit `2e1deb7`. Focused tests passed 61/61 and the
+candidate ship passed 897/897 with an exact clean signed install. Installed
+acceptance proved the compact four-worker Light canvas, readable tool text,
+two-worker live/settled Dark canvas, full-width left/right coexistence, and the
+900/1,180 responsive boundaries. BETA's failed typed child tool forced **Needs
+Review**; the stop packet retained **Cancelled** plus **No final report
+(orphaned)** instead of laundering interruption into success.
+
+Five parent receipts reported 358,637 total tokens. Standard and Dark exact-token
+packets passed; ordered-tool and four-worker behavior passed with final-only prose
+partial because each added one progress sentence. Exact cleanup removed five tabs
+and parents, moved eight validated children recoverably to Trash, left active
+marker counts at zero, preserved `prompt_history.jsonl`, and protected OK-F.
 
 **Three-sentence handoff after completion**
 
