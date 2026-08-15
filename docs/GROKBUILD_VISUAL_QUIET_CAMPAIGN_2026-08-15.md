@@ -1,9 +1,11 @@
 # GrokBuild Visual Quiet Campaign — 2026-08-15
 
-Status: **Phases 1–2 verified** (Path A chips). Cool tokens and the quiet
-welcome are on `codex/grokbuild-vq-p1-p2-tokens-welcome` and publishing.
-**Next session starts Phase 3** (header + composer density), then Phase 4
-accent sweep. Phases 5–6 wait. Leftover `ChatView` split stays deferred.
+Status: **Phases 1–2 verified** (Path A chips). **Phase 3 is the Codex-style
+overlay sidebar plus quiet chrome** (compact projects, slide-over canvas,
+account-row Settings, titlebar inline with the traffic lights, inspector
+dropdown + subagent tracker, no header hairline). Composer tightness
+still waits. Then Phase 4 accent sweep. Phases 5–6 wait. Leftover
+`ChatView` split stays deferred.
 
 This is a **product visual** campaign. It is **not** leftover Phase 3
 (`ChatView` file-split). That stays deferred. Optional Phase 6 is a
@@ -133,7 +135,7 @@ dropping Computer Use.
 |---|---|---|---|---|
 | **P1** | Cool tokens + semantic colors | Light loses the cream cast. Dark gets a cooler ink. Add `warning` / `link` tokens. No control restyle yet. | S | `GB-VQ-P1-<UTC>` → `GB_VQ_P1_OK` |
 | **P2** | Quiet welcome | Smaller mark, quieter headline, less padding. Pills become compact chips **or** go away (Jimmy chooses). | M | `GB-VQ-P2-<UTC>` → `GB_VQ_P2_OK` |
-| **P3** | Header + composer density | Icon-only Tasks / Review / inspector. Drop Browse / dashboard from the ellipsis. Slim the task strip. Tighten composer padding. | M | `GB-VQ-P3-<UTC>` → `GB_VQ_P3_OK` |
+| **P3** | Overlay sidebar + quiet chrome | Compact selected-project sessions. Codex slide-over sidebar. Account row opens Settings. Header sits with the traffic lights. Inspector is a dropdown; live subagents open a right tracker. No header hairline. | M | `GB-VQ-P3-<UTC>` → `GB_VQ_P3_OK` |
 | **P4** | Accent-leak sweep | Send, chips, CTAs, inspector dots use `AppTheme`, not system brown/orange. | M | `GB-VQ-P4-<UTC>` → `GB_VQ_P4_OK` |
 | **P5** | Cheap bundle lightening | Real AppIcon. Drop duplicate PNGs. Delete unused `workflowsStatusPill`. Keep `agent-desktop`. | S | `GB-VQ-P5-<UTC>` → `GB_VQ_P5_OK` |
 | **P6** | Optional welcome extract | Move the quiet welcome into its own file. Not the full ChatView split. | M | none (structural) |
@@ -207,7 +209,7 @@ AX homes and behavior this campaign may restyle but must not delete:
 | `grok-header-review-toggle` | Contextual Review. No third Review under the composer. |
 | `grok-run-inspector-toggle` | Header owns the inspector |
 | `grok-tasks-status` | Header owns Tasks |
-| Settings last in the trailing header | `CodexShellParityTests` |
+| Settings on the sidebar account row | `grok-sidebar-account-settings`; Command-comma still works |
 | `grok-launch-session-choices` + Resume / New / Browse ids | Resume honesty |
 | `grok-task-context-strip` | May slim, must remain |
 | Spawn-on-Send | Welcome pills only seed the draft |
@@ -297,45 +299,72 @@ Phases 1–2.
 
 ---
 
-## Phase 3 — Header + composer density
+## Phase 3 — Overlay sidebar + quiet chrome
 
-**Goal:** The workbench frame gets out of the way.
+**Goal:** The canvas is fullscreen. Projects stop eating the rail.
+Settings lives on the account row. The top line sits with the traffic
+lights. Header chrome stays tiny. Subagents are trackable on the right.
 
-**Header keep:** sidebar, title, More actions, `grok-tasks-status`,
-contextual `grok-header-review-toggle`, `grok-run-inspector-toggle`,
-Settings last.
+Jimmy redirected this phase twice on 2026-08-15: first the overlay
+sidebar, then inspector / banner / ellipsis quieting. Composer
+tightness still waits.
 
-**Safe header changes**
-- Icon-only Tasks / Review / Run inspector. Labels stay in
-  `accessibilityLabel` / help.
-- Remove **Browse sessions** and **Session dashboard** from the ellipsis
-  (sidebar already owns both).
-- Slim `grok-task-context-strip`: one quiet caption row, not a second
-  toolbar of prompt + checkpoint + project + branch + model.
+**Keep:** sidebar toggle, folder + title, More actions,
+`grok-tasks-status` (hidden when idle), contextual
+`grok-header-review-toggle`, `grok-run-inspector-toggle`,
+Command-comma Settings.
 
-**Composer keep:** add menu, mode, model-effort, mic, send/stop.
-Tighten `ChatComposer` outer 20/8 and inner 11/10. Keep the 36 pt hit
-target. Do not reintroduce a Details shelf.
+**This slice**
+- Expand session lists only for the selected project. Tighter project
+  and session rows.
+- Project sidebar is a Codex-style slide-over (`TitlebarMetrics` overlay
+  width). Chat stays full width. Backdrop tap dismisses.
+- Account row opens Settings (`grok-sidebar-account-settings`). Remove
+  the header gear.
+- Main window uses `.fullSizeContentView`. Header / Settings back row
+  sit just under the traffic lights (`TitlebarMetrics.contentTopInset`)
+  with consistent white Dark icons (`TitlebarGlyph`).
+- More actions is one ellipsis (`.menuIndicator(.hidden)`). No header
+  hairline. Titlebar icons use `TitlebarGlyph` so Dark vibrancy cannot
+  paint them at canvas black.
+- Review and inspector are icon-only. Inspector is a quick-look
+  dropdown; live workers open the right-side tracker.
+- Launch choices stay as three quiet text actions, not a tinted banner.
+- Task strip stays off on idle `.ready`.
 
 **Files**
+- `GrokBuild/MainWindowLayout.swift` (`TitlebarMetrics`)
+- `GrokBuild/AppDelegate.swift` (`.fullSizeContentView`)
+- `GrokBuild/ContentView.swift` (overlay + reduce-motion toggle)
+- `GrokBuild/Views/SidebarView.swift`
+- `GrokBuild/AppTheme.swift` (`TitlebarGlyph`, `titlebarControl`)
 - `GrokBuild/Views/ChatTopBar.swift`
-- `GrokBuild/Views/ChatView.swift` (tasks / inspector wrappers, task
-  strip, `ComposerDensityPolicy`)
-- `GrokBuild/Views/ChatComposer.swift`
+- `GrokBuild/Views/SettingsView.swift` (titlebar inset)
 - `GrokBuild/Views/ChatHeaderReviewToggle.swift`
-- Tests: `CodexShellParityTests`, `ComposerPresentationContractTests`,
+- `GrokBuild/Views/ChatView.swift` (inspector menu, launch choices, Tasks)
+- `GrokBuild/Views/ActivitySidebar.swift` (tracker rail)
+- `GrokBuild/Models/ContextInspectorProjection.swift` (`RunInspectorQuickLook`)
+- Tests: `CodexShellParityTests`, `MainWindowLayoutTests`,
+  `ContextInspectorProjectionTests`, `ActivitySidebarTests`,
   `ResponsiveAndAccessibilityTests`
 
 **Must not touch**
-- Removing Review / inspector / Settings
+- Removing Review / inspector / Settings (Settings moves, it is not
+  deleted)
 - Welcome content (P2 owns that)
+- Composer glass
 - `ChatStore` / ACP
+- Leftover Phase 3 `ChatView` split
 
 **Billable packet**
 - New chat. Marker `GB-VQ-P3-<UTC>`. Exact `GB_VQ_P3_OK`.
-- Prove icon rail order. More actions lacks Browse / dashboard.
-- Composer is denser. After Send, the task strip is quieter.
-- Open Run inspector once to prove the toggle still works.
+- Hide sidebar: canvas is full width. Show: panel slides over.
+- Only the selected project's sessions are listed.
+- Name row opens Settings. No header gear.
+- Header lines up with the traffic lights. Dark stays Jimmy's
+  appearance after any Light probe.
+- More actions is one click. No hairline under the title.
+- Inspector menu shows a quick look. Live subagents appear on the right.
 
 **Exit:** meaningful AX names; `make test` + `make ship` + Computer Use;
 Gate F; Jimmy OK.

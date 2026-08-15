@@ -178,10 +178,11 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMenuDele
 
         let contentView = ContentView()
         let hosting = NSHostingController(rootView: contentView)
+        hosting.safeAreaRegions = []
 
         let window = NSWindow(
             contentRect: NSRect(origin: .zero, size: Self.mainWindowDefaultSize),
-            styleMask: [.titled, .closable, .miniaturizable, .resizable],
+            styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView],
             backing: .buffered,
             defer: false
         )

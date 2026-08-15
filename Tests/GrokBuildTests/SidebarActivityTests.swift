@@ -110,8 +110,14 @@ final class SidebarActivityTests: XCTestCase {
                        "Activity is not a large primary rail row; the bell owns it")
         XCTAssertFalse(sidebarSource.contains("CodexRailButton(title: \"Workflows\""),
                        "Workflows is not a primary rail row; Settings and the composer command menu own it")
-        XCTAssertTrue(sidebarSource.contains("Button(action: onOpenActivity) {"),
+        let topBar = try String(
+            contentsOf: repositoryRoot.appendingPathComponent("GrokBuild/Views/ChatTopBar.swift"),
+            encoding: .utf8
+        )
+        XCTAssertTrue(topBar.contains("TitlebarGlyph(systemName: \"bell\")"),
                       "the header bell remains and opens the activity surface")
+        XCTAssertFalse(sidebarSource.contains("Image(systemName: \"bell\")"),
+                       "the sidebar no longer keeps a second dashboard bell on the title")
         XCTAssertTrue(sidebarSource.contains("accessibilityRemoveTraits"),
                       "action rail and inactive persistent rows must remove false selection")
         XCTAssertTrue(sidebarSource.contains("accessibilityAddTraits(isSelected ? .isSelected : [])"),

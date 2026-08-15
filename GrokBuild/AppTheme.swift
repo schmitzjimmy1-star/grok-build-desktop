@@ -44,6 +44,13 @@ enum AppTheme {
             dark: NSColor.white.withAlphaComponent(0.92),
             light: NSColor.black.withAlphaComponent(0.88)
         )
+        /// Workbench icons. Dark stays a consistent near-white so every
+        /// header control matches; Light stays ink on stone.
+        static let titlebarControlNSColor = adaptiveNSColor(
+            dark: .white,
+            light: NSColor(white: 0.22, alpha: 1)
+        )
+        static let titlebarControl = Color(nsColor: titlebarControlNSColor)
         static let accentSoft = adaptive(
             dark: NSColor.white.withAlphaComponent(0.075),
             light: NSColor.black.withAlphaComponent(0.06)
@@ -145,6 +152,101 @@ enum AppTheme {
             default: return .system(size: 15, weight: .semibold)
             }
         }
+    }
+}
+
+/// Bakes an SF Symbol into a non-template bitmap. Titlebar vibrancy and
+/// `NSMenu` / `NSButton` template tinting both paint SwiftUI
+/// `Image(systemName:)` at canvas black on Dark; this keeps the pixels.
+enum TitlebarGlyphRaster {
+    static func image(
+        systemName: String,
+        pointSize: CGFloat,
+        color: NSColor,
+        appearance: NSAppearance
+    ) -> NSImage {
+        var resolved = NSColor.white
+        appearance.performAsCurrentDrawingAppearance {
+            resolved = color.usingColorSpace(.sRGB) ?? color
+        }
+
+        let config = NSImage.SymbolConfiguration(pointSize: pointSize, weight: .semibold)
+        guard let symbol = NSImage(systemSymbolName: systemName, accessibilityDescription: nil)?
+            .withSymbolConfiguration(config) else {
+            return NSImage(size: NSSize(width: pointSize, height: pointSize))
+        }
+        symbol.isTemplate = true
+        let size = symbol.size.width > 0
+            ? symbol.size
+            : NSSize(width: pointSize, height: pointSize)
+        let raster = NSImage(size: size, flipped: false) { rect in
+            appearance.performAsCurrentDrawingAppearance {
+                NSColor.white.set()
+                symbol.draw(in: rect, from: .zero, operation: .sourceOver, fraction: 1)
+                resolved.setFill()
+                rect.fill(using: .sourceIn)
+            }
+            return true
+        }
+        raster.isTemplate = false
+        guard let tiff = raster.tiffRepresentation, let bitmap = NSImage(data: tiff) else {
+            return raster
+        }
+        bitmap.isTemplate = false
+        return bitmap
+    }
+}
+
+/// SF Symbol that stays readable in the transparent titlebar.
+struct TitlebarGlyph: View {
+    let systemName: String
+    var pointSize: CGFloat = 13
+    var color: NSColor = AppTheme.Palette.titlebarControlNSColor
+    @Environment(\.colorScheme) private var colorScheme
+
+    var body: some View {
+        TitlebarGlyphImage(
+            systemName: systemName,
+            pointSize: pointSize,
+            color: color,
+            colorScheme: colorScheme
+        )
+        .frame(width: pointSize + 6, height: pointSize + 6)
+        .accessibilityHidden(true)
+    }
+}
+
+private struct TitlebarGlyphImage: NSViewRepresentable {
+    let systemName: String
+    let pointSize: CGFloat
+    let color: NSColor
+    let colorScheme: ColorScheme
+
+    func makeNSView(context: Context) -> NSImageView {
+        let view = NSImageView()
+        view.imageScaling = .scaleNone
+        view.imageAlignment = .alignCenter
+        view.isEditable = false
+        view.animates = false
+        view.wantsLayer = true
+        view.layer?.backgroundColor = NSColor.clear.cgColor
+        return view
+    }
+
+    func updateNSView(_ view: NSImageView, context: Context) {
+        let appearance = colorScheme == .dark
+            ? NSAppearance(named: .darkAqua)!
+            : NSAppearance(named: .aqua)!
+        view.appearance = appearance
+        view.contentTintColor = nil
+        let image = TitlebarGlyphRaster.image(
+            systemName: systemName,
+            pointSize: pointSize,
+            color: color,
+            appearance: appearance
+        )
+        image.isTemplate = false
+        view.image = image
     }
 }
 

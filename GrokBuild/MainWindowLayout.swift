@@ -31,12 +31,35 @@ enum MainWindowLayout {
     }
 }
 
+enum TitlebarMetrics {
+    /// Clears the traffic lights in a transparent `fullSizeContentView` titlebar.
+    static let trafficLightLeading: CGFloat = 78
+    /// AppKit traffic-light row. The canvas ignores that safe area, so chrome
+    /// has to clear it itself.
+    static let systemTitlebarHeight: CGFloat = 32
+    /// Workbench control row. Sits on the canvas just under the traffic lights
+    /// so Dark titlebar vibrancy cannot crush the icons to canvas black.
+    static let height: CGFloat = 32
+    /// Small gap under the traffic-light row.
+    static let belowTrafficLights: CGFloat = 8
+    /// Space between the session title and the trailing header icons.
+    static let headerIconGap: CGFloat = 16
+    /// Extra air under the AppKit titlebar inset. Do not add
+    /// `systemTitlebarHeight` here; SwiftUI still receives that safe area.
+    static var contentTopInset: CGFloat { belowTrafficLights }
+    /// Overlay must skip the workbench row so it does not cover the controls.
+    static var overlayTopInset: CGFloat { contentTopInset + height }
+    /// Overlay width. The chat canvas stays full-width underneath.
+    static let sidebarOverlayWidth: CGFloat = 228
+}
+
 enum SidebarVisibility {
     static let storageKey = "grokbuild.sidebarVisible"
     static let defaultVisible = true
 
     /// Settings owns its own navigation and should use the full window instead of
-    /// stacking a second sidebar beside the project sidebar.
+    /// stacking a second sidebar over the project sidebar. The project list is a
+    /// slide-over, so the chat canvas stays full width when the panel is hidden.
     ///
     /// `availableContentWidth` wires the Slice 7 responsive order's second step:
     /// the sidebar auto-collapses when even its minimum width would compress the

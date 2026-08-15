@@ -278,6 +278,7 @@ struct ChatView: View {
     var sessionTitle: String = "New chat"
     var isSidebarVisible: Bool = true
     var onToggleSidebar: () -> Void = {}
+    var isProjectFilterVisible: Binding<Bool> = .constant(false)
     var onOpenSettings: () -> Void = {}
     var reviewFileCount: Int = 0
     /// The already-fetched project diffs, used only to derive per-file +/− counts
@@ -465,11 +466,11 @@ struct ChatView: View {
                     .font(.system(size: 13, weight: .semibold))
                 Image(systemName: isExpanded ? "chevron.down" : "chevron.right")
                     .font(.system(size: 10, weight: .semibold))
-                    .foregroundStyle(.tertiary)
+                    .foregroundStyle(AppTheme.Palette.textMuted)
                 if let label = assistantTraceSummary(trace: trace, hasLiveTrace: hasLiveTrace) {
                     Text(label)
                         .font(AppTheme.Typography.caption)
-                        .foregroundStyle(.tertiary)
+                        .foregroundStyle(AppTheme.Palette.textMuted)
                 }
                 Spacer(minLength: 8)
             }
@@ -593,13 +594,7 @@ struct ChatView: View {
                 hasAssistantText: currentAssistantHasText
             )
             Button {
-                if reduceMotion {
-                    showActivitySidebar = true
-                } else {
-                    withAnimation(.easeInOut(duration: 0.18)) {
-                        showActivitySidebar = true
-                    }
-                }
+                setActivitySidebarVisible(true)
             } label: {
                 HStack(spacing: 7) {
                     Image(systemName: "waveform.path")
@@ -638,13 +633,7 @@ struct ChatView: View {
             liveProjection: store.liveRunEvidenceProjection,
             workspace: store.currentWorkspace?.path,
             onClose: {
-                if reduceMotion {
-                    showActivitySidebar = false
-                } else {
-                    withAnimation(.easeInOut(duration: 0.18)) {
-                        showActivitySidebar = false
-                    }
-                }
+                setActivitySidebarVisible(false)
             },
             onContinueAsNew: {
                 Task {
@@ -658,8 +647,7 @@ struct ChatView: View {
                 Task { await store.reviewRecoveryCandidates() }
             },
             onRevealArtifact: onRevealArtifact,
-            inspector: contextInspectorModel,
-            docked: docked
+            inspector: contextInspectorModel
         )
         .frame(width: docked ? 260 : nil)
         .padding(.top, 12)
@@ -675,13 +663,7 @@ struct ChatView: View {
     private func activityInspectorCollapsedStrip() -> some View {
         VStack(spacing: 10) {
             Button {
-                if reduceMotion {
-                    showActivitySidebar = false
-                } else {
-                    withAnimation(.easeInOut(duration: 0.18)) {
-                        showActivitySidebar = false
-                    }
-                }
+                setActivitySidebarVisible(false)
             } label: {
                 Image(systemName: "chevron.right")
                     .font(.system(size: 12, weight: .semibold))
@@ -847,7 +829,7 @@ struct ChatView: View {
                                             checkpoint: nil,
                                             settledTools: [],
                                             workspace: store.currentWorkspace?.path,
-                                            onOpenActivity: { showActivitySidebar = true },
+                                            onOpenActivity: { setActivitySidebarVisible(true) },
                                             onRevealArtifact: onRevealArtifact
                                         )
                                     }
@@ -1112,6 +1094,8 @@ struct ChatView: View {
                     onStartNew: onNewSession,
                     onBrowseOld: onBrowseSessions
                 )
+                .frame(maxWidth: AppTheme.Layout.composerMaxWidth, alignment: .leading)
+                .frame(maxWidth: .infinity, alignment: .center)
                 .padding(.horizontal, 12)
             }
 
@@ -1157,7 +1141,17 @@ struct ChatView: View {
                 current: inspectorPlacement
             )
         }
-        .onAppear { inputFocused = true }
+        .onAppear {
+            inputFocused = true
+            if hasLiveSubagents {
+                setActivitySidebarVisible(true)
+            }
+        }
+        .onChange(of: hasLiveSubagents) { _, isLive in
+            if isLive {
+                setActivitySidebarVisible(true)
+            }
+        }
         .onDisappear {
             cancelSettledAutoScroll()
             programmaticScrollReleaseTask?.cancel()
@@ -1195,13 +1189,7 @@ struct ChatView: View {
             guard let outcome,
                   [.failed, .cancelled, .completionReceiptMissing, .userStopped].contains(outcome),
                   !showActivitySidebar else { return }
-            if reduceMotion {
-                showActivitySidebar = true
-            } else {
-                withAnimation(.easeInOut(duration: 0.18)) {
-                    showActivitySidebar = true
-                }
-            }
+            setActivitySidebarVisible(true)
             let announcement = switch outcome {
             case .failed:
                 "Turn failed. Run inspector opened with the provider or CLI error."
@@ -1326,10 +1314,10 @@ struct ChatView: View {
             onForkSession: onForkSession,
             onSwitchBranch: onSwitchBranch,
             onOpenProjectIn: onOpenProjectIn,
-            onOpenSettings: onOpenSettings,
             showSetGoal: $showSetGoal,
             createSkillName: $createSkillName,
-            showCreateSkill: $showCreateSkill
+            showCreateSkill: $showCreateSkill,
+            isProjectFilterVisible: isProjectFilterVisible
         ) {
             tasksStatusPill
         } reviewToggle: {
@@ -1371,9 +1359,9 @@ struct ChatView: View {
         if store.goalState != nil { return true }
         if store.liveRunEvidenceProjection != nil { return true }
         switch store.connectionState {
-        case .starting, .ready, .busy:
+        case .starting, .busy:
             return true
-        case .idle, .failed:
+        case .ready, .idle, .failed:
             return false
         }
     }
@@ -1446,7 +1434,7 @@ struct ChatView: View {
             },
             onOpenActivity: {
                 selectedActivityMessageID = nil
-                showActivitySidebar = true
+                setActivitySidebarVisible(true)
             },
             isExpanded: $taskContractExpanded
         )
@@ -1840,46 +1828,73 @@ struct ChatView: View {
         )
     }
 
-    private var activitySidebarToggle: some View {
-        Button {
-            if !showActivitySidebar {
-                selectedActivityMessageID = nil
+    private var hasLiveSubagents: Bool {
+        guard let workers = store.liveRunEvidenceProjection?.workers else { return false }
+        return !workers.isEmpty
+    }
+
+    private func setActivitySidebarVisible(_ visible: Bool) {
+        if visible && !showActivitySidebar {
+            selectedActivityMessageID = nil
+        }
+        guard showActivitySidebar != visible else { return }
+        if reduceMotion {
+            showActivitySidebar = visible
+        } else {
+            withAnimation(.easeInOut(duration: 0.18)) {
+                showActivitySidebar = visible
             }
-            if reduceMotion {
-                showActivitySidebar.toggle()
-            } else {
-                withAnimation(.easeInOut(duration: 0.18)) {
-                    showActivitySidebar.toggle()
+        }
+    }
+
+    private var runInspectorQuickLook: RunInspectorQuickLook.Fact {
+        RunInspectorQuickLook.make(
+            inspector: contextInspectorModel,
+            modelLabel: store.sessionReceiptCompactLabel,
+            tokenCount: activitySnapshot?.usage.totalTokens
+        )
+    }
+
+    private var activitySidebarToggle: some View {
+        let look = runInspectorQuickLook
+        return Menu {
+            Section(look.phase) {
+                ForEach(Array(look.lines.enumerated()), id: \.offset) { _, line in
+                    Text(line)
+                }
+            }
+            if contextInspectorModel.subagents != nil || showActivitySidebar {
+                Divider()
+                Button(showActivitySidebar ? "Hide subagents" : "Show subagents") {
+                    setActivitySidebarVisible(!showActivitySidebar)
                 }
             }
         } label: {
-            HStack(spacing: 6) {
-                Image(systemName: showActivitySidebar ? "chevron.right" : "sidebar.right")
-                    .font(.system(size: 12, weight: .semibold))
-                Text("Run inspector")
-                    .font(AppTheme.Typography.label)
+            HStack(spacing: 4) {
+                TitlebarGlyph(systemName: "sidebar.right")
                 if let snapshot = activitySnapshot {
                     Circle()
                         .fill(snapshot.outcome == .completionReceiptMissing ? Color.orange : Color.secondary)
-                        .frame(width: 6, height: 6)
+                        .frame(width: 5, height: 5)
                         .accessibilityHidden(true)
                 } else if store.liveRunEvidenceProjection != nil {
                     Circle()
                         .fill(Color.accentColor)
-                        .frame(width: 6, height: 6)
+                        .frame(width: 5, height: 5)
                         .accessibilityHidden(true)
                 }
             }
-            .padding(.horizontal, 8)
-            .frame(minHeight: ComposerControlMetrics.minimumHitTarget)
+            .frame(width: 28, height: TitlebarMetrics.height)
             .contentShape(Rectangle())
         }
-        .buttonStyle(GrokChromeButtonStyle())
-        .foregroundStyle(.secondary)
-        .help(showActivitySidebar ? "Hide run inspector" : "Show run inspector")
-        .accessibilityLabel(showActivitySidebar ? "Hide run inspector" : "Show run inspector")
+        .menuStyle(.borderlessButton)
+        .menuIndicator(.hidden)
+        .controlSize(.regular)
+        .foregroundStyle(AppTheme.Palette.titlebarControl)
+        .help("Run inspector")
+        .accessibilityLabel("Run inspector")
         .accessibilityValue(activityEvidenceAccessibilityValue)
-        .accessibilityHint("Shows live generation-bound receipts during a turn and authoritative receipts after settlement.")
+        .accessibilityHint("Quick look at the current run. Opens the right-side subagent tracker when workers are live.")
         .accessibilityIdentifier("grok-run-inspector-toggle")
     }
 
@@ -2127,6 +2142,7 @@ struct ChatView: View {
         return obj
     }
 
+    @ViewBuilder
     private var tasksStatusPill: some View {
         let activities = store.backgroundActivities
         let unboundSpawns = store.unboundSubagentSpawnedEvents
@@ -2139,7 +2155,8 @@ struct ChatView: View {
         let hasActiveSchedule = store.runtimeLease != nil
         let title = count > 0 ? "Tasks (\(count))" : "Tasks"
 
-        return Menu {
+        if count > 0 || hasActiveSchedule {
+        Menu {
             Section("Runtime") {
                 if let lease = store.runtimeLease {
                     Text("Runtime pinned — \(lease.activeScheduleCount) active schedule\(lease.activeScheduleCount == 1 ? "" : "s") keep this session connected")
@@ -2206,18 +2223,26 @@ struct ChatView: View {
             Button("Type /loop <interval> <prompt> to schedule") {}
                 .disabled(true)
         } label: {
-            Label(
-                hasActiveSchedule ? "\(title) · Scheduled" : title,
-                systemImage: hasActiveSchedule
-                    ? "clock.badge.checkmark"
-                    : (count > 0 ? "clock.badge" : "clock")
-            )
-            .font(.caption2.weight(.semibold))
-            .padding(.horizontal, 2)
-            .padding(.vertical, 2)
-            .foregroundStyle(hasActiveSchedule ? Color.orange : .secondary)
+            HStack(spacing: 3) {
+                TitlebarGlyph(
+                    systemName: hasActiveSchedule ? "clock.badge.checkmark" : "clock.badge",
+                    pointSize: 12,
+                    color: hasActiveSchedule
+                        ? AppTheme.Palette.warningNSColor
+                        : AppTheme.Palette.titlebarControlNSColor
+                )
+                if count > 0 {
+                    Text("\(count)")
+                        .font(AppTheme.Typography.caption)
+                }
+            }
+            .frame(minWidth: 22, minHeight: 22)
+            .contentShape(Rectangle())
+            .foregroundStyle(hasActiveSchedule ? AppTheme.Palette.warning : AppTheme.Palette.titlebarControl)
         }
         .menuStyle(.borderlessButton)
+        .menuIndicator(.hidden)
+        .controlSize(.small)
         .fixedSize()
         .disabled(store.currentWorkspace == nil)
         .help(available
@@ -2226,7 +2251,9 @@ struct ChatView: View {
         .accessibilityLabel(hasActiveSchedule
             ? "Background tasks, runtime pinned by active schedule"
             : "Background tasks, runtime not pinned")
+        .accessibilityValue(title)
         .accessibilityIdentifier("grok-tasks-status")
+        }
     }
 
     @ViewBuilder
@@ -2978,13 +3005,7 @@ private struct LaunchSessionChoices: View {
     let onBrowseOld: () -> Void
 
     var body: some View {
-        HStack(spacing: 8) {
-            Text("Saved task")
-                .font(AppTheme.Typography.captionStrong)
-            Text("Choose what happens next.")
-                .font(AppTheme.Typography.caption)
-                .foregroundStyle(.secondary)
-            Spacer(minLength: 8)
+        HStack(spacing: 14) {
             launchButton(
                 "Resume current task",
                 help: "Resume the exact saved Grok backend without sending a prompt.",
@@ -3003,10 +3024,10 @@ private struct LaunchSessionChoices: View {
                 identifier: "grok-launch-browse-old",
                 action: onBrowseOld
             )
+            Spacer(minLength: 0)
         }
-        .padding(.horizontal, 10)
-        .padding(.vertical, 8)
-        .background(Color.primary.opacity(0.035), in: RoundedRectangle(cornerRadius: 10))
+        .padding(.horizontal, 4)
+        .padding(.vertical, 2)
         .accessibilityElement(children: .contain)
         .accessibilityLabel("Saved task launch choices")
         .accessibilityIdentifier("grok-launch-session-choices")
@@ -3019,8 +3040,9 @@ private struct LaunchSessionChoices: View {
         action: @escaping () -> Void
     ) -> some View {
         Button(title, action: action)
-            .buttonStyle(.bordered)
-            .controlSize(.small)
+            .buttonStyle(.plain)
+            .font(AppTheme.Typography.caption)
+            .foregroundStyle(.secondary)
             .help(help)
             .accessibilityLabel(title)
             .accessibilityHint(help)

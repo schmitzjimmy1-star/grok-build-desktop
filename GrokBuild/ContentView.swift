@@ -124,6 +124,8 @@ struct ContentView: View {
     @State private var migrationReadOnlySessionTitles: [String] = []
     @AppStorage(SidebarVisibility.storageKey)
     private var isSidebarVisible = SidebarVisibility.defaultVisible
+    @State private var isProjectFilterVisible = false
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     private var gitErrorAlertPresented: Binding<Bool> {
         Binding(
@@ -141,6 +143,169 @@ struct ContentView: View {
                 if !isPresented { sessionCleanupError = nil }
             }
         )
+    }
+
+    private var hasTopBanners: Bool {
+        (sessionLayoutFailure != nil && !isMigrationBannerDismissed) || showUpgradeBanner
+    }
+
+    private func setSidebarVisible(_ visible: Bool) {
+        withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.18)) {
+            isSidebarVisible = visible
+        }
+    }
+
+    @ViewBuilder
+    private var workCanvas: some View {
+        if route == .settings {
+            SettingsView(
+                store: activeStore,
+                selectedTab: $selectedSettingsTab,
+                onBackToChat: { route = .session },
+                onConfigurationChanged: handleConfigurationChange,
+                onSettingsApplyRequest: handleConfigurationChange
+            )
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .disabled(isRestoringSessions)
+        } else {
+            HSplitView {
+                ChatView(
+                    store: activeStore,
+                    sessionTitle: activeSession?.title ?? currentWorkspace?.displayName ?? "New chat",
+                    isSidebarVisible: isSidebarVisible,
+                    onToggleSidebar: { setSidebarVisible(!isSidebarVisible) },
+                    isProjectFilterVisible: $isProjectFilterVisible,
+                    onOpenSettings: { openSettings(tab: selectedSettingsTab) },
+                    reviewFileCount: activeReviewDiffs.count,
+                    reviewDiffs: activeReviewDiffs,
+                    isReviewVisible: showPreview,
+                    onToggleReview: {
+                        if !activeReviewDiffs.isEmpty {
+                            showPreview.toggle()
+                        }
+                    },
+                    onOpenTurnReview: { reviewScope = .lastTurn },
+                    onBrowseSessions: { sessionModal = .sessionBrowser },
+                    onNewSession: { startNewSessionForCurrentProject() },
+                    onAddProject: { showPicker = true },
+                    onOpenProjectIn: { openCurrentProject(in: $0) },
+                    onToggleBrowserTools: { toggleBrowserToolsFromChat() },
+                    onSelectBrowserRuntime: { selectBrowserRuntimeFromChat($0) },
+                    onToggleComputerUse: { toggleComputerUseFromChat() },
+                    onOpenBrowserSettings: { openSettings(tab: .browser) },
+                    onOpenComputerUseSettings: { openSettings(tab: .computerUse) },
+                    onOpenAgentSettings: { openSettings(tab: .agents) },
+                    onOpenModelSettings: { openSettings(tab: .models) },
+                    onOpenConnectionSettings: { openSettings(tab: .mcpServers) },
+                    onOpenMemorySettings: { openSettings(tab: .memory) },
+                    onOpenWorkflowSettings: { openSettings(tab: .workflows) },
+                    onForkSession: { Task { await forkCurrentSession() } },
+                    onOpenDashboard: { openActivityDashboard() },
+                    onSwitchBranch: {
+                        if let workspace = currentWorkspace {
+                            gitCheckoutRequest = GitCheckoutRequest(project: workspace)
+                        }
+                    },
+                    onRevealArtifact: revealArtifact,
+                    isSessionRestoreInProgress: isRestoringSessions
+                )
+                .id(activeStore.tabSessionID)
+                .frame(minWidth: 360, maxWidth: .infinity, maxHeight: .infinity)
+
+                if showPreview {
+                    PreviewPane(
+                        diffs: activeReviewDiffs,
+                        workspace: currentWorkspace,
+                        scope: $reviewScope,
+                        scopeTruthNote: reviewScopeTruthNote,
+                        onClose: { showPreview = false },
+                        onRevertFile: { path in await revertReviewFile(path) }
+                    )
+                    .frame(minWidth: 360, idealWidth: 460, maxWidth: 620, maxHeight: .infinity)
+                    .disabled(isRestoringSessions)
+                }
+            }
+            .frame(minWidth: 360, maxWidth: .infinity, maxHeight: .infinity)
+        }
+    }
+
+    @ViewBuilder
+    private var projectSidebarOverlay: some View {
+        if SidebarVisibility.shouldShow(
+            preference: isSidebarVisible,
+            settingsPresented: route == .settings,
+            availableContentWidth: contentAreaWidth
+        ) {
+            VStack(spacing: 0) {
+                Color.clear
+                    .frame(height: TitlebarMetrics.overlayTopInset)
+                    .allowsHitTesting(false)
+                HStack(spacing: 0) {
+                    projectSidebar
+                    Color.black.opacity(0.18)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        .contentShape(Rectangle())
+                        .onTapGesture { setSidebarVisible(false) }
+                        .accessibilityLabel("Dismiss sidebar")
+                        .accessibilityAddTraits(.isButton)
+                }
+            }
+            .transition(.move(edge: .leading).combined(with: .opacity))
+            .zIndex(1)
+        }
+    }
+
+    private var projectSidebar: some View {
+        SidebarView(
+            workspaces: $workspaceStore.workspaces,
+            orderedWorkspaces: workspaceStore.orderedWorkspaces,
+            pinnedWorkspaceIDs: workspaceStore.pinnedWorkspaceIDs,
+            selectedWorkspaceID: $selectedWorkspaceID,
+            sessions: sidebarSessions,
+            hiddenSessionCounts: hiddenSessionCounts,
+            selectedSessionID: selectedSessionID,
+            isConversationRouteActive: route == .session,
+            expandedSessionWorkspaceIDs: $sessionLayout.expandedSessionWorkspaceIDs,
+            hiddenSessionWorkspaceIDs: $sessionLayout.hiddenSessionWorkspaceIDs,
+            onAddWorkspace: { showPicker = true },
+            onSelectWorkspace: { ws in
+                route = .session
+                selectProject(ws)
+            },
+            onSelectSession: { selectSession($0) },
+            onNewSessionForWorkspace: { workspace in
+                Task { await createLiveSession(for: workspace) }
+            },
+            onRenameSession: { id, name in
+                renameSession(id: id, to: name)
+            },
+            onCloseSession: { id in
+                closeSession(id: id)
+            },
+            onMoveWorkspace: { source, destination in
+                workspaceStore.moveWorkspaces(from: source, to: destination)
+            },
+            onPinWorkspace: { workspaceStore.pin($0) },
+            onUnpinWorkspace: { workspaceStore.unpin($0) },
+            onRemoveWorkspace: { removeWorkspace($0) },
+            onMoveSession: { workspaceID, source, destination in
+                moveSessions(for: workspaceID, from: source, to: destination)
+            },
+            onSwitchBranch: { gitCheckoutRequest = GitCheckoutRequest(project: $0) },
+            onCreateWorktree: { gitCheckoutRequest = GitCheckoutRequest(project: $0, focusCreateWorktree: true) },
+            onSessionDisclosureChanged: { persistSessionLayout() },
+            onNewChat: { startNewSessionForCurrentProject() },
+            onBrowseSessions: { sessionModal = .sessionBrowser },
+            onOpenActivity: { openActivityDashboard() },
+            onOpenPlugins: { openSettings(tab: .plugins) },
+            onOpenSecurity: { openSettings(tab: .permissions) },
+            onOpenSettings: { openSettings(tab: selectedSettingsTab) },
+            isFilterVisible: $isProjectFilterVisible
+        )
+        .frame(width: TitlebarMetrics.sidebarOverlayWidth)
+        .frame(maxHeight: .infinity)
+        .background(AppTheme.Palette.sidebar)
+        .disabled(isRestoringSessions)
     }
 
     var body: some View {
@@ -210,134 +375,10 @@ struct ContentView: View {
                 )
             }
 
-            HSplitView {
-            if SidebarVisibility.shouldShow(
-                preference: isSidebarVisible,
-                settingsPresented: route == .settings,
-                availableContentWidth: contentAreaWidth
-            ) {
-            SidebarView(
-                workspaces: $workspaceStore.workspaces,
-                orderedWorkspaces: workspaceStore.orderedWorkspaces,
-                pinnedWorkspaceIDs: workspaceStore.pinnedWorkspaceIDs,
-                selectedWorkspaceID: $selectedWorkspaceID,
-                sessions: sidebarSessions,
-                hiddenSessionCounts: hiddenSessionCounts,
-                selectedSessionID: selectedSessionID,
-                isConversationRouteActive: route == .session,
-                expandedSessionWorkspaceIDs: $sessionLayout.expandedSessionWorkspaceIDs,
-                hiddenSessionWorkspaceIDs: $sessionLayout.hiddenSessionWorkspaceIDs,
-                onAddWorkspace: { showPicker = true },
-                onSelectWorkspace: { ws in
-                    route = .session
-                    selectProject(ws)
-                },
-                onSelectSession: { selectSession($0) },
-                onNewSessionForWorkspace: { workspace in
-                    Task { await createLiveSession(for: workspace) }
-                },
-                onRenameSession: { id, name in
-                    renameSession(id: id, to: name)
-                },
-                onCloseSession: { id in
-                    closeSession(id: id)
-                },
-                onMoveWorkspace: { source, destination in
-                    workspaceStore.moveWorkspaces(from: source, to: destination)
-                },
-                onPinWorkspace: { workspaceStore.pin($0) },
-                onUnpinWorkspace: { workspaceStore.unpin($0) },
-                onRemoveWorkspace: { removeWorkspace($0) },
-                onMoveSession: { workspaceID, source, destination in
-                    moveSessions(for: workspaceID, from: source, to: destination)
-                },
-                onSwitchBranch: { gitCheckoutRequest = GitCheckoutRequest(project: $0) },
-                onCreateWorktree: { gitCheckoutRequest = GitCheckoutRequest(project: $0, focusCreateWorktree: true) },
-                onSessionDisclosureChanged: { persistSessionLayout() },
-                onNewChat: { startNewSessionForCurrentProject() },
-                onBrowseSessions: { sessionModal = .sessionBrowser },
-                onOpenActivity: { openActivityDashboard() },
-                onOpenPlugins: { openSettings(tab: .plugins) },
-                onOpenSecurity: { openSettings(tab: .permissions) }
-            )
-            .frame(
-                minWidth: ResponsiveLayoutPolicy.sidebarMinimumWidth,
-                idealWidth: 216,
-                maxWidth: 240
-            )
-            .disabled(isRestoringSessions)
-            }
-
-            if route == .settings {
-                SettingsView(
-                    store: activeStore,
-                    selectedTab: $selectedSettingsTab,
-                    onBackToChat: { route = .session },
-                    onConfigurationChanged: handleConfigurationChange,
-                    onSettingsApplyRequest: handleConfigurationChange
-                )
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .disabled(isRestoringSessions)
-            } else {
-                HSplitView {
-                    ChatView(
-                        store: activeStore,
-                        sessionTitle: activeSession?.title ?? currentWorkspace?.displayName ?? "New chat",
-                        isSidebarVisible: isSidebarVisible,
-                        onToggleSidebar: { isSidebarVisible.toggle() },
-                        onOpenSettings: { openSettings(tab: selectedSettingsTab) },
-                        reviewFileCount: activeReviewDiffs.count,
-                        reviewDiffs: activeReviewDiffs,
-                        isReviewVisible: showPreview,
-                        onToggleReview: {
-                            if !activeReviewDiffs.isEmpty {
-                                showPreview.toggle()
-                            }
-                        },
-                        onOpenTurnReview: { reviewScope = .lastTurn },
-                        onBrowseSessions: { sessionModal = .sessionBrowser },
-                        onNewSession: { startNewSessionForCurrentProject() },
-                        onAddProject: { showPicker = true },
-                        onOpenProjectIn: { openCurrentProject(in: $0) },
-                        onToggleBrowserTools: { toggleBrowserToolsFromChat() },
-                        onSelectBrowserRuntime: { selectBrowserRuntimeFromChat($0) },
-                        onToggleComputerUse: { toggleComputerUseFromChat() },
-                        onOpenBrowserSettings: { openSettings(tab: .browser) },
-                        onOpenComputerUseSettings: { openSettings(tab: .computerUse) },
-                        onOpenAgentSettings: { openSettings(tab: .agents) },
-                        onOpenModelSettings: { openSettings(tab: .models) },
-                        onOpenConnectionSettings: { openSettings(tab: .mcpServers) },
-                        onOpenMemorySettings: { openSettings(tab: .memory) },
-                        onOpenWorkflowSettings: { openSettings(tab: .workflows) },
-                        onForkSession: { Task { await forkCurrentSession() } },
-                        onOpenDashboard: { openActivityDashboard() },
-                        onSwitchBranch: {
-                            if let workspace = currentWorkspace {
-                                gitCheckoutRequest = GitCheckoutRequest(project: workspace)
-                            }
-                        },
-                        onRevealArtifact: revealArtifact,
-                        isSessionRestoreInProgress: isRestoringSessions
-                    )
-                    .id(activeStore.tabSessionID)
-                    .frame(minWidth: 360, maxWidth: .infinity, maxHeight: .infinity)
-
-                    if showPreview {
-                        PreviewPane(
-                            diffs: activeReviewDiffs,
-                            workspace: currentWorkspace,
-                            scope: $reviewScope,
-                            scopeTruthNote: reviewScopeTruthNote,
-                            onClose: { showPreview = false },
-                            onRevertFile: { path in await revertReviewFile(path) }
-                        )
-                        .frame(minWidth: 360, idealWidth: 460, maxWidth: 620, maxHeight: .infinity)
-                        .disabled(isRestoringSessions)
-                    }
-                }
-                .frame(minWidth: 360, maxWidth: .infinity, maxHeight: .infinity)
-            }
-            }
+            ZStack(alignment: .leading) {
+                workCanvas
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                projectSidebarOverlay
             }
 
             if isRestoringSessions {
@@ -375,7 +416,7 @@ struct ContentView: View {
             refreshUpgradeBannerState()
         }
         .onReceive(NotificationCenter.default.publisher(for: .toggleSidebarRequested)) { _ in
-            isSidebarVisible.toggle()
+            setSidebarVisible(!isSidebarVisible)
         }
         .onReceive(NotificationCenter.default.publisher(for: .subagentRolesChanged)) { _ in
             refreshWorkspaceAgentInventories()
@@ -471,6 +512,8 @@ struct ContentView: View {
             onSessionStarted: { Task { await enforceConnectionCap() } },
             openSettings: { tab in openSettings(tab: tab ?? selectedSettingsTab) }
         ))
+        }
+        .ignoresSafeArea(hasTopBanners ? SafeAreaRegions() : .container, edges: .top)
     }
 
     // MARK: - Subviews

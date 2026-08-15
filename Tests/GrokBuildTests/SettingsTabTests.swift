@@ -207,6 +207,13 @@ final class SettingsTabTests: XCTestCase {
         XCTAssertNotEqual(AppTheme.Palette.warningNSColor, AppTheme.Palette.linkNSColor)
         _ = AppTheme.Palette.warning
         _ = AppTheme.Palette.link
+
+        let titlebarDark = sRGBComponents(of: AppTheme.Palette.titlebarControlNSColor, appearance: dark)
+        let titlebarLight = sRGBComponents(of: AppTheme.Palette.titlebarControlNSColor, appearance: light)
+        XCTAssertGreaterThan(titlebarDark.r, canvasDark.r + 0.5,
+                             "Dark titlebar icons must stay well above the charcoal canvas")
+        XCTAssertLessThan(titlebarLight.r, canvasLight.r - 0.5,
+                          "Light titlebar icons must stay well below the stone canvas")
     }
 
     func testAppThemeWarningAndLinkTokensExistInSource() throws {
@@ -222,6 +229,63 @@ final class SettingsTabTests: XCTestCase {
         XCTAssertTrue(source.contains("static let link"))
         XCTAssertTrue(source.contains("static let warningNSColor"))
         XCTAssertTrue(source.contains("static let linkNSColor"))
+        XCTAssertTrue(source.contains("static let titlebarControl"))
+        XCTAssertTrue(source.contains("static let titlebarControlNSColor"))
+        XCTAssertTrue(source.contains("struct TitlebarGlyph"))
+        XCTAssertTrue(source.contains("enum TitlebarGlyphRaster"))
+        XCTAssertTrue(source.contains("rect.fill(using: .sourceIn)"))
+        XCTAssertTrue(source.contains("tiffRepresentation"))
+        XCTAssertTrue(source.contains("image.isTemplate = false"))
+
+        let dark = NSAppearance(named: .darkAqua)!
+        let glyph = TitlebarGlyphRaster.image(
+            systemName: "ellipsis",
+            pointSize: 13,
+            color: AppTheme.Palette.titlebarControlNSColor,
+            appearance: dark
+        )
+        XCTAssertFalse(glyph.isTemplate, "titlebar glyphs must not be AppKit templates")
+        XCTAssertGreaterThan(
+            brightestOpaqueLuma(in: glyph),
+            0.7,
+            "Dark titlebar glyphs must stay visibly lighter than the charcoal canvas"
+        )
+    }
+
+    private func brightestOpaqueLuma(in image: NSImage) -> CGFloat {
+        let width = max(Int(image.size.width * 2), 1)
+        let height = max(Int(image.size.height * 2), 1)
+        guard let rep = NSBitmapImageRep(
+            bitmapDataPlanes: nil,
+            pixelsWide: width,
+            pixelsHigh: height,
+            bitsPerSample: 8,
+            samplesPerPixel: 4,
+            hasAlpha: true,
+            isPlanar: false,
+            colorSpaceName: .deviceRGB,
+            bytesPerRow: 0,
+            bitsPerPixel: 0
+        ) else {
+            return 0
+        }
+        guard let context = NSGraphicsContext(bitmapImageRep: rep) else { return 0 }
+        NSGraphicsContext.saveGraphicsState()
+        NSGraphicsContext.current = context
+        image.draw(in: NSRect(x: 0, y: 0, width: width, height: height))
+        NSGraphicsContext.restoreGraphicsState()
+
+        var brightest: CGFloat = 0
+        for y in 0..<height {
+            for x in 0..<width {
+                guard let color = rep.colorAt(x: x, y: y), color.alphaComponent > 0.25 else { continue }
+                let luma = (0.2126 * color.redComponent)
+                    + (0.7152 * color.greenComponent)
+                    + (0.0722 * color.blueComponent)
+                brightest = max(brightest, luma)
+            }
+        }
+        return brightest
     }
 
     private func sRGBComponents(of color: NSColor, appearance: NSAppearance) -> (r: CGFloat, g: CGFloat, b: CGFloat) {

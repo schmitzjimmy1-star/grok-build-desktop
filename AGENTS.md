@@ -17,8 +17,10 @@ Before edits or acceptance, read and follow in order:
 3. `docs/OUTSTANDING.md` — current slice scope and Gates A–H when a campaign slice is active.
 4. `docs/GROKBUILD_VISUAL_QUIET_CAMPAIGN_2026-08-15.md` — Visual Quiet
    campaign. Phases 1–2 (cool tokens + Path A chips) are verified. Next is
-   Phase 3 (header/composer density), then Phase 4 accent sweep. Leftover
-   Phase 3 (`ChatView` split) stays deferred and is not the visual work.
+   Phase 3 (overlay sidebar + quiet inspector/header chrome, Dark
+   titlebar glyphs), then Phase 4
+   accent sweep. Leftover Phase 3 (`ChatView` split) stays deferred and
+   is not the visual work.
 
 Stop on a path, branch, remote, installed-stamp, signing, hash, or dirty-state mismatch.
 

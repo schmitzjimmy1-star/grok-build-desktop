@@ -2,6 +2,9 @@ import SwiftUI
 
 /// Workbench header chrome. ChatView still owns Tasks / Review / Run inspector
 /// state; this view only lays out the shared controls and project menu.
+/// More actions is one ellipsis. Filter and Session dashboard sit to the
+/// right of the session title with a gap. The row sits just under the
+/// traffic lights so Dark icons stay a consistent white. There is no hairline.
 struct ChatTopBar<TasksStatus: View, ReviewToggle: View, InspectorToggle: View>: View {
     @Bindable var store: ChatStore
     let sessionTitle: String
@@ -12,10 +15,10 @@ struct ChatTopBar<TasksStatus: View, ReviewToggle: View, InspectorToggle: View>:
     var onForkSession: () -> Void
     var onSwitchBranch: () -> Void
     var onOpenProjectIn: (ProjectOpenTarget) -> Void
-    var onOpenSettings: () -> Void
     @Binding var showSetGoal: Bool
     @Binding var createSkillName: String
     @Binding var showCreateSkill: Bool
+    @Binding var isProjectFilterVisible: Bool
     let tasksStatus: TasksStatus
     let reviewToggle: ReviewToggle
     let inspectorToggle: InspectorToggle
@@ -30,10 +33,10 @@ struct ChatTopBar<TasksStatus: View, ReviewToggle: View, InspectorToggle: View>:
         onForkSession: @escaping () -> Void,
         onSwitchBranch: @escaping () -> Void,
         onOpenProjectIn: @escaping (ProjectOpenTarget) -> Void,
-        onOpenSettings: @escaping () -> Void,
         showSetGoal: Binding<Bool>,
         createSkillName: Binding<String>,
         showCreateSkill: Binding<Bool>,
+        isProjectFilterVisible: Binding<Bool>,
         @ViewBuilder tasksStatus: () -> TasksStatus,
         @ViewBuilder reviewToggle: () -> ReviewToggle,
         @ViewBuilder inspectorToggle: () -> InspectorToggle
@@ -47,10 +50,10 @@ struct ChatTopBar<TasksStatus: View, ReviewToggle: View, InspectorToggle: View>:
         self.onForkSession = onForkSession
         self.onSwitchBranch = onSwitchBranch
         self.onOpenProjectIn = onOpenProjectIn
-        self.onOpenSettings = onOpenSettings
         self._showSetGoal = showSetGoal
         self._createSkillName = createSkillName
         self._showCreateSkill = showCreateSkill
+        self._isProjectFilterVisible = isProjectFilterVisible
         self.tasksStatus = tasksStatus()
         self.reviewToggle = reviewToggle()
         self.inspectorToggle = inspectorToggle()
@@ -59,18 +62,41 @@ struct ChatTopBar<TasksStatus: View, ReviewToggle: View, InspectorToggle: View>:
     var body: some View {
         HStack(spacing: 8) {
             Button(action: onToggleSidebar) {
-                Image(systemName: "sidebar.left")
+                TitlebarGlyph(systemName: "sidebar.left")
             }
             .buttonStyle(GrokChromeButtonStyle())
             .help(isSidebarVisible ? "Hide sidebar" : "Show sidebar")
             .accessibilityLabel(isSidebarVisible ? "Hide sidebar" : "Show sidebar")
 
-            Image(systemName: "folder")
-                .font(.system(size: 12, weight: .medium))
-                .foregroundStyle(.secondary)
+            TitlebarGlyph(systemName: "folder", pointSize: 12)
             Text(sessionTitle)
                 .font(AppTheme.Typography.captionStrong)
                 .lineLimit(1)
+                .layoutPriority(1)
+
+            Spacer(minLength: TitlebarMetrics.headerIconGap)
+
+            Button {
+                if !isSidebarVisible {
+                    onToggleSidebar()
+                }
+                isProjectFilterVisible.toggle()
+            } label: {
+                TitlebarGlyph(systemName: "magnifyingglass")
+            }
+            .buttonStyle(GrokChromeButtonStyle())
+            .help(isProjectFilterVisible ? "Hide the project filter" : "Filter projects")
+            .accessibilityLabel("Filter projects")
+            .accessibilityHint(isProjectFilterVisible ? "Hides the project filter field." : "Shows a field that filters projects by name.")
+            .accessibilityValue(isProjectFilterVisible ? "Visible" : "Hidden")
+
+            Button(action: onOpenDashboard) {
+                TitlebarGlyph(systemName: "bell")
+            }
+            .buttonStyle(GrokChromeButtonStyle())
+            .help("Session dashboard")
+            .accessibilityLabel("Session dashboard")
+            .accessibilityHint("Opens the session dashboard.")
 
             Menu {
                 Button("Browse sessions", systemImage: "clock") {
@@ -139,31 +165,32 @@ struct ChatTopBar<TasksStatus: View, ReviewToggle: View, InspectorToggle: View>:
                     }
                 }
             } label: {
-                Image(systemName: "ellipsis")
+                TitlebarGlyph(systemName: "ellipsis")
+                    .frame(width: 28, height: TitlebarMetrics.height)
+                    .contentShape(Rectangle())
             }
             .menuStyle(.borderlessButton)
+            .menuIndicator(.hidden)
+            .controlSize(.regular)
+            .foregroundStyle(AppTheme.Palette.titlebarControl)
             .help("More actions")
             .accessibilityLabel("More actions")
 
             tasksStatus
 
-            Spacer()
-
             reviewToggle
 
             inspectorToggle
-
-            Button(action: onOpenSettings) {
-                Image(systemName: "gearshape")
-            }
-            .buttonStyle(GrokChromeButtonStyle())
-            .help("Settings")
-            .accessibilityLabel("Open Settings")
         }
-        .padding(.horizontal, 12)
-        .frame(height: 44)
+        .foregroundStyle(AppTheme.Palette.titlebarControl)
+        .compositingGroup()
+        .padding(.leading, isSidebarVisible
+            ? TitlebarMetrics.sidebarOverlayWidth + TitlebarMetrics.headerIconGap
+            : TitlebarMetrics.trafficLightLeading)
+        .padding(.trailing, 12)
+        .padding(.top, TitlebarMetrics.contentTopInset)
+        .frame(height: TitlebarMetrics.overlayTopInset)
         .background(AppTheme.Palette.canvas)
-        .overlay(alignment: .bottom) { Divider() }
         .focusSection()
         .accessibilityElement(children: .contain)
         .accessibilityLabel("Workbench controls")

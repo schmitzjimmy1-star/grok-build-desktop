@@ -44,6 +44,21 @@ final class MainWindowLayoutTests: XCTestCase {
 
     /// The View menu reads the preference outside SwiftUI: a missing key must
     /// mean the default (visible), not UserDefaults' bool fallback of false.
+    func testTitlebarMetricsSitJustUnderTheTrafficLights() {
+        XCTAssertEqual(TitlebarMetrics.trafficLightLeading, 78)
+        XCTAssertEqual(TitlebarMetrics.systemTitlebarHeight, 32)
+        XCTAssertEqual(TitlebarMetrics.height, 32)
+        XCTAssertEqual(TitlebarMetrics.belowTrafficLights, 8)
+        XCTAssertEqual(TitlebarMetrics.headerIconGap, 16)
+        XCTAssertEqual(TitlebarMetrics.contentTopInset, 8)
+        XCTAssertEqual(TitlebarMetrics.overlayTopInset, 40)
+        XCTAssertEqual(TitlebarMetrics.sidebarOverlayWidth, 228)
+        XCTAssertGreaterThanOrEqual(
+            TitlebarMetrics.sidebarOverlayWidth,
+            ResponsiveLayoutPolicy.sidebarMinimumWidth
+        )
+    }
+
     func testSidebarCurrentPreferenceMatchesAppStorageSemantics() {
         let suite = "grokbuild.tests.sidebar.\(UUID().uuidString)"
         let defaults = UserDefaults(suiteName: suite)!

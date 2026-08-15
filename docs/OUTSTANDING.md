@@ -31,23 +31,28 @@
 >
 > **Current campaign:** 2026-08-15 Visual Quiet —
 > [`docs/GROKBUILD_VISUAL_QUIET_CAMPAIGN_2026-08-15.md`](GROKBUILD_VISUAL_QUIET_CAMPAIGN_2026-08-15.md).
-> Phases 1–2 (cool tokens + Path A welcome chips) verified on
-> `codex/grokbuild-vq-p1-p2-tokens-welcome` and publishing. **Next is Phase 3**
-> (header + composer density), then Phase 4 accent sweep. Leftover closeout
-> Phases 1–2 are merged on `main` as `7a3006d` (PR #102). Leftover Phase 3
-> (`ChatView` split) stays deferred. Install path is `make ship` on this Mac.
+> Phases 1–2 (cool tokens + Path A welcome chips) verified and merged.
+> **Phase 3 is the Codex-style overlay sidebar plus quiet chrome**
+> (compact projects, slide-over canvas, account-row Settings, titlebar
+> inline with the traffic lights, `TitlebarGlyph` Dark contrast, inspector
+> dropdown + subagent tracker)
+> on `codex/grokbuild-vq-p3-sidebar-overlay`. Then Phase 4 accent sweep.
+> Leftover closeout Phases 1–2 are merged on `main` as `7a3006d`
+> (PR #102). Leftover Phase 3 (`ChatView` split) stays deferred.
+> Install path is `make ship` on this Mac.
 >
 > Prior campaigns: 2026-08-14 Residual Closeout (Phases 0–6) complete and merged as `4613bde` (PR #94);
 > 2026-08-13 campaign (Slices 0–7) closed at merge `c0895ee` (PR #86).
 
-## Visual Quiet — 2026-08-15 (Phases 1–2 verified, publishing)
+## Visual Quiet — 2026-08-15 (Phase 3 overlay sidebar + quiet chrome)
 
 Authorized spec is
 [`docs/GROKBUILD_VISUAL_QUIET_CAMPAIGN_2026-08-15.md`](GROKBUILD_VISUAL_QUIET_CAMPAIGN_2026-08-15.md).
-Branch `codex/grokbuild-vq-p1-p2-tokens-welcome`. Phase 1 cools Light/Dark
-tokens and adds `warning` / `link`. Phase 2 Path A keeps Ask/Build/Review as
-compact chips. **Next is Phase 3** (header + composer density). This is not
-leftover Phase 3.
+Phases 1–2 are merged. **Phase 3** (Jimmy redirect) is compact projects, a
+Codex slide-over sidebar, Settings on the account row, a titlebar
+inline with the traffic lights, and quiet header/inspector chrome.
+Branch `codex/grokbuild-vq-p3-sidebar-overlay`. Composer tightness
+still waits. This is not leftover Phase 3.
 
 ### Visual Quiet Phases 1–2 receipt — 2026-08-15
 
@@ -100,7 +105,8 @@ Protected OK-F is selected again. Aug 14 `(no summary)`
 `019ffdad-0d4f-7f42-a429-7ac12ad8198d` still Total: 1. Never Clear Empty.
 
 Landing README screenshots were not recaptured; the chip wording in
-`README.md` is current. Phase 3 owns header labels and composer glass.
+`README.md` is current. Phase 3 (in progress) is the overlay sidebar and
+titlebar alignment, not header-label / composer-glass work.
 
 ## Leftover closeout — 2026-08-15 (Phases 1–2 merged)
 
