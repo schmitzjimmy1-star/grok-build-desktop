@@ -57,8 +57,11 @@ final class SidebarActivityTests: XCTestCase {
             activitySource.range(of: "private func liveTools", range: liveWorkersStart.upperBound..<activitySource.endIndex)
         )
         let liveWorkers = String(activitySource[liveWorkersStart.lowerBound..<liveWorkersEnd.lowerBound])
-        XCTAssertTrue(liveWorkers.contains("workerReceiptDetail"),
-                      "a worker that finished mid-turn must show its receipt live")
+        XCTAssertTrue(liveWorkers.contains("workerDelegationRow"),
+                      "live workers share the expandable delegation row, including mid-turn receipts")
+        XCTAssertTrue(activitySource.contains("func workerDelegationRow"),
+                      "delegation rows own spawn/child/token receipts for live and settled workers")
+        XCTAssertTrue(activitySource.contains("grok-run-inspector-worker-\\(worker.id)"))
 
         let sidebarSource = try String(
             contentsOf: repositoryRoot.appendingPathComponent("GrokBuild/Views/SidebarView.swift"),

@@ -28,8 +28,10 @@
 > created by the current slice, and unrelated browser/app state are protected.
 >
 > **Current campaign:** 2026-08-15 Agentic Cockpit Campaign — Phase 1 complete
-> (merged as `2b7f377`, PR #96; Gates A–H green, billable retention proof passed).
-> Phases 2–4 planned.
+> (merged as `2b7f377`, PR #96; ledger closeout PR #97 merged as `1d2b6d5`).
+> Phase 2 deferred by explicit user skip (2026-08-15). Phase 3 complete on
+> `codex/grokbuild-c9-p3-delegation` (Gates A–G green; Gate H after merge +
+> post-merge `make ship`). Phase 4 is next.
 > Spec: [`docs/GROKBUILD_AGENTIC_COCKPIT_CAMPAIGN_2026-08-15.md`](GROKBUILD_AGENTIC_COCKPIT_CAMPAIGN_2026-08-15.md).
 > Target: Elevate GrokBuild into a resilient, transparent agentic cockpit across 4 phases:
 > Phase 1 (Task Retention & /loop Lifetime Policy), Phase 2 (ChatView Decomposition),
@@ -41,16 +43,16 @@
 ## Agentic Cockpit Campaign — 2026-08-15 (Authorized & Planned)
 
 Authorized spec is [`docs/GROKBUILD_AGENTIC_COCKPIT_CAMPAIGN_2026-08-15.md`](GROKBUILD_AGENTIC_COCKPIT_CAMPAIGN_2026-08-15.md).
-Start from clean `main == personal/main` at `4613bdee0ad27c296482fd66cce816afef375357` with installed stamp `4613bde` and clean working tree.
+Phase 3 started from clean `main == personal/main` at `1d2b6d5cda69c9b1039048bb7e8bf55b8c7c5bf8`. Phase 2 remains deferred. Phase 4 starts only after this Phase 3 PR merges and post-merge `make ship` proves `dirty=false`.
 
-Phases in order:
+Phases:
 
 | Phase | Title | Job | Billable / Marker Packet |
 |---|---|---|---|
-| 1 | Long-Horizon Task Retention & Scheduled Work Lifetime | Protect active `/loop` and background sessions from LRU eviction (`SessionRuntimeRetentionPolicy`); surface schedule status in chrome | 1 multi-tab retention verification turn |
+| 1 | Long-Horizon Task Retention & Scheduled Work Lifetime | Protect active scheduled and background sessions from LRU eviction (`SessionRuntimeRetentionPolicy`); surface schedule status in chrome | 1 multi-tab retention verification turn |
 | 2 | `ChatView` Component Decomposition | Extract `TopBarView.swift`, `ComposerBarView.swift`, `WelcomeStateView.swift` (~3,300 lines down) with zero contract/visual regressions | None (pure UI structural refactor) |
-| 3 | Hostile Subagent Permutation Hardening & Delegation Tree | Harden `BackgroundTaskTracker` against hostile out-of-order events; enhance Run Inspector subagent delegation tree with duration & metrics | 1 native agentic smoke packet |
-| 4 | OpenRouter Catalog Pricing & Provider Routing Expansion | Integrate live catalog pricing into `SessionUsageLedger`; refine subagent role-to-model presets with provider grouping | 1 live OpenRouter/custom model probe |
+| 3 | Hostile Subagent Permutation Hardening & Delegation Tree | Plumb per-worker tokens/turns into Run Inspector expandable delegation rows; two-child interleaved permutation tests; finish-only receipts (`unbound-finish|<childID>`). Reducer permutations already on `main` — do not rebuild the tracker. | 1 native agentic smoke packet |
+| 4 | OpenRouter Catalog Pricing & Provider Routing Expansion | Do **not** re-implement `ModelPricingStore` / `SessionUsageLedger` (shipped in `v0.1.21`). Live OpenRouter/custom-model probe, optional per-provider grouping only if still a real gap, notarized `v0.1.22` | 1 live OpenRouter/custom model probe |
 
 ### Phase 1 receipt — 2026-08-15 (Complete — Gates A–H green, merged as `2b7f377` / PR #96)
 
@@ -147,6 +149,68 @@ single billable turn was the authorized retention proof above.
 
 Ledger closeout (this receipt) published as a separate doc-only PR on branch
 `codex/grokbuild-c9-p1-ledger-closeout`.
+
+### Phase 3 receipt — 2026-08-15 (Complete — Gates A–G green; Gate H after merge)
+
+Gate A: clean `main == personal/main` at
+`1d2b6d5cda69c9b1039048bb7e8bf55b8c7c5bf8`. Phase 2 remains deferred. CLI
+`grok 1.0.4 (d846eb93d94d) [stable]`. `gh` authenticated as
+`schmitzjimmy1-star` with ADMIN on the personal repo. Origin remained the
+read-only upstream.
+
+Gate B: branch `codex/grokbuild-c9-p3-delegation`.
+
+Scope (Phase 3 — Hostile Subagent Permutation Hardening & Delegation Tree):
+
+- Plumbed per-worker `tokenCount` / `turns` onto `RunEvidenceSnapshot.Worker`
+  and `AssistantTurnCheckpoint.WorkerReceipt`.
+- Run Inspector expandable delegation rows
+  (`grok-run-inspector-worker-<worker.id>`) with spawn tool → child session,
+  duration, tool count, tokens/turns, and child receipts.
+- Unbound spawn+finish merge: finish metrics stay on one worker
+  (`unbound|<childID>`) instead of regressing to unknown/nil when an unbound
+  spawn shares a `childID`. Finish-only still emits `unbound-finish|<childID>`.
+- Two-child interleaved permutation tests now assert `evidenceWorkers` isolation,
+  not only `activities`.
+- Docs truth-up: do not rebuild `BackgroundTaskTracker`; wait/collection update
+  existing rows; unique worker AX ids.
+
+Gate C: focused tracker/inspector tests 74/74; `make test` **889 tests, 0
+failures**. Candidate `make ship` installed `/Applications/GrokBuild.app` at
+stamp `1d2b6d5` (`dirty=true` scoped implementation), dist == installed SHA-256
+`ae41c58ede815d863742483ab96ca739421143c8c06df8fbada64814462e724b`, Team
+`DD2GCQJVB4`, deep/strict PASS, no quarantine. Installed Computer Use (Cursor
+`user-grokbuild-computer-use` MCP) drove `/Applications/GrokBuild.app` only.
+
+Billable packet (frozen marker `GB-C9-P3-SUBAGENT-20260815T094138Z`, one
+authorized turn): three parent reads (VERSION, Package.swift,
+CANONICAL_WORKTREE.md) then two concurrent children. Settled reply
+`P3-OK explore=completed general-purpose=completed`. Run Inspector showed two
+completed workers with unique AX ids, spawn→child correlation, tokens/turns,
+and child receipts (8,205 tokens / 1 turn and 11,717 tokens / 1 turn).
+Coordination: 2 requested · 2 spawned · 2 finished · max 2 concurrent.
+Provider-reported usage 158,338 tokens · $0.36. No response bodies retained.
+
+Gate D: this implementation commit on `codex/grokbuild-c9-p3-delegation`,
+pushed to `personal`, PR against `schmitzjimmy1-star/grok-build-desktop:main`.
+
+Gate F: backend `01a004cc-c573-7bb0-9c8c-cb37e5b1c4b2` deleted via
+`grok sessions delete` after Sessions-browser delete stayed disabled while the
+tab was live; local leftover tab then closed via sidebar **Close Session**.
+Relaunched Sessions browser showed **zero** `GB-C9-P3` /
+`01a004cc-c573` leftovers. Empty leftover `01a00343-…` was not present.
+Aug 14 `(no summary)` `019ffdad-…` and **Clear Empty (3)** were left
+untouched. Protected `OK-F` session was not deleted. Child session IDs did
+not reappear in `grok sessions`; unindexed subagent directories were not
+scraped.
+
+Gate G: process-zero for `GrokBuild.app`, `.grok/bin/grok`, and
+`agent-desktop`. The only remaining GrokBuild-named process is the
+Cursor-hosted `GrokBuildComputerUseMCP`.
+
+Gate H: post-merge `make ship` must prove stamp == merged HEAD,
+`dirty=false`, Team `DD2GCQJVB4`, deep/strict, no quarantine, and a freshly
+derived dist ↔ installed SHA.
 
 ## Residual closeout — 2026-08-14 (Complete — all phases 0–6 closed)
 

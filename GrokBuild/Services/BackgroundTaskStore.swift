@@ -247,6 +247,11 @@ struct BackgroundTaskTracker {
         Array(pendingSpawnedEvents.values)
     }
 
+    /// Finished lifecycle receipts that never bound to a spawn tool row.
+    var unboundFinishedEvents: [SubagentFinishedEvent] {
+        Array(pendingFinishedEvents.values)
+    }
+
     /// Turn-scoped run-evidence workers. ChatStore still owns which activity IDs
     /// belong to the current parent turn and the role→model table; this reducer
     /// maps tracker rows plus unbound spawn receipts onto
@@ -260,10 +265,23 @@ struct BackgroundTaskTracker {
             $0.kind == .subagent && currentTurnActivityIDs.contains($0.id)
         }.map { worker(from: $0, planStepIDs: planStepIDs, rolesByName: rolesByName) }
         let boundChildIDs = Set(activityWorkers.compactMap(\.childID))
-        let unbound = unboundSpawnedEvents
+        let finishedByChild = Dictionary(
+            uniqueKeysWithValues: unboundFinishedEvents.map { ($0.childID, $0) }
+        )
+        let unboundSpawned = unboundSpawnedEvents
             .filter { !boundChildIDs.contains($0.childID) }
-            .map { RunEvidenceSnapshot.unboundWorker(from: $0, rolesByName: rolesByName) }
-        return activityWorkers + unbound
+            .map { spawn in
+                RunEvidenceSnapshot.unboundWorker(
+                    from: spawn,
+                    finished: finishedByChild[spawn.childID],
+                    rolesByName: rolesByName
+                )
+            }
+        let unboundSpawnedChildIDs = Set(unboundSpawned.compactMap(\.childID))
+        let unboundFinished = unboundFinishedEvents
+            .filter { !boundChildIDs.contains($0.childID) && !unboundSpawnedChildIDs.contains($0.childID) }
+            .map { RunEvidenceSnapshot.unboundFinishedWorker(from: $0) }
+        return activityWorkers + unboundSpawned + unboundFinished
     }
 
     private func worker(
@@ -286,7 +304,9 @@ struct BackgroundTaskTracker {
                 forWorkerTitle: activity.title,
                 rolesByName: rolesByName
             ),
-            childLedgerReadOutcome: activity.childLedgerReadOutcome
+            childLedgerReadOutcome: activity.childLedgerReadOutcome,
+            tokenCount: activity.tokenCount,
+            turns: activity.turns
         )
     }
 

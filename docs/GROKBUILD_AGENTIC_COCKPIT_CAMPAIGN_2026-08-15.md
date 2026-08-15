@@ -1,8 +1,8 @@
 # GrokBuild Agentic Cockpit Campaign — 2026-08-15
 
-Status: **Phase 1 complete** (merged as `2b7f377`, PR #96; Gates A–H green, billable retention proof passed); Phases 2–4 planned.
+Status: **Phase 1 complete**; **Phase 2 deferred** (user skip, 2026-08-15); **Phase 3 complete** (Gates A–G green; Gate H after merge + post-merge `make ship`); **Phase 4 next**.
 
-Baseline: campaign spec merged as `b58b973` (PR #95) on top of `4613bdee0ad27c296482fd66cce816afef375357` (PR #94), installed app `b58b973` with `dirty=false` and notarized release `v0.1.21` active. Phase 1 implementation merged as `2b7f377` (PR #96); installed app re-shipped at `2b7f377` with `dirty=false`.
+Baseline: `main == personal/main` at `1d2b6d5` (PR #97 ledger closeout on top of Phase 1 merge `2b7f377` / PR #96). Installed app stamp `1d2b6d5`, `dirty=false`, dist ↔ installed SHA-256 `b09d43dcfc813a6fed01e469c5edb557f98a60cf82dd64b8bd5487f5523a4c05`. Notarized release `v0.1.21` remains the last published tag until Phase 4.
 
 Following the 2026-08-14 Residual Closeout Campaign (which closed all open leftovers, updated the official CLI to 1.0.4, modernized ACP contract tests, and published the notarized release with zero leftovers), this campaign elevates GrokBuild into a resilient, transparent cockpit for long-horizon agentic workloads.
 
@@ -14,10 +14,10 @@ This follows Gates A–H in [`docs/OUTSTANDING.md`](OUTSTANDING.md) and the iden
 
 | Phase | Title | Job | Billable / Marker Packet | Exit Criteria |
 |---|---|---|---|---|
-| **Phase 1** | **Long-Horizon Task Retention & Scheduled Work Lifetime** | Implement `SessionRuntimeRetentionPolicy` to protect active `/loop` and background sessions from LRU eviction; surface schedule indicators in session chrome. | 1 multi-tab retention verification turn (frozen marker) | LRU eviction tests pass, `/loop` sessions pinned, installed Computer Use proves retention across tab switching, Gate F cleanup & process-zero. |
-| **Phase 2** | **`ChatView` Component Decomposition** | Extract `TopBarView.swift`, `ComposerBarView.swift`, and `WelcomeStateView.swift` from monolithic `ChatView.swift` (~3,300 lines) with zero contract/visual regressions. | None (pure UI structural refactor) | `make test` green (867+ tests), all AX identifiers and layout metrics preserved, Computer Use verifies light/dark appearance, `make ship`. |
-| **Phase 3** | **Hostile Subagent Permutation Hardening & Delegation Tree** | Harden `BackgroundTaskTracker` against hostile out-of-order events (early finishes, dropped updates); enhance Run Inspector subagent delegation tree with duration and token/turn metrics. | 1 native agentic smoke packet (3 echoes + 2 concurrent children) | Permutation test suite passing, live worker metrics displayed in Run Inspector, zero event loss, Gate F exact cleanup & process-zero. |
-| **Phase 4** | **OpenRouter Catalog Pricing & Provider Routing Expansion** | Integrate OpenRouter model catalog pricing metadata into `SessionUsageLedger` for accurate live token→$ estimation; enhance subagent role-to-model presets with provider grouping. | 1 live OpenRouter/custom model probe | Live price correlation verified without app-side fallback chains, strict provider truth maintained, Gate F cleanup, notarized release `v0.1.22`. |
+| **Phase 1** | **Long-Horizon Task Retention & Scheduled Work Lifetime** | Implement `SessionRuntimeRetentionPolicy` to protect active scheduled and background sessions from LRU eviction; surface schedule indicators in session chrome. | 1 multi-tab retention verification turn (frozen marker) | LRU eviction tests pass, sessions with an authoritative runtime lease or live background work stay pinned, installed Computer Use proves retention across tab switching, Gate F cleanup & process-zero. |
+| **Phase 2** | **`ChatView` Component Decomposition** | Extract `TopBarView.swift`, `ComposerBarView.swift`, and `WelcomeStateView.swift` from monolithic `ChatView.swift` (~3,300 lines) with zero contract/visual regressions. | None (pure UI structural refactor) | `make test` green (880+ tests), all AX identifiers and layout metrics preserved, Computer Use verifies light/dark appearance, `make ship`. |
+| **Phase 3** | **Hostile Subagent Permutation Hardening & Delegation Tree** | Reducer permutations already shipped (forward Slice 1). Remaining increment: plumb per-worker `tokens_used`/`turns` into the Run Inspector, nest spawn→child delegation rows, add two-child hostile tests, surface finish-only receipts. | 1 native agentic smoke packet (3 tools + 2 concurrent children) | Two-child permutation tests passing, live worker metrics displayed in Run Inspector, zero event loss, Gate F exact cleanup & process-zero. |
+| **Phase 4** | **OpenRouter Catalog Pricing & Provider Routing Expansion** | Do **not** re-implement `ModelPricingStore` / `SessionUsageLedger` (shipped in `v0.1.21`). Live OpenRouter/custom-model probe, optional per-provider grouping only if still a real gap, notarized `v0.1.22`. | 1 live OpenRouter/custom model probe | Live HUD vs catalog rates verified without app-side fallback chains, Gate F cleanup, notarized release `v0.1.22`. |
 
 ---
 
@@ -25,7 +25,7 @@ This follows Gates A–H in [`docs/OUTSTANDING.md`](OUTSTANDING.md) and the iden
 
 - Canonical worktree only: `/Users/jimmyschmitz/Desktop/Projects/MCP Servers/Grok Build/grok-build-desktop`
 - `personal` = `schmitzjimmy1-star/grok-build-desktop`. `origin` = `rimusz/grok-build-desktop` (read-only upstream).
-- No force push, no branch deletion, no unapproved tags, no writes to `origin`.
+- No force push, no opportunistic branch deletion, no unapproved tags, no writes to `origin`. GitHub may delete a merged feature branch after PR merge.
 - No app-side ACP, MCP runtime, provider fallback chains, or background daemons.
 - Never delete user conversations or unclassified sessions during cleanup.
 - Only exact, ledgered test-thread IDs may be deleted (Gate F).
@@ -68,14 +68,14 @@ Ensure long-running agentic tasks (such as recurring `/loop` commands, backgroun
 
 ### Scope
 - Formalize `SessionRuntimeRetentionPolicy`:
-  - Sessions with active background activities (`isWorking`, `hasActiveBackgroundTasks`, or `scheduledTasks.containsActive`) receive protected retention priority.
+  - Sessions with `hasActiveBackgroundTasks`, an authoritative `runtimeLease` (live scheduled inventory), or connection states `.starting` / `.busy` receive protected retention priority.
   - Connection cap eviction (`ContentView.enforceConnectionCap()`) evicts truly idle, unpinned sessions before touching active background or scheduled sessions.
 - Surface active schedule status in the workbench top bar and sidebar activity indicators.
 - Add unit tests in `Tests/GrokBuildTests/SessionRetentionPolicyTests.swift` verifying eviction ordering and priority rules.
 
 ### Frozen packet
 Marker: `GB-C9-P1-RETENTION-<UTC_TIMESTAMP>`
-Run background `/loop` or multi-turn task in Session A, switch to Sessions B, C, D, E, verify Session A process remains alive and does not disconnect.
+Create a recurring scheduled task in Session A (natural language or `scheduler_create` — typing `/loop` alone does not pin), switch to Sessions B, C, D, E, verify Session A process remains alive and does not disconnect.
 
 ### Exit
 `make test` passing, installed Computer Use proof of retention across 5+ open tabs, Gate F cleanup, process-zero.
@@ -103,16 +103,28 @@ Decompose the last major god-object in the presentation layer (`ChatView.swift` 
 
 ## Phase 3 — Hostile Subagent Permutation Hardening & Delegation Tree
 
+> **Honest scope (2026-08-15 audit):** six-order single-child permutation
+> hardening already shipped as forward Slice 1
+> (`testSubagentCorrelationIsStableAcrossAllToolSpawnFinishPermutations`).
+> Phase 3 does **not** rebuild `BackgroundTaskTracker`. It closes the
+> presentation gap and the two-child hostile cases.
+
 ### Purpose
-Harden subagent tracking against hostile event ordering and enhance the Run Inspector delegation tree to make complex multi-agent execution transparent.
+Make complex multi-agent execution transparent in the Run Inspector without inventing token splits, shell exit codes, or a second reducer.
 
 ### Scope
-- Extend `BackgroundTaskTracker`:
-  - Add tests for out-of-order event arrivals (`subagent_finished` before `subagent_spawned`, late-binding descriptions, missing terminal receipts).
-  - Ensure state reducer is deterministic and never leaks orphaned state.
-- Enhance Run Inspector delegation tree:
-  - Display per-subagent execution duration, token usage breakdown, and terminal exit status.
-  - Correlate parent tool calls with child agent execution blocks.
+- Plumb existing `BackgroundActivity.tokenCount` / `turns` onto
+  `RunEvidenceSnapshot.Worker` and `AssistantTurnCheckpoint.WorkerReceipt`.
+- Render live and settled workers as expandable delegation rows
+  (`grok-run-inspector-worker-<worker.id>`) with spawn tool → child session correlation,
+  duration, tool count, tokens/turns when reported, lifecycle status, and
+  child tool receipts.
+- Surface finish-only `subagent_finished` receipts as synthetic
+  `unbound-finish|<childID>` workers (metrics already counted; the inspector
+  must not hide the child).
+- Add two-child interleaved permutation tests. Do not treat ACP lifecycle
+  `status` as a POSIX exit code. Do not invent per-worker input/output/cached
+  token splits.
 
 ### Frozen packet
 Marker: `GB-C9-P3-SUBAGENT-<UTC_TIMESTAMP>`
@@ -121,17 +133,24 @@ Agentic smoke packet with 3 ordered tools and 2 concurrent subagents.
 ### Exit
 Unit tests passing, Run Inspector delegation tree verified via Computer Use, Gate F cleanup, process-zero.
 
+> **Execution status (2026-08-15): Complete — Gates A–G green on
+> `codex/grokbuild-c9-p3-delegation`.** Marker
+> `GB-C9-P3-SUBAGENT-20260815T094138Z` settled `P3-OK explore=completed
+> general-purpose=completed`. Unique worker AX ids, unbound spawn+finish
+> merge, two-child `evidenceWorkers` isolation, and Gate F cleanup are in
+> the Phase 3 receipt. Gate H is post-merge `make ship`.
+
 ---
 
 ## Phase 4 — OpenRouter Catalog Pricing & Provider Routing Expansion
 
 ### Purpose
-Enhance live cost and usage transparency by correlating OpenRouter's live catalog pricing into `SessionUsageLedger` and refining subagent role routing presets.
+Prove live OpenRouter/custom-model cost HUD against catalog rates and publish notarized `v0.1.22`. Do not rebuild pricing ingest.
 
 ### Scope
-- Ingest OpenRouter model pricing metadata into `ModelPricingStore` and `SessionUsageLedger` for accurate live token→$ estimates.
-- Group custom models by provider in subagent role selectors.
-- Maintain strict boundaries: no app-side provider fallback chains or fabricated status claims.
+- `ModelPricingStore` and `SessionUsageLedger` already shipped in `v0.1.21`. Do not re-implement them.
+- Optional: group custom/subagent models by provider only if Settings still has a real two-bucket gap after reading `AgentsSettingsPane` / `ChatStore.groupedModels`.
+- Live OpenRouter/custom-model probe. No app-side provider fallback chains or fabricated status claims.
 - Bump `VERSION` to `0.1.22` and publish personal notarized release `v0.1.22`.
 
 ### Frozen packet

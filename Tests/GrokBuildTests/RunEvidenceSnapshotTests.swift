@@ -298,4 +298,51 @@ final class RunEvidenceSnapshotTests: XCTestCase {
         XCTAssertEqual(summary.doneCount, 0)
         XCTAssertEqual(summary.failedCount, 1)
     }
+
+    func testCheckpointRestoresWorkerTokenAndTurnReceipts() {
+        let worker = RunEvidenceSnapshot.Worker(
+            id: "spawn-restore",
+            title: "Restore lane",
+            status: "completed",
+            childID: "child-restore",
+            durationMilliseconds: 400,
+            toolCallCount: 2,
+            redactedError: nil,
+            tokenCount: 1_234,
+            turns: 3
+        )
+        let snapshot = RunEvidenceSnapshot(
+            binding: .init(
+                localTabID: UUID(),
+                workspaceID: nil,
+                backendSessionID: "backend-restore",
+                processGeneration: 1,
+                requestID: nil,
+                isSettled: true
+            ),
+            goalSummary: nil,
+            plan: [],
+            workers: [worker],
+            tools: .init(succeeded: 0, failed: 0, cancelled: 0, unknown: 0),
+            artifacts: [],
+            gitReviewFiles: [],
+            process: .init(state: "ready", model: nil, mcps: []),
+            continuity: .init(
+                status: "bound",
+                reason: "fresh",
+                provenance: "test",
+                requiresRecoveryAction: false
+            ),
+            usage: .init(totalTokens: nil, modelCalls: nil, turnCount: nil),
+            outcome: .completed,
+            unresolvedErrors: [],
+            nextAction: ""
+        )
+        let checkpoint = AssistantTurnCheckpoint(snapshot: snapshot, requestedToolFamilies: [])
+        let restored = checkpoint.restoredRunEvidenceSnapshot(settledTools: [])
+        XCTAssertEqual(restored.workers.first?.tokenCount, 1_234)
+        XCTAssertEqual(restored.workers.first?.turns, 3)
+        XCTAssertEqual(restored.workers.first?.spawnToolCallID, "spawn-restore")
+        XCTAssertEqual(restored.workers.first?.childID, "child-restore")
+    }
 }

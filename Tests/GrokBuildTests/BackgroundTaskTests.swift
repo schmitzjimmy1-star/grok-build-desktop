@@ -866,4 +866,314 @@ final class BackgroundTaskTests: XCTestCase {
 
         XCTAssertEqual(workers.map(\.id), ["unbound|orphan-child"])
     }
+
+    func testEvidenceWorkersCarryTokenAndTurnReceiptsFromFinishedEvent() {
+        var tracker = BackgroundTaskTracker()
+        let identity = ACPEventIdentity(
+            localTabID: UUID(),
+            backendSessionID: "backend-tokens",
+            processGeneration: 1,
+            backendEventID: "event-tokens"
+        )
+        tracker.apply(update: [
+            "toolCallId": "spawn-tokens",
+            "title": "Token lane",
+            "_meta": ["x.ai/tool": ["name": "spawn_subagent"]],
+            "rawInput": ["task_id": "child-tokens", "description": "Token lane"],
+        ])
+        tracker.apply(spawned: SubagentSpawnedEvent(
+            identity: identity,
+            childID: "child-tokens",
+            parentPromptID: nil,
+            subagentType: "explore",
+            modelID: "grok-4.6",
+            description: "Token lane"
+        ))
+        tracker.apply(finished: SubagentFinishedEvent(
+            identity: identity,
+            childID: "child-tokens",
+            status: "completed",
+            durationMilliseconds: 1_250,
+            turns: 2,
+            toolCallCount: 3,
+            tokenCount: 8_796,
+            redactedError: nil
+        ))
+
+        let workers = tracker.evidenceWorkers(
+            currentTurnActivityIDs: ["spawn-tokens"],
+            planStepIDs: [:],
+            rolesByName: [:]
+        )
+        XCTAssertEqual(workers.count, 1)
+        XCTAssertEqual(workers[0].tokenCount, 8_796)
+        XCTAssertEqual(workers[0].turns, 2)
+        XCTAssertEqual(workers[0].spawnToolCallID, "spawn-tokens")
+        XCTAssertEqual(workers[0].childID, "child-tokens")
+    }
+
+    func testFinishOnlyWithoutSpawnSurfacesUnboundFinishedWorker() {
+        var tracker = BackgroundTaskTracker()
+        tracker.apply(finished: SubagentFinishedEvent(
+            identity: ACPEventIdentity(
+                localTabID: UUID(),
+                backendSessionID: "backend-finish-only",
+                processGeneration: 1,
+                backendEventID: "finish-only"
+            ),
+            childID: "child-finish-only",
+            status: "completed",
+            durationMilliseconds: 400,
+            turns: 1,
+            toolCallCount: 2,
+            tokenCount: 500,
+            redactedError: nil
+        ))
+
+        XCTAssertTrue(tracker.activities.isEmpty)
+        XCTAssertEqual(tracker.unboundFinishedEvents.map(\.childID), ["child-finish-only"])
+        let workers = tracker.evidenceWorkers(
+            currentTurnActivityIDs: [],
+            planStepIDs: [:],
+            rolesByName: [:]
+        )
+        XCTAssertEqual(workers.map(\.id), ["unbound-finish|child-finish-only"])
+        XCTAssertEqual(workers[0].status, "completed")
+        XCTAssertEqual(workers[0].tokenCount, 500)
+        XCTAssertEqual(workers[0].turns, 1)
+        XCTAssertNil(workers[0].spawnToolCallID)
+        let metrics = tracker.coordinationMetrics(parentTotalTokens: nil)
+        XCTAssertEqual(metrics.finishedChildCount, 1)
+        XCTAssertEqual(metrics.childTotalTokens, 500)
+    }
+
+    func testUnboundSpawnThenFinishKeepsTerminalMetricsOnOneWorker() {
+        var tracker = BackgroundTaskTracker()
+        let identity = ACPEventIdentity(
+            localTabID: UUID(),
+            backendSessionID: "backend-unbound-merge",
+            processGeneration: 1,
+            backendEventID: "unbound-merge"
+        )
+        tracker.apply(spawned: SubagentSpawnedEvent(
+            identity: identity,
+            childID: "child-unbound-merge",
+            parentPromptID: nil,
+            subagentType: "explore",
+            modelID: "grok-4.6",
+            description: "No spawn row"
+        ))
+        tracker.apply(finished: SubagentFinishedEvent(
+            identity: identity,
+            childID: "child-unbound-merge",
+            status: "completed",
+            durationMilliseconds: 800,
+            turns: 2,
+            toolCallCount: 1,
+            tokenCount: 640,
+            redactedError: nil
+        ))
+
+        let workers = tracker.evidenceWorkers(
+            currentTurnActivityIDs: [],
+            planStepIDs: [:],
+            rolesByName: [:]
+        )
+        XCTAssertEqual(workers.count, 1)
+        XCTAssertEqual(workers[0].id, "unbound|child-unbound-merge")
+        XCTAssertEqual(workers[0].status, "completed")
+        XCTAssertEqual(workers[0].tokenCount, 640)
+        XCTAssertEqual(workers[0].turns, 2)
+        XCTAssertEqual(workers[0].durationMilliseconds, 800)
+        XCTAssertNil(workers[0].spawnToolCallID)
+        XCTAssertEqual(tracker.coordinationMetrics(parentTotalTokens: nil).childTotalTokens, 640)
+    }
+
+    func testFinishThenUnboundSpawnDoesNotRegressTerminalMetrics() {
+        var tracker = BackgroundTaskTracker()
+        let identity = ACPEventIdentity(
+            localTabID: UUID(),
+            backendSessionID: "backend-finish-first",
+            processGeneration: 1,
+            backendEventID: "finish-first"
+        )
+        tracker.apply(finished: SubagentFinishedEvent(
+            identity: identity,
+            childID: "child-finish-first",
+            status: "completed",
+            durationMilliseconds: 500,
+            turns: 1,
+            toolCallCount: 2,
+            tokenCount: 500,
+            redactedError: nil
+        ))
+        XCTAssertEqual(
+            tracker.evidenceWorkers(currentTurnActivityIDs: [], planStepIDs: [:], rolesByName: [:]).map(\.id),
+            ["unbound-finish|child-finish-first"]
+        )
+        tracker.apply(spawned: SubagentSpawnedEvent(
+            identity: identity,
+            childID: "child-finish-first",
+            parentPromptID: nil,
+            subagentType: "explore",
+            modelID: "grok-4.6",
+            description: "Late spawn"
+        ))
+
+        let workers = tracker.evidenceWorkers(
+            currentTurnActivityIDs: [],
+            planStepIDs: [:],
+            rolesByName: [:]
+        )
+        XCTAssertEqual(workers.count, 1)
+        XCTAssertEqual(workers[0].id, "unbound|child-finish-first")
+        XCTAssertEqual(workers[0].status, "completed")
+        XCTAssertEqual(workers[0].tokenCount, 500)
+        XCTAssertEqual(workers[0].turns, 1)
+        XCTAssertTrue(workers[0].title.contains("Late spawn"))
+    }
+
+    func testBeginUserTurnDropsUnboundFinishedEvents() {
+        var tracker = BackgroundTaskTracker()
+        tracker.apply(finished: SubagentFinishedEvent(
+            identity: ACPEventIdentity(
+                localTabID: UUID(),
+                backendSessionID: "backend-finish-drop",
+                processGeneration: 1,
+                backendEventID: "finish-drop"
+            ),
+            childID: "child-finish-drop",
+            status: "completed",
+            durationMilliseconds: 100,
+            turns: 1,
+            toolCallCount: 0,
+            tokenCount: 42,
+            redactedError: nil
+        ))
+        XCTAssertEqual(tracker.unboundFinishedEvents.count, 1)
+
+        tracker.beginUserTurn()
+
+        XCTAssertTrue(tracker.unboundFinishedEvents.isEmpty)
+        XCTAssertTrue(
+            tracker.evidenceWorkers(currentTurnActivityIDs: [], planStepIDs: [:], rolesByName: [:]).isEmpty
+        )
+    }
+
+    func testTwoChildInterleavedPermutationsStayIsolated() {
+        enum Event: CaseIterable {
+            case toolA, spawnA, finishA, toolB, spawnB, finishB
+        }
+        let identity = ACPEventIdentity(
+            localTabID: UUID(),
+            backendSessionID: "backend-two-child",
+            processGeneration: 3,
+            backendEventID: "event-two-child"
+        )
+        let orderings: [[Event]] = [
+            [.toolA, .toolB, .spawnA, .spawnB, .finishA, .finishB],
+            [.finishB, .finishA, .spawnB, .spawnA, .toolB, .toolA],
+            [.spawnA, .toolB, .finishA, .toolA, .spawnB, .finishB],
+            [.finishA, .toolA, .spawnA, .finishB, .toolB, .spawnB],
+        ]
+
+        for ordering in orderings {
+            var tracker = BackgroundTaskTracker()
+            for event in ordering {
+                switch event {
+                case .toolA:
+                    tracker.apply(update: [
+                        "toolCallId": "spawn-a",
+                        "title": "Lane A",
+                        "_meta": ["x.ai/tool": ["name": "spawn_subagent"]],
+                        "rawInput": ["task_id": "child-a", "description": "Lane A"],
+                    ])
+                case .toolB:
+                    tracker.apply(update: [
+                        "toolCallId": "spawn-b",
+                        "title": "Lane B",
+                        "_meta": ["x.ai/tool": ["name": "spawn_subagent"]],
+                        "rawInput": ["task_id": "child-b", "description": "Lane B"],
+                    ])
+                case .spawnA:
+                    tracker.apply(spawned: SubagentSpawnedEvent(
+                        identity: identity,
+                        childID: "child-a",
+                        parentPromptID: nil,
+                        subagentType: "explore",
+                        modelID: "grok-4.6",
+                        description: "Lane A"
+                    ))
+                case .spawnB:
+                    tracker.apply(spawned: SubagentSpawnedEvent(
+                        identity: identity,
+                        childID: "child-b",
+                        parentPromptID: nil,
+                        subagentType: "reviewer",
+                        modelID: "grok-4.5",
+                        description: "Lane B"
+                    ))
+                case .finishA:
+                    tracker.apply(finished: SubagentFinishedEvent(
+                        identity: identity,
+                        childID: "child-a",
+                        status: "completed",
+                        durationMilliseconds: 100,
+                        turns: 1,
+                        toolCallCount: 2,
+                        tokenCount: 111,
+                        redactedError: nil
+                    ))
+                case .finishB:
+                    tracker.apply(finished: SubagentFinishedEvent(
+                        identity: identity,
+                        childID: "child-b",
+                        status: "failed",
+                        durationMilliseconds: 200,
+                        turns: 3,
+                        toolCallCount: 4,
+                        tokenCount: 222,
+                        redactedError: "redacted"
+                    ))
+                }
+            }
+
+            let workers = tracker.activities.filter { $0.kind == .subagent }
+            XCTAssertEqual(workers.count, 2, "ordering \(ordering)")
+            let byChild = Dictionary(uniqueKeysWithValues: workers.compactMap { worker in
+                worker.childID.map { ($0, worker) }
+            })
+            XCTAssertEqual(byChild["child-a"]?.id, "spawn-a", "ordering \(ordering)")
+            XCTAssertEqual(byChild["child-a"]?.status, "completed", "ordering \(ordering)")
+            XCTAssertEqual(byChild["child-a"]?.tokenCount, 111, "ordering \(ordering)")
+            XCTAssertEqual(byChild["child-a"]?.turns, 1, "ordering \(ordering)")
+            XCTAssertEqual(byChild["child-b"]?.id, "spawn-b", "ordering \(ordering)")
+            XCTAssertEqual(byChild["child-b"]?.status, "failed", "ordering \(ordering)")
+            XCTAssertEqual(byChild["child-b"]?.tokenCount, 222, "ordering \(ordering)")
+            XCTAssertEqual(byChild["child-b"]?.turns, 3, "ordering \(ordering)")
+            XCTAssertTrue(tracker.unboundSpawnedEvents.isEmpty, "ordering \(ordering)")
+            XCTAssertTrue(tracker.unboundFinishedEvents.isEmpty, "ordering \(ordering)")
+            let evidence = tracker.evidenceWorkers(
+                currentTurnActivityIDs: ["spawn-a", "spawn-b"],
+                planStepIDs: [:],
+                rolesByName: [:]
+            )
+            XCTAssertEqual(evidence.count, 2, "ordering \(ordering)")
+            let evidenceByChild = Dictionary(uniqueKeysWithValues: evidence.compactMap { worker in
+                worker.childID.map { ($0, worker) }
+            })
+            XCTAssertEqual(evidenceByChild["child-a"]?.tokenCount, 111, "ordering \(ordering)")
+            XCTAssertEqual(evidenceByChild["child-a"]?.turns, 1, "ordering \(ordering)")
+            XCTAssertEqual(evidenceByChild["child-a"]?.spawnToolCallID, "spawn-a", "ordering \(ordering)")
+            XCTAssertEqual(evidenceByChild["child-b"]?.tokenCount, 222, "ordering \(ordering)")
+            XCTAssertEqual(evidenceByChild["child-b"]?.turns, 3, "ordering \(ordering)")
+            XCTAssertEqual(evidenceByChild["child-b"]?.spawnToolCallID, "spawn-b", "ordering \(ordering)")
+            let metrics = tracker.coordinationMetrics(parentTotalTokens: 900)
+            XCTAssertEqual(metrics.requestedChildCount, 2, "ordering \(ordering)")
+            XCTAssertEqual(metrics.spawnedChildCount, 2, "ordering \(ordering)")
+            XCTAssertEqual(metrics.finishedChildCount, 2, "ordering \(ordering)")
+            XCTAssertEqual(metrics.childTotalTokens, 333, "ordering \(ordering)")
+            XCTAssertEqual(metrics.unresolvedIdentityCount, 0, "ordering \(ordering)")
+        }
+    }
 }

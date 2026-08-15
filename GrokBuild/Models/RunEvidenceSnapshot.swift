@@ -74,6 +74,11 @@ struct RunEvidenceSnapshot: Equatable, Sendable {
         var routedModel: String? = nil
         /// Distinguishes an unreadable child ledger from a read ledger with zero tools.
         var childLedgerReadOutcome: ChildLedgerReadOutcome? = nil
+        /// Aggregate `tokens_used` from typed `subagent_finished`. Nil means
+        /// the backend did not report a count — never display as zero.
+        var tokenCount: Int? = nil
+        /// Child turn count from typed `subagent_finished`. Nil stays nil.
+        var turns: Int? = nil
 
         init(
             id: String,
@@ -87,7 +92,9 @@ struct RunEvidenceSnapshot: Equatable, Sendable {
             childToolReceipts: [ChildToolReceipt]? = nil,
             runtimeModelID: String? = nil,
             routedModel: String? = nil,
-            childLedgerReadOutcome: ChildLedgerReadOutcome? = nil
+            childLedgerReadOutcome: ChildLedgerReadOutcome? = nil,
+            tokenCount: Int? = nil,
+            turns: Int? = nil
         ) {
             self.id = id
             self.title = title
@@ -101,6 +108,15 @@ struct RunEvidenceSnapshot: Equatable, Sendable {
             self.runtimeModelID = runtimeModelID
             self.routedModel = routedModel
             self.childLedgerReadOutcome = childLedgerReadOutcome
+            self.tokenCount = tokenCount
+            self.turns = turns
+        }
+
+        /// Bound workers use the spawn tool-call id as `id`. Unbound lifecycle
+        /// rows are synthetic and have no parent spawn tool to name.
+        var spawnToolCallID: String? {
+            if id.hasPrefix("unbound|") || id.hasPrefix("unbound-finish|") { return nil }
+            return id
         }
 
         var isActive: Bool { BackgroundActivityStatusPolicy.isActive(status) }
@@ -259,7 +275,58 @@ struct RunEvidenceSnapshot: Equatable, Sendable {
             childToolReceipts: nil,
             runtimeModelID: event.modelID,
             routedModel: SubagentRouting.routedModel(forWorkerTitle: roleName, rolesByName: rolesByName),
-            childLedgerReadOutcome: nil
+            childLedgerReadOutcome: nil,
+            tokenCount: nil,
+            turns: nil
+        )
+    }
+
+    /// Same unbound spawn identity, with a later (or earlier) finish receipt
+    /// merged on so tokens/turns/status are not dropped by spawn-vs-finish dedup.
+    static func unboundWorker(
+        from spawn: SubagentSpawnedEvent,
+        finished: SubagentFinishedEvent?,
+        rolesByName: [String: String] = [:]
+    ) -> Worker {
+        let worker = unboundWorker(from: spawn, rolesByName: rolesByName)
+        guard let finished else { return worker }
+        return Worker(
+            id: worker.id,
+            title: worker.title,
+            status: BackgroundActivityStatusPolicy.canonicalWorkerTerminalStatus(finished.status),
+            owningPlanStepID: worker.owningPlanStepID,
+            childID: worker.childID,
+            durationMilliseconds: finished.durationMilliseconds,
+            toolCallCount: finished.toolCallCount,
+            redactedError: finished.redactedError,
+            childToolReceipts: finished.childToolReceipts,
+            runtimeModelID: worker.runtimeModelID,
+            routedModel: worker.routedModel,
+            childLedgerReadOutcome: ChildLedgerReadOutcome.from(receipts: finished.childToolReceipts),
+            tokenCount: finished.tokenCount,
+            turns: finished.turns
+        )
+    }
+
+    /// A typed `subagent_finished` that never bound to a spawn tool row.
+    /// Metrics stay on the evidence projection; no `BackgroundActivity` is invented.
+    static func unboundFinishedWorker(from event: SubagentFinishedEvent) -> Worker {
+        let childLabel = String(event.childID.prefix(8))
+        return Worker(
+            id: "unbound-finish|\(event.childID)",
+            title: "Unbound finish (child \(childLabel)…)",
+            status: BackgroundActivityStatusPolicy.canonicalWorkerTerminalStatus(event.status),
+            owningPlanStepID: nil,
+            childID: event.childID,
+            durationMilliseconds: event.durationMilliseconds,
+            toolCallCount: event.toolCallCount,
+            redactedError: event.redactedError,
+            childToolReceipts: event.childToolReceipts,
+            runtimeModelID: nil,
+            routedModel: nil,
+            childLedgerReadOutcome: ChildLedgerReadOutcome.from(receipts: event.childToolReceipts),
+            tokenCount: event.tokenCount,
+            turns: event.turns
         )
     }
 

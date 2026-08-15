@@ -57,6 +57,8 @@ struct AssistantTurnCheckpoint: Codable, Sendable, Hashable {
         let childToolReceipts: [ChildToolReceipt]?
         let runtimeModelID: String?
         let routedModel: String?
+        let tokenCount: Int?
+        let turns: Int?
     }
 
     struct Artifact: Codable, Sendable, Hashable, Identifiable {
@@ -195,7 +197,9 @@ struct AssistantTurnCheckpoint: Codable, Sendable, Hashable {
                 redactedError: $0.redactedError,
                 childToolReceipts: $0.childToolReceipts,
                 runtimeModelID: $0.runtimeModelID,
-                routedModel: $0.routedModel
+                routedModel: $0.routedModel,
+                tokenCount: $0.tokenCount,
+                turns: $0.turns
             )
         }
         artifacts = snapshot.artifacts.map {
@@ -375,7 +379,9 @@ struct AssistantTurnCheckpoint: Codable, Sendable, Hashable {
                     redactedError: $0.redactedError,
                     childToolReceipts: $0.childToolReceipts,
                     runtimeModelID: $0.runtimeModelID,
-                    routedModel: $0.routedModel
+                    routedModel: $0.routedModel,
+                    tokenCount: $0.tokenCount,
+                    turns: $0.turns
                 )
             }
         }
