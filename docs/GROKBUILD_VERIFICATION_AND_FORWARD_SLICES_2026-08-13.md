@@ -520,9 +520,9 @@ policy, or export type:
    `ContentView.runtimeRetentionDecision` and `ContentView.enforceConnectionCap()`
    in `GrokBuild/ContentView.swift`.
 3. Keep `RunHistory` in `GrokBuild/Models/RunHistory.swift` as the Sendable export
-   layer. Move any remaining view-side formatting out of
-   `GrokBuild/Views/SessionDashboardPanel.swift` and the `ContentView`
-   `RunHistory.records(from:)` snapshot.
+   layer. `RunHistory.snapshots(for:)` and `RunHistory.Presentation` own dashboard
+   snapshot/formatting. Remaining call sites: `ContentView.openActivityDashboard()`
+   (when to snapshot) and `SessionDashboardPanel` hosting `RunHistorySection`.
 4. Move `ChatView.topBar`, `ChatView.composer`, and `ChatView.headerReviewToggle`
    in `GrokBuild/Views/ChatView.swift` into small components without moving state
    ownership out of `ChatStore` / `ContentView`.

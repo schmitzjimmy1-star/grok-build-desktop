@@ -98,6 +98,14 @@ enum RunHistory {
         }
     }
 
+    /// Dashboard snapshots stay on-demand. ContentView still decides *when* to
+    /// project; this helper owns *how* each live tab maps onto historical records.
+    static func snapshots(for sessions: [(id: UUID, messages: [Message])]) -> [UUID: [Record]] {
+        Dictionary(uniqueKeysWithValues: sessions.map { session in
+            (session.id, records(from: session.messages))
+        })
+    }
+
     /// A stable, redacted receipt intended for sharing. Its schema purposefully
     /// has no prose fields from the transcript and no raw paths or tool payloads.
     static func jsonData(for record: Record) throws -> Data {
@@ -316,6 +324,22 @@ enum RunHistory {
     private static func continuityLine(_ continuity: AssistantTurnCheckpoint.ContinuityReceipt?) -> String {
         guard let continuity else { return "not retained" }
         return "\(safeText(continuity.status)); \(safeText(continuity.reason))"
+    }
+
+    enum Presentation {
+        static func checkpointSummary(for record: Record) -> String {
+            let checkpoints = record.turns.count
+            let noun = checkpoints == 1 ? "checkpoint" : "checkpoints"
+            return "\(checkpoints) historical \(noun) • \(record.latest?.outcome ?? "not retained") • \(record.latest?.model ?? "not retained")"
+        }
+
+        static func routeLine(for record: Record) -> String {
+            "Route: \(record.latest?.route ?? "not retained")"
+        }
+
+        static func toolsLine(for latest: Turn) -> String {
+            "Tools: \(latest.toolCount.map(String.init) ?? "not retained") • \(latest.topology)"
+        }
     }
 
     static func safeText(_ value: String) -> String {

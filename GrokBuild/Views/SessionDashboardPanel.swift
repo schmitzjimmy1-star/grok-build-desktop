@@ -1,4 +1,3 @@
-import AppKit
 import SwiftUI
 import UniformTypeIdentifiers
 
@@ -106,12 +105,6 @@ enum SessionDashboardPresentation {
 }
 
 struct SessionDashboardPanel: View {
-    private struct HistoryRow: Identifiable {
-        let sessionID: UUID
-        let record: RunHistory.Record
-        var id: String { "\(sessionID.uuidString)|\(record.id)" }
-    }
-
     let entries: [SessionDashboardEntry]
     let selectedSessionID: UUID?
     var runHistoryBySessionID: [UUID: [RunHistory.Record]] = [:]
@@ -237,7 +230,11 @@ struct SessionDashboardPanel: View {
                                 }
                             }
                         }
-                        runHistorySection
+                        RunHistorySection(
+                            entries: entries,
+                            runHistoryBySessionID: runHistoryBySessionID,
+                            exportRecord: $exportRecord
+                        )
                     }
                     .padding()
                 }
@@ -265,65 +262,6 @@ struct SessionDashboardPanel: View {
         case .working: return .accentColor
         case .idle: return .secondary
         case .failed: return .red
-        }
-    }
-
-    @ViewBuilder
-    private var runHistorySection: some View {
-        let histories: [HistoryRow] = runHistoryBySessionID
-            .sorted { $0.key.uuidString < $1.key.uuidString }
-            .flatMap { pair in
-                pair.value.map { HistoryRow(sessionID: pair.key, record: $0) }
-            }
-        if !histories.isEmpty {
-            Divider().padding(.vertical, 4)
-            VStack(alignment: .leading, spacing: 8) {
-                Label("Run history", systemImage: "clock.arrow.circlepath")
-                    .font(.headline)
-                    .accessibilityAddTraits(.isHeader)
-                Text("Saved checkpoints are historical receipts, not current Live state. Exports exclude transcript prose, prompts, responses, raw tool payloads, paths, and credentials.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                ForEach(0..<histories.count, id: \.self) { (index: Int) in
-                    let history = histories[index]
-                    let sessionTitle = entries.first(where: { $0.id == history.sessionID })?.title ?? "Saved session"
-                    let record = history.record
-                    VStack(alignment: .leading, spacing: 5) {
-                        Text(sessionTitle).font(.subheadline.weight(.semibold))
-                        Text("\(record.turns.count) historical checkpoint\(record.turns.count == 1 ? "" : "s") • \(record.latest?.outcome ?? "not retained") • \(record.latest?.model ?? "not retained")")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                        Text("Route: \(record.latest?.route ?? "not retained")")
-                            .font(.caption2)
-                            .foregroundStyle(.tertiary)
-                            .lineLimit(1)
-                        if let latest = record.latest {
-                            Text("Tools: \(latest.toolCount.map(String.init) ?? "not retained") • \(latest.topology)")
-                                .font(.caption2)
-                                .foregroundStyle(.tertiary)
-                                .lineLimit(1)
-                        }
-                        Text(record.lastAuthoritativeContinuationPoint)
-                            .font(.caption2)
-                            .foregroundStyle(.tertiary)
-                            .lineLimit(2)
-                        HStack {
-                            Button("Copy redacted Markdown receipt") {
-                                NSPasteboard.general.clearContents()
-                                NSPasteboard.general.setString(RunHistory.markdown(for: record), forType: .string)
-                            }
-                            .accessibilityIdentifier("grok-run-history-copy-markdown")
-                            Button("Export redacted JSON") { exportRecord = record }
-                                .accessibilityIdentifier("grok-run-history-export-json")
-                        }
-                        .font(.caption)
-                    }
-                    .padding(10)
-                    .background(AppTheme.Palette.surface, in: RoundedRectangle(cornerRadius: AppTheme.Radius.small, style: .continuous))
-                    .accessibilityIdentifier("grok-run-history-\(RunHistory.safeText(record.id))")
-                }
-            }
-            .accessibilityIdentifier("grok-run-history")
         }
     }
 
@@ -357,22 +295,5 @@ struct SessionDashboardPanel: View {
                 .foregroundStyle(.secondary)
         }
         .accessibilityIdentifier("grok-runtime-lease")
-    }
-}
-
-private struct RedactedRunHistoryDocument: FileDocument {
-    static var readableContentTypes: [UTType] { [.json] }
-    let data: Data
-
-    init(record: RunHistory.Record) {
-        data = (try? RunHistory.jsonData(for: record)) ?? Data("{}".utf8)
-    }
-
-    init(configuration: ReadConfiguration) throws {
-        data = configuration.file.regularFileContents ?? Data()
-    }
-
-    func fileWrapper(configuration: WriteConfiguration) throws -> FileWrapper {
-        FileWrapper(regularFileWithContents: data)
     }
 }
