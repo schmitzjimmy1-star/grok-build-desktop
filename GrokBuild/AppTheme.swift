@@ -40,15 +40,17 @@ enum AppTheme {
             dark: NSColor.white.withAlphaComponent(0.15),
             light: NSColor.black.withAlphaComponent(0.24)
         )
-        static let accent = adaptive(
+        static let accentNSColor = adaptiveNSColor(
             dark: NSColor.white.withAlphaComponent(0.92),
             light: NSColor.black.withAlphaComponent(0.88)
         )
+        static let accent = Color(nsColor: accentNSColor)
         /// Text and symbols placed on the neutral accent fill.
-        static let accentForeground = adaptive(
+        static let accentForegroundNSColor = adaptiveNSColor(
             dark: NSColor.black.withAlphaComponent(0.90),
             light: NSColor.white
         )
+        static let accentForeground = Color(nsColor: accentForegroundNSColor)
         /// Workbench icons. Dark stays a consistent near-white so every
         /// header control matches; Light stays ink on stone.
         static let titlebarControlNSColor = adaptiveNSColor(

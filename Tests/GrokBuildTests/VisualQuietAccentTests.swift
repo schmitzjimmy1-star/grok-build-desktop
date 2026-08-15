@@ -29,9 +29,19 @@ final class VisualQuietAccentTests: XCTestCase {
         let forbidden = [
             "Color.accentColor",
             ".foregroundStyle(.tint)",
+            ".foregroundColor(.accentColor)",
+            ".tint(.accentColor)",
+            ".accentColor(",
             "Color.orange",
             ".foregroundStyle(.orange)",
+            ".foregroundColor(.orange)",
+            ".fill(.orange)",
+            "NSColor.controlAccentColor",
+            ".controlAccentColor",
+            "NSColor.systemOrange",
+            ".systemOrange",
             ".buttonStyle(.borderedProminent)",
+            "BorderedProminentButtonStyle(",
         ]
 
         for case let fileURL as URL in enumerator where fileURL.pathExtension == "swift" {
@@ -54,14 +64,30 @@ final class VisualQuietAccentTests: XCTestCase {
         let theme = try source("GrokBuild/AppTheme.swift")
         let richMessage = try source("GrokBuild/Views/RichMessageView.swift")
 
-        XCTAssertTrue(theme.contains("static let accent = adaptive("))
-        XCTAssertTrue(theme.contains("static let accentForeground = adaptive("))
+        XCTAssertTrue(theme.contains("static let accentNSColor = adaptiveNSColor("))
+        XCTAssertTrue(theme.contains("static let accent = Color(nsColor: accentNSColor)"))
+        XCTAssertTrue(theme.contains("static let accentForegroundNSColor = adaptiveNSColor("))
+        XCTAssertTrue(theme.contains("static let accentForeground = Color(nsColor: accentForegroundNSColor)"))
         XCTAssertTrue(theme.contains("static let warningNSColor = adaptiveNSColor("))
         XCTAssertTrue(theme.contains("static let linkNSColor = adaptiveNSColor("))
         XCTAssertTrue(theme.contains("struct GrokProminentButtonStyle: ButtonStyle"))
         XCTAssertTrue(theme.contains(".fill(backgroundColor)"))
         XCTAssertTrue(theme.contains("AppTheme.Palette.accentForeground"))
         XCTAssertTrue(richMessage.contains("foregroundColor = AppTheme.Palette.link"))
+    }
+
+    func testAppKitAndPrimaryActionCallSitesUseTheThemeOwner() throws {
+        let updatePanel = try source("GrokBuild/UpdatePanel.swift")
+        let chatView = try source("GrokBuild/Views/ChatView.swift")
+        let composerViews = try source("GrokBuild/Views/ComposerViews.swift")
+
+        XCTAssertTrue(updatePanel.contains("button.bezelColor = AppTheme.Palette.accentNSColor"))
+        XCTAssertTrue(updatePanel.contains("button.contentTintColor = AppTheme.Palette.accentForegroundNSColor"))
+        XCTAssertTrue(chatView.contains("Button(action: onAddProject)"))
+        XCTAssertTrue(chatView.contains(".buttonStyle(GrokProminentButtonStyle())"))
+        XCTAssertTrue(composerViews.contains("Button(\"Set Goal\")"))
+        XCTAssertTrue(composerViews.contains("Button(\"Approve & continue\")"))
+        XCTAssertTrue(composerViews.contains(".buttonStyle(GrokProminentButtonStyle())"))
     }
 
     func testHighTrafficSurfacesUseOnlySemanticP4Tokens() throws {

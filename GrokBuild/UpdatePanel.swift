@@ -346,8 +346,8 @@ private final class UpdatePanelHost: NSObject {
         if let primaryTitle {
             let button = NSButton(title: primaryTitle, target: self, action: primaryAction)
             button.bezelStyle = .push
-            button.bezelColor = .controlAccentColor
-            button.contentTintColor = .white
+            button.bezelColor = AppTheme.Palette.accentNSColor
+            button.contentTintColor = AppTheme.Palette.accentForegroundNSColor
             button.isEnabled = primaryEnabled
             stack.addArrangedSubview(button)
         }
