@@ -27,20 +27,28 @@
 > User conversations, historical acceptance evidence, unnamed sessions that were not
 > created by the current slice, and unrelated browser/app state are protected.
 >
-> **Current campaign:** 2026-08-14 residual closeout, **ALL PHASES (0–6) COMPLETE**,
-> campaign fully closed leaving NO leftovers. Spec:
-> [`docs/GROKBUILD_RESIDUAL_CLOSEOUT_2026-08-14.md`](GROKBUILD_RESIDUAL_CLOSEOUT_2026-08-14.md).
-> Phase 0 shipped `fa44cb2559735d2819789ed77d72a7a8f022abee` (PR #87). Phase 1
-> merged as `fb095d14844f76367659ecec7ea7566fd9517b5c` (PR #89). Phase 2 merged
-> as `27c146e6693927474e34e47238b3480e35429443` (PR #90). Phase 3 merged as
-> `90510526faea91219fc79bfe9d9cff3780bf6129` (PR #92). Phase 4 merged as
-> `ec5624d` (PR #93). Phase 5 replaced contract source-string pins with typed assertions
-> (865 tests pass) and proved agentic smoke. Phase 6 published personal notarized
-> release `v0.1.21`, proved updater visibility, and verified native release marker.
-> Zero leftovers.
-> The 2026-08-13 campaign (Slices 0–7) remains closed. Numbered `## Slice N`
-> headings below the 2026-08-14 harness receipt are historical campaigns. Do
-> not implement them.
+> **Current campaign:** 2026-08-15 Agentic Cockpit Campaign, authorized and planned.
+> Spec: [`docs/GROKBUILD_AGENTIC_COCKPIT_CAMPAIGN_2026-08-15.md`](GROKBUILD_AGENTIC_COCKPIT_CAMPAIGN_2026-08-15.md).
+> Target: Elevate GrokBuild into a resilient, transparent agentic cockpit across 4 phases:
+> Phase 1 (Task Retention & /loop Lifetime Policy), Phase 2 (ChatView Decomposition),
+> Phase 3 (Hostile Subagent Permutation Hardening & Delegation Tree), and Phase 4 (OpenRouter Pricing & Routing Expansion).
+>
+> Prior campaigns: 2026-08-14 Residual Closeout (Phases 0–6) complete and merged as `4613bde` (PR #94);
+> 2026-08-13 campaign (Slices 0–7) closed at merge `c0895ee` (PR #86).
+
+## Agentic Cockpit Campaign — 2026-08-15 (Authorized & Planned)
+
+Authorized spec is [`docs/GROKBUILD_AGENTIC_COCKPIT_CAMPAIGN_2026-08-15.md`](GROKBUILD_AGENTIC_COCKPIT_CAMPAIGN_2026-08-15.md).
+Start from clean `main == personal/main` at `4613bdee0ad27c296482fd66cce816afef375357` with installed stamp `4613bde` and clean working tree.
+
+Phases in order:
+
+| Phase | Title | Job | Billable / Marker Packet |
+|---|---|---|---|
+| 1 | Long-Horizon Task Retention & Scheduled Work Lifetime | Protect active `/loop` and background sessions from LRU eviction (`SessionRuntimeRetentionPolicy`); surface schedule status in chrome | 1 multi-tab retention verification turn |
+| 2 | `ChatView` Component Decomposition | Extract `TopBarView.swift`, `ComposerBarView.swift`, `WelcomeStateView.swift` (~3,300 lines down) with zero contract/visual regressions | None (pure UI structural refactor) |
+| 3 | Hostile Subagent Permutation Hardening & Delegation Tree | Harden `BackgroundTaskTracker` against hostile out-of-order events; enhance Run Inspector subagent delegation tree with duration & metrics | 1 native agentic smoke packet |
+| 4 | OpenRouter Catalog Pricing & Provider Routing Expansion | Integrate live catalog pricing into `SessionUsageLedger`; refine subagent role-to-model presets with provider grouping | 1 live OpenRouter/custom model probe |
 
 ## Residual closeout — 2026-08-14 (Complete — all phases 0–6 closed)
 
