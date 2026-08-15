@@ -2,6 +2,8 @@
 
 GrokBuild is built with **Swift Package Manager** (SPM). No Xcode project is required.
 
+This personal line installs on Jimmy's Mac with `make ship` under **Apple Development** Team `DD2GCQJVB4`. Do not notarize. Do not publish a GitHub release titled `(Notarized)`.
+
 For how the app works internally (sessions, MCP, updates, persistence), see [ARCHITECTURE.md](ARCHITECTURE.md).
 
 ## To Build & Run (Minimal Setup)
@@ -15,7 +17,7 @@ xcode-select --install
 This is sufficient for:
 - Compiling the app (`swift build`)
 - Creating the `.app` bundle and DMG
-- Codesigning and notarization
+- Codesigning with Apple Development for this Mac
 
 ### Quick start
 
@@ -33,7 +35,7 @@ swift build -c release
 ./.build/release/GrokBuild
 ```
 
-`make run` uses `scripts/build-dev-app.sh` for a lightweight `.app` wrapper; `make app` produces a full `dist/GrokBuild.app` for distribution.
+`make run` uses `scripts/build-dev-app.sh` for a lightweight `.app` wrapper; `make ship` installs the accepted `/Applications/GrokBuild.app`.
 
 Both builders source `scripts/build-identity.sh` and stamp the bundle with
 `GrokBuildBuildChannel`, `GrokBuildSourceRepository`,
@@ -66,7 +68,7 @@ Debug builds (`make run-debug`) include **GrokBuild → Simulate Updates** (`#if
 
 To test real update flows:
 - **CLI:** `grok update --version <older>` then **Check for Updates…** → click **Updates Available** on the banner → **Update grok CLI**
-- **App:** install an older notarized build from `/Applications`, or temporarily lower `VERSION` before `make app`; the in-app updater only offers **notarized** GitHub releases (see [In-app updates](#in-app-updates) below)
+- **App:** this personal line reinstalls with `make ship`. Do not chase notarized GitHub app updates.
 
 ## Packaging
 
@@ -94,8 +96,8 @@ The build script (`scripts/build-macos-app.sh`) also:
 |--------|---------|
 | `scripts/build-macos-app.sh` | Assemble `dist/GrokBuild.app`, optional `--sign` |
 | `scripts/build-dev-app.sh` | Lightweight `.build/GrokBuild.app` for `make run` |
-| `scripts/notarize.sh` | Submit signed app to Apple notary service + staple |
-| `scripts/release.sh` | Local GitHub release publish (`make release`) |
+| `scripts/notarize.sh` | Unused on this line. `make notarize` is refused. |
+| `scripts/release.sh` | Unsigned personal GitHub release only if explicitly asked; refuses notarized |
 | `scripts/grokbuild-install-update.sh` | Used by the app at **Install and Restart** — wait for PID, `ditto` replace bundle, relaunch |
 
 See also [scripts/README.md](scripts/README.md).
@@ -108,32 +110,32 @@ Store signing credentials locally so you don't pass them on every command:
 
 ```bash
 cp .env.example .env
-# edit .env with your SIGN_IDENTITY and NOTARY_PROFILE
+# edit .env with your Apple Development SIGN_IDENTITY
 ```
 
 `.env` is gitignored. The Makefile loads it automatically (`-include .env`).
 
-Then you can run:
+Then install on this Mac:
 
 ```bash
-make signed
-make notarize
-make dmg                    # notarizes when NOTARY_PROFILE is set in .env
-make release RELEASE_TYPE=notarized
+make ship
+make open
 ```
+
+`make notarize` and `make release RELEASE_TYPE=notarized` are refused.
 
 Command-line values still override `.env` (e.g. `make signed SIGN_IDENTITY="..."`).
 
-To produce a properly signed build:
+To produce a local signed build:
 
 ```bash
-make signed SIGN_IDENTITY="Developer ID Application: Your Name (TEAMID)"
+make signed SIGN_IDENTITY="Apple Development: you@example.com (TEAMID)"
 ```
 
 Or run the script directly:
 
 ```bash
-./scripts/build-macos-app.sh --sign "Developer ID Application: Your Name (TEAMID)"
+./scripts/build-macos-app.sh --sign "Apple Development: you@example.com (TEAMID)"
 ```
 
 ### What the signing step does
@@ -202,15 +204,11 @@ GrokBuild ships a custom updater (not Sparkle). Two paths:
 | **GrokBuild app** | Download `GrokBuild-{tag}.app.zip` from GitHub, verify codesign + Gatekeeper, replace bundle via `grokbuild-install-update` |
 | **grok CLI** | Run `grok update` after shutting down live sessions |
 
-### Notarized releases only (app)
+### App updates on this personal line
 
-`UpdateChecker` scans GitHub releases and picks the newest release marked **notarized**:
-- Release **title** contains `(Notarized)`, e.g. `v0.1.10 (Notarized)`
-- Or release **notes** contain `properly code-signed and notarized`
+This Mac installs GrokBuild with `make ship`. The in-app GrokBuild app-release feed stays off. Do not publish notarized GitHub app updates.
 
-**Unsigned releases are never offered** in-app, even if they are the newest tag. Publish notarized builds for users who rely on one-click upgrades.
-
-Implementation: `GrokBuild/Services/UpdateChecker.swift`, `AppUpdater.swift`, `GrokCLIUpdater.swift`, `UpdatePanel.swift`. Full flow: [ARCHITECTURE.md — In-app updates](ARCHITECTURE.md#in-app-updates).
+CLI updates remain `grok update`. Implementation: `GrokBuild/Services/UpdateChecker.swift`, `GrokCLIUpdater.swift`, `UpdatePanel.swift`. Full flow: [ARCHITECTURE.md — In-app updates](ARCHITECTURE.md#in-app-updates).
 
 ### Install helper
 
@@ -299,32 +297,7 @@ For publishing entirely from your Mac (requires [GitHub CLI](https://cli.github.
 make release
 ```
 
-`make release` runs `scripts/release.sh`: builds, zips, creates/updates the GitHub release on **`schmitzjimmy1-star/grok-build-desktop` only**, and pushes tag `v{VERSION}` to the `personal` remote if needed. It never pushes tags to `origin` (`rimusz/grok-build-desktop`) and it refuses to move or force-update an existing tag. If a fetched upstream tag is already local at a different SHA, delete it locally only (`git tag -d v{VERSION}`) — never `git push --delete origin`. Notarized releases require `SIGN_IDENTITY` to start with `Developer ID Application`; Apple Development identities are rejected so a development-signed build cannot be titled `(Notarized)`.
-
-**Notarized local release** (with `.env` configured):
-
-```bash
-make release RELEASE_TYPE=notarized
-```
-
-Or inline:
-
-```bash
-make release RELEASE_TYPE=notarized \
-  SIGN_IDENTITY="Developer ID Application: Your Name (TEAMID)" \
-  NOTARY_PROFILE=AC_PASSWORD
-```
-
-**Options:**
-
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `RELEASE_TYPE` | `unsigned` | `unsigned` or `notarized` |
-| `RELEASE_VERSION` | from `VERSION` | Tag override (must match `VERSION`, e.g. `v0.1.4`) |
-| `SIGN_IDENTITY` | — | Required for `RELEASE_TYPE=notarized` (or set in `.env`) |
-| `NOTARY_PROFILE` | `AC_PASSWORD` | Keychain profile for notarization (or set in `.env`) |
-
-The tag is derived from `VERSION` (e.g. `0.1.4` → `v0.1.4`). If a release for that tag already exists, assets and notes are updated in place.
+`make release` is not the install path. This personal line uses `make ship`. If an unsigned personal GitHub release is ever explicitly asked for, `scripts/release.sh` still publishes only to `schmitzjimmy1-star/grok-build-desktop` and never to `origin`. `RELEASE_TYPE=notarized` is refused.
 
 ## SPM targets
 

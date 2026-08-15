@@ -10,16 +10,17 @@
 > in its own pull request, and merged before the next slice begins. This authority is
 > limited to the named slice files and required tests/docs. It does not authorize
 > force pushes, branch deletion, tags, releases, writes to `origin`, configuration or
-> credential changes, or opportunistic cleanup, except the 2026-08-14 residual
-> closeout below and this campaign's authorized personal notarized `v0.1.22`
-> on `schmitzjimmy1-star/grok-build-desktop` only.
+> credential changes, or opportunistic cleanup. This personal line installs with
+> `make ship` under Apple Development Team `DD2GCQJVB4`. It does not authorize
+> notarized GitHub releases.
 >
 > **2026-08-14 residual-closeout authority:** Jimmy authorized
 > [`docs/GROKBUILD_RESIDUAL_CLOSEOUT_2026-08-14.md`](GROKBUILD_RESIDUAL_CLOSEOUT_2026-08-14.md).
 > That campaign may `make ship` to close stamp == HEAD, run billable prompts in
 > every phase that needs them, upgrade the grok CLI to the advertised 1.0.4,
-> and publish one notarized GitHub release on
-> `schmitzjimmy1-star/grok-build-desktop`. It still does not authorize force
+> and install with `make ship`. Historical Phase 6 published a GitHub
+> title that said notarized; that is closed history, not current work.
+> It still does not authorize force
 > pushes, branch deletion, writes to `origin`, opportunistic history deletion,
 > or scraping private CLI session storage.
 >
@@ -33,8 +34,8 @@
 > Phase 2 deferred by explicit user skip (2026-08-15). Phase 3 complete
 > (merged as `a799bf5`, PR #98; Gate H green). Phase 4 complete for
 > Gates A–H (merged as `b9bf633`, PR #99; post-merge ship
-> `dirty=false`, SHA `03cb7111…`). True notarized `v0.1.22` is blocked:
-> this machine has no Developer ID identity.
+> `dirty=false`, SHA `03cb7111…`). No notarized GitHub release is
+> outstanding. Install path is `make ship` on this Mac.
 > Spec: [`docs/GROKBUILD_AGENTIC_COCKPIT_CAMPAIGN_2026-08-15.md`](GROKBUILD_AGENTIC_COCKPIT_CAMPAIGN_2026-08-15.md).
 > Target: Elevate GrokBuild into a resilient, transparent agentic cockpit across 4 phases:
 > Phase 1 (Task Retention & /loop Lifetime Policy), Phase 2 (ChatView Decomposition),
@@ -55,7 +56,7 @@ Phases:
 | 1 | Long-Horizon Task Retention & Scheduled Work Lifetime | Protect active scheduled and background sessions from LRU eviction (`SessionRuntimeRetentionPolicy`); surface schedule status in chrome | 1 multi-tab retention verification turn |
 | 2 | `ChatView` Component Decomposition | Extract `TopBarView.swift`, `ComposerBarView.swift`, `WelcomeStateView.swift` (~3,300 lines down) with zero contract/visual regressions | None (pure UI structural refactor) |
 | 3 | Hostile Subagent Permutation Hardening & Delegation Tree | Plumb per-worker tokens/turns into Run Inspector expandable delegation rows; two-child interleaved permutation tests; finish-only receipts (`unbound-finish|<childID>`). Reducer permutations already on `main` — do not rebuild the tracker. | 1 native agentic smoke packet |
-| 4 | OpenRouter Catalog Pricing & Provider Routing Expansion | Do **not** re-implement `ModelPricingStore` / `SessionUsageLedger` (shipped in `v0.1.21`). Live OpenRouter/custom-model probe, optional per-provider grouping only if still a real gap, notarized `v0.1.22` | 1 live OpenRouter/custom model probe |
+| 4 | OpenRouter Catalog Pricing & Provider Routing Expansion | Do **not** re-implement `ModelPricingStore` / `SessionUsageLedger` (shipped in `v0.1.21`). Live OpenRouter/custom-model probe. No notarized GitHub release. | 1 live OpenRouter/custom model probe |
 
 ### Phase 1 receipt — 2026-08-15 (Complete — Gates A–H green, merged as `2b7f377` / PR #96)
 
@@ -220,7 +221,7 @@ Gate H: post-merge `make ship` proved stamp == HEAD == `personal/main` ==
 `make test` **889 tests, 0 failures**. Do not reuse the Phase 3 dirty
 candidate SHA `ae41c58e…` or parent `1d2b6d5` as a Phase 4 identity.
 
-### Phase 4 receipt — 2026-08-15 (Complete — Gates A–H green; notarized tag blocked)
+### Phase 4 receipt — 2026-08-15 (Complete — Gates A–H green)
 
 Gate A: clean `main == personal/main` at
 `a799bf57f2cb19196919fdb7dba745aec43bd555` after Phase 3 Gate H
@@ -311,8 +312,8 @@ candidate SHA `30454e07…` or parent `a799bf5` as the `v0.1.22`
 identity.
 
 Ledger closeout (this receipt) is docs-only. Do not `make ship` it just
-to chase stamp == HEAD. A true notarized personal `v0.1.22` still
-requires a Developer ID identity and a notary profile.
+to chase stamp == HEAD. No notarized personal `v0.1.22` is planned.
+Install path is `make ship` under Apple Development.
 
 ## Residual closeout — 2026-08-14 (Complete — all phases 0–6 closed)
 

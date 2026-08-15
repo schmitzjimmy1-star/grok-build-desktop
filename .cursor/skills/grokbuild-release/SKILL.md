@@ -1,46 +1,38 @@
 ---
 name: grokbuild-release
-description: Versions, packages, signs, notarizes, and publishes GrokBuild GitHub releases. Use when bumping VERSION, running make release, editing release.yml, or helping with codesigning/notarization.
+description: Versions and installs GrokBuild on this Mac via make ship. Use when bumping VERSION, running make ship, or editing local signing docs. Do not notarize or publish GitHub (Notarized) releases on this personal line.
 ---
 
-# GrokBuild release
+# GrokBuild local install
+
+This personal line is Mac-only. The install identity is **Apple Development** on Jimmy's Team `DD2GCQJVB4`. Do not chase Developer ID, notary profiles, or GitHub titles that say `(Notarized)`.
 
 ## Version files
 
-- `VERSION` — semver shown in About and used for release tags (e.g. `0.1.3`)
-- Tag format: `v{VERSION}` (e.g. `v0.1.3`)
+- `VERSION` — semver shown in About (e.g. `0.1.22`)
+- Installed proof is `/Applications/GrokBuild.app` after `make ship`, not a GitHub tag
 
-## Local release
+## Install
 
 ```bash
-cp .env.example .env   # optional: SIGN_IDENTITY, NOTARY_PROFILE
-make release           # unsigned, publishes via gh
-make release RELEASE_TYPE=notarized
+make ship
+make open
 ```
 
-Script: `scripts/release.sh`. Requires `gh auth login`.
+`make ship` tests, signs with the local Apple Development identity, installs to `/Applications/GrokBuild.app`, and checks stamp == HEAD, team `DD2GCQJVB4`, deep/strict signing, and no quarantine.
 
-## CI release
-
-- **Manual workflow dispatch** only — Actions → Release → Run workflow (see `BUILDING.md`)
-- Choose `notarized` (default) or `unsigned`
-- Tag push auto-release is disabled in `release.yml`
+`make notarize` and `make release RELEASE_TYPE=notarized` are refused.
 
 ## Checklist
 
-1. Verify the canonical publication target before making release artifacts: `personal` must resolve to `schmitzjimmy1-star/grok-build-desktop`; `origin` is the preserved third-party upstream and is never the publication target. `scripts/release.sh` now enforces that: it pushes tags to `personal` only, uses `gh --repo schmitzjimmy1-star/grok-build-desktop`, and refuses to move or force-update an existing tag. If `origin` already has the same tag name (rimusz published `v0.1.22` first), delete the fetched local tag only (`git tag -d v0.1.22`) and never `git push --delete origin`. Notarized releases require `Developer ID Application`; do not title an Apple Development build `(Notarized)`. Do not run an older copy of the script that still says `git push origin`.
-2. Run `gh auth status` and `gh repo view schmitzjimmy1-star/grok-build-desktop --json isArchived,viewerPermission,defaultBranchRef`. If an explicitly authorized publication finds the repository archived, unarchive it with `gh repo unarchive schmitzjimmy1-star/grok-build-desktop --yes` and verify `isArchived:false` before committing or pushing.
-3. Bump `VERSION`
-4. **`make test`** — must pass; add tests if release/updater logic changed
-5. `make app` or `make dmg` to verify packaging
-6. Inspect `GrokBuildSource*` and `GrokBuildBuildChannel` in the packaged `Info.plist`; About and Settings → App must show the same clean branch/commit receipt
-7. **Update docs** — `BUILDING.md`, `README.md` (install/updates), `ARCHITECTURE.md` (in-app updates section), `scripts/README.md` if scripts changed
-8. Commit on a feature branch only when authorized. Prefer the GitHub connector for PR creation, but if it returns HTTP 422 or "must be a collaborator" after `gh` proves write access and the branch push succeeds, immediately use authenticated `gh pr create`; do not call the repository blocked.
-9. When merge is explicitly authorized, match the expected head SHA, merge, fetch `personal`, fast-forward local `main`, run `make ship`, and prove the installed commit stamp equals merged `HEAD`.
-10. Do not force-push `main` or skip git hooks unless asked
+1. Canonical worktree only. `personal` is `schmitzjimmy1-star/grok-build-desktop`. `origin` (`rimusz/grok-build-desktop`) is read-only. Never push tags to `origin`.
+2. Bump `VERSION` only when the marketing version should change.
+3. **`make test`** — must pass; add tests if install/updater logic changed
+4. **`make ship`** — installed About / Settings → App must show Apple Development, personal repo, branch, commit, and dirty state
+5. **Update docs** — `BUILDING.md`, `README.md`, `ARCHITECTURE.md`, `scripts/README.md` if install scripts changed
+6. Commit on a feature branch only when authorized
+7. Do not force-push `main`, write `origin`, or publish a `(Notarized)` GitHub release
 
 ## Update checking in app
 
-`UpdateChecker` compares installed `AppVersion.short` to the newest **notarized** GitHub release (title contains `(Notarized)` or notes mention notarization); unsigned releases are ignored. CLI via `grok update --check --json`.
-
-When changing release naming, assets, or updater behavior, update `ARCHITECTURE.md`, `BUILDING.md`, and `UpdateCheckerTests.swift`.
+The in-app GrokBuild app-release feed stays off on this line. `UpdateChecker` can still parse notarized GitHub titles if someone turns that feed on later; that is not an install path. CLI updates remain `grok update --check --json`.

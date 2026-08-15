@@ -1142,16 +1142,16 @@ make run-debug # debug build + open .build/GrokBuild.app (Simulate Updates menu)
 make test      # swift test
 make app       # dist/GrokBuild.app (unsigned packaging)
 make install   # copy to /Applications
-make ship      # signed install to /Applications/GrokBuild.app
-make release   # GitHub release via scripts/release.sh
+make ship      # Apple Development install to /Applications/GrokBuild.app
+# make release and make notarize are not the install path on this personal line
 ```
 
 | Script | Purpose |
 |--------|---------|
 | `scripts/build-macos-app.sh` | Assemble `.app` bundle, copy resources/skills |
 | `scripts/build-identity.sh` | Resolve and escape personal repo / branch / commit / dirty bundle receipts |
-| `scripts/release.sh` | Build, zip, DMG, tag + `gh release create` on `personal` (`schmitzjimmy1-star/grok-build-desktop`) only; never `origin`, never force-move tags |
-| `scripts/notarize.sh` | Notarize signed app |
+| `scripts/release.sh` | Unsigned personal GitHub release only if explicitly asked; refuses `RELEASE_TYPE=notarized` |
+| `scripts/notarize.sh` | Present but unused. `make notarize` is refused on this personal line. |
 | `scripts/grokbuild-install-update.sh` | In-app replace + relaunch |
 | `scripts/acceptance/run.py` | Agentic acceptance harness: versioned manifests, dry-run default, fixture rejection, `--billable` installed UI only; Slice 6 packet ceiling 250k |
 
@@ -1159,9 +1159,9 @@ make release   # GitHub release via scripts/release.sh
 
 **Resources in bundle:** `Assets.xcassets`, three skill folders (`Package.swift` `resources:`).
 
-**Release types:** `unsigned` (default tag push) vs `notarized` (manual CI / `make release RELEASE_TYPE=notarized`). Only **notarized** releases are offered by the in-app updater.
+This personal line installs with `make ship` under Apple Development Team `DD2GCQJVB4`. It does not publish notarized GitHub releases. The in-app GrokBuild app-release feed stays off.
 
-See `BUILDING.md` for signing, notarization, CI workflow.
+See `BUILDING.md` for the local install path.
 
 ---
 
@@ -1304,7 +1304,7 @@ Prefer extending existing test files. Test pure logic without launching real `gr
 | `docs/OUTSTANDING.md` | Canonical current-slice ledger and Gates A–H |
 | `docs/GROKBUILD_VERIFICATION_AND_FORWARD_SLICES_2026-08-13.md` | 2026-08-13 campaign spec (Slices 0–7 complete) |
 | `docs/GROKBUILD_RESIDUAL_CLOSEOUT_2026-08-14.md` | Closed 2026-08-14 residual-closeout campaign (Phases 0–6 complete) |
-| `docs/GROKBUILD_AGENTIC_COCKPIT_CAMPAIGN_2026-08-15.md` | Current Agentic Cockpit campaign (Phases 1/3/4 complete for Gates A–H; Phase 2 deferred; notarized `v0.1.22` blocked) |
+| `docs/GROKBUILD_AGENTIC_COCKPIT_CAMPAIGN_2026-08-15.md` | Current Agentic Cockpit campaign (Phases 1/3/4 complete; Phase 2 deferred). Install with `make ship`. |
 | `.cursor/rules/` | Architecture, SwiftUI, CLI integration, AppKit panels |
 | `.cursor/skills/grokbuild-*` | Dev workflow, release, CLI checks |
 | `GrokBuild/Resources/Skills/` | Bundled runtime skills only; the unused `grokbuild-desktop` editing skill was retired |

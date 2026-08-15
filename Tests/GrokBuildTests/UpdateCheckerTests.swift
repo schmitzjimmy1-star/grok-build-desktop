@@ -203,11 +203,18 @@ final class UpdateCheckerTests: XCTestCase {
         XCTAssertTrue(script.contains("schmitzjimmy1-star/grok-build-desktop"))
         XCTAssertTrue(script.contains("--repo \"$PERSONAL_SLUG\""))
         XCTAssertTrue(script.contains("git push \"$remote\" \"$tag\""))
-        XCTAssertTrue(script.contains("Developer ID Application"))
+        XCTAssertTrue(script.contains("This personal line does not publish notarized GitHub releases"))
+        XCTAssertTrue(script.contains("make ship"))
+        XCTAssertTrue(script.contains("Apple Development"))
         XCTAssertTrue(script.contains("git tag -d"))
         XCTAssertFalse(script.contains("git push origin"))
         XCTAssertFalse(script.contains("git push --force origin"))
         XCTAssertFalse(script.contains("git tag -f"))
+
+        let makefile = try String(contentsOf: root.appendingPathComponent("Makefile"), encoding: .utf8)
+        XCTAssertTrue(makefile.contains("This personal line does not notarize"))
+        XCTAssertTrue(makefile.contains("make ship"))
+        XCTAssertFalse(makefile.contains("Notarized release: make release RELEASE_TYPE=notarized"))
     }
 }
 
