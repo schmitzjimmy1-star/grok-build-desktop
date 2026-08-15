@@ -31,10 +31,10 @@
 > **Current campaign:** 2026-08-15 Agentic Cockpit Campaign — Phase 1 complete
 > (merged as `2b7f377`, PR #96; ledger closeout PR #97 merged as `1d2b6d5`).
 > Phase 2 deferred by explicit user skip (2026-08-15). Phase 3 complete
-> (merged as `a799bf5`, PR #98; Gate H green). Phase 4 in progress on
-> `codex/grokbuild-c9-p4-routing` (probe + `VERSION` 0.1.22; candidate ship
-> 890/0, SHA `30454e07…`, dirty=true; Gate H after merge + post-merge
-> `make ship`; notarized `v0.1.22` after that).
+> (merged as `a799bf5`, PR #98; Gate H green). Phase 4 complete for
+> Gates A–H (merged as `b9bf633`, PR #99; post-merge ship
+> `dirty=false`, SHA `03cb7111…`). True notarized `v0.1.22` is blocked:
+> this machine has no Developer ID identity.
 > Spec: [`docs/GROKBUILD_AGENTIC_COCKPIT_CAMPAIGN_2026-08-15.md`](GROKBUILD_AGENTIC_COCKPIT_CAMPAIGN_2026-08-15.md).
 > Target: Elevate GrokBuild into a resilient, transparent agentic cockpit across 4 phases:
 > Phase 1 (Task Retention & /loop Lifetime Policy), Phase 2 (ChatView Decomposition),
@@ -46,7 +46,7 @@
 ## Agentic Cockpit Campaign — 2026-08-15 (Authorized & Planned)
 
 Authorized spec is [`docs/GROKBUILD_AGENTIC_COCKPIT_CAMPAIGN_2026-08-15.md`](GROKBUILD_AGENTIC_COCKPIT_CAMPAIGN_2026-08-15.md).
-Phase 3 merged as `a799bf57f2cb19196919fdb7dba745aec43bd555` (PR #98). Phase 2 remains deferred. Phase 4 starts from that clean `main == personal/main` with installed stamp `a799bf5`, `dirty=false`.
+Phase 3 merged as `a799bf57f2cb19196919fdb7dba745aec43bd555` (PR #98). Phase 2 remains deferred. Phase 4 merged as `b9bf633e75dd82287242442bc1b3d867b0b7eaae` (PR #99). Installed stamp is `b9bf633`, `dirty=false`.
 
 Phases:
 
@@ -220,7 +220,7 @@ Gate H: post-merge `make ship` proved stamp == HEAD == `personal/main` ==
 `make test` **889 tests, 0 failures**. Do not reuse the Phase 3 dirty
 candidate SHA `ae41c58e…` or parent `1d2b6d5` as a Phase 4 identity.
 
-### Phase 4 receipt — 2026-08-15 (Complete — Gates A–G green; Gate H after merge)
+### Phase 4 receipt — 2026-08-15 (Complete — Gates A–H green; notarized tag blocked)
 
 Gate A: clean `main == personal/main` at
 `a799bf57f2cb19196919fdb7dba745aec43bd555` after Phase 3 Gate H
@@ -262,8 +262,17 @@ scoped implementation), version `0.1.22`, branch
 **Installed Version 0.1.22** and
 `Personal • codex/grokbuild-c9-p4-routing @ a799bf57 (dirty)`.
 
-Gate D: this implementation commit on `codex/grokbuild-c9-p4-routing`,
-pushed to `personal`, PR against `schmitzjimmy1-star/grok-build-desktop:main`.
+Gate D: implementation commit `75fee09` on `codex/grokbuild-c9-p4-routing`,
+pushed to `personal`, PR #99 against
+`schmitzjimmy1-star/grok-build-desktop:main`. CI **Test and Build App**
+passed (run `31879417188`). Merged `--merge` as `b9bf633`. The
+feature branch `codex/grokbuild-c9-p4-routing` is still on `personal`
+at `75fee09`; it was not deleted.
+
+Gate E: post-merge `make ship` installed `/Applications/GrokBuild.app`
+stamped `GrokBuildSourceCommit=b9bf633…` (== HEAD == `personal/main`),
+branch `main`, `GrokBuildSourceDirty=false`, version `0.1.22`, channel
+`personal`, repo `schmitzjimmy1-star/grok-build-desktop`.
 
 Gate F: local leftover tab closed via sidebar **Close Session**. Backend
 `01a004e8-b3ef-7cd2-acce-0427193ed222` then absent from `grok sessions
@@ -286,12 +295,24 @@ Publication landmines (do not paper over):
   identity and no `notarytool` keychain profile. Do not title another
   development-signed build `(Notarized)`.
 
-Gate H: post-merge `make ship` must prove stamp == merged HEAD,
-`dirty=false`, Team `DD2GCQJVB4`, deep/strict, no quarantine, and a freshly
-derived dist ↔ installed SHA. A true notarized `v0.1.22` is published
-only after that clean ship, only to `personal`, and only with a
-Developer ID identity. An unsigned personal tag is allowed only if
-explicitly labeled `(Unsigned)`.
+Gate H: identity/parity — installed `b9bf633` == HEAD == `personal/main`,
+working tree clean; `codesign --verify --deep --strict` valid, Team
+`DD2GCQJVB4`, no `com.apple.quarantine`; dist ↔ installed executable
+byte parity SHA-256
+`03cb7111307ffebfd65ef38ed175cdc92b9960c6983efa05667dcb360a1fa025`.
+Installed Computer Use confirmed Settings → App **Installed Version
+0.1.22** and `Personal • main @ b9bf633e`. Live
+`make release RELEASE_TYPE=notarized` failed as designed: origin warn
+for rimusz `v0.1.22` at `8e60dfc`, then
+`ERROR: notarized releases require SIGN_IDENTITY to start with
+'Developer ID Application'`. No personal `v0.1.22` tag was created.
+Local/origin `v0.1.22` remain at `8e60dfca`. Do not reuse dirty
+candidate SHA `30454e07…` or parent `a799bf5` as the `v0.1.22`
+identity.
+
+Ledger closeout (this receipt) is docs-only. Do not `make ship` it just
+to chase stamp == HEAD. A true notarized personal `v0.1.22` still
+requires a Developer ID identity and a notary profile.
 
 ## Residual closeout — 2026-08-14 (Complete — all phases 0–6 closed)
 

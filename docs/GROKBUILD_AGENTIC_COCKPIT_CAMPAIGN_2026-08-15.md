@@ -1,8 +1,8 @@
 # GrokBuild Agentic Cockpit Campaign — 2026-08-15
 
-Status: **Phase 1 complete**; **Phase 2 deferred** (user skip, 2026-08-15); **Phase 3 complete** (merged as `a799bf5` / PR #98, Gate H green); **Phase 4 in progress** (probe + `VERSION` 0.1.22; Gate H after merge).
+Status: **Phase 1 complete**; **Phase 2 deferred** (user skip, 2026-08-15); **Phase 3 complete** (merged as `a799bf5` / PR #98, Gate H green); **Phase 4 complete for Gates A–H** (merged as `b9bf633` / PR #99, post-merge ship `dirty=false`). True notarized `v0.1.22` is blocked: this machine has no Developer ID identity.
 
-Baseline: `main == personal/main` at `a799bf5` (PR #98 on top of Phase 1 `2b7f377` / PR #96 and ledger closeout `1d2b6d5` / PR #97). Installed app stamp `a799bf5`, `dirty=false`, dist ↔ installed SHA-256 `51dc422b01142132e3299fbbb95fcda1323bfba96b9600c4f6d9d3d75ac87de2`. Notarized release `v0.1.21` remains the last published tag until Phase 4 publishes `v0.1.22` to `personal` only.
+Baseline: `main == personal/main` at `b9bf633` (PR #99 on top of Phase 3 `a799bf5` / PR #98). Installed app stamp `b9bf633`, `dirty=false`, dist ↔ installed SHA-256 `03cb7111307ffebfd65ef38ed175cdc92b9960c6983efa05667dcb360a1fa025`. Personal GitHub still has no `v0.1.22` tag. Origin's unrelated `v0.1.22` at `8e60dfca` was left untouched.
 
 Following the 2026-08-14 Residual Closeout Campaign (which closed all open leftovers, updated the official CLI to 1.0.4, modernized ACP contract tests, and published the notarized release with zero leftovers), this campaign elevates GrokBuild into a resilient, transparent cockpit for long-horizon agentic workloads.
 
@@ -158,15 +158,16 @@ Live model probe verifying pricing calculation and role attribution.
 ### Exit
 Pricing tests passing, installed Computer Use verifying cost HUD and Settings, notarized release published, Gate F cleanup, process-zero.
 
-> **Execution status (2026-08-15): in progress on
-> `codex/grokbuild-c9-p4-routing`.** Marker
+> **Execution status (2026-08-15): Complete — Gates A–H green; notarized
+> tag blocked.** Merged as `b9bf633` (PR #99). Marker
 > `GB-C9-P4-ROUTING-20260815T101000Z` settled `P4-OK`. HUD
 > `12.3k tokens · 1 turn · ≈$0.0049–$0.0049 est.` on pinned
-> `openai/gpt-4.1-mini`. `release.sh` now publishes to `personal` only.
-> Grouping skipped (two-bucket already shipped). Candidate `make ship`
-> **890 tests, 0 failures**, version `0.1.22`, SHA-256 `30454e07…`,
-> `dirty=true`. `origin` already has an unrelated `v0.1.22` at
-> `8e60dfca`; delete the fetched local tag only before tagging
-> `personal`. Personal `v0.1.21 (Notarized)` is Apple Development and
-> not actually notarized. Gate H follows merge; a true notarized
-> `v0.1.22` needs a Developer ID identity this machine does not have.
+> `openai/gpt-4.1-mini`. `release.sh` publishes to `personal` only.
+> Grouping skipped (two-bucket already shipped). Post-merge `make ship`
+> **890 tests, 0 failures**, version `0.1.22`, SHA-256 `03cb7111…`,
+> `dirty=false`, Settings → App `Personal • main @ b9bf633e`. Live
+> `make release RELEASE_TYPE=notarized` refused Apple Development.
+> `origin` already has an unrelated `v0.1.22` at `8e60dfca`; that tag
+> was not moved. Personal `v0.1.21 (Notarized)` is Apple Development
+> and not actually notarized. Full receipt in
+> [`docs/OUTSTANDING.md`](OUTSTANDING.md).

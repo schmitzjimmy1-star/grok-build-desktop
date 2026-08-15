@@ -1304,7 +1304,7 @@ Prefer extending existing test files. Test pure logic without launching real `gr
 | `docs/OUTSTANDING.md` | Canonical current-slice ledger and Gates A–H |
 | `docs/GROKBUILD_VERIFICATION_AND_FORWARD_SLICES_2026-08-13.md` | 2026-08-13 campaign spec (Slices 0–7 complete) |
 | `docs/GROKBUILD_RESIDUAL_CLOSEOUT_2026-08-14.md` | Closed 2026-08-14 residual-closeout campaign (Phases 0–6 complete) |
-| `docs/GROKBUILD_AGENTIC_COCKPIT_CAMPAIGN_2026-08-15.md` | Current Agentic Cockpit campaign (Phase 3 complete; Phase 4 in progress) |
+| `docs/GROKBUILD_AGENTIC_COCKPIT_CAMPAIGN_2026-08-15.md` | Current Agentic Cockpit campaign (Phases 1/3/4 complete for Gates A–H; Phase 2 deferred; notarized `v0.1.22` blocked) |
 | `.cursor/rules/` | Architecture, SwiftUI, CLI integration, AppKit panels |
 | `.cursor/skills/grokbuild-*` | Dev workflow, release, CLI checks |
 | `GrokBuild/Resources/Skills/` | Bundled runtime skills only; the unused `grokbuild-desktop` editing skill was retired |
