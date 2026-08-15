@@ -19,10 +19,26 @@ final class VisualQuietBundleTests: XCTestCase {
         )
     }
 
+    @discardableResult
+    private func run(_ executable: URL, arguments: [String]) throws -> String {
+        let process = Process()
+        let output = Pipe()
+        process.executableURL = executable
+        process.arguments = arguments
+        process.standardOutput = output
+        process.standardError = output
+        try process.run()
+        process.waitUntilExit()
+        let text = String(decoding: output.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self)
+        XCTAssertEqual(process.terminationStatus, 0, text)
+        return text
+    }
+
     func testVectorIconMasterAndCommittedFallbackAreReleaseGrade() throws {
         let svg = try source("AppIcon.svg")
         let renderer = try source("scripts/render-app-icon.swift")
         let packaging = try source("scripts/build-macos-app.sh")
+        let provider = try source("GrokBuild/AppIconProvider.swift")
         let pngURL = repositoryRoot.appendingPathComponent("AppIcon.png")
         let pngData = try Data(contentsOf: pngURL)
         let representation = try XCTUnwrap(NSBitmapImageRep(data: pngData))
@@ -38,11 +54,36 @@ final class VisualQuietBundleTests: XCTestCase {
         XCTAssertTrue(renderer.contains("hasAlpha: true"))
         XCTAssertTrue(renderer.contains("representation(using: .png"))
         XCTAssertTrue(renderer.contains("options: .atomic"))
-        XCTAssertTrue(packaging.contains("$ROOT_DIR/AppIcon.svg"))
-        XCTAssertTrue(packaging.contains("scripts/render-app-icon.swift"))
-        XCTAssertTrue(packaging.contains("$BUILD_DIR/AppIcon-master.png"))
-        XCTAssertTrue(packaging.contains("test -s \"$APP_BUNDLE/Contents/Resources/AppIcon.icns\""))
-        XCTAssertFalse(packaging.contains("iconutil -c icns \"$iconset_dir\" -o \"$APP_BUNDLE/Contents/Resources/AppIcon.icns\" >/dev/null 2>&1 || true"))
+        XCTAssertTrue(packaging.contains("$SCRIPT_DIR/package-app-icon.sh"))
+        XCTAssertFalse(provider.contains("Bundle.main.executableURL"), "stale .build icons must not outrank bundle resources")
+        XCTAssertTrue(provider.contains("Bundle.main.path(forResource: name, ofType: \"icns\")"))
+    }
+
+    func testSharedIconPackagerProducesAllTenICNSRepresentations() throws {
+        let temporaryRoot = FileManager.default.temporaryDirectory
+            .appendingPathComponent("VisualQuietBundleTests")
+            .appendingPathComponent(UUID().uuidString)
+        let build = temporaryRoot.appendingPathComponent("build")
+        let app = temporaryRoot.appendingPathComponent("GrokBuild.app")
+        defer { try? FileManager.default.removeItem(at: temporaryRoot) }
+
+        _ = try run(
+            URL(fileURLWithPath: "/bin/bash"),
+            arguments: [
+                repositoryRoot.appendingPathComponent("scripts/package-app-icon.sh").path,
+                repositoryRoot.path,
+                build.path,
+                app.path,
+            ]
+        )
+
+        let iconURL = app.appendingPathComponent("Contents/Resources/AppIcon.icns")
+        let image = try XCTUnwrap(NSImage(contentsOf: iconURL))
+        XCTAssertTrue(image.isValid)
+        XCTAssertEqual(
+            image.representations.map { "\($0.pixelsWide)x\($0.pixelsHigh)" },
+            ["1024x1024", "512x512", "512x512", "256x256", "256x256", "128x128", "64x64", "32x32", "32x32", "16x16"]
+        )
     }
 
     func testDeadWorkflowPillChromeIsGoneButRealWorkflowEntryPointsRemain() throws {
@@ -65,11 +106,14 @@ final class VisualQuietBundleTests: XCTestCase {
         XCTAssertTrue(chatView.contains("@State private var showDeepResearch = false"))
         XCTAssertTrue(chatView.contains(".sheet(isPresented: $showSavedWorkflows)"))
         XCTAssertTrue(chatView.contains(".sheet(isPresented: $showDeepResearch)"))
+        XCTAssertTrue(chatView.contains("showSavedWorkflows = true"), "Saved Workflows needs a surviving compact trigger")
+        XCTAssertTrue(chatView.contains("Label(\"Saved Workflows…\", systemImage: \"doc.text\")"))
         XCTAssertTrue(settingsView.contains("case workflows"), "Workflows must remain a first-class Settings pane")
     }
 
     func testComputerUseUpdaterAndSkillsRemainFirstClassPackageContents() throws {
         let packaging = try source("scripts/build-macos-app.sh")
+        let developmentPackaging = try source("scripts/build-dev-app.sh")
         let packageManifest = try source("Package.swift")
 
         XCTAssertTrue(packaging.contains("ERROR: Missing GrokBuildComputerUseMCP helper binary"))
@@ -79,5 +123,7 @@ final class VisualQuietBundleTests: XCTestCase {
         XCTAssertTrue(packageManifest.contains("Resources/Skills/grokbuild-browser-control"))
         XCTAssertTrue(packageManifest.contains("Resources/Skills/grokbuild-computer-use"))
         XCTAssertTrue(packageManifest.contains("Resources/Skills/grokbuild-grok-web"))
+        XCTAssertTrue(developmentPackaging.contains("$SCRIPT_DIR/package-app-icon.sh"))
+        XCTAssertTrue(developmentPackaging.contains("<key>CFBundleIconFile</key>"))
     }
 }

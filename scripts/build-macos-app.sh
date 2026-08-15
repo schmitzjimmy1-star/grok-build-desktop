@@ -148,45 +148,9 @@ if [ -f "$ROOT_DIR/Package.swift" ]; then
         copy_icon "$ROOT_DIR/MenuBarIcon@3x.png" "MenuBarIcon@3x.png"
     fi
 
-    # App icon (Dock / Applications folder)
-    generate_app_icon() {
-        local src="$1"
-        if [ ! -f "$src" ]; then return; fi
-        echo "==> Generating AppIcon.icns from $src"
-        local iconset_dir="$BUILD_DIR/AppIcon.iconset"
-        rm -rf "$iconset_dir"
-        mkdir -p "$iconset_dir"
-        sips -z 16 16     "$src" --out "$iconset_dir/icon_16x16.png"      >/dev/null
-        sips -z 32 32     "$src" --out "$iconset_dir/icon_16x16@2x.png"   >/dev/null
-        sips -z 32 32     "$src" --out "$iconset_dir/icon_32x32.png"      >/dev/null
-        sips -z 64 64     "$src" --out "$iconset_dir/icon_32x32@2x.png"   >/dev/null
-        sips -z 128 128   "$src" --out "$iconset_dir/icon_128x128.png"    >/dev/null
-        sips -z 256 256   "$src" --out "$iconset_dir/icon_128x128@2x.png" >/dev/null
-        sips -z 256 256   "$src" --out "$iconset_dir/icon_256x256.png"    >/dev/null
-        sips -z 512 512   "$src" --out "$iconset_dir/icon_256x256@2x.png" >/dev/null
-        sips -z 512 512   "$src" --out "$iconset_dir/icon_512x512.png"    >/dev/null
-        sips -z 1024 1024 "$src" --out "$iconset_dir/icon_512x512@2x.png" >/dev/null
-        iconutil -c icns "$iconset_dir" -o "$APP_BUNDLE/Contents/Resources/AppIcon.icns" >/dev/null
-        test -s "$APP_BUNDLE/Contents/Resources/AppIcon.icns"
-        rm -rf "$iconset_dir"
-    }
-
-    if [ -f "$ROOT_DIR/AppIcon.svg" ] && [ -f "$ROOT_DIR/scripts/render-app-icon.swift" ]; then
-        rendered_app_icon="$BUILD_DIR/AppIcon-master.png"
-        echo "==> Rendering AppIcon.png from vector master"
-        swift "$ROOT_DIR/scripts/render-app-icon.swift" "$ROOT_DIR/AppIcon.svg" "$rendered_app_icon"
-        generate_app_icon "$rendered_app_icon"
-    elif [ -f "$ROOT_DIR/AppIcon.png" ]; then
-        generate_app_icon "$ROOT_DIR/AppIcon.png"
-    elif [ -f "$ROOT_DIR/AppIcon1024.png" ]; then
-        generate_app_icon "$ROOT_DIR/AppIcon1024.png"
-    else
-        # Fallback using the brand-mark source (will be low-res; provide AppIcon.png for best results)
-        if [ -f "$ICONSET_DIR/MenuBarIcon@3x.png" ]; then
-            echo "==> Using MenuBarIcon as fallback AppIcon (add a 1024x1024 AppIcon.png in project root for proper quality)"
-            generate_app_icon "$ICONSET_DIR/MenuBarIcon@3x.png"
-        fi
-    fi
+    # App icon (Dock / Applications folder). Release and dev bundles share the
+    # same fail-closed vector-to-ICNS path so one cannot quietly drift blurry.
+    "$SCRIPT_DIR/package-app-icon.sh" "$ROOT_DIR" "$BUILD_DIR" "$APP_BUNDLE"
 
     # Info.plist for a normal windowed app with Dock presence.
     cat > "$APP_BUNDLE/Contents/Info.plist" << EOF

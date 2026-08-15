@@ -1744,6 +1744,13 @@ struct ChatView: View {
             }
 
             Section("Skills and workflows") {
+                Button {
+                    showSavedWorkflows = true
+                } label: {
+                    Label("Saved Workflows…", systemImage: "doc.text")
+                }
+                .disabled(store.isStreaming || store.currentWorkspace == nil)
+
                 if composerChips.isEmpty {
                     Button {
                         input = "/"

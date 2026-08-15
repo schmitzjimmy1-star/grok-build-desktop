@@ -57,6 +57,9 @@ for icon in MenuBarIcon.png MenuBarIcon@2x.png MenuBarIcon@3x.png; do
     fi
 done
 
+# Keep `make run` on the same vector-to-ICNS contract as `make ship`.
+"$SCRIPT_DIR/package-app-icon.sh" "$ROOT_DIR" "$BUILD_DIR" "$APP_BUNDLE"
+
 chmod +x "$SCRIPT_DIR/bundle-agent-desktop.sh" "$SCRIPT_DIR/codesign-app-bundle.sh"
 # Computer Use is a first-class feature: a build without agent-desktop is
 # broken, so bundling failures fail the build unless explicitly waived.
@@ -84,6 +87,8 @@ cat > "$APP_BUNDLE/Contents/Info.plist" << EOF
     <string>$APP_VERSION</string>
     <key>CFBundleVersion</key>
     <string>$APP_VERSION</string>
+    <key>CFBundleIconFile</key>
+    <string>AppIcon</string>
     <key>GrokBuildBuildChannel</key>
     <string>$GROKBUILD_BUILD_CHANNEL_XML</string>
     <key>GrokBuildSourceRepository</key>
