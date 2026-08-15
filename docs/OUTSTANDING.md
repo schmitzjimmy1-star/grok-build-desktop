@@ -37,8 +37,9 @@
 > and process-zero closeout are recorded below. **P3C composer/task-strip
 > density is merged. P3D live activity composition is accepted and merged as
 > `1e11be2` in PR #107; required CI, merged-main install, and installed UI
-> closeout passed.** Jimmy authorized the bounded Phase 4 accent sweep on
-> 2026-08-15 with billable acceptance capped at 2.5 million reported tokens.
+> closeout passed. Phase 4's semantic accent sweep is accepted and merged as
+> `d62a396` in PR #109; required CI, merged-main install, billable acceptance,
+> exact cleanup, and process-zero closeout passed.** Phase 5 remains unauthorized.
 > Leftover closeout Phases 1–2 are merged on `main` as `7a3006d`
 > (PR #102). Leftover Phase 3 (`ChatView` split) stays deferred.
 > Install path is `make ship` on this Mac.
@@ -46,15 +47,74 @@
 > Prior campaigns: 2026-08-14 Residual Closeout (Phases 0–6) complete and merged as `4613bde` (PR #94);
 > 2026-08-13 campaign (Slices 0–7) closed at merge `c0895ee` (PR #86).
 
-## Visual Quiet — 2026-08-15 (P3D accepted; Phase 4 authorized and in progress)
+## Visual Quiet — 2026-08-15 (Phase 4 accepted; Phase 5 unauthorized)
 
 Authorized spec is
 [`docs/GROKBUILD_VISUAL_QUIET_CAMPAIGN_2026-08-15.md`](GROKBUILD_VISUAL_QUIET_CAMPAIGN_2026-08-15.md).
 Phases 1–3 and **P3C** are merged and verified. **P3D** is the accepted live
 activity closeout merged as `1e11be2` in PR #107: the duplicate transcript Run card is gone and
 active workers occupy a compact truthful right-side canvas. It does not redesign
-Settings or runtime behavior and is not leftover Phase 3. Phase 4 accent work is
-authorized only for the documented semantic sweep; Phase 5 remains unauthorized.
+Settings or runtime behavior and is not leftover Phase 3. **Phase 4** is accepted
+as `d62a396` in PR #109. Phase 5 remains unauthorized.
+
+### Visual Quiet Phase 4 receipt — 2026-08-15
+
+Gate A/B: canonical branch `codex/grokbuild-vq-p4-accent-sweep` started from
+merged P3D closeout `19e2573d2240aae3e0438148ea515c9d068dc860`.
+Implementation commits `15549f98b71f0df6a1a87ec28de471a619a72076`
+and `cdbbf83587d10aea8e389d9b4333aab294b71a79` route SwiftUI and AppKit
+interaction chrome through `AppTheme.Palette`, add the adaptive
+`GrokProminentButtonStyle`, and enforce the boundary in
+`VisualQuietAccentTests`. No `ChatStore`, ACP, provider, credential, routing,
+layout, Settings architecture, or structural owner changed.
+
+Gate C/E: the focused accent suite passed **4/4** and the clean full suite passed
+**901/901**. Source inspection found no production `Color.accentColor`, raw
+orange/system-orange, AppKit control-accent, tint-foreground, or native prominent
+button call sites. One earlier full run hit the existing helper timeout race and
+one earlier candidate `make ship` hit two existing subprocess timing races; the
+failed receipts were not upgraded to green. Their focused retries passed, as did
+the following clean full and shipping runs.
+
+Installed Computer Use used `/Applications/GrokBuild.app` in the full-screen
+workbench. Light and Dark canvases, selected and disabled controls, Send-adjacent
+CTAs, links, warnings, tool receipts, and the four-worker inspector all retained
+readable semantic contrast without macOS brown/orange bleed. Four compact worker
+cards fit the 340-point right canvas; three settled Completed while DELTA stayed
+amber **Needs Review** after a child-tool failure exposed the AppKit leak that the
+second implementation commit then fixed. Merged-main App Settings reported
+`Personal • main @ d62a3969` with the protected OK-F task intact.
+
+Billable marker: `GB-VQ-P4-20260815T215500Z`. Standard parent
+`01a0076b-28a1-7113-b25a-1f7fe797d8cc` returned exact `GB_VQ_P4_OK`
+with 16,039 tokens. Its ordered-tool turn used exactly three successful read-only
+tools and 33,576 tokens; its four-worker turn spawned all four workers before
+waiting, returned `GB_VQ_P4_WORKERS_OK`, and reported 224,202 parent tokens
+including child usage. A 40,777-token Dark attempt made one failed unexpected
+tool call and is retained as failed/retry evidence; clean Dark parent
+`01a0076f-dda6-7602-ab28-3a5321841b28` then returned exact
+`GB_VQ_P4_DARK_OK` without tools using 16,064 tokens. Unique reported parent
+usage is **330,658**, safely below the authorized 2.5 million cap; child usage is
+not double-counted.
+
+Gate F: confirmed Close Session removed local parents
+`D15A715F-53EE-4DA9-A166-5147DEDDCC8B` and
+`8131C4EC-B607-410D-AF05-7EC400F39B00`, their exact backend directories, and
+their transcripts. Four validated top-level child directories moved recoverably
+to `~/.Trash/GrokBuild-P4-20260815T221500Z/RemovedChildBackends`; the same packet
+retains recovery copies of the parents, transcripts, children, and pre-cleanup
+preferences. Active non-history marker files are zero. The durable
+`prompt_history.jsonl` was not edited, and protected OK-F/backend
+`019ffdad-0d4f-7f42-a429-7ac12ad8198d` remain.
+
+Gate G/H: required **Test and Build App** passed on exact PR #109 head
+`cdbbf83587d10aea8e389d9b4333aab294b71a79`. PR #109 merged without history
+rewrite as `d62a3969ad3339b7ba8dc468e8c60762778415ef`; local `main` and
+`personal/main` then matched. Merged-main `make ship` passed **901/901** and
+installed exact `d62a396`, `dirty=false`, with dist/install parity, Team
+`DD2GCQJVB4`, deep/strict signing, and no quarantine. Fresh installed Computer
+Use restored the full-screen Dark workbench and usable left sidebar, then normal
+quit produced two process-zero samples.
 
 ### Visual Quiet P3D receipt — 2026-08-15
 
@@ -5574,7 +5634,7 @@ them:
 
 ## One-sentence new-session handoff
 
-Visual Quiet is proposed and not started
+Visual Quiet through Phase 4 is accepted; Phase 5 is proposed but unauthorized
 ([`docs/GROKBUILD_VISUAL_QUIET_CAMPAIGN_2026-08-15.md`](GROKBUILD_VISUAL_QUIET_CAMPAIGN_2026-08-15.md)).
 Leftover closeout Phases 1–2 are merged as `7a3006d` (PR #102). Do not start
 leftover Phase 3 (`ChatView` split) unless Jimmy explicitly authorizes it, and
