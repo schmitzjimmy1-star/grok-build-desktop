@@ -17,7 +17,25 @@
 > User conversations, historical acceptance evidence, unnamed sessions that were not
 > created by the current slice, and unrelated browser/app state are protected.
 
-## Slice 5 — first-class agentic acceptance harness (in progress, 2026-08-14)
+## Slice 5 — first-class agentic acceptance harness (complete, 2026-08-14)
+
+PR #74 merged reviewed head `e41aff2` (docs receipt `d47f933`) normally as
+`da07f559f038ec510638d7e3e9e42060def602ea` after GitHub CI run `31852413431`
+passed. Clean merged `personal/main` then passed signed `make ship`. Gate H with
+the app stopped proved `HEAD == personal/main == stamp == da07f559`, branch
+`main`, repository `https://github.com/schmitzjimmy1-star/grok-build-desktop`,
+`dirty=false`, dist/installed executable SHA-256
+`9b955934c44e723fc0a32b37c5995134ab4042fc4112ec2db3914fd442590a9a`, Team
+`DD2GCQJVB4`, deep/strict signing, and no quarantine. Origin remains untouched
+at `433ddf861a86447a8fee2b1cf13e6c674a8f2211`. Focused installed Computer Use on
+`/Applications/GrokBuild.app` after the merged-main ship showed New chat
+Ask/Build/Review with **Send message**, and a restored empty-hydrate tab
+**Loading saved conversation…** plus **Resume current task** / **Send and
+resume session**. No second billable three-route ran after merge. Process-zero
+samples at `2026-08-14T19:17:51-0500` and `19:18:23-0500`. Later docs-only Gate H
+receipt commits may sit on `main` above `da07f559`; prove that stamp is an
+ancestor and the product diff is empty before starting Slice 6. Do not `make
+ship` a docs-only successor just to chase `stamp == HEAD`.
 
 Closeout three-route `20260814T235900Z` on signed installed `e41aff2` /
 `dirty=false` / Team `DD2GCQJVB4` evaluated five accepted packets, 197,468
@@ -42,15 +60,15 @@ mode `0600`) is unchanged; cwd-scoped `prompt_history.jsonl` grew with composer
 residue only (post-closeout SHA-256
 `49c3568d93302263ba05f8925214cff4d497abd1aecbed1c9472eb37f13d8782`, 118,289 bytes,
 mode `0644`). Process-zero samples at `2026-08-14T19:02:12-0500` and
-`19:02:17-0500`. Dist/installed SHA-256
+`19:02:17-0500`. Dist/installed SHA-256 on the `e41aff2` closeout ship
 `a9e5b4a6ce8e431c221fd103b3e3c658ef8d10679796a891ba82e8272c1b6016`.
 
 Earlier harness-only T3 on `e92885d` used run `20260814T225910Z` (197,960 tokens)
 and must not be reused as closeout markers.
 
-Gate D is authorized. Product resume honesty (welcome/LaunchSessionChoices gated
-on `isResumedSessionTab`) shipped in `e41aff2`. Do not reuse `20260814T225910Z`
-or `20260814T235900Z` markers.
+Gates D through H are complete. Product resume honesty (welcome/LaunchSessionChoices
+gated on `isResumedSessionTab`) shipped in `e41aff2`. Do not reuse
+`20260814T225910Z` or `20260814T235900Z` markers.
 
 Authorized scope is the documented harness in
 `docs/GROKBUILD_VERIFICATION_AND_FORWARD_SLICES_2026-08-13.md`. Gate A started from
@@ -78,9 +96,9 @@ Frozen implementation paths are `scripts/acceptance/`,
 `.cursor/skills/grokbuild-dev/SKILL.md`,
 `.cursor/skills/grokbuild-grok-cli/SKILL.md`, and `.gitignore`. Dry-run is default;
 `--billable` is required for any fresh provider Send; cleanup refuses guessed IDs;
-the harness never bypasses the installed UI or fakes ACP. Slice 6, Slice 7,
-releases, tags, origin, force-push, branch deletion, and configuration changes
-remain forbidden.
+the harness never bypasses the installed UI or fakes ACP. Slice 6 is authorized
+for a new session only. Slice 7, releases, tags, origin, force-push, branch
+deletion, and configuration changes remain forbidden.
 
 ## Slice 4 — observed agentic model-performance ledger (complete, 2026-08-14)
 

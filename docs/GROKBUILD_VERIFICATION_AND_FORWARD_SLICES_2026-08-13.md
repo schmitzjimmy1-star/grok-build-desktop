@@ -1,6 +1,6 @@
 # GrokBuild agentic-performance verification and forward slices — 2026-08-13
 
-Status: **Slices 0–4 complete; Slice 5 is authorized for a new session only. Slice 6 remains forbidden.**
+Status: **Slices 0–5 complete; Slice 6 is authorized for a new session only. Slice 7 remains forbidden.**
 
 This plan follows the canonical identity and Gates A–H in
 [`CANONICAL_WORKTREE.md`](../CANONICAL_WORKTREE.md) and
@@ -568,7 +568,11 @@ ships.
 
 ## Current authorized slice
 
-Execute **Slice 5 only** from clean merged `personal/main` at `bbff383`. Slices 0–4
-are closed; Slice 5 must end each checkpoint update—and its final merged-main
-closeout—with the mandatory three-sentence handoff. Do not begin Slice 6 until Slice 5
-is merged, reinstalled, cleaned, and proven at process zero.
+Execute **Slice 6 only** from the merged Slice 5 product at `da07f559`
+(PR #74, installed SHA-256
+`9b955934c44e723fc0a32b37c5995134ab4042fc4112ec2db3914fd442590a9a`). Slices 0–5
+are closed. Receipt or documentation commits may sit on `main` above that stamp;
+prove `git merge-base --is-ancestor da07f559 HEAD` and an empty product diff
+before starting. Slice 6 must end each checkpoint update, and its final
+merged-main closeout, with the mandatory three-sentence handoff. Do not begin
+Slice 7 until Slice 6 is merged, reinstalled, cleaned, and proven at process zero.
