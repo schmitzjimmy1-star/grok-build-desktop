@@ -141,7 +141,7 @@ struct SavedWorkflowsPanel: View {
                         onLaunch(workflow, argsJSON)
                         dismiss()
                     }
-                    .buttonStyle(.borderedProminent)
+                    .buttonStyle(GrokProminentButtonStyle())
                     .keyboardShortcut(.defaultAction)
                 }
 
@@ -201,7 +201,7 @@ struct DeepResearchSheet: View {
                     onSubmit(trimmed)
                     dismiss()
                 }
-                .buttonStyle(.borderedProminent)
+                .buttonStyle(GrokProminentButtonStyle())
                 .disabled(query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                 .keyboardShortcut(.defaultAction)
             }

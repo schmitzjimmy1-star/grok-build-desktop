@@ -67,7 +67,7 @@ The workbench names that must match the running app:
 - **Run inspector** — header dropdown (`grok-run-inspector-toggle`) for a
   quick look; live workers open the right-side tracker (`grok-run-inspector`,
   `grok-run-inspector-collapsed`). Docked at the default 1440×900 window;
-  overlay 900..<1,100 pt chat area; collapsed strip below 900 pt
+  overlay 900..<1,180 pt chat area; collapsed strip below 900 pt
   (`showActivitySidebar` stays true).
 - **Session dashboard** — header bell.
 - Composer placeholder **Describe a task**. Welcome **What do you want to work on?**

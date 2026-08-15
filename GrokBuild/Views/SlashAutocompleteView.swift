@@ -143,7 +143,7 @@ struct SlashAutocompleteView: View {
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(.horizontal, 12)
             .padding(.vertical, 7)
-            .background(isActive ? Color.accentColor.opacity(0.14) : Color.clear)
+            .background(isActive ? AppTheme.Palette.accent.opacity(0.14) : Color.clear)
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
@@ -157,7 +157,7 @@ struct SlashAutocompleteView: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(.horizontal, 12)
                 .padding(.vertical, 7)
-                .background(isActive ? Color.accentColor.opacity(0.14) : Color.clear)
+                .background(isActive ? AppTheme.Palette.accent.opacity(0.14) : Color.clear)
                 .contentShape(Rectangle())
         }
         .buttonStyle(.plain)

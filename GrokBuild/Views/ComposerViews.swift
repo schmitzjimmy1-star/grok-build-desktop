@@ -70,7 +70,7 @@ struct PromptMCPChipBar: View {
                     HStack(spacing: 5) {
                         Image(systemName: "network")
                             .font(.caption2.weight(.semibold))
-                            .foregroundStyle(.tint)
+                            .foregroundStyle(AppTheme.Palette.link)
                         Text(name)
                             .font(.caption)
                             .lineLimit(1)
@@ -86,7 +86,7 @@ struct PromptMCPChipBar: View {
                     }
                     .padding(.horizontal, 8)
                     .padding(.vertical, 4)
-                    .background(Color.accentColor.opacity(0.10), in: Capsule())
+                    .background(AppTheme.Palette.accent.opacity(0.10), in: Capsule())
                     .accessibilityElement(children: .combine)
                     .accessibilityLabel("MCP attached to prompt: \(name)")
                 }
@@ -154,7 +154,7 @@ private struct AssistantToolTraceRow: View {
             HStack(alignment: .firstTextBaseline, spacing: 7) {
                 Image(systemName: displayedMCPServer == nil ? "wrench" : "network")
                     .font(.caption2.weight(.semibold))
-                    .foregroundStyle(displayedMCPServer == nil ? Color.secondary : Color.accentColor)
+                    .foregroundStyle(displayedMCPServer == nil ? Color.secondary : AppTheme.Palette.accent)
                 VStack(alignment: .leading, spacing: 2) {
                     if tool.mcpReceiptRole == .discovery {
                         Text("Capability discovery")
@@ -257,7 +257,7 @@ struct GoalBanner: View {
     var body: some View {
         HStack(spacing: 10) {
             Image(systemName: state.isPaused ? "pause.circle" : "target")
-                .foregroundStyle(state.isPaused ? Color.secondary : Color.accentColor)
+                .foregroundStyle(state.isPaused ? Color.secondary : AppTheme.Palette.accent)
 
             VStack(alignment: .leading, spacing: 2) {
                 HStack(spacing: 6) {
@@ -265,7 +265,7 @@ struct GoalBanner: View {
                         .font(.caption.weight(.semibold))
                     Text(state.statusLabel)
                         .font(.caption2.weight(.medium))
-                        .foregroundStyle(state.isPaused ? Color.secondary : Color.accentColor)
+                        .foregroundStyle(state.isPaused ? Color.secondary : AppTheme.Palette.accent)
                         .padding(.horizontal, 6)
                         .padding(.vertical, 2)
                         .background(Color.primary.opacity(0.06), in: Capsule())
@@ -314,10 +314,10 @@ struct GoalBanner: View {
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 8)
-        .background(Color.accentColor.opacity(0.08), in: RoundedRectangle(cornerRadius: AppTheme.Radius.large))
+        .background(AppTheme.Palette.accent.opacity(0.08), in: RoundedRectangle(cornerRadius: AppTheme.Radius.large))
         .overlay(
             RoundedRectangle(cornerRadius: AppTheme.Radius.large)
-                .stroke(Color.accentColor.opacity(0.2), lineWidth: 1)
+                .stroke(AppTheme.Palette.accent.opacity(0.2), lineWidth: 1)
         )
     }
 }
@@ -346,7 +346,7 @@ struct SetGoalSheet: View {
                     dismiss()
                 }
                 .keyboardShortcut(.defaultAction)
-                .buttonStyle(.borderedProminent)
+                .buttonStyle(GrokProminentButtonStyle())
                 .disabled(objective.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
             }
         }
@@ -383,10 +383,10 @@ struct BtwAsideBanner: View {
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 8)
-        .background(Color.orange.opacity(0.08), in: RoundedRectangle(cornerRadius: AppTheme.Radius.large))
+        .background(AppTheme.Palette.warning.opacity(0.08), in: RoundedRectangle(cornerRadius: AppTheme.Radius.large))
         .overlay(
             RoundedRectangle(cornerRadius: AppTheme.Radius.large)
-                .stroke(Color.orange.opacity(0.2), lineWidth: 1)
+                .stroke(AppTheme.Palette.warning.opacity(0.2), lineWidth: 1)
         )
     }
 }
@@ -419,7 +419,7 @@ struct ContinuityStatusBanner: View {
                     Button("Review", action: onReview)
                         .buttonStyle(.plain)
                         .font(.caption.weight(.medium))
-                        .foregroundStyle(.tint)
+                        .foregroundStyle(AppTheme.Palette.link)
                         .accessibilityIdentifier("grok-continuity-review")
                 }
             }
@@ -455,7 +455,7 @@ struct PlanReviewCard: View {
                 Button("Approve & continue") {
                     onRespond(.approved)
                 }
-                .buttonStyle(.borderedProminent)
+                .buttonStyle(GrokProminentButtonStyle())
                 .accessibilityIdentifier("grok-plan-approve")
                 .accessibilityHint("Approves this plan through the current ACP request and continues the same turn.")
 
@@ -527,7 +527,7 @@ struct QuestionCard: View {
             if request.questions.count > 1 || request.questions.first?.multiSelect == true {
                 HStack {
                     Button("Submit") { submit() }
-                        .buttonStyle(.borderedProminent)
+                        .buttonStyle(GrokProminentButtonStyle())
                         .disabled(!allAnswered)
 
                     Button("Skip", action: onSkip)
@@ -587,7 +587,7 @@ private struct QuestionBlock: View {
                         } label: {
                             HStack(alignment: .top, spacing: 8) {
                                 Image(systemName: selection.contains(option.label) ? "checkmark.circle.fill" : "circle")
-                                    .foregroundStyle(selection.contains(option.label) ? Color.accentColor : .secondary)
+                                    .foregroundStyle(selection.contains(option.label) ? AppTheme.Palette.accent : .secondary)
                                 VStack(alignment: .leading, spacing: 2) {
                                     Text(option.label)
                                         .foregroundStyle(.primary)
@@ -602,7 +602,7 @@ private struct QuestionBlock: View {
                             .padding(8)
                             .background(
                                 selection.contains(option.label)
-                                    ? Color.accentColor.opacity(0.1)
+                                    ? AppTheme.Palette.accent.opacity(0.1)
                                     : Color.primary.opacity(0.04),
                                 in: RoundedRectangle(cornerRadius: AppTheme.Radius.large)
                             )
@@ -647,7 +647,7 @@ struct MicButton: View {
     private var iconColor: Color {
         switch voice.state {
         case .listening: return .red
-        case .transcribing: return .orange
+        case .transcribing: return AppTheme.Palette.warning
         case .unavailable: return .secondary
         case .idle: return .secondary
         }

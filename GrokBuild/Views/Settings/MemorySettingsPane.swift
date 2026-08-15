@@ -152,7 +152,7 @@ struct MemorySettingsPane: View {
                 Button("Cancel") { showRemember = false }
                     .keyboardShortcut(.cancelAction)
                 Button("Save") { saveRemember() }
-                    .buttonStyle(.borderedProminent)
+                    .buttonStyle(GrokProminentButtonStyle())
                     .disabled(rememberText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
             }
         }

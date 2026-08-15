@@ -569,7 +569,7 @@ private struct SessionSidebarRow: View {
                 if session.hasActiveSchedule {
                     Image(systemName: "clock.badge.checkmark")
                         .font(.caption2.weight(.semibold))
-                        .foregroundStyle(Color.orange)
+                        .foregroundStyle(AppTheme.Palette.warning)
                         .help("Scheduled work is pinning this session's live runtime")
                         .accessibilityHidden(true)
                         .accessibilityIdentifier("grok-sidebar-session-schedule")

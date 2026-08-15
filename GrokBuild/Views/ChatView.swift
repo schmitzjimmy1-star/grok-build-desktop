@@ -604,7 +604,7 @@ struct ChatView: View {
                 HStack(spacing: 7) {
                     Image(systemName: "waveform.path")
                         .font(.system(size: 11, weight: .semibold))
-                        .foregroundStyle(.tint)
+                        .foregroundStyle(AppTheme.Palette.link)
                     Text(presentation.compactText)
                         .font(AppTheme.Typography.caption)
                         .foregroundStyle(.secondary)
@@ -681,12 +681,12 @@ struct ChatView: View {
 
             if store.liveRunEvidenceProjection != nil {
                 Circle()
-                    .fill(Color.accentColor)
+                    .fill(AppTheme.Palette.accent)
                     .frame(width: 8, height: 8)
                     .accessibilityHidden(true)
             } else if activitySnapshot != nil {
                 Circle()
-                    .fill(activitySnapshot?.outcome == .completionReceiptMissing ? Color.orange : Color.secondary)
+                    .fill(activitySnapshot?.outcome == .completionReceiptMissing ? AppTheme.Palette.warning : Color.secondary)
                     .frame(width: 8, height: 8)
                     .accessibilityHidden(true)
             }
@@ -1500,7 +1500,7 @@ struct ChatView: View {
             Button(action: onAddProject) {
                 Label("Add Project", systemImage: "plus")
             }
-            .buttonStyle(.borderedProminent)
+            .buttonStyle(GrokProminentButtonStyle())
             .controlSize(.large)
             .help("Choose a folder to work in")
         }
@@ -1789,7 +1789,7 @@ struct ChatView: View {
         .menuStyle(.borderlessButton)
         .menuIndicator(.hidden)
         .fixedSize()
-        .foregroundStyle(store.selectedPromptMCPNames.isEmpty ? Color.secondary : Color.accentColor)
+        .foregroundStyle(store.selectedPromptMCPNames.isEmpty ? Color.secondary : AppTheme.Palette.accent)
         .help("Add files, MCP connections, skills, and project tools")
         .accessibilityLabel("Add context")
         .accessibilityValue(
@@ -1873,12 +1873,12 @@ struct ChatView: View {
                 TitlebarGlyph(systemName: "sidebar.right")
                 if let snapshot = activitySnapshot {
                     Circle()
-                        .fill(snapshot.outcome == .completionReceiptMissing ? Color.orange : Color.secondary)
+                        .fill(snapshot.outcome == .completionReceiptMissing ? AppTheme.Palette.warning : Color.secondary)
                         .frame(width: 5, height: 5)
                         .accessibilityHidden(true)
                 } else if store.liveRunEvidenceProjection != nil {
                     Circle()
-                        .fill(Color.accentColor)
+                        .fill(AppTheme.Palette.accent)
                         .frame(width: 5, height: 5)
                         .accessibilityHidden(true)
                 }
@@ -2351,7 +2351,7 @@ struct ChatView: View {
                     }
                 }
                 .keyboardShortcut(.defaultAction)
-                .buttonStyle(.borderedProminent)
+                .buttonStyle(GrokProminentButtonStyle())
                 .disabled(createSkillName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
             }
         }
@@ -2381,7 +2381,7 @@ struct ChatView: View {
                     }
                 }
                 .keyboardShortcut(.defaultAction)
-                .buttonStyle(.borderedProminent)
+                .buttonStyle(GrokProminentButtonStyle())
                 .disabled(imaginePrompt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
             }
         }
@@ -2489,7 +2489,7 @@ struct ChatView: View {
             .font(.caption2.weight(.semibold))
             .padding(.horizontal, 2)
             .padding(.vertical, 2)
-            .foregroundStyle(needsSetup ? Color.orange : Color.secondary)
+            .foregroundStyle(needsSetup ? AppTheme.Palette.warning : Color.secondary)
         }
         .menuStyle(.borderlessButton)
         .fixedSize()
@@ -2558,7 +2558,7 @@ struct ChatView: View {
             .font(.caption2.weight(.semibold))
             .padding(.horizontal, 2)
             .padding(.vertical, 2)
-            .foregroundStyle(needsSetup ? Color.orange : Color.secondary)
+            .foregroundStyle(needsSetup ? AppTheme.Palette.warning : Color.secondary)
         }
         .menuStyle(.borderlessButton)
         .fixedSize()
@@ -3096,7 +3096,7 @@ private struct TurnStalledBanner: View {
     var body: some View {
         HStack(spacing: 10) {
             Image(systemName: "hourglass.badge.exclamationmark")
-                .foregroundStyle(.orange)
+                .foregroundStyle(AppTheme.Palette.warning)
             Text("Grok hasn't sent anything since \(since.formatted(date: .omitted, time: .shortened)). It may be mid-tool-run, or stuck.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
@@ -3118,7 +3118,7 @@ private struct ErrorBanner: View {
     var body: some View {
         HStack(alignment: .top, spacing: 8) {
             Image(systemName: "exclamationmark.triangle.fill")
-                .foregroundStyle(.orange)
+                .foregroundStyle(AppTheme.Palette.warning)
             Text(message)
                 .font(.caption)
                 .foregroundStyle(.secondary)
@@ -3184,7 +3184,7 @@ private struct SessionRecoveryReviewSheet: View {
                                 .font(.body.monospaced())
                             Text(candidate.isRelinkable ? "Verified candidate" : "Review only")
                                 .font(.caption.weight(.semibold))
-                                .foregroundStyle(candidate.isRelinkable ? .green : .orange)
+                                .foregroundStyle(candidate.isRelinkable ? .green : AppTheme.Palette.warning)
                             Spacer()
                             Button("Relink") {
                                 Task {
@@ -3208,7 +3208,7 @@ private struct SessionRecoveryReviewSheet: View {
                         if candidate.quarantinedRowCount > 0 {
                             Text("Mixed or unknown provenance is quarantined and cannot verify a binding.")
                                 .font(.caption)
-                                .foregroundStyle(.orange)
+                                .foregroundStyle(AppTheme.Palette.warning)
                         } else if !candidate.isRelinkable {
                             Text("Shared prompts are evidence for review, not identity proof.")
                                 .font(.caption)
@@ -3241,7 +3241,7 @@ private struct ModelSwitchBanner: View {
     var body: some View {
         HStack(alignment: .top, spacing: 8) {
             Image(systemName: "arrow.triangle.2.circlepath")
-                .foregroundStyle(.orange)
+                .foregroundStyle(AppTheme.Palette.warning)
             Text(message)
                 .font(.caption)
                 .foregroundStyle(.secondary)
@@ -3249,7 +3249,7 @@ private struct ModelSwitchBanner: View {
             Spacer()
             if canStartNewSession {
                 Button("Start New Session", action: onStartNewSession)
-                    .buttonStyle(.borderedProminent)
+                    .buttonStyle(GrokProminentButtonStyle())
                     .controlSize(.small)
             }
             Button {
@@ -3278,7 +3278,7 @@ struct AuthBanner: View {
         VStack(alignment: .leading, spacing: 10) {
             HStack(spacing: 8) {
                 Image(systemName: "lock.fill")
-                    .foregroundStyle(.orange)
+                    .foregroundStyle(AppTheme.Palette.warning)
                 Text("Authentication Required")
                     .font(.headline)
             }
@@ -3294,7 +3294,7 @@ struct AuthBanner: View {
                 } label: {
                     Label("Sign in with Grok…", systemImage: "terminal")
                 }
-                .buttonStyle(.borderedProminent)
+                .buttonStyle(GrokProminentButtonStyle())
 
                 Button {
                     copyLoginCommand()
@@ -3331,7 +3331,7 @@ struct AuthBanner: View {
         .background(.regularMaterial, in: RoundedRectangle(cornerRadius: AppTheme.Radius.large))
         .overlay(
             RoundedRectangle(cornerRadius: AppTheme.Radius.large)
-                .stroke(Color.orange.opacity(0.3), lineWidth: 1)
+                .stroke(AppTheme.Palette.warning.opacity(0.3), lineWidth: 1)
         )
         .padding(.horizontal, 20)
         .padding(.top, 12)
@@ -3420,7 +3420,7 @@ struct PermissionCard: View {
             } else if permission.toolCall.isExecute, let cmd = permission.toolCall.command {
                 Text("Command: \(cmd)")
                     .font(.caption.monospaced())
-                    .foregroundStyle(.orange)
+                    .foregroundStyle(AppTheme.Palette.warning)
             }
 
             HStack(spacing: 8) {
@@ -3433,10 +3433,10 @@ struct PermissionCard: View {
             }
         }
         .padding(12)
-        .background(Color.orange.opacity(0.08), in: RoundedRectangle(cornerRadius: AppTheme.Radius.large))
+        .background(AppTheme.Palette.warning.opacity(0.08), in: RoundedRectangle(cornerRadius: AppTheme.Radius.large))
         .overlay(
             RoundedRectangle(cornerRadius: AppTheme.Radius.large)
-                .stroke(Color.orange.opacity(0.35), lineWidth: 1)
+                .stroke(AppTheme.Palette.warning.opacity(0.35), lineWidth: 1)
         )
         .transition(.opacity)
         .animation(reduceMotion ? nil : .spring(response: 0.3), value: permission.id)

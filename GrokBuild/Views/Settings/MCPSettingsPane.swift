@@ -272,7 +272,7 @@ struct MCPSettingsPane: View {
                 }
                 .disabled(draft == GrokMCPServerDraft())
                 Button("Add / Update") { startAddServer() }
-                    .buttonStyle(.borderedProminent)
+                    .buttonStyle(GrokProminentButtonStyle())
                     .disabled(!canSaveDraft || activeOperationID != nil)
             }
             if let receipt = rowReceipts["mcp-editor"] {

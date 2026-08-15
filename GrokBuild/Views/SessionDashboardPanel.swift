@@ -135,7 +135,7 @@ struct SessionDashboardPanel: View {
                     systemImage: "exclamationmark.triangle"
                 )
                 .font(.caption)
-                .foregroundStyle(.orange)
+                .foregroundStyle(AppTheme.Palette.warning)
                 .padding(.horizontal)
                 .padding(.vertical, 10)
                 .accessibilityIdentifier("grok-runtime-soft-cap-warning")
@@ -181,7 +181,7 @@ struct SessionDashboardPanel: View {
                                                         if entry.pendingCount > 0 {
                                                             Text("\(entry.pendingCount) pending")
                                                                 .font(.caption2.weight(.medium))
-                                                                .foregroundStyle(.orange)
+                                                                .foregroundStyle(AppTheme.Palette.warning)
                                                         }
                                                     }
                                                     if let lease = entry.runtimeLease {
@@ -189,7 +189,7 @@ struct SessionDashboardPanel: View {
                                                     } else if !entry.runtimeProtectionReasons.isEmpty {
                                                         Text(entry.runtimeProtectionReasons.map(\.displayName).sorted().joined(separator: " • "))
                                                             .font(.caption2.weight(.medium))
-                                                            .foregroundStyle(.orange)
+                                                            .foregroundStyle(AppTheme.Palette.warning)
                                                     }
                                                 }
                                                 Spacer()
@@ -258,8 +258,8 @@ struct SessionDashboardPanel: View {
 
     private func color(for group: SessionDashboardEntry.Group) -> Color {
         switch group {
-        case .needsInput: return .orange
-        case .working: return .accentColor
+        case .needsInput: return AppTheme.Palette.warning
+        case .working: return AppTheme.Palette.accent
         case .idle: return .secondary
         case .failed: return .red
         }
@@ -270,7 +270,7 @@ struct SessionDashboardPanel: View {
         VStack(alignment: .leading, spacing: 2) {
             Text("Runtime pinned • \(lease.activeScheduleCount) active schedule\(lease.activeScheduleCount == 1 ? "" : "s")")
                 .font(.caption2.weight(.semibold))
-                .foregroundStyle(.orange)
+                .foregroundStyle(AppTheme.Palette.warning)
             Text("Backend \(lease.backendSessionID) • process generation \(lease.processGeneration)")
                 .font(.caption2.monospaced())
                 .foregroundStyle(.tertiary)

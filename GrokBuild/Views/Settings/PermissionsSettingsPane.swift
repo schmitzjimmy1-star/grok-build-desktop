@@ -71,7 +71,7 @@ struct PermissionsSettingsPane: View {
                         systemImage: "exclamationmark.shield"
                     )
                     .font(.caption)
-                    .foregroundStyle(.orange)
+                    .foregroundStyle(AppTheme.Palette.warning)
                     .fixedSize(horizontal: false, vertical: true)
                 } else if permissionModeChoice == .denyUnapproved {
                     Label(

@@ -259,7 +259,7 @@ struct SessionsBrowserPanel: View {
                         onResumeSession(session, workspace)
                     }
                 }
-                .buttonStyle(.borderedProminent)
+                .buttonStyle(GrokProminentButtonStyle())
                 .controlSize(.small)
                 .disabled(isOpenLive && isActive)
                 .accessibilityIdentifier("grok-sessions-resume")

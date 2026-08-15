@@ -478,7 +478,7 @@ enum InlineMarkdownPresentation {
             run.link == nil ? nil : run.range
         }
         for range in linkRanges {
-            attributed[range].foregroundColor = .accentColor
+            attributed[range].foregroundColor = AppTheme.Palette.link
             attributed[range].underlineStyle = .single
         }
         return attributed
