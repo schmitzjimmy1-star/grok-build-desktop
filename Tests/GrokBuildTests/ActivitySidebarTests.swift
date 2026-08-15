@@ -385,6 +385,9 @@ final class ActivitySidebarTests: XCTestCase {
         XCTAssertTrue(worker.isCompleted)
         XCTAssertTrue(worker.hasUnresolvedChildToolOutcome)
         XCTAssertTrue(worker.isUnresolved)
+        XCTAssertTrue(ActivitySidebarPresentation.workerNeedsReview(worker))
+        XCTAssertEqual(ActivitySidebarPresentation.workerDisplayStatus(worker), "Needs Review")
+        XCTAssertEqual(ActivitySidebarPresentation.workerStatusSummary([worker]), "1 needs review")
         XCTAssertEqual(snapshot.unresolvedWorkerCount, 1)
         XCTAssertEqual(
             ActivitySidebarPresentation.summaryDetail(snapshot),
@@ -398,6 +401,47 @@ final class ActivitySidebarTests: XCTestCase {
                 redactedError: worker.redactedError
             ).contains("Child tool outcomes were not reported to the parent receipt")
         )
+    }
+
+    func testWorkerStatusSummarySeparatesLiveCleanAndReviewStates() {
+        let live = makeWorker(status: "running")
+        let clean = RunEvidenceSnapshot.Worker(
+            id: "clean",
+            title: "Clean",
+            status: "completed",
+            childID: "child-clean",
+            durationMilliseconds: 100,
+            toolCallCount: 0,
+            redactedError: nil,
+            childToolReceipts: [],
+            childLedgerReadOutcome: .empty
+        )
+        let failedReceipt = ChildToolReceipt(
+            id: "child-tool-failed",
+            title: "Read layout",
+            status: .failed,
+            mcpReceiptRole: nil,
+            qualifiedToolName: nil,
+            discoveredQualifiedToolNames: []
+        )
+        let review = RunEvidenceSnapshot.Worker(
+            id: "review",
+            title: "Review",
+            status: "completed",
+            childID: "child-review",
+            durationMilliseconds: 100,
+            toolCallCount: 1,
+            redactedError: nil,
+            childToolReceipts: [failedReceipt],
+            childLedgerReadOutcome: .receipts
+        )
+
+        XCTAssertEqual(
+            ActivitySidebarPresentation.workerStatusSummary([live, clean, review]),
+            "1 live · 1 finished · 1 needs review"
+        )
+        XCTAssertEqual(ActivitySidebarPresentation.workerDisplayStatus(clean), "Completed")
+        XCTAssertEqual(ActivitySidebarPresentation.workerDisplayStatus(review), "Needs Review")
     }
 
     func testChildLedgerPresentationDistinguishesUnreadableFromEmpty() {
@@ -486,6 +530,17 @@ final class ActivitySidebarTests: XCTestCase {
 
         XCTAssertTrue(sidebar.contains("What the agent did"))
         XCTAssertTrue(sidebar.contains("Happening now — not final"))
+        XCTAssertTrue(sidebar.contains("Current turn · live receipts"))
+        XCTAssertTrue(sidebar.contains("grok-live-worker-activity"))
+        XCTAssertTrue(sidebar.contains("grok-settled-worker-activity"))
+        XCTAssertTrue(sidebar.contains("grok-worker-activity-\\(worker.id)"))
+        XCTAssertTrue(sidebar.contains("Parent request"))
+        XCTAssertTrue(sidebar.contains("Current parent action:"))
+        XCTAssertTrue(sidebar.contains("showsCurrentAction"))
+        XCTAssertTrue(sidebar.contains("Label(\"Details\""))
+        XCTAssertTrue(sidebar.contains("accessibilityLabel(\"Worker receipt\")"))
+        XCTAssertFalse(sidebar.contains("Text(\"Assignment\")"))
+        XCTAssertTrue(sidebar.contains("Live generation receipt; outcome and usage are not settled."))
         XCTAssertTrue(sidebar.contains("evidencePhaseBadge(\"Live\""))
         XCTAssertTrue(sidebar.contains("evidencePhaseBadge(\"Finished\""))
         XCTAssertTrue(sidebar.contains("Outcomes and usage are not settled"))

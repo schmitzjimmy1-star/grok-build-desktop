@@ -292,10 +292,10 @@ final class ChatTranscriptLayoutTests: XCTestCase {
         )
     }
 
-    /// Slice 9 — a no-plan run still gets truthful live phase/tool state.
-    /// After settlement, tool receipts stay on the message; the GitHub-style
-    /// Run checklist is not mounted under the answer.
-    func testRunSpineUsesLiveProjectionThenSettledSnapshot() throws {
+    /// P3D — live phase/plan/worker truth moves to the right activity canvas.
+    /// The transcript keeps its task strip and tool trace, but never mounts the
+    /// redundant full-width Run card under the assistant header.
+    func testLiveRunCardLeavesTranscriptForWorkerActivityCanvas() throws {
         let repositoryRoot = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent()
             .deletingLastPathComponent()
@@ -304,14 +304,11 @@ final class ChatTranscriptLayoutTests: XCTestCase {
             contentsOf: repositoryRoot.appendingPathComponent("GrokBuild/Views/ChatView.swift"),
             encoding: .utf8
         )
-        XCTAssertTrue(
-            chatSource.contains("containsPlanSpine: msg.role == .assistant"),
-            "the spine belongs to the assistant turn"
-        )
-        XCTAssertTrue(
-            chatSource.contains("&& store.liveRunEvidenceProjection != nil"),
-            "a no-plan run still has authoritative phase and receipt state"
-        )
+        XCTAssertTrue(chatSource.contains("containsPlanSpine: false"))
+        XCTAssertFalse(chatSource.contains("ThreadRunSpineView("),
+                       "the duplicate Run card must not mount in the transcript")
+        XCTAssertTrue(chatSource.contains("activityInspector(docked:"),
+                      "live worker evidence remains reachable in the right canvas")
         XCTAssertFalse(
             chatSource.contains("containsSettledRunSpine"),
             "the settled GitHub-style Run checklist must not return under the answer"
@@ -327,7 +324,8 @@ final class ChatTranscriptLayoutTests: XCTestCase {
         XCTAssertTrue(spineSource.contains("grok-plan-spine"),
                       "the spine carries a stable accessibility identifier")
         XCTAssertTrue(spineSource.contains("accessibilityLabel(\"Run plan\")"))
-        XCTAssertTrue(spineSource.contains("grok-run-spine-live"))
+        XCTAssertTrue(spineSource.contains("grok-run-spine-live"),
+                      "the dormant renderer stays available without a structural deletion in P3D")
     }
 
     func testPromptMCPAttachmentIsTruthfulSanitizedAndDeterministic() throws {

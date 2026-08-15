@@ -18,24 +18,25 @@ final class ResponsiveAndAccessibilityTests: XCTestCase {
                       "the unmeasured initial state never suppresses the panel")
     }
 
-    /// Workbench W-6 / audit Slice 4 — three regimes: collapsed strip below
-    /// 900, a top-trailing overlay through 1,099, a docked third column from
-    /// 1,100 up. Docking never changes when the inspector collapses.
+    /// P3D — three regimes: collapsed strip below 900, a bounded overlay through
+    /// 1,179, and the wider 340-pt worker canvas docked from 1,180 up.
     func testInspectorDocksOnlyAtFullThirdColumnWidth() {
         XCTAssertFalse(ResponsiveLayoutPolicy.inspectorDocks(chatAreaWidth: 899),
                        "collapsed regime: the inspector does not dock")
-        XCTAssertFalse(ResponsiveLayoutPolicy.inspectorDocks(chatAreaWidth: 1099),
+        XCTAssertFalse(ResponsiveLayoutPolicy.inspectorDocks(chatAreaWidth: 1179),
                        "overlay regime: below the dock threshold the panel overlays")
-        XCTAssertTrue(ResponsiveLayoutPolicy.inspectorDocks(chatAreaWidth: 1100),
+        XCTAssertTrue(ResponsiveLayoutPolicy.inspectorDocks(chatAreaWidth: 1180),
                       "dock regime: a real third column once both surfaces fit at full width")
         XCTAssertTrue(ResponsiveLayoutPolicy.inspectorDocks(chatAreaWidth: 1200),
                       "default 1440×900 chat area (1440 − 240 sidebar) docks")
-        XCTAssertEqual(ResponsiveLayoutPolicy.inspectorDockMinimumChatWidth, 1100)
+        XCTAssertEqual(ResponsiveLayoutPolicy.inspectorDockMinimumChatWidth, 1180)
+        XCTAssertEqual(ResponsiveLayoutPolicy.activityCanvasWidth, 340)
         // Docking must leave the transcript above its readable minimum.
         XCTAssertGreaterThanOrEqual(
-            ResponsiveLayoutPolicy.inspectorDockMinimumChatWidth - 284,
+            ResponsiveLayoutPolicy.inspectorDockMinimumChatWidth
+                - Double(ResponsiveLayoutPolicy.activityCanvasWidth) - 24,
             ResponsiveLayoutPolicy.conversationReadableMinimum,
-            "1,100 − (260-pt panel + padding) keeps the reading column readable"
+            "1,180 − (340-pt canvas + padding) keeps the reading column readable"
         )
     }
 
@@ -82,12 +83,12 @@ final class ResponsiveAndAccessibilityTests: XCTestCase {
             "unmeasured initial state docks, matching the default window"
         )
         XCTAssertEqual(
-            ResponsiveLayoutPolicy.inspectorPlacement(chatAreaWidth: 1099, current: docked),
+            ResponsiveLayoutPolicy.inspectorPlacement(chatAreaWidth: 1179, current: docked),
             docked,
-            "once docked, a 1-pt dip below 1,100 must not undock"
+            "once docked, a 1-pt dip below 1,180 must not undock"
         )
         XCTAssertEqual(
-            ResponsiveLayoutPolicy.inspectorPlacement(chatAreaWidth: 1083, current: docked),
+            ResponsiveLayoutPolicy.inspectorPlacement(chatAreaWidth: 1163, current: docked),
             overlay,
             "docking yields only after the 16-pt hysteresis band"
         )
@@ -106,9 +107,9 @@ final class ResponsiveAndAccessibilityTests: XCTestCase {
             "widening from the strip still uses the raw 900-pt enter threshold"
         )
         XCTAssertEqual(
-            ResponsiveLayoutPolicy.inspectorPlacement(chatAreaWidth: 1100, current: overlay),
+            ResponsiveLayoutPolicy.inspectorPlacement(chatAreaWidth: 1180, current: overlay),
             docked,
-            "widening from overlay still uses the raw 1,100-pt enter threshold"
+            "widening from overlay still uses the raw 1,180-pt enter threshold"
         )
     }
 
@@ -139,6 +140,10 @@ final class ResponsiveAndAccessibilityTests: XCTestCase {
                       "both mounts share the one inspector instance")
         XCTAssertTrue(chatView.contains("activityInspectorCollapsedStrip()"),
                       "below 900 the open inspector collapses instead of hiding")
+        XCTAssertTrue(chatView.contains("grok-worker-activity-collapsed"),
+                      "the narrow control is named as worker activity")
+        XCTAssertTrue(chatView.contains("Workers \\(count)"),
+                      "the narrow control exposes the exact worker count")
         XCTAssertTrue(chatView.contains("accessibilityLabel(\"Run inspector\")"),
                       "header menu speaks Run inspector")
         XCTAssertTrue(chatView.contains(".menuIndicator(.hidden)"),

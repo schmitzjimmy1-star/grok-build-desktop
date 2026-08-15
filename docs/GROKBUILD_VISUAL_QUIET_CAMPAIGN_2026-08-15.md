@@ -1,9 +1,9 @@
 # GrokBuild Visual Quiet Campaign — 2026-08-15
 
-Status: **Phases 1–3 plus P3C verified** (cool tokens, Path A chips,
-Codex-style overlay/quiet chrome, and composer/task-strip density). **P3D live
-activity composition is the proposed next slice and has not started.** Then
-Phase 4 accent sweep. Phases 5–6 wait.
+Status: **Phases 1–3, P3C, and P3D verified** (cool tokens, Path A chips,
+Codex-style overlay/quiet chrome, composer/task-strip density, and live activity
+composition). **Phase 4 accent sweep is proposed and not authorized.** Phases
+5–6 wait.
 Leftover `ChatView` split stays deferred.
 
 This is a **product visual** campaign. It is **not** leftover Phase 3
@@ -409,7 +409,7 @@ protected OK-F remains, and two post-quit process-zero samples passed.
 
 ---
 
-### P3D — Live activity composition (proposed next)
+### P3D — Live activity composition (accepted 2026-08-15)
 
 Jimmy's installed agentic packet exposed two presentation truths. The full-width
 `ThreadRunSpineView` **Run / Working / Run inspector** card repeats the task strip,
@@ -437,6 +437,38 @@ rows in a 260-point receipt rail, visually tucked away from the work they owned.
   accessibility contracts; then full `make test` and clean candidate/merged ship.
 - Fresh two-worker `GB-VQ-P3D-<UTC>` packet under 200k. Capture workers running and
   settled in Light and Dark, plus wide/mid/narrow behavior and exact cleanup.
+
+**Receipt**
+
+- PR #107 carries code/test commit
+  `2e1deb7e2d135a007334096e5deace53a409dc6f`. `ChatStore`, `GrokProcess`, ACP,
+  routing, credentials, Settings layout, accent tokens, and structural extraction
+  stayed untouched.
+- The live `ThreadRunSpineView` is no longer mounted. The 340-point worker canvas
+  docks at 1,180 points and above, overlays from 900..<1,180, and collapses to a
+  named/count strip below 900. Worker faces show one assignment, one status, and
+  only a genuinely distinct current action; the raw parent request and exact
+  parent/spawn/child/model/usage/tool receipts stay behind disclosures.
+- A completed child with a failed or unreconciled typed child-tool receipt renders
+  **Needs Review**, never green completion. Tool titles, statuses, and settled
+  output were lifted out of low-contrast Light-mode gray.
+- Focused tests passed 61/61; full candidate `make ship` passed 897/897 and
+  installed exact `2e1deb7`, `dirty=false`, with dist/install parity, Team
+  `DD2GCQJVB4`, deep/strict signing, and no quarantine.
+- Installed Computer Use proved compact four-worker settled Light, two-worker live
+  and settled Dark, a full-width left sidebar beside the right worker canvas,
+  responsive dock/overlay/collapse, readable tool receipts, and no duplicate live
+  Run card. The successful Dark packet returned exactly `GB_VQ_P3D_DARK_OK`.
+- The stop packet settled as **Stopped by you**: OMEGA was **Cancelled**, SIGMA
+  was **No final report (orphaned)**, and both remained visible as needing review.
+- Five paid parents consumed 16,055 + 65,740 + 146,210 + 33,288 incomplete-stop +
+  97,344 = **358,637** reported tokens. The ordered-tool and four-worker packets
+  obeyed their tool/coordination contracts but emitted one progress sentence before
+  their exact token, so final-only prose is honestly partial.
+- Exact Close Session removed five local tabs and parent backends; eight validated
+  child directories moved recoverably to Trash. Active marker files are zero,
+  `prompt_history.jsonl` was not edited, and protected OK-F/backend
+  `019ffdad-0d4f-7f42-a429-7ac12ad8198d` remain.
 
 ---
 

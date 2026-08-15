@@ -629,9 +629,9 @@ struct ChatView: View {
         }
     }
 
-    /// The one Run inspector instance. Workbench W-6 mounts it as a top-trailing
-    /// overlay in the mid band, a docked third column when wide enough, or a
-    /// collapsed trailing strip below the fit threshold — same panel and state.
+    /// P3D's one live activity canvas. It docks only when the full worker cards
+    /// leave a readable transcript, overlays in the middle band, and collapses
+    /// to a named/count control below the fit threshold.
     private func activityInspector(docked: Bool) -> some View {
         ActivitySidebar(
             snapshot: activitySnapshot,
@@ -654,7 +654,7 @@ struct ChatView: View {
             onRevealArtifact: onRevealArtifact,
             inspector: contextInspectorModel
         )
-        .frame(width: docked ? 260 : nil)
+        .frame(width: ResponsiveLayoutPolicy.activityCanvasWidth)
         .padding(.top, 12)
         .padding(.trailing, docked ? 0 : 12)
         .padding(.bottom, 12)
@@ -691,7 +691,7 @@ struct ChatView: View {
                     .accessibilityHidden(true)
             }
 
-            Text("Run")
+            Text(collapsedActivityLabel)
                 .font(AppTheme.Typography.captionStrong)
                 .foregroundStyle(.secondary)
                 .rotationEffect(.degrees(-90))
@@ -700,23 +700,29 @@ struct ChatView: View {
 
             Spacer(minLength: 0)
         }
-        .frame(width: 40)
+        .frame(width: 52)
         .padding(.vertical, 12)
         .frame(maxHeight: .infinity)
         .background(AppTheme.Palette.sidebar)
         .overlay(alignment: .leading) { Divider() }
         .accessibilityElement(children: .contain)
-        .accessibilityLabel("Run inspector collapsed")
+        .accessibilityLabel("Worker activity collapsed")
         .accessibilityValue(activityEvidenceAccessibilityValue)
         .accessibilityHint("Widen the window to restore the full run inspector.")
-                    .accessibilityIdentifier("grok-run-inspector-collapsed")
+        .accessibilityIdentifier("grok-worker-activity-collapsed")
         .transition(.move(edge: .trailing).combined(with: .opacity))
     }
 
+    private var collapsedActivityLabel: String {
+        let count = store.liveRunEvidenceProjection?.workers.count
+            ?? activitySnapshot?.workers.count
+            ?? 0
+        return count > 0 ? "Workers \(count)" : "Run"
+    }
+
     var body: some View {
-        // Codex parity Slice 2 / audit Slice 4: the Run inspector overlays only in
-        // the mid band (900..<1,100 pt chat area). At ≥1,100 pt it docks as a
-        // real third column; below 900 an open panel collapses to a trailing strip.
+        // P3D: the worker activity canvas overlays in the mid band
+        // (900..<1,180 pt chat area), docks at ≥1,180, and collapses below 900.
         HStack(alignment: .top, spacing: 0) {
         ZStack(alignment: .topTrailing) {
             VStack(spacing: 0) {
@@ -804,9 +810,7 @@ struct ChatView: View {
                                             && msg.id == store.streamingMessageID
                                             && store.liveRunEvidenceProjection == nil
                                             && store.isGrokking,
-                                        containsPlanSpine: msg.role == .assistant
-                                            && msg.id == store.streamingMessageID
-                                            && store.liveRunEvidenceProjection != nil
+                                        containsPlanSpine: false
                                     )
                                 )
                             ) { identifiedBlock in
@@ -827,17 +831,7 @@ struct ChatView: View {
                                 case .toolActivity:
                                     assistantToolDetails(message: msg, useLiveTrace: hasLiveTools)
                                 case .planSpine:
-                                    if let live = store.liveRunEvidenceProjection {
-                                        ThreadRunSpineView(
-                                            live: live,
-                                            snapshot: nil,
-                                            checkpoint: nil,
-                                            settledTools: [],
-                                            workspace: store.currentWorkspace?.path,
-                                            onOpenActivity: { setActivitySidebarVisible(true) },
-                                            onRevealArtifact: onRevealArtifact
-                                        )
-                                    }
+                                    EmptyView()
                                 case .liveProgress:
                                     liveProgressControl
                                 case .answer:
@@ -1109,15 +1103,15 @@ struct ChatView: View {
                 .focusSection()
             }
 
-            // Slice 7 responsive order: below 900 the inspector collapses to a
-            // trailing strip; 900..<1,100 overlays; ≥1,100 docks. The user's
+            // P3D responsive order: below 900 the activity canvas collapses to a
+            // named strip; 900..<1,180 overlays; ≥1,180 docks. The user's
             // open state is preserved so widening restores the full panel.
             if showActivitySidebar, inspectorPlacement == .overlay {
                 activityInspector(docked: false)
             }
         }
 
-        // Workbench W-6 / audit Slice 4: at ≥1,100 pt the open inspector is a
+        // P3D: at ≥1,180 pt the open activity canvas is a
         // real third column — same panel and state, no overlap with the transcript.
         if showActivitySidebar, inspectorPlacement == .dockedColumn {
             activityInspector(docked: true)
@@ -1130,7 +1124,7 @@ struct ChatView: View {
         }
         // W-6: the measurement wraps the whole chat area including the docked
         // column — measuring only the transcript stack would shrink the width
-        // at the moment of docking and oscillate across the 1,100-pt threshold.
+        // at the moment of docking and oscillate across the 1,180-pt threshold.
         // 2026-08-14: also ignore sub-point jitter and apply hysteresis so a
         // committed width cannot flip overlay/dock/strip every frame.
         .onGeometryChange(for: Double.self) { proxy in
