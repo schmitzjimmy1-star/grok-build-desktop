@@ -1,9 +1,10 @@
 # GrokBuild Visual Quiet Campaign — 2026-08-15
 
-Status: **Phases 1–3, P3C, and P3D verified** (cool tokens, Path A chips,
-Codex-style overlay/quiet chrome, composer/task-strip density, and live activity
-composition). **Phase 4 accent sweep is authorized and in progress, with billable
-acceptance capped at 2.5 million reported tokens.** Phases 5–6 wait.
+Status: **Phases 1–4, P3C, and P3D verified** (cool tokens, Path A chips,
+Codex-style overlay/quiet chrome, composer/task-strip density, live activity
+composition, and the semantic accent sweep). Phase 4 used **330,658** reported
+parent tokens against its 2.5 million cap and merged as `d62a396` in PR #109.
+Phases 5–6 wait for explicit authorization.
 Leftover `ChatView` split stays deferred.
 
 This is a **product visual** campaign. It is **not** leftover Phase 3

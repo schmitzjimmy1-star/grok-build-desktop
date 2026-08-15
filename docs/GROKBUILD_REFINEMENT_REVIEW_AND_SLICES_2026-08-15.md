@@ -1,9 +1,9 @@
 # GrokBuild refinement review and remaining slices — 2026-08-15
 
-Status: **Slices 0–2 complete; Slice 3 proposed and not started**. P3D is merged
-as `1e11be2` in PR #107, its five bounded billable receipts are ledgered, and
-only their exact parent/child sessions were removed. The semantic accent sweep
-is next but remains unauthorized.
+Status: **Slices 0–3 complete; Slice 4 proposed and not started**. The semantic
+accent sweep merged as `d62a396` in PR #109 after installed Light, Dark,
+tool-use, and four-worker acceptance; only its exact parent/child sessions were
+removed. Icon and bundle work remains unauthorized.
 
 ## Verdict
 
@@ -257,6 +257,15 @@ orange styling.
 - Focused status-semantics and chrome tests, then `make test` and `make ship`
 - New-chat marker `GB-VQ-P4-<UTC>` → exactly `GB_VQ_P4_OK`; prove Light and Dark,
   selected controls, warning controls, and inspector states before exact cleanup
+
+**Completion receipt**
+
+PR #109 merged the semantic sweep as `d62a396`; focused tests passed 4/4 and
+merged-main `make ship` passed 901/901 with clean signed install identity. The
+Light, Dark, ordered-tool, and four-worker packet used 330,658 reported parent
+tokens, exposed and fixed one AppKit accent leak, and left failed/retry evidence
+truthful. Only the two exact parents and four child backends were removed; the
+recovery packet, durable prompt history, and protected OK-F task remain.
 
 **Three-sentence handoff after completion**
 
