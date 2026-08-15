@@ -32,5 +32,6 @@ SwiftPM windowed macOS app — UI for `grok agent stdio`, not a replacement for 
 - `BUILDING.md` — build, sign, release
 - `README.md` — user-facing features
 - `docs/OUTSTANDING.md` — current campaign ledger and Gates A–H
-- `docs/GROKBUILD_LEFTOVER_CLOSEOUT_2026-08-15.md` — current leftover closeout
+- `docs/GROKBUILD_LEFTOVER_CLOSEOUT_2026-08-15.md` — leftover closeout (Phases 1–2 merged; Phase 3 ChatView split deferred)
+- `docs/GROKBUILD_VISUAL_QUIET_CAMPAIGN_2026-08-15.md` — Visual Quiet campaign (P1–P2 verified; next is P3 header/composer density; not leftover Phase 3)
 - `docs/GROKBUILD_AGENTIC_COCKPIT_CAMPAIGN_2026-08-15.md` — closed Agentic Cockpit campaign (Phase 2 deferred as leftover Phase 3)

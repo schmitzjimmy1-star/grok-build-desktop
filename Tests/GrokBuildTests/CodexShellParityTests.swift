@@ -243,11 +243,13 @@ final class CodexShellParityTests: XCTestCase {
         XCTAssertTrue(chatView.contains("welcomeState"),
                       "Red-baseline inventory: the welcome state still exists")
         XCTAssertTrue(chatView.contains("WorkbenchIntent.defaults"),
-                      "Red-baseline inventory: the Ask/Build/Review intent pills still render")
-        XCTAssertTrue(chatView.contains("Text(\"Grok agent runs in this folder.\")"),
-                      "empty New chat names the selected folder as the grok agent cwd")
-        XCTAssertTrue(chatView.contains("Text(item.detail)"),
-                      "Ask/Build/Review pills show their outcome copy on canvas")
+                      "Red-baseline inventory: the Ask/Build/Review intent chips still render")
+        XCTAssertFalse(chatView.contains("Text(\"Grok agent runs in this folder.\")"),
+                       "Visual Quiet Path A dropped the redundant folder-as-cwd line")
+        XCTAssertFalse(chatView.contains("Text(item.detail)"),
+                       "Ask/Build/Review chips keep outcome copy in accessibility, not card paragraphs")
+        XCTAssertTrue(chatView.contains("accessibilityLabel(\"\\(item.title). \\(item.detail)\")"),
+                      "VoiceOver still hears the Ask/Build/Review outcome copy")
         XCTAssertFalse(chatView.contains("Text(\"Recent tasks\")"),
                        "W-3 recent-task dashboard must not return to the empty canvas")
         XCTAssertTrue(chatView.contains("private var showsTaskContextStrip"),

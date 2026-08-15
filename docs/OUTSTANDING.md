@@ -29,21 +29,85 @@
 > User conversations, historical acceptance evidence, unnamed sessions that were not
 > created by the current slice, and unrelated browser/app state are protected.
 >
-> **Current campaign:** 2026-08-15 leftover closeout —
-> [`docs/GROKBUILD_LEFTOVER_CLOSEOUT_2026-08-15.md`](GROKBUILD_LEFTOVER_CLOSEOUT_2026-08-15.md).
-> Phases 1–2 complete on `codex/grokbuild-leftover-p1-truth` and awaiting
-> merge. ChatView decomposition remains leftover Phase 3 and must not start
-> here. Install path is `make ship` on this Mac.
+> **Current campaign:** 2026-08-15 Visual Quiet —
+> [`docs/GROKBUILD_VISUAL_QUIET_CAMPAIGN_2026-08-15.md`](GROKBUILD_VISUAL_QUIET_CAMPAIGN_2026-08-15.md).
+> Phases 1–2 (cool tokens + Path A welcome chips) verified on
+> `codex/grokbuild-vq-p1-p2-tokens-welcome` and publishing. **Next is Phase 3**
+> (header + composer density), then Phase 4 accent sweep. Leftover closeout
+> Phases 1–2 are merged on `main` as `7a3006d` (PR #102). Leftover Phase 3
+> (`ChatView` split) stays deferred. Install path is `make ship` on this Mac.
 >
 > Prior campaigns: 2026-08-14 Residual Closeout (Phases 0–6) complete and merged as `4613bde` (PR #94);
 > 2026-08-13 campaign (Slices 0–7) closed at merge `c0895ee` (PR #86).
 
-## Leftover closeout — 2026-08-15 (Phases 1–2 complete, awaiting merge)
+## Visual Quiet — 2026-08-15 (Phases 1–2 verified, publishing)
+
+Authorized spec is
+[`docs/GROKBUILD_VISUAL_QUIET_CAMPAIGN_2026-08-15.md`](GROKBUILD_VISUAL_QUIET_CAMPAIGN_2026-08-15.md).
+Branch `codex/grokbuild-vq-p1-p2-tokens-welcome`. Phase 1 cools Light/Dark
+tokens and adds `warning` / `link`. Phase 2 Path A keeps Ask/Build/Review as
+compact chips. **Next is Phase 3** (header + composer density). This is not
+leftover Phase 3.
+
+### Visual Quiet Phases 1–2 receipt — 2026-08-15
+
+Gate A: clean `main == personal/main` at `7a3006d`, leftover Phases 1–2 already
+merged (PR #102). Canonical worktree, `personal` =
+`schmitzjimmy1-star/grok-build-desktop`, `origin` read-only.
+
+Gate B: branch `codex/grokbuild-vq-p1-p2-tokens-welcome`.
+
+Scope:
+
+- `GrokBuild/AppTheme.swift` — cool-neutral Light canvas/sidebar/hover
+  (`#F5F5F7` family, B ≥ R) and cool Dark ink (`0.07, 0.07, 0.075`). New
+  unused `warning` / `link` tokens for Phase 4.
+- `GrokBuild/Views/ChatView.swift` — Path A welcome: 24 pt brand mark,
+  `AppTheme.Typography.heading`, no folder-cwd line, 24 pt vertical padding,
+  Ask/Build/Review as icon+title chips. Detail stays in
+  `accessibilityLabel` / `help`. Spawn-on-Send unchanged.
+- Tests: `SettingsTabTests` cool-canvas + token source asserts;
+  `WorkbenchIntentTests` and `CodexShellParityTests` pin chips without
+  on-canvas detail paragraphs.
+- Docs: this ledger, the Visual Quiet spec, `ARCHITECTURE.md`, `README.md`,
+  `AGENTS.md`, project rules.
+
+Gate C: `make test` **892 tests, 0 failures**. Candidate `make ship` to
+`/Applications/GrokBuild.app`: stamp `7a3006d` == HEAD, `dirty=true`
+(expected), SHA-256
+`2c30bbd23f86f4ad0018a06f14633e4d47dfcc9bdd609f1eb814d4cee029b898`, Team
+`DD2GCQJVB4`, deep/strict PASS, no quarantine.
+
+Computer Use against `/Applications/GrokBuild.app` only. Settings → App:
+version `0.1.22`, `Personal • codex/grokbuild-vq-p1-p2-tokens-welcome @
+7a3006d7 (dirty)`. Dark canvas `(15, 15, 16)`, Light canvas `(243, 242, 245)`
+(B > R). Chips stay visible on Light stone; no extra chip border. Composer
+still says **Describe a task**. Restored OK-F shows LaunchSessionChoices, not
+Ask/Build/Review. Appearance restored to Dark and Applied.
+
+Billable packets, new chats only, ceiling 200k, not OK-F:
+
+- Marker `GB-VQ-P1-20260815T120806Z` → exact `GB_VQ_P1_OK`. Thought 1s. No
+  tool list. Settled. Live Grok 4.6. Backend
+  `01a00552-ca05-7e60-b3a8-ebc085eec7ab`.
+- Marker `GB-VQ-P2-20260815T120900Z` → exact `GB_VQ_P2_OK`. Thought 1s. No
+  tool list. Settled. Live Grok 4.6. Backend
+  `01a00553-a0de-7c33-a4ba-3f5c2040eeb5`.
+
+Gate F: Close Session on those two tabs only. Both backends already gone
+after close. `grok sessions search GB-VQ-P1` and `GB-VQ-P2` are Total: 0.
+Protected OK-F is selected again. Aug 14 `(no summary)`
+`019ffdad-0d4f-7f42-a429-7ac12ad8198d` still Total: 1. Never Clear Empty.
+
+Landing README screenshots were not recaptured; the chip wording in
+`README.md` is current. Phase 3 owns header labels and composer glass.
+
+## Leftover closeout — 2026-08-15 (Phases 1–2 merged)
 
 Authorized spec is
 [`docs/GROKBUILD_LEFTOVER_CLOSEOUT_2026-08-15.md`](GROKBUILD_LEFTOVER_CLOSEOUT_2026-08-15.md).
-Do not start leftover Phase 3 (`ChatView` split) or Phase 4 optional
-architecture from this header.
+Merged as `7a3006d` (PR #102). Do not start leftover Phase 3 (`ChatView`
+split) or Phase 4 optional architecture from this header.
 
 ### Leftover Phase 1 — Ledger truth, dead stub, notarize-doc poison (complete)
 
@@ -5325,13 +5389,14 @@ them:
 
 ## One-sentence new-session handoff
 
-Leftover closeout Phases 1–2 are complete and awaiting merge
-([`docs/GROKBUILD_LEFTOVER_CLOSEOUT_2026-08-15.md`](GROKBUILD_LEFTOVER_CLOSEOUT_2026-08-15.md)).
-Do not start leftover Phase 3 (`ChatView` split) or Phase 4 optional architecture
-unless Jimmy explicitly authorizes them. Re-derive canonical repository and
-installed-app identity before any future work, and preserve the upstream Grok CLI
-session visibility/deletion gap without inventing a GrokBuild-side workaround or
-deletion proof.
+Visual Quiet is proposed and not started
+([`docs/GROKBUILD_VISUAL_QUIET_CAMPAIGN_2026-08-15.md`](GROKBUILD_VISUAL_QUIET_CAMPAIGN_2026-08-15.md)).
+Leftover closeout Phases 1–2 are merged as `7a3006d` (PR #102). Do not start
+leftover Phase 3 (`ChatView` split) unless Jimmy explicitly authorizes it, and
+do not treat that split as the visual campaign. Re-derive canonical repository
+and installed-app identity before any future work, and preserve the upstream
+Grok CLI session visibility/deletion gap without inventing a GrokBuild-side
+workaround or deletion proof.
 
 ## Hard stop conditions
 

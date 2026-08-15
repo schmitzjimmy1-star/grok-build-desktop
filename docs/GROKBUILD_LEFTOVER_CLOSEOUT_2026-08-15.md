@@ -1,7 +1,9 @@
 # GrokBuild leftover closeout — 2026-08-15
 
-Status: **Phases 1–2 complete, awaiting merge.** Phase 3 (`ChatView` split)
-stays deferred. Phase 4 waits for a new campaign.
+Status: **Phases 1–2 merged on `main` as `7a3006d` (PR #102).** Phase 3
+(`ChatView` split) stays deferred. Visual Quiet is a **new** campaign in
+[`docs/GROKBUILD_VISUAL_QUIET_CAMPAIGN_2026-08-15.md`](GROKBUILD_VISUAL_QUIET_CAMPAIGN_2026-08-15.md),
+not leftover Phase 3.
 
 This is the leftover list after three senior-engineer audits of the personal
 line. It exists so we can finish what we actually wanted without treating
@@ -68,6 +70,8 @@ Use Settings → App, one billable no-tool marker, Gate F. Jimmy confirmed
 ### Phase 3 — ChatView decomposition (only if re-authorized)
 
 This is the only remaining **product** slice from C9. Jimmy skipped it once.
+Visual Quiet is a different campaign and must not be used as cover to start
+this split.
 
 Extract `TopBarView.swift`, `ComposerBarView.swift`, and `WelcomeStateView.swift`
 from `ChatView.swift`. Preserve AX ids and source-contract tests. No visual

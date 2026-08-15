@@ -57,7 +57,7 @@ Note: the MCP registered in Cursor is **not** the same process the grok agent us
 | Dev workflow, make targets, testing | `.cursor/skills/grokbuild-dev/SKILL.md` |
 | Agent-facing bundled skill behavior | `GrokBuild/Resources/Skills/*/SKILL.md` |
 | Agent entry / repo conventions | `AGENTS.md` |
-| Campaign slice scope, Gates A–H, ledger | `docs/OUTSTANDING.md`, `docs/GROKBUILD_LEFTOVER_CLOSEOUT_2026-08-15.md` |
+| Campaign slice scope, Gates A–H, ledger | `docs/OUTSTANDING.md`, `docs/GROKBUILD_VISUAL_QUIET_CAMPAIGN_2026-08-15.md`, leftover closeout for closed Phases 1–2 |
 
 `ARCHITECTURE.md` is the canonical internal reference — keep it accurate when structure or data flow changes.
 
