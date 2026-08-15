@@ -1,0 +1,135 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "grokbuild-acceptance-manifest-v1",
+  "title": "GrokBuild agentic acceptance manifest",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "runId",
+    "anomalyCeilingActualTokens",
+    "effort",
+    "parentAgent",
+    "forbiddenToolsDefault",
+    "packets"
+  ],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "runId": { "type": "string", "minLength": 1 },
+    "anomalyCeilingActualTokens": { "const": 1500000 },
+    "effort": { "const": "low" },
+    "parentAgent": { "const": "default" },
+    "forbiddenToolsDefault": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 },
+      "contains": { "const": "update_plan" }
+    },
+    "packets": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/packet" }
+    }
+  },
+  "$defs": {
+    "packet": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "marker",
+        "prompt",
+        "model",
+        "routeKind",
+        "effort",
+        "parentAgent",
+        "allowedTools",
+        "requiredTools",
+        "forbiddenTools",
+        "orderedGroups",
+        "parallelGroups",
+        "childTopology",
+        "checkpointCount",
+        "turnCount",
+        "continuation",
+        "explicitRetryBoundary",
+        "expectedReceiptClasses",
+        "cleanupIdentities"
+      ],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "marker": { "type": "string", "minLength": 1 },
+        "prompt": { "type": "string", "minLength": 1 },
+        "model": { "type": "string", "minLength": 1 },
+        "routeKind": {
+          "type": "string",
+          "enum": ["nativeXAI", "direct", "openrouterPinned"]
+        },
+        "effort": { "const": "low" },
+        "parentAgent": { "const": "default" },
+        "allowedTools": { "type": "array", "items": { "type": "string" } },
+        "requiredTools": { "type": "array", "items": { "type": "string" } },
+        "forbiddenTools": { "type": "array", "items": { "type": "string" } },
+        "orderedGroups": {
+          "type": "array",
+          "items": { "type": "array", "items": { "type": "string" } }
+        },
+        "parallelGroups": {
+          "type": "array",
+          "items": { "type": "array", "items": { "type": "string" } }
+        },
+        "childTopology": {
+          "type": ["object", "null"],
+          "additionalProperties": false,
+          "required": ["count", "roles", "collection"],
+          "properties": {
+            "count": { "const": 2 },
+            "roles": {
+              "type": "array",
+              "minItems": 2,
+              "maxItems": 2,
+              "items": { "type": "string", "enum": ["LEFT", "RIGHT"] }
+            },
+            "collection": { "const": "wait_all" }
+          }
+        },
+        "checkpointCount": { "type": "integer", "minimum": 1 },
+        "turnCount": { "type": "integer", "minimum": 1 },
+        "continuation": {
+          "type": ["object", "null"],
+          "additionalProperties": false,
+          "required": ["group", "turn", "of", "resumeAfterQuit"],
+          "properties": {
+            "group": { "type": "string" },
+            "turn": { "type": "integer", "minimum": 1 },
+            "of": { "type": "integer", "minimum": 1 },
+            "resumeAfterQuit": { "type": "boolean" }
+          }
+        },
+        "explicitRetryBoundary": {
+          "type": ["object", "null"],
+          "additionalProperties": false,
+          "required": ["tool", "failedThenSucceeded"],
+          "properties": {
+            "tool": { "type": "string" },
+            "failedThenSucceeded": { "type": "boolean" }
+          }
+        },
+        "expectedReceiptClasses": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "type": "string" }
+        },
+        "cleanupIdentities": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["tabId", "backendId", "childIds"],
+          "properties": {
+            "tabId": { "type": ["string", "null"] },
+            "backendId": { "type": ["string", "null"] },
+            "childIds": { "type": "array", "items": { "type": "string" } }
+          }
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,5 @@
+{
+  "kind": "manifest",
+  "expect": "reject",
+  "reason": "duplicate marker"
+}

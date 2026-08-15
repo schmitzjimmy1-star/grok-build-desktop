@@ -17,6 +17,71 @@
 > User conversations, historical acceptance evidence, unnamed sessions that were not
 > created by the current slice, and unrelated browser/app state are protected.
 
+## Slice 5 — first-class agentic acceptance harness (in progress, 2026-08-14)
+
+Closeout three-route `20260814T235900Z` on signed installed `e41aff2` /
+`dirty=false` / Team `DD2GCQJVB4` evaluated five accepted packets, 197,468
+actual tokens. OpenRouter CONT T3 after quit/relaunch/Resume-then-Send stayed
+on local tab `06DB0A92-4127-4605-851D-A3AFC8295385` / backend
+`01a002b7-8531-7340-b2b2-3bdce44efbad` (same as T1/T2, process generation 1,
+12,952 / 30 / 12,982 tokens) and replied
+`GB-S5-OR41-CONT-T3-20260814T235900Z-T3 KITE-17|RECOVERED`. NAT46 CH2 used tab
+`4CDA0A25-C0B8-4506-9D33-F77BEC04D96A` / backend
+`01a002b7-0523-7e80-92bf-5d695c3d8cbe` with children
+`01a002b7-15cc-75e0-8efb-be93708fad3e` and
+`01a002b7-15ce-7a42-8dbf-22c227ee4d89`. Luna ORD3 used tab
+`6763C30B-2975-4EF8-8767-DB759CE82826` / backend
+`01a002b7-4854-7cf1-976a-18bc8f2dbb1d`. Exact Close Session removed the three
+ledgered tabs; parent backends were already absent; leftover child dirs were
+removed by those exact IDs. Installed Computer Use on `/Applications/GrokBuild.app`
+showed New chat Ask/Build/Review with **Send message**, and a restored empty-hydrate
+tab **Loading saved conversation…** plus **Resume current task** / **Send and
+resume session**. Slice 4 Trash bundles remain. Protected config SHA-256
+`2cb4dcdaf0f1841aab54fb2ae10586381ca78b560eb9fc0477efb521e92140ae` (2,894 bytes,
+mode `0600`) is unchanged; cwd-scoped `prompt_history.jsonl` grew with composer
+residue only (post-closeout SHA-256
+`49c3568d93302263ba05f8925214cff4d497abd1aecbed1c9472eb37f13d8782`, 118,289 bytes,
+mode `0644`). Process-zero samples at `2026-08-14T19:02:12-0500` and
+`19:02:17-0500`. Dist/installed SHA-256
+`a9e5b4a6ce8e431c221fd103b3e3c658ef8d10679796a891ba82e8272c1b6016`.
+
+Earlier harness-only T3 on `e92885d` used run `20260814T225910Z` (197,960 tokens)
+and must not be reused as closeout markers.
+
+Gate D is authorized. Product resume honesty (welcome/LaunchSessionChoices gated
+on `isResumedSessionTab`) shipped in `e41aff2`. Do not reuse `20260814T225910Z`
+or `20260814T235900Z` markers.
+
+Authorized scope is the documented harness in
+`docs/GROKBUILD_VERIFICATION_AND_FORWARD_SLICES_2026-08-13.md`. Gate A started from
+clean canonical `main == personal/main == bbff38345935cbf8c7d39f7c46bf1605e3fc9339`
+(tree `eee9c9240e510b71674f024559d37f22b36b8090`), installed stamp equal to that
+commit with `dirty=false`, signed Team `DD2GCQJVB4`, matching dist/installed
+SHA-256 `b9a8649bfc40bffefb55271e0bd3e64e63d49443225de69f38ac68b40eb5b113`, Grok CLI
+`1.0.3 (1a29d5bc12d4) [stable]`, empty observation key, and two process-zero samples
+at `2026-08-14T17:19:11-0500` and `17:19:28-0500`. Origin remains untouched
+(`433ddf86`). Protected config SHA-256
+`2cb4dcdaf0f1841aab54fb2ae10586381ca78b560eb9fc0477efb521e92140ae` (2,894 bytes, mode
+`0600`) and cwd-scoped `prompt_history.jsonl` SHA-256
+`40acee352d7d1a622e9523a997e34a91e74e29574d3f3deab37d007c56d6fa7a` (112,665 bytes, mode
+`0644`) must stay unchanged except for exact Slice 5 composer-history residue.
+Recoverable Slice 4 Trash bundles
+`~/.Trash/GrokBuild-Slice4-canary-20260814T194900Z` and
+`~/.Trash/GrokBuild-Slice4-run-20260814T195756Z-OR41-CH2` are preserved.
+
+Frozen implementation paths are `scripts/acceptance/`,
+`Tests/GrokBuildTests/AcceptanceHarnessTests.swift`,
+`GrokBuild/Services/ChatStore.swift`, `GrokBuild/Views/ChatView.swift`,
+`Tests/GrokBuildTests/ACPClientContractTests.swift`,
+`Tests/GrokBuildTests/LifecycleAndSubprocessTests.swift`, `ARCHITECTURE.md`,
+`scripts/README.md`, this ledger, the forward-slices current-slice line,
+`.cursor/skills/grokbuild-dev/SKILL.md`,
+`.cursor/skills/grokbuild-grok-cli/SKILL.md`, and `.gitignore`. Dry-run is default;
+`--billable` is required for any fresh provider Send; cleanup refuses guessed IDs;
+the harness never bypasses the installed UI or fakes ACP. Slice 6, Slice 7,
+releases, tags, origin, force-push, branch deletion, and configuration changes
+remain forbidden.
+
 ## Slice 4 — observed agentic model-performance ledger (complete, 2026-08-14)
 
 Authorized scope is the local-only observation ledger in

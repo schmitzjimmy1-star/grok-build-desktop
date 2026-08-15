@@ -1,0 +1,6 @@
+{
+  "kind": "happy",
+  "expect": "accept",
+  "checkpoint": "fixture",
+  "result": "passed"
+}

@@ -9,6 +9,18 @@ description: Works with grok CLI integration in GrokBuild — auth state, versio
 
 GrokBuild is a UI shell. Core agent behavior (ACP, MCP, skills, plan mode, subagents) stays in the `grok` CLI.
 
+## Installed CLI (live, 1.0.3)
+
+Re-derived 2026-08-14 from process-zero, without printing secrets:
+
+- `grok --version` → `grok 1.0.3 (1a29d5bc12d4) [stable]`
+- `grok models` default selector is `grok-4.6` (not `grok-4.6-build`; usage already maps the `-build` alias)
+- OpenRouter catalog ids use hyphens (`openai-gpt-4.1-mini`); harness preflight also accepts slash form
+- `grok inspect --json` reports agents `general-purpose`, `explore`, `plan`; no `modes` key; `externalCompat.cells` count 13
+- Auth still prints `You are logged in with grok.com.`
+
+Do not rewrite historical 0.2.x receipts in this skill.
+
 ## Key APIs
 
 ```swift
@@ -69,7 +81,7 @@ grok owns subagent orchestration (main agent delegates to subagents in parallel;
 
 Browser tools are provided by the bundled `agent-browser` CLI (`BrowserSettings.swift`), exposed to grok as an stdio MCP server (`grokbuild-browser`) via `AgentBrowserService.browserMCPConfig`; managed or external Chromium over CDP. (grok's native `browser_tab` was evaluated and removed — it wasn't exposed to sessions in practice.)
 
-## MCP and extension Settings (installed CLI 0.2.118)
+## MCP and extension Settings (installed CLI 1.0.3)
 
 - Build MCP commands from `GrokMCPServerDraft`; never split or join a command line. Stdio uses repeated `--env KEY=value`, then `--`, executable, and each argument as its own process argument. HTTP/SSE use repeated `--header NAME: VALUE` and a validated `http`/`https` URL.
 - Scope is explicit: `--scope user` or `--scope project`; project operations require the selected workspace as `cwd`.

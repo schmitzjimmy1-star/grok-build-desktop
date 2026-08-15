@@ -1019,6 +1019,15 @@ final class ACPClientContractTests: XCTestCase {
         XCTAssertFalse(store.showsEmptyTranscriptWelcome)
         store.composerDraft = "   "
         XCTAssertTrue(store.showsEmptyTranscriptWelcome)
+
+        store.bindTabSession(
+            UUID(),
+            savedModel: "openai/gpt-4.1-mini",
+            savedGrokSessionID: "01a0-restored-backend"
+        )
+        XCTAssertTrue(store.messages.isEmpty)
+        XCTAssertTrue(store.isResumedSessionTab)
+        XCTAssertFalse(store.showsEmptyTranscriptWelcome)
         await store.shutdownPermanently()
     }
 

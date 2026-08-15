@@ -14,6 +14,37 @@ scripts/performance-ledger.sh start cold /tmp/grokbuild-s7-cold-1.jsonl
 scripts/performance-ledger.sh report /tmp/grokbuild-s7-cold-1.jsonl
 ```
 
+## Agentic acceptance harness
+
+`scripts/acceptance/run.py` is the Slice 5 first-class agentic acceptance harness.
+Dry-run is the default and prints the frozen plan without credentials or response
+bodies. Fixture mode (`--fixture`) evaluates synthetic receipts at zero provider
+cost. Fresh provider Sends require explicit `--billable` plus a UTC `--run-id`
+after installed stamp/signing/hash, CLI version, model availability, process-zero,
+marker uniqueness, and a clean test ledger. Cleanup accepts only exact IDs from
+`--ids-from-ledger` and refuses guessed identities. The harness never bypasses
+`/Applications/GrokBuild.app` or fakes ACP authority. Live driving opens that
+installed bundle only and refuses `.build` or `dist` copies if they are running.
+After quit/relaunch, continuation packets click **Resume current task** (ACP
+`session/load`, no prompt) then Send, which may be labeled **Send and resume
+session** while continuity is verifying.
+
+```bash
+python3 scripts/acceptance/run.py
+python3 scripts/acceptance/run.py --fixture scripts/acceptance/fixtures/happy-path
+python3 scripts/acceptance/run.py --billable --run-id 20260814T180000Z \
+  --ledger /tmp/grokbuild-s5-ledger.jsonl
+python3 scripts/acceptance/run.py --cleanup --ids-from-ledger /tmp/grokbuild-s5-ledger.jsonl
+```
+
+Focused tests: `swift test --filter AcceptanceHarnessTests`.
+
+| Script | Purpose |
+|--------|---------|
+| [`acceptance/run.py`](acceptance/run.py) | Versioned agentic acceptance harness. Dry-run default; `--fixture` for zero-cost rejection; `--billable` for installed-UI Sends after preflight. |
+
+## Packaging scripts
+
 | Script | Purpose |
 |--------|---------|
 | [`build-dev-app.sh`](build-dev-app.sh) | Assemble a lightweight **dev** app bundle at `.build/GrokBuild.app` from an existing SPM binary. Bundles skills, brand assets, browser MCP, install helper, and `agent-desktop`. Uses `com.grokbuild.app` so Accessibility settings match packaged builds. |
