@@ -349,6 +349,10 @@ struct ContentView: View {
         .onGeometryChange(for: Double.self) { proxy in
             proxy.size.width
         } action: { width in
+            guard ResponsiveLayoutPolicy.shouldCommitMeasuredWidth(
+                current: contentAreaWidth,
+                next: width
+            ) else { return }
             contentAreaWidth = width
         }
         .onAppear(perform: bootstrap)

@@ -39,6 +39,65 @@ final class ResponsiveAndAccessibilityTests: XCTestCase {
         )
     }
 
+    func testMeasuredWidthIgnoresSubPointJitter() {
+        XCTAssertTrue(
+            ResponsiveLayoutPolicy.shouldCommitMeasuredWidth(current: .infinity, next: 1200),
+            "the first real measurement must replace the unmeasured sentinel"
+        )
+        XCTAssertFalse(
+            ResponsiveLayoutPolicy.shouldCommitMeasuredWidth(current: 1200, next: 1200.4),
+            "sub-point jitter must not rewrite chat-area state"
+        )
+        XCTAssertTrue(
+            ResponsiveLayoutPolicy.shouldCommitMeasuredWidth(current: 1200, next: 1201),
+            "a full point of resize still commits"
+        )
+        XCTAssertFalse(
+            ResponsiveLayoutPolicy.shouldCommitMeasuredWidth(current: 1200, next: 1200),
+            "identical widths are a no-op"
+        )
+    }
+
+    func testInspectorPlacementHysteresisAvoidsThresholdOscillation() {
+        let docked = ResponsiveLayoutPolicy.InspectorPlacement.dockedColumn
+        let overlay = ResponsiveLayoutPolicy.InspectorPlacement.overlay
+        let strip = ResponsiveLayoutPolicy.InspectorPlacement.collapsedStrip
+        XCTAssertEqual(
+            ResponsiveLayoutPolicy.inspectorPlacement(chatAreaWidth: .infinity, current: overlay),
+            docked,
+            "unmeasured initial state docks, matching the default window"
+        )
+        XCTAssertEqual(
+            ResponsiveLayoutPolicy.inspectorPlacement(chatAreaWidth: 1099, current: docked),
+            docked,
+            "once docked, a 1-pt dip below 1,100 must not undock"
+        )
+        XCTAssertEqual(
+            ResponsiveLayoutPolicy.inspectorPlacement(chatAreaWidth: 1083, current: docked),
+            overlay,
+            "docking yields only after the 16-pt hysteresis band"
+        )
+        XCTAssertEqual(
+            ResponsiveLayoutPolicy.inspectorPlacement(chatAreaWidth: 899, current: overlay),
+            overlay,
+            "once overlaying, a 1-pt dip below 900 must not collapse"
+        )
+        XCTAssertEqual(
+            ResponsiveLayoutPolicy.inspectorPlacement(chatAreaWidth: 883, current: overlay),
+            strip
+        )
+        XCTAssertEqual(
+            ResponsiveLayoutPolicy.inspectorPlacement(chatAreaWidth: 900, current: strip),
+            overlay,
+            "widening from the strip still uses the raw 900-pt enter threshold"
+        )
+        XCTAssertEqual(
+            ResponsiveLayoutPolicy.inspectorPlacement(chatAreaWidth: 1100, current: overlay),
+            docked,
+            "widening from overlay still uses the raw 1,100-pt enter threshold"
+        )
+    }
+
     func testSidebarCollapsesBeforeTheTranscriptCompresses() {
         // Current minimums keep the sidebar user-controlled…
         XCTAssertTrue(ResponsiveLayoutPolicy.sidebarFits(contentWidth: 1100, sidebarWidth: 280))
@@ -50,17 +109,17 @@ final class ResponsiveAndAccessibilityTests: XCTestCase {
 
     func testInspectorRenderIsGatedByThePolicyWithStatePreserved() throws {
         let chatView = try source("GrokBuild/Views/ChatView.swift")
-        XCTAssertTrue(chatView.contains("ResponsiveLayoutPolicy.inspectorFits(chatAreaWidth: chatAreaWidth)"),
-                      "the overlay render is gated by the responsive policy")
-        XCTAssertTrue(chatView.contains("if showActivitySidebar,\n               ResponsiveLayoutPolicy.inspectorFits"),
+        XCTAssertTrue(chatView.contains("inspectorPlacement == .overlay"),
+                      "the overlay render is gated by hysteresis-backed placement")
+        XCTAssertTrue(chatView.contains("if showActivitySidebar, inspectorPlacement == .overlay"),
                       "the user's open state is preserved so widening restores the panel")
         XCTAssertTrue(chatView.contains(".onGeometryChange(for: Double.self)"),
                       "width comes from geometry observation, not polling")
-        // Workbench W-6: exactly one mount at a time — the overlay branch
-        // excludes the dock regime, and the docked column requires it.
-        XCTAssertTrue(chatView.contains("!ResponsiveLayoutPolicy.inspectorDocks(chatAreaWidth: chatAreaWidth)"),
+        XCTAssertTrue(chatView.contains("shouldCommitMeasuredWidth"),
+                      "geometry commits ignore sub-point jitter")
+        XCTAssertTrue(chatView.contains("inspectorPlacement == .dockedColumn"),
                       "the overlay stands down when the panel docks")
-        XCTAssertTrue(chatView.contains("ResponsiveLayoutPolicy.inspectorDocks(chatAreaWidth: chatAreaWidth) {\n            activityInspector(docked: true)"),
+        XCTAssertTrue(chatView.contains("inspectorPlacement == .dockedColumn {\n            activityInspector(docked: true)"),
                       "the docked column is gated by the same policy and preserved open state")
         XCTAssertTrue(chatView.contains("activityInspector(docked: false)"),
                       "both mounts share the one inspector instance")
@@ -68,6 +127,8 @@ final class ResponsiveAndAccessibilityTests: XCTestCase {
                       "below 900 the open inspector collapses instead of hiding")
         XCTAssertTrue(chatView.contains("Text(\"Run inspector\")"),
                       "header toggle speaks Run inspector")
+        XCTAssertTrue(chatView.contains(".onScrollGeometryChange(for: Bool.self)"),
+                      "scroll attachment projects a Bool so sub-point distance jitter cannot rebuild the transcript")
     }
 
     /// Slice 4 acceptance found `.menuStyle(.button)` menus ignored AXPress and
