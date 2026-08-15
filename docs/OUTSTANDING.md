@@ -80,6 +80,22 @@ output from the lazy transcript, and epsilon-gates table width. This remains the
 Slice 6 stop-the-line repair, not Slice 7. Slice 7, releases, tags, origin,
 force-push, branch deletion, and configuration changes remain forbidden.
 
+Follow-up acceptance commit `079589bbf0573cb300ead69ac7410277a67d20b9`
+passed the focused 50-test restore/layout suite and all 865 tests, then clean
+`make ship`: stamp == HEAD, `dirty=false`, dist/installed parity, Team
+`DD2GCQJVB4`, deep/strict signing, no quarantine, and installed executable
+SHA-256 `42939354d0cbc4fc88cfc9400c11c7d0f897fc8ef81b1264005fb942f02aba1`.
+Installed Computer Use restored the populated tool-heavy T1 transcript with no
+`grok` process and GrokBuild at 0.0% CPU after settle. Because that T1 tab had
+already been ledgered **Continue as New**, the transition proof used the
+preserved populated **VISUAL PASS 11/11 — STOP FLOW** tab: **Resume current
+task** replaced the three named saved-task choices with a connected-idle task
+contract and live Grok 4.5 receipt; GrokBuild and its exact `grok` child both
+sampled 0.0% CPU after four seconds and again after a twenty-second soak. No
+prompt or billable provider turn ran. Graceful app close succeeded; exact
+process-zero samples were recorded at `2026-08-14T22:05:47-0500` and
+`2026-08-14T22:05:59-0500`.
+
 ## Slice 5 — first-class agentic acceptance harness (complete, 2026-08-14)
 
 PR #74 merged reviewed head `e41aff2` (docs receipt `d47f933`) normally as
