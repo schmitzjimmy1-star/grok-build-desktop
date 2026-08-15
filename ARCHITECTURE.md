@@ -55,7 +55,7 @@ GrokBuild is a **windowed macOS project workbench** (SwiftUI + AppKit) over the 
 
 Every packaged bundle also stamps the personal build channel, source repository,
 branch, exact commit, and dirty state into `Info.plist`. `AppBuildIdentity`
-surfaces that receipt in About and Settings → App. `0.1.20` by itself is not
+surfaces that receipt in About and Settings → App. `0.1.21` by itself is not
 accepted as source identity because the maintained personal line and upstream
 can share the same marketing version.
 

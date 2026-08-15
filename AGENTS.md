@@ -53,6 +53,6 @@ Money, auth, provider routing, model selection, entitlements, and signing requir
 full receipt and explicitly authorized bounded live probes. Local UX/service changes
 still require `make test`, `make ship`, and focused installed Computer Use.
 
-Never hand-track a remembered hash or accept version `0.1.20` as identity. Re-derive
+Never hand-track a remembered hash or accept version `0.1.21` as identity. Re-derive
 all receipts live. Always retain model/route, permission, continuity, MCP discovery vs
 use, and process-generation boundaries; never invent provider fallback or success.
