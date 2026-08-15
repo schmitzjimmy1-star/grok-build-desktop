@@ -1,6 +1,6 @@
 # GrokBuild agentic-performance verification and forward slices — 2026-08-13
 
-Status: **Slices 0–6 complete at merged `150fbbe8`; Slice 7 public-evidence refresh is the current authorized slice.**
+Status: **Slices 0–7 complete.** Feature merge `4c7514f` (PR #85) sits on `main` above installed stamp `150fbbe8`; the product diff is empty. No next slice is authorized until a new session.
 
 This plan follows the canonical identity and Gates A–H in
 [`CANONICAL_WORKTREE.md`](../CANONICAL_WORKTREE.md) and
@@ -642,6 +642,14 @@ two completed children, six successful tools, and exact parent marker
 screenful now match that signed installed chrome. Parent usage was 147,946
 actual tokens; no second prompt.
 
+PR #85 merged reviewed head `7a95202` as `4c7514f` after CI run
+`31864327993`. Exact Close Session removed the visual tab and parent backend;
+unindexed child directories were moved to
+`~/.Trash/GrokBuild-Slice7-child-backends-20260815T044208Z`. Marker search
+returned zero live sessions. Settings → App still showed
+**Personal • main @ 150fbbe8**. Process-zero samples at `23:45:42` / `23:45:47`.
+This docs-only closeout does not `make ship`.
+
 ## Ideas deliberately rejected
 
 - Reimplementing ACP, MCP execution, memory, skills, plan mode, or subagents in the app.
@@ -657,11 +665,7 @@ actual tokens; no second prompt.
 
 ## Current authorized slice
 
-Execute **Slice 7 only** from the exact merged Slice 6 closeout. At session
-start, require clean `main == personal/main`, installed stamp == HEAD,
-`dirty=false`, dist/installed byte parity, Team `DD2GCQJVB4`, deep/strict
-signing, no quarantine, and two process-zero samples. Slices 0–6 are closed;
-do not rerun their provider packets or reuse their markers. Slice 7 must refresh
-signed-installed public screenshots and the README first screenful within its
-documented scope, then end every checkpoint and its final merged-main closeout
-with the mandatory three-sentence handoff.
+None. Slices 0–7 are closed at merged `4c7514f` (PR #85) with installed stamp
+ancestor `150fbbe8` and an empty product diff. Do not rerun campaign packets or
+reuse their markers. Do not start another slice from this session. A later
+session must re-derive identity live and wait for explicit new-slice authority.

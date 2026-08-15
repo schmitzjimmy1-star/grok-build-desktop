@@ -1299,7 +1299,7 @@ Prefer extending existing test files. Test pure logic without launching real `gr
 | `README.md` | User-facing features |
 | `BUILDING.md` | Signing, notarization, release CI |
 | `docs/OUTSTANDING.md` | Canonical current-slice ledger and Gates A–H |
-| `docs/GROKBUILD_VERIFICATION_AND_FORWARD_SLICES_2026-08-13.md` | Current campaign spec (Slice 7 public evidence) |
+| `docs/GROKBUILD_VERIFICATION_AND_FORWARD_SLICES_2026-08-13.md` | 2026-08-13 campaign spec (Slices 0–7 complete) |
 | `.cursor/rules/` | Architecture, SwiftUI, CLI integration, AppKit panels |
 | `.cursor/skills/grokbuild-*` | Dev workflow, release, CLI checks |
 | `GrokBuild/Resources/Skills/` | Bundled runtime skills only; the unused `grokbuild-desktop` editing skill was retired |
