@@ -567,6 +567,19 @@ and after a twenty-second soak. No prompt or billable provider turn ran.
 Graceful close left process-zero samples at
 `2026-08-14T22:05:47-0500` and `2026-08-14T22:05:59-0500`.
 
+PR [#82](https://github.com/schmitzjimmy1-star/grok-build-desktop/pull/82)
+passed GitHub **Test and Build App** run `31860976853` and merged normally as
+`092bebca132f8a2980055462d0292dd0908cbfbf`. Clean merged `main` then passed all
+865 tests and signed `make ship` with stamp == HEAD, `dirty=false`,
+dist/installed parity, Team `DD2GCQJVB4`, deep/strict signing, no quarantine,
+and installed executable SHA-256
+`b0dadd8b04b66f2e4d94b48ccb47e4894812623b2a76c42476f11dbde0872cad`.
+Computer Use against explicit `/Applications/GrokBuild.app` restored the
+populated saved task and resumed to connected idle; exact GrokBuild and `grok`
+processes remained at 0.0% CPU after four seconds and a twenty-second soak. No
+prompt ran. Graceful close left merged-main process-zero samples at
+`2026-08-14T22:20:39-0500` and `2026-08-14T22:20:47-0500`.
+
 ## Slice 7 — refresh public evidence and onboarding
 
 **Purpose:** make the repository's first impression match the product that actually

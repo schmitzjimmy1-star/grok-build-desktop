@@ -19,14 +19,15 @@
 >
 > **Current campaign slice:** Slice 6, extract coordination seams, authorized.
 > PR 1 merged as `6f2d0eb` (PR #77). PR 2 merged as `f7246f4` (PR #78).
-> PR 3 merged as `ec97b88` (PR #79). PR 4 merged as `1d7ec82` (PR #80). A
-> stop-the-line layout-loop hotfix follows after installed T1 pinned a core at
-> 100% with Run inspector open. Spec:
+> PR 3 merged as `ec97b88` (PR #79). PR 4 merged as `1d7ec82` (PR #80).
+> Inspector-layout hotfix PR #81 merged as `7730105`; restored-transcript
+> hotfix PR #82 merged as `092bebc` and passed merged-main installed acceptance.
+> Spec:
 > [`docs/GROKBUILD_VERIFICATION_AND_FORWARD_SLICES_2026-08-13.md`](GROKBUILD_VERIFICATION_AND_FORWARD_SLICES_2026-08-13.md).
 > Numbered `## Slice N` headings below the 2026-08-14 harness receipt are historical
 > campaigns. Do not implement them.
 
-## Slice 6 — extract coordination seams and replace brittle test pins (authorized, PR 1–4 merged, layout-loop hotfix, 2026-08-14)
+## Slice 6 — extract coordination seams and replace brittle test pins (authorized, PR 1–4 + hotfixes merged, 2026-08-14)
 
 Authorized scope is the Slice 6 section in
 `docs/GROKBUILD_VERIFICATION_AND_FORWARD_SLICES_2026-08-13.md`. Product identity is
@@ -95,6 +96,22 @@ sampled 0.0% CPU after four seconds and again after a twenty-second soak. No
 prompt or billable provider turn ran. Graceful app close succeeded; exact
 process-zero samples were recorded at `2026-08-14T22:05:47-0500` and
 `2026-08-14T22:05:59-0500`.
+
+PR [#82](https://github.com/schmitzjimmy1-star/grok-build-desktop/pull/82)
+then passed required GitHub **Test and Build App** run `31860976853` and merged
+reviewed head `0bcfe2f` normally as `092bebca132f8a2980055462d0292dd0908cbfbf`.
+Clean `main == personal/main` passed all 865 tests and signed `make ship`;
+stamp == HEAD, `dirty=false`, dist/installed parity, Team `DD2GCQJVB4`,
+deep/strict signing, no quarantine, and installed executable SHA-256
+`b0dadd8b04b66f2e4d94b48ccb47e4894812623b2a76c42476f11dbde0872cad`.
+Focused Computer Use then launched `/Applications/GrokBuild.app` explicitly,
+restored the populated **VISUAL PASS 11/11 — STOP FLOW** choices, and resumed to
+the connected-idle task contract. The exact installed GrokBuild process and its
+exact `grok` child both sampled 0.0% CPU after four seconds and after a
+twenty-second soak; no prompt ran. Graceful close left process-zero samples at
+`2026-08-14T22:20:39-0500` and `2026-08-14T22:20:47-0500`. A launcher-resolved
+`.build/GrokBuild.app` process was detected by executable path, closed, and
+excluded before this installed-product receipt.
 
 ## Slice 5 — first-class agentic acceptance harness (complete, 2026-08-14)
 
