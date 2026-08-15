@@ -39,10 +39,15 @@ final class WorkbenchIntentTests: XCTestCase {
             .deletingLastPathComponent()
             .deletingLastPathComponent()
             .deletingLastPathComponent()
-        let source = try String(
+        let chatView = try String(
             contentsOf: repositoryRoot.appendingPathComponent("GrokBuild/Views/ChatView.swift"),
             encoding: .utf8
         )
+        let composer = try String(
+            contentsOf: repositoryRoot.appendingPathComponent("GrokBuild/Views/ChatComposer.swift"),
+            encoding: .utf8
+        )
+        let source = chatView + "\n" + composer
 
         XCTAssertTrue(source.contains("Text(\"What do you want to work on?\")"))
         XCTAssertTrue(source.contains("Text(\"Loading saved conversation…\")"))

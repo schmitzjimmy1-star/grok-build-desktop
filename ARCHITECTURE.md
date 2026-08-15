@@ -1013,7 +1013,10 @@ Minimum size **1100×720** and default logical canvas **1440×900** (`MainWindow
 |------|------|
 | `AppTheme.swift` | Soft-black canvas, typography, layout widths, radii, and reusable matte surface |
 | `SidebarView.swift` | Navigation-only (Codex parity Slice 1): New chat/Sessions/Plugins/Security rail, collapsible project/session hierarchy, pins, on-demand filter, model/running/last-used metadata, hover/context rename and close actions, header **Session dashboard** bell, and an account footer. Settings opens from the session header and Command-comma. The former permanent Activity lane, Agents hub, and Connections sections were removed; their capabilities live in the Run inspector / session dashboard, Settings → Agents, and the composer MCP menu |
-| `ChatView.swift` | Centered work transcript, one-to-eight-line matte composer, visible command/submission controls, Ask/Build/Review welcome on genuine New chat, **Loading saved conversation…** plus Resume/Start/Browse on restored tabs (including empty-hydrate); header **Run inspector** toggle |
+| `ChatView.swift` | Centered work transcript, Ask/Build/Review welcome on genuine New chat, **Loading saved conversation…** plus Resume/Start/Browse on restored tabs (including empty-hydrate); hosts thin `topBar` / `composer` / `headerReviewToggle` wrappers |
+| `ChatTopBar.swift` | Workbench header chrome and project menu; Tasks / Review / Run inspector remain ChatView-owned slots |
+| `ChatComposer.swift` | One-to-eight-line matte composer envelope, file/MCP chips, Describe a task editor |
+| `ChatHeaderReviewToggle.swift` | Contextual header Review control (`grok-header-review-toggle`) |
 | `ActivitySidebar.swift` | Codex parity Slice 5 plus browser-truth Slice 2: compact **Run inspector** (overlay in the mid band, docked column at default width, or collapsed strip when narrow) driven by the pure `ContextInspectorProjection` (`Models/ContextInspectorProjection.swift`) — recovery card first, then Subagents counts, gated Computer Use, typed MCP request/configuration/process/discovery/exercise/unavailable rows, Sources limited to attachments and invocation-evidenced servers, and a non-collapsible unresolved-errors line; the full generation-bound `Live`/`Settled` evidence stack survives inside one Run details disclosure; Escape/X/header toggle all close it; no lifecycle or worker state lives in SwiftUI |
 | `ComposerViews.swift` | File chips, workflow chips, goal banner, plan/question cards |
 | `GrokChatChrome.swift` | Shared session chrome |
@@ -1149,7 +1152,7 @@ See `BUILDING.md` for signing, notarization, CI workflow.
 
 | Task | Start here |
 |------|------------|
-| **Composer, send, streaming** | `ChatView.swift`, `ChatStore.send`, `consumeOutput` |
+| **Composer, send, streaming** | `ChatComposer.swift`, `ChatView.swift`, `ChatStore.send`, `consumeOutput` |
 | **Workflow slash commands** | `WorkflowSlashCommands` in `ComposerModels.swift`, consolidated Skills and workflows menu in `ChatView` |
 | **Session goal banner** | `GoalBanner` in `ComposerViews.swift`, `ChatStore.goalState` + `/goal` helpers, `GoalCommand` in `ComposerModels.swift` |
 | **Empty/welcome state, work intents** | `ChatView.swift` (`welcomeState`, `restoredEmptyState`, `noProjectState`, `WorkbenchIntentCard`), `ChatStore.showsEmptyTranscriptWelcome` / `isResumedSessionTab`, `WorkbenchIntent` in `ComposerModels.swift` |
@@ -1165,7 +1168,7 @@ See `BUILDING.md` for signing, notarization, CI workflow.
 | **Sidebar sessions** | `ContentView` (`selectSession`, `persistSessionLayout`, LRU) |
 | **Browse Sessions** | `ContentView` sheet (`workspaceStore.workspaces`), `SessionBrowserView`, `SessionsBrowserPanel` (cwd-bound Resume; empty copy distinguishes no project vs no sessions) |
 | **Session restore at launch** | `ContentView.restorePersistedSessions`, `ContentView.selectSession`, `SessionRestorePolicy`, `SessionTranscriptRecovery`, `ChatStore.deliverPrompt` |
-| **Slice 6 coordination seams (2026-08-13 campaign)** | `BackgroundTaskTracker.evidenceWorkers` in `BackgroundTaskStore.swift` plus thin `ChatStore.currentTurnEvidenceWorkers()`; `SessionRuntimeRetentionPolicy` in `SessionProcessIdentity.swift` plus `ContentView.enforceConnectionCap()`; `RunHistory.snapshots` / `RunHistory.Presentation` plus `RunHistorySection.swift`; `ChatView.topBar` / `composer` / `headerReviewToggle`; source-string pins in `ACPClientContractTests.swift` |
+| **Slice 6 coordination seams (2026-08-13 campaign)** | `BackgroundTaskTracker.evidenceWorkers` in `BackgroundTaskStore.swift` plus thin `ChatStore.currentTurnEvidenceWorkers()`; `SessionRuntimeRetentionPolicy` in `SessionProcessIdentity.swift` plus `ContentView.enforceConnectionCap()`; `RunHistory.snapshots` / `RunHistory.Presentation` plus `RunHistorySection.swift`; `ChatTopBar` / `ChatComposer` / `ChatHeaderReviewToggle` hosted by thin `ChatView` wrappers; source-string pins in `ACPClientContractTests.swift` |
 | **Continuity verifier / send gate** | `GrokSessionTranscriptImporter.importMessagesBounded`, `SessionTranscriptRecovery.verifyContinuity`, `SessionSendGate`, `ChatStore.verifyContinuityBeforeResume`, `ChatStore.continuityRequiresRecovery` / `continuityIsResuming` / `isResumedSessionTab`, `ChatView.LaunchSessionChoices`, `ActivitySidebar` |
 | **Recovery candidate review / Continue as New / Relink** | `GrokSessionTranscriptImporter.importTranscriptBounded`, `SessionTranscriptRecovery.recoveryCandidates`, `ChatStore.reviewRecoveryCandidates` / `continueAsNew` / `relink`, `RecoveryCandidateReviewSheet` |
 | **Lifecycle migration/integrity** | `SessionLayoutStore`, `SessionLifecycleIntegrity`, `SessionLifecycleV3Tests` |

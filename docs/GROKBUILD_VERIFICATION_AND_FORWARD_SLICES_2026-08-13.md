@@ -523,9 +523,10 @@ policy, or export type:
    layer. `RunHistory.snapshots(for:)` and `RunHistory.Presentation` own dashboard
    snapshot/formatting. Remaining call sites: `ContentView.openActivityDashboard()`
    (when to snapshot) and `SessionDashboardPanel` hosting `RunHistorySection`.
-4. Move `ChatView.topBar`, `ChatView.composer`, and `ChatView.headerReviewToggle`
-   in `GrokBuild/Views/ChatView.swift` into small components without moving state
-   ownership out of `ChatStore` / `ContentView`.
+4. `ChatTopBar`, `ChatComposer`, and `ChatHeaderReviewToggle` own workbench
+   chrome layout. Remaining call sites: thin `ChatView.topBar` / `composer` /
+   `headerReviewToggle` wrappers that keep Tasks, slash matching, add-menu, and
+   send state on `ChatStore` / `ChatView`.
 5. Replace source-string assertions for touched contracts in
    `Tests/GrokBuildTests/ACPClientContractTests.swift` (the tests that
    `String(contentsOf:)` `ChatStore.swift`, `ContentView.swift`, `ChatView.swift`,

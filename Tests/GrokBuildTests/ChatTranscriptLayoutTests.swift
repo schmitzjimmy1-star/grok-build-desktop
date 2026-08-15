@@ -767,11 +767,16 @@ final class ChatTranscriptLayoutTests: XCTestCase {
             contentsOf: repositoryRoot.appendingPathComponent("GrokBuild/Views/ChatView.swift"),
             encoding: .utf8
         )
+        let composer = try String(
+            contentsOf: repositoryRoot.appendingPathComponent("GrokBuild/Views/ChatComposer.swift"),
+            encoding: .utf8
+        )
 
         let preparation = try XCTUnwrap(source.range(of: "let preparation = store.prepareSubmit(text)"))
         let delivery = try XCTUnwrap(source.range(of: "Task {\n            let accepted = await store.send"))
         XCTAssertLessThan(preparation.lowerBound, delivery.lowerBound)
-        XCTAssertTrue(source.contains("else {\n                            submit()\n                        }"))
+        XCTAssertTrue(source.contains("onSubmit: submit"))
+        XCTAssertTrue(composer.contains("onSubmit()"))
     }
 
     func testConnectionStatusNamesLazyResumeExplicitly() {
