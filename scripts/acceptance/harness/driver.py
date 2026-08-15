@@ -325,6 +325,35 @@ def send_prompt(prompt: str) -> None:
     raise DriverError(f"could not send from composer: {last_error}")
 
 
+def wait_for_stop_control(*, timeout_seconds: int = 45) -> None:
+    """Wait until the live Stop turn control is exposed after Send."""
+    deadline = time.time() + timeout_seconds
+    last_error: Exception | None = None
+    while time.time() < deadline:
+        try:
+            _find_named("Stop turn")
+            return
+        except DriverError as exc:
+            last_error = exc
+            time.sleep(0.4)
+    raise DriverError(f"Stop turn did not appear: {last_error}")
+
+
+def stop_turn() -> None:
+    """Click the installed Stop turn control. Never fakes ACP cancellation."""
+    wait_for_stop_control()
+    _click_named("Stop turn")
+    deadline = time.time() + 40
+    last_error: Exception | None = None
+    while time.time() < deadline:
+        try:
+            _find_named("Stop turn")
+            time.sleep(0.4)
+        except DriverError:
+            return
+    raise DriverError(f"Stop turn remained after click: {last_error}")
+
+
 def wait_for_restore_chrome(*, timeout_seconds: int = 25) -> None:
     """Wait until launch restore has exposed composer and resume or send chrome."""
     deadline = time.time() + timeout_seconds

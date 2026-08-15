@@ -19,12 +19,13 @@
 >
 > **Current campaign slice:** Slice 6, extract coordination seams, authorized.
 > PR 1 merged as `6f2d0eb` (PR #77). PR 2 merged as `f7246f4` (PR #78).
-> PR 3 extracts `ChatTopBar` / `ChatComposer` / `ChatHeaderReviewToggle`. Spec:
+> PR 3 merged as `ec97b88` (PR #79). This branch adds the Slice 6 250k billable
+> packet harness. Spec:
 > [`docs/GROKBUILD_VERIFICATION_AND_FORWARD_SLICES_2026-08-13.md`](GROKBUILD_VERIFICATION_AND_FORWARD_SLICES_2026-08-13.md).
 > Numbered `## Slice N` headings below the 2026-08-14 harness receipt are historical
 > campaigns. Do not implement them.
 
-## Slice 6 — extract coordination seams and replace brittle test pins (authorized, PR 1–2 merged, 2026-08-14)
+## Slice 6 — extract coordination seams and replace brittle test pins (authorized, PR 1–3 merged, 2026-08-14)
 
 Authorized scope is the Slice 6 section in
 `docs/GROKBUILD_VERIFICATION_AND_FORWARD_SLICES_2026-08-13.md`. Product identity is
@@ -54,6 +55,7 @@ Supporting tests already in tree: `Tests/GrokBuildTests/SessionRuntimeRetentionT
 `Tests/GrokBuildTests/LifecycleAndSubprocessTests.swift`,
 `Tests/GrokBuildTests/AcceptanceHarnessTests.swift`. Smoke driver:
 `scripts/acceptance/run.py` (dry-run default; `--billable` plus a new UTC run ID;
+Slice 6 packet `manifests/installed-slice6-packet-v1.json`, 250k ceiling;
 never reuse `20260814T225910Z` or `20260814T235900Z`). Handoff renderer:
 `scripts/acceptance/harness/handoff.py`. Gates A–H live in this file under
 **Mandatory workflow for every slice**. Computer Use and `make ship` proof is

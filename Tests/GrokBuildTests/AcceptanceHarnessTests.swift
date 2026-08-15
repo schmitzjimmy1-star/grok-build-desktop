@@ -67,6 +67,21 @@ final class AcceptanceHarnessTests: XCTestCase {
         let runScript = try String(contentsOf: Self.runScript, encoding: .utf8)
         XCTAssertTrue(runScript.contains("resume_saved_task()"))
         XCTAssertTrue(runScript.contains("resumeAfterQuit"))
+        XCTAssertTrue(driver.contains("def stop_turn()"))
+        XCTAssertTrue(driver.contains("Stop turn"))
+        XCTAssertTrue(runScript.contains("deliberateStop"))
+        XCTAssertTrue(runScript.contains("250000"))
+    }
+
+    func testSlice6ManifestDryRunUsesQuarterMillionCeiling() throws {
+        let manifest = Self.repoRoot
+            .appendingPathComponent("scripts/acceptance/manifests/installed-slice6-packet-v1.json")
+        let result = try runHarness(["--manifest", manifest.path, "--run-id", "20260814T000000Z"])
+        XCTAssertEqual(result.exitCode, 0, result.output)
+        XCTAssertTrue(result.stdout.contains("\"anomalyCeilingActualTokens\": 250000"), result.stdout)
+        XCTAssertTrue(result.stdout.contains("S6-PKT-T1"), result.stdout)
+        XCTAssertTrue(result.stdout.contains("\"deliberateStop\": true"), result.stdout)
+        XCTAssertTrue(result.stdout.contains("GB-S6-PKT-T1-20260814T000000Z"), result.stdout)
     }
 
     private func runHarness(_ arguments: [String]) throws -> (exitCode: Int32, stdout: String, stderr: String, output: String) {
