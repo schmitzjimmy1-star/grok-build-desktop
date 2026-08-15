@@ -325,8 +325,8 @@ final class CodexShellParityTests: XCTestCase {
                       "the Run inspector still overlays in the mid band")
         XCTAssertTrue(chatView.contains("activityInspector(docked: true)"),
                       "at default width the inspector docks as a third column")
-        XCTAssertTrue(chatView.contains("ResponsiveLayoutPolicy.inspectorDocks(chatAreaWidth: chatAreaWidth)"),
-                      "docking is gated by the responsive policy")
+        XCTAssertTrue(chatView.contains("inspectorPlacement == .dockedColumn"),
+                      "docking is gated by hysteresis-backed placement")
         XCTAssertFalse(chatView.contains("HStack(spacing: 0) {\n            VStack(spacing: 0) {\n            topBar"),
                        "the old third-column body layout must not return")
 

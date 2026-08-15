@@ -330,6 +330,8 @@ struct ChatView: View {
     @State private var selectedActivityMessageID: UUID?
     /// Measured chat-area width driving the Slice 7 responsive policy.
     @State private var chatAreaWidth: Double = .infinity
+    /// Hysteresis-backed mount so overlay/dock/strip cannot chase geometry jitter.
+    @State private var inspectorPlacement: ResponsiveLayoutPolicy.InspectorPlacement = .dockedColumn
     @State private var toolPillStatus = ToolPillStatus()
     @FocusState private var inputFocused: Bool
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -933,13 +935,15 @@ struct ChatView: View {
                         transcriptHasUserScrolled = true
                     }
                 }
-                .onScrollGeometryChange(for: CGFloat.self) { geometry in
-                    max(0, geometry.contentSize.height - geometry.contentOffset.y - geometry.containerSize.height)
-                } action: { _, distanceFromBottom in
-                    guard transcriptHasUserScrolled else { return }
-                    let isAttached = ChatTranscriptScrollPolicy.isAttached(
-                        distanceFromBottom: distanceFromBottom
+                .onScrollGeometryChange(for: Bool.self) { geometry in
+                    ChatTranscriptScrollPolicy.isAttached(
+                        distanceFromBottom: max(
+                            0,
+                            geometry.contentSize.height - geometry.contentOffset.y - geometry.containerSize.height
+                        )
                     )
+                } action: { _, isAttached in
+                    guard transcriptHasUserScrolled else { return }
                     transcriptIsAttachedToBottom = isAttached
                     if isAttached {
                         transcriptUnreadCount = 0
@@ -1087,33 +1091,39 @@ struct ChatView: View {
             // Slice 7 responsive order: below 900 the inspector collapses to a
             // trailing strip; 900..<1,100 overlays; ≥1,100 docks. The user's
             // open state is preserved so widening restores the full panel.
-            if showActivitySidebar,
-               ResponsiveLayoutPolicy.inspectorFits(chatAreaWidth: chatAreaWidth),
-               !ResponsiveLayoutPolicy.inspectorDocks(chatAreaWidth: chatAreaWidth) {
+            if showActivitySidebar, inspectorPlacement == .overlay {
                 activityInspector(docked: false)
             }
         }
 
         // Workbench W-6 / audit Slice 4: at ≥1,100 pt the open inspector is a
         // real third column — same panel and state, no overlap with the transcript.
-        if showActivitySidebar,
-           ResponsiveLayoutPolicy.inspectorDocks(chatAreaWidth: chatAreaWidth) {
+        if showActivitySidebar, inspectorPlacement == .dockedColumn {
             activityInspector(docked: true)
         }
 
         // Below 900 pt keep a compact collapsed strip instead of hiding evidence.
-        if showActivitySidebar,
-           !ResponsiveLayoutPolicy.inspectorFits(chatAreaWidth: chatAreaWidth) {
+        if showActivitySidebar, inspectorPlacement == .collapsedStrip {
             activityInspectorCollapsedStrip()
         }
         }
         // W-6: the measurement wraps the whole chat area including the docked
         // column — measuring only the transcript stack would shrink the width
         // at the moment of docking and oscillate across the 1,100-pt threshold.
+        // 2026-08-14: also ignore sub-point jitter and apply hysteresis so a
+        // committed width cannot flip overlay/dock/strip every frame.
         .onGeometryChange(for: Double.self) { proxy in
             proxy.size.width
         } action: { width in
+            guard ResponsiveLayoutPolicy.shouldCommitMeasuredWidth(
+                current: chatAreaWidth,
+                next: width
+            ) else { return }
             chatAreaWidth = width
+            inspectorPlacement = ResponsiveLayoutPolicy.inspectorPlacement(
+                chatAreaWidth: width,
+                current: inspectorPlacement
+            )
         }
         .onAppear { inputFocused = true }
         .onDisappear {

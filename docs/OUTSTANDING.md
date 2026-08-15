@@ -19,13 +19,14 @@
 >
 > **Current campaign slice:** Slice 6, extract coordination seams, authorized.
 > PR 1 merged as `6f2d0eb` (PR #77). PR 2 merged as `f7246f4` (PR #78).
-> PR 3 merged as `ec97b88` (PR #79). This branch adds the Slice 6 250k billable
-> packet harness. Spec:
+> PR 3 merged as `ec97b88` (PR #79). PR 4 merged as `1d7ec82` (PR #80). A
+> stop-the-line layout-loop hotfix follows after installed T1 pinned a core at
+> 100% with Run inspector open. Spec:
 > [`docs/GROKBUILD_VERIFICATION_AND_FORWARD_SLICES_2026-08-13.md`](GROKBUILD_VERIFICATION_AND_FORWARD_SLICES_2026-08-13.md).
 > Numbered `## Slice N` headings below the 2026-08-14 harness receipt are historical
 > campaigns. Do not implement them.
 
-## Slice 6 — extract coordination seams and replace brittle test pins (authorized, PR 1–3 merged, 2026-08-14)
+## Slice 6 — extract coordination seams and replace brittle test pins (authorized, PR 1–4 merged, layout-loop hotfix, 2026-08-14)
 
 Authorized scope is the Slice 6 section in
 `docs/GROKBUILD_VERIFICATION_AND_FORWARD_SLICES_2026-08-13.md`. Product identity is
@@ -65,7 +66,11 @@ acceptance.
 Acceptance: focused tests plus `make test`, `make ship`, session switch/restore,
 Stop, close, quit, and process-zero. Neutral-extraction smoke is one agentic packet
 (three ordered tools, two parallel read-only children, one follow-up turn, one
-deliberate Stop) under a **250k** actual-token ceiling. Slice 7, releases, tags,
+deliberate Stop) under a **250k** actual-token ceiling. After T1 of that packet
+the installed app pinned the main thread at 100% in SwiftUI `ScrollView`
+`sizeThatFits` with Run inspector open and AppleScript quit wedged; the
+follow-up hotfix is `ResponsiveLayoutPolicy.shouldCommitMeasuredWidth` plus
+`inspectorPlacement` hysteresis, not Slice 7. Slice 7, releases, tags,
 origin, force-push, branch deletion, and configuration changes remain forbidden.
 
 ## Slice 5 — first-class agentic acceptance harness (complete, 2026-08-14)

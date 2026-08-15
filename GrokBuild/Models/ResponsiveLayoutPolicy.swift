@@ -32,6 +32,23 @@ enum ResponsiveLayoutPolicy {
     /// Workbench W-1 (2026-08-08): 220 → 200; the rail is navigation, not a pane.
     static let sidebarMinimumWidth: Double = 200
 
+    /// Ignore sub-point geometry jitter. Writing `@State` on every 0.01-pt
+    /// `onGeometryChange` rebuilds ChatView, including the transcript
+    /// ScrollView, and pins a core at 100% (2026-08-14 installed sample).
+    static let measuredWidthEpsilon: Double = 1
+
+    /// Keep the current inspector chrome across the 900 / 1,100 thresholds so
+    /// overlay ↔ dock ↔ strip cannot chase a noisy measurement.
+    static let inspectorHysteresis: Double = 16
+
+    /// One of three mutually exclusive inspector mounts. Unmeasured (`.infinity`)
+    /// starts docked so the default 1440×900 window does not flash overlay.
+    enum InspectorPlacement: Equatable {
+        case collapsedStrip
+        case overlay
+        case dockedColumn
+    }
+
     static func inspectorFits(chatAreaWidth: Double) -> Bool {
         chatAreaWidth >= inspectorMinimumChatWidth
     }
@@ -42,6 +59,47 @@ enum ResponsiveLayoutPolicy {
     /// and immediately undock — an oscillation, not a layout.
     static func inspectorDocks(chatAreaWidth: Double) -> Bool {
         chatAreaWidth >= inspectorDockMinimumChatWidth
+    }
+
+    static func shouldCommitMeasuredWidth(current: Double, next: Double) -> Bool {
+        if current.isNaN || next.isNaN { return current.isNaN != next.isNaN }
+        if current.isInfinite || next.isInfinite { return current != next }
+        return abs(current - next) >= measuredWidthEpsilon
+    }
+
+    static func inspectorPlacement(
+        chatAreaWidth: Double,
+        current: InspectorPlacement
+    ) -> InspectorPlacement {
+        if chatAreaWidth.isInfinite || chatAreaWidth.isNaN {
+            return .dockedColumn
+        }
+        switch current {
+        case .dockedColumn:
+            if chatAreaWidth >= inspectorDockMinimumChatWidth - inspectorHysteresis {
+                return .dockedColumn
+            }
+            if chatAreaWidth >= inspectorMinimumChatWidth - inspectorHysteresis {
+                return .overlay
+            }
+            return .collapsedStrip
+        case .overlay:
+            if chatAreaWidth >= inspectorDockMinimumChatWidth {
+                return .dockedColumn
+            }
+            if chatAreaWidth >= inspectorMinimumChatWidth - inspectorHysteresis {
+                return .overlay
+            }
+            return .collapsedStrip
+        case .collapsedStrip:
+            if chatAreaWidth >= inspectorDockMinimumChatWidth {
+                return .dockedColumn
+            }
+            if chatAreaWidth >= inspectorMinimumChatWidth {
+                return .overlay
+            }
+            return .collapsedStrip
+        }
     }
 
     /// Whether the sidebar can stay visible without compressing the
