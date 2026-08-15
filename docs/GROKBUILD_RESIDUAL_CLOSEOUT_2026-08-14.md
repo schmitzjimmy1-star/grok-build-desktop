@@ -1,7 +1,8 @@
 # GrokBuild residual closeout — 2026-08-14
 
-Status: **Phases 0–2 leftover-close complete**, driven from shipped
-`27c146e`. Phase 3 is the only next action.
+Status: **Phases 0–3 complete**, driven from shipped `27c146e`. Phase 4 is
+the only next action after the Phase 3 docs PR merges (or Jimmy explicitly
+continues without merging).
 Jimmy authorized this campaign on 2026-08-14 after Slice 7 closed, including
 billable prompts in every phase that needs them. True closeout means installed
 proof, exact cleanup, and process-zero, not a green unit suite.
@@ -354,10 +355,9 @@ exact thread cleaned, process-zero. `origin` unchanged. Campaign complete.
 
 ## Current authorized phase
 
-Execute **Phase 3 only**. Re-derive identity live from installed `27c146e`
-(do not `make ship` this leftover-close docs PR just to chase stamp == HEAD).
-Phase 1 empty composer AX **Describe a task** is live on that binary. Phase 2
-proved Cursor `user-grokbuild-computer-use` against `/Applications/GrokBuild.app`
-and recorded the host split versus grok's in-session `grokbuild-computer-use`.
-Computer Use timeout is restored to 60s. Do not start Phase 4–6. End every
-checkpoint with the three-sentence handoff.
+Execute **Phase 4 only** after the Phase 3 docs PR merges, or if Jimmy
+explicitly continues without merging it. Re-derive identity live from
+installed `27c146e` (do not `make ship` the Phase 3 docs PR just to chase
+stamp == HEAD). Phase 3 removed exact leftover test threads and ledgered the
+child-delete CLI residual. Computer Use timeout remains 60s. Do not start
+Phase 5–6. End every checkpoint with the three-sentence handoff.

@@ -9,6 +9,12 @@ description: Works with grok CLI integration in GrokBuild — auth state, versio
 
 GrokBuild is a UI shell. Core agent behavior (ACP, MCP, skills, plan mode, subagents) stays in the `grok` CLI.
 
+`grok sessions delete <id>` removes indexed parent sessions only. Spawned
+`session_kind=subagent` child directories stay unindexed (`No session found`
+while the directory remains). That is a CLI residual. Do not add a GrokBuild
+scraper. Gate F may move only proven leftover child dirs to a dated Trash
+bundle after the CLI reports missing.
+
 ## Installed CLI (live, 1.0.3)
 
 Re-derived 2026-08-14 from process-zero, without printing secrets:
