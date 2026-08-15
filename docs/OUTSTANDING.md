@@ -19,25 +19,38 @@
 
 ## Slice 5 — first-class agentic acceptance harness (in progress, 2026-08-14)
 
-Installed three-route run `20260814T225910Z` on stamped `e92885d` / `dirty=false`
-evaluated five accepted packets, 197,960 actual tokens, OpenRouter CONT T3 after
-quit/relaunch/Resume-then-Send on local tab
-`5C7E0CC0-6437-4F6D-BFBC-88EE94CC8DEF` / backend
-`01a00281-3092-7540-9c04-1c6c100f413e` (same as T1/T2, process generation 1,
-12,862 / 30 / 12,892 tokens). Exact Close Session removed the three ledgered
-tabs; parent backends were already absent; leftover child dirs
-`01a00280-9c71-7230-8cd5-3f499ef720a0` and
-`01a00280-9c74-7710-8984-1a5fef4f9c14` were removed by those exact IDs. Slice 4
-Trash bundles remain. Protected config SHA-256
+Closeout three-route `20260814T235900Z` on signed installed `e41aff2` /
+`dirty=false` / Team `DD2GCQJVB4` evaluated five accepted packets, 197,468
+actual tokens. OpenRouter CONT T3 after quit/relaunch/Resume-then-Send stayed
+on local tab `06DB0A92-4127-4605-851D-A3AFC8295385` / backend
+`01a002b7-8531-7340-b2b2-3bdce44efbad` (same as T1/T2, process generation 1,
+12,952 / 30 / 12,982 tokens) and replied
+`GB-S5-OR41-CONT-T3-20260814T235900Z-T3 KITE-17|RECOVERED`. NAT46 CH2 used tab
+`4CDA0A25-C0B8-4506-9D33-F77BEC04D96A` / backend
+`01a002b7-0523-7e80-92bf-5d695c3d8cbe` with children
+`01a002b7-15cc-75e0-8efb-be93708fad3e` and
+`01a002b7-15ce-7a42-8dbf-22c227ee4d89`. Luna ORD3 used tab
+`6763C30B-2975-4EF8-8767-DB759CE82826` / backend
+`01a002b7-4854-7cf1-976a-18bc8f2dbb1d`. Exact Close Session removed the three
+ledgered tabs; parent backends were already absent; leftover child dirs were
+removed by those exact IDs. Installed Computer Use on `/Applications/GrokBuild.app`
+showed New chat Ask/Build/Review with **Send message**, and a restored empty-hydrate
+tab **Loading saved conversation…** plus **Resume current task** / **Send and
+resume session**. Slice 4 Trash bundles remain. Protected config SHA-256
 `2cb4dcdaf0f1841aab54fb2ae10586381ca78b560eb9fc0477efb521e92140ae` (2,894 bytes,
 mode `0600`) is unchanged; cwd-scoped `prompt_history.jsonl` grew with composer
-residue only (post-T3 SHA-256
-`0686ebf78ff3beb9a65a222cd3aa618bb0935775c717084c24445fd05c7f5851`, 115,477 bytes,
-mode `0644`). That T3 pass is harness evidence on `e92885d`, not merged-main
-closeout. Gate D is authorized: product resume honesty
-(welcome/LaunchSessionChoices gated on `isResumedSessionTab`) ships with this
-branch. The signed closeout three-route must use a **new UTC run ID** and must
-not reuse `20260814T225910Z` markers.
+residue only (post-closeout SHA-256
+`49c3568d93302263ba05f8925214cff4d497abd1aecbed1c9472eb37f13d8782`, 118,289 bytes,
+mode `0644`). Process-zero samples at `2026-08-14T19:02:12-0500` and
+`19:02:17-0500`. Dist/installed SHA-256
+`a9e5b4a6ce8e431c221fd103b3e3c658ef8d10679796a891ba82e8272c1b6016`.
+
+Earlier harness-only T3 on `e92885d` used run `20260814T225910Z` (197,960 tokens)
+and must not be reused as closeout markers.
+
+Gate D is authorized. Product resume honesty (welcome/LaunchSessionChoices gated
+on `isResumedSessionTab`) shipped in `e41aff2`. Do not reuse `20260814T225910Z`
+or `20260814T235900Z` markers.
 
 Authorized scope is the documented harness in
 `docs/GROKBUILD_VERIFICATION_AND_FORWARD_SLICES_2026-08-13.md`. Gate A started from
