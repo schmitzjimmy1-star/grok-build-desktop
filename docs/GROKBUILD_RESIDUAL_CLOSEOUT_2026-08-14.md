@@ -1,7 +1,7 @@
 # GrokBuild residual closeout — 2026-08-14
 
-Status: **Phases 0–3 complete**, driven from shipped `27c146e`. Phase 4 is
-the only next action after the Phase 3 docs PR merges (or Jimmy explicitly
+Status: **Phases 0–4 complete**, driven from shipped `27c146e`. Phase 5 is
+the only next action after the Phase 4 docs PR merges (or Jimmy explicitly
 continues without merging).
 Jimmy authorized this campaign on 2026-08-14 after Slice 7 closed, including
 billable prompts in every phase that needs them. True closeout means installed
@@ -27,7 +27,7 @@ These are the leftovers named after Slice 7, grouped so each phase has one job.
 | Unindexed child histories survive `grok sessions delete` | Phase 3 residual receipt | No GrokBuild scraper |
 | Search-index / `prompt_history.jsonl` residue | Phase 3 classify-only | Do not edit those files |
 | Leftover test threads still visible in Sessions | Phase 3 exact IDs only | User conversations stay protected |
-| grok **1.0.4** advertised, **1.0.3** installed | Phase 4 | Config hash will change; ledger it |
+| grok **1.0.4** advertised, **1.0.3** installed | Phase 4 | Closed: updated to official 1.0.4, config hash ledgered, marker receipt OK |
 | `ChatStore` / `ChatView` / `GrokProcess` / `ContentView` still huge | Phase 5 remaining pins only | Do not rewrite those files |
 | No notarized personal release | Phase 6 | `origin` stays fetch-only |
 
@@ -241,7 +241,7 @@ ledgered. Process-zero.
 
 ---
 
-## Phase 4 — grok CLI 1.0.4
+## Phase 4 — grok CLI 1.0.4 (complete, 2026-08-15)
 
 **Purpose:** take the advertised CLI update that Slice 7 was forbidden to touch.
 
@@ -270,6 +270,37 @@ CLI-identity reason; then stop and report, do not invent OpenRouter fallback.
 
 CLI version, config hash, and the marker receipt agree. Exact thread cleaned.
 Process-zero. Later phases use this CLI.
+
+### Receipt — 2026-08-15
+
+- **Pre-update:** `grok --version` → `grok 1.0.3 (1a29d5bc12d4) [stable]`.
+  `~/.grok/config.toml` SHA-256 `2cb4dcdaf0f1841aab54fb2ae10586381ca78b560eb9fc0477efb521e92140ae`,
+  2894 bytes, mode `0600`. GrokBuild Settings → App CLI line: `Installed: 1.0.3`,
+  `Latest: 1.0.4`, `Status: Update available.`
+- **Update:** official `grok update` command (`Updating Grok 1.0.3 → 1.0.4`,
+  `Downloading grok v1.0.4 (macos-aarch64)...`, `✓ grok v1.0.4 installed successfully!`).
+- **Post-update CLI & config:** `grok --version` → `grok 1.0.4 (d846eb93d94d) [stable]`.
+  `~/.grok/config.toml` SHA-256 `2cb4dcdaf0f1841aab54fb2ae10586381ca78b560eb9fc0477efb521e92140ae`,
+  2894 bytes, mode `0600` (bit-for-bit identical; 85 key paths; no unexpected
+  provider/credential/MCP stanzas). `grok inspect --json` reports `grokVersion: "1.0.4"`.
+- **Installed App Settings:** GrokBuild Settings → App Check for Updates →
+  `Installed: 1.0.4`, `Latest: 1.0.4`, `Status: Up to date.`
+- **Tests:** `make test` passed (**865 tests, 0 failures** in 36.331 s) against
+  unchanged installed app `27c146e`. Zero test regressions.
+- **Frozen packet:** `GB-C8-P4-CLI104-20260815T070258Z`.
+  - Prompt: `GB-C8-P4-CLI104-20260815T070258Z: Without using tools, reply with exact GB_C8_P4_CLI104_RECEIPT_OK and do nothing else.`
+  - Assistant reply: `GB_C8_P4_CLI104_RECEIPT_OK`.
+  - Metadata: model `grok-4.6` (`grok-4.6-build`), reasoning effort `low` (1s thought,
+    38 reasoning tokens), Route `Route: native xAI through the Grok CLI.`, process
+    generation 1, session UUID `01a0043b-886a-7e73-96eb-d66a9d4d5d9b`, usage:
+    15,984 tokens (15,927 in • 57 out • 6,144 cached read • 38 reasoning), cost
+    $0.04 ($0.039066), 1 model call, 35.5s duration, 0 tools.
+- **Gate F cleanup & process-zero:** `grok sessions delete 01a0043b-886a-7e73-96eb-d66a9d4d5d9b`
+  removed backend session dir; `grok sessions search GB-C8-P4-` returned `Total: 0`.
+  GrokBuild local transcript `DBBA083C-3B99-4979-9578-7F5B44A3C580.json` removed.
+  `computer_close_app` graceful quit; process-zero samples at `02:18:24` confirmed
+  no `GrokBuild`, `grok`, or `agent-desktop` running. Origin untouched. Shipped
+  stamp still `27c146e`.
 
 ---
 
@@ -355,9 +386,10 @@ exact thread cleaned, process-zero. `origin` unchanged. Campaign complete.
 
 ## Current authorized phase
 
-Execute **Phase 4 only** after the Phase 3 docs PR merges, or if Jimmy
+Execute **Phase 5 only** after the Phase 4 docs PR merges, or if Jimmy
 explicitly continues without merging it. Re-derive identity live from
-installed `27c146e` (do not `make ship` the Phase 3 docs PR just to chase
-stamp == HEAD). Phase 3 removed exact leftover test threads and ledgered the
-child-delete CLI residual. Computer Use timeout remains 60s. Do not start
-Phase 5–6. End every checkpoint with the three-sentence handoff.
+installed `27c146e` (do not `make ship` the Phase 4 docs PR just to chase
+stamp == HEAD). Phase 4 updated the official grok CLI to 1.0.4, verified config
+integrity, executed the frozen marker packet, and achieved Gate F process-zero.
+Do not start Phase 5–6 without authorization. End every checkpoint with the
+three-sentence handoff.
