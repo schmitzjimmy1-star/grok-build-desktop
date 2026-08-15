@@ -21,11 +21,11 @@ Any **code change** — new features, behavior changes, bug fixes, refactors tha
 
 Any of these drivers works:
 
-- **`user-grokbuild-computer-use` MCP** — **default.** Already installed and permission-granted in Cursor; dogfoods GrokBuild's own Computer Use helper. Tools: `snapshot` / `click` / `type` / `press` / `get` / `wait` / `screenshot` / `list_*`.
+- **`user-grokbuild-computer-use` MCP** — **default.** Already installed and permission-granted in Cursor; dogfoods GrokBuild's own Computer Use helper. Tools: `snapshot` / `click` / `type` / `press` / `get` / `wait` / `screenshot` / `list_*`. This Cursor host must not share a target with grok's in-session `grokbuild-computer-use` or a parallel Shell `agent-desktop` drive.
 - **`agent-desktop` directly** via Shell — fallback when you need extra verbs (`find`, `scroll`, `drag`, `set-value`, `select`, `toggle`, `expand`) or MCP gating blocks an action. Binary at `/opt/homebrew/bin/agent-desktop` or `~/.grokbuild/computer-use/`; `agent-desktop skills get desktop` for the observe→act loop.
 - **Orca's `computer-use` CLI** — situational only (`get-app-state` + `--element-index`); different model, not an `agent-desktop` wrapper.
 
-**Preference order:** MCP → direct `agent-desktop` → Orca CLI.
+**Preference order:** MCP → direct `agent-desktop` → Orca CLI. Never two drivers on the same GrokBuild window at once.
 
 **Steps (every change):**
 

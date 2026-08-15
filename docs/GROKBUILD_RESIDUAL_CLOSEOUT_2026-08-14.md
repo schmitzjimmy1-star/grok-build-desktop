@@ -1,7 +1,7 @@
 # GrokBuild residual closeout — 2026-08-14
 
-Status: **Phase 1 complete pending merge**, driven from shipped `fa44cb25`.
-Phase 2 is the only next action after this PR merges.
+Status: **Phase 2 complete pending merge**, driven from shipped `fa44cb25`.
+Phase 3 is the only next action after this PR merges.
 Jimmy authorized this campaign on 2026-08-14 after Slice 7 closed, including
 billable prompts in every phase that needs them. True closeout means installed
 proof, exact cleanup, and process-zero, not a green unit suite.
@@ -354,9 +354,8 @@ exact thread cleaned, process-zero. `origin` unchanged. Campaign complete.
 
 ## Current authorized phase
 
-Execute **Phase 2 only** after Phase 1 merges. Re-derive identity live from
-installed `fa44cb25` (do not `make ship` Phase 1 to chase stamp == HEAD).
-Phase 1 Computer Use used `agent-desktop` because Cursor
-`user-grokbuild-computer-use` was still unloaded, so Phase 2 still owns the
-MCP proof and its no-tool marker. Do not start Phase 3–6. End every
-checkpoint with the three-sentence handoff.
+Execute **Phase 3 only** after Phase 2 merges. Re-derive identity live from
+installed `fa44cb25` (do not `make ship` Phase 1 or 2 to chase stamp == HEAD).
+Phase 2 proved Cursor `user-grokbuild-computer-use` against `/Applications/GrokBuild.app`
+and recorded the host split versus grok's in-session `grokbuild-computer-use`.
+Do not start Phase 4–6. End every checkpoint with the three-sentence handoff.

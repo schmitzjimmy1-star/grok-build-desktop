@@ -27,15 +27,16 @@
 > User conversations, historical acceptance evidence, unnamed sessions that were not
 > created by the current slice, and unrelated browser/app state are protected.
 >
-> **Current campaign:** 2026-08-14 residual closeout, Phase 1 complete pending
-> merge, Phase 2 next. Spec:
+> **Current campaign:** 2026-08-14 residual closeout, Phase 2 complete pending
+> merge, Phase 3 next. Spec:
 > [`docs/GROKBUILD_RESIDUAL_CLOSEOUT_2026-08-14.md`](GROKBUILD_RESIDUAL_CLOSEOUT_2026-08-14.md).
 > Phase 0 shipped stamp == `fa44cb2559735d2819789ed77d72a7a8f022abee` (PR #87).
-> Do not `make ship` this Phase 1 PR just to chase stamp == HEAD. The 2026-08-13
+> Phase 1 merged as `fb095d14844f76367659ecec7ea7566fd9517b5c` (PR #89). Do not
+> `make ship` Phase 1 or 2 just to chase stamp == HEAD. The 2026-08-13
 > campaign (Slices 0–7) remains closed. Numbered `## Slice N` headings below the
 > 2026-08-14 harness receipt are historical campaigns. Do not implement them.
 
-## Residual closeout — 2026-08-14 (Phase 1 complete pending merge, Phase 2 next)
+## Residual closeout — 2026-08-14 (Phase 2 complete pending merge, Phase 3 next)
 
 Authorized scope is
 [`docs/GROKBUILD_RESIDUAL_CLOSEOUT_2026-08-14.md`](GROKBUILD_RESIDUAL_CLOSEOUT_2026-08-14.md).
@@ -55,10 +56,9 @@ Phases, in order:
 | 5 | Replace remaining extracted-contract source-string pins | Slice 6-shaped smoke, 250k ceiling |
 | 6 | Personal notarized `v0.1.21` release; no `origin` | one no-tool marker unless Phase 5 already proved that binary |
 
-Execute Phase 2 only after this Phase 1 PR merges. Do not `make ship` Phase 1
-to chase stamp == HEAD; drive the `fa44cb25` binary until a later authorized
-ship. Cursor `user-grokbuild-computer-use` was still unloaded, so Phase 1 used
-`agent-desktop` and Phase 2 still owns the MCP proof.
+Execute Phase 3 only after this Phase 2 PR merges. Do not `make ship` Phase 1
+or 2 to chase stamp == HEAD; drive the `fa44cb25` binary until a later
+authorized ship. Phase 2 proved Cursor `user-grokbuild-computer-use`.
 
 ### Phase 0 receipt — 2026-08-15
 
@@ -183,8 +183,103 @@ samples at `2026-08-15T00:35:23-0500` and `2026-08-15T00:35:28-0500` found no
 untouched. Installed stamp still `fa44cb25` / `dirty=false`. Config hash
 unchanged.
 
-Do not start Phase 2 until this PR merges. Do not `make ship` this product+docs
-PR just to chase stamp == HEAD.
+Do not start Phase 3 until this PR merges. Do not `make ship` this docs PR
+just to chase stamp == HEAD.
+
+### Phase 2 receipt — 2026-08-15
+
+Gate A: clean `main == personal/main` at
+`fb095d14844f76367659ecec7ea7566fd9517b5c` (tree
+`ac3ec18bb3e56bfb8cc323f91a0f682d0a2cd332`). Installed stamp ancestor
+`fa44cb2559735d2819789ed77d72a7a8f022abee` / `dirty=false` / SHA-256
+`f5207d32d8d91d4c609122b0870c4151b00017653a801e35eb407fea555ea2d2` / Team
+`DD2GCQJVB4`. Product diff `fa44cb25..HEAD` is only
+`GrokBuild/Views/ChatComposer.swift` (Phase 1 empty AX value). Origin remained
+`433ddf861a86447a8fee2b1cf13e6c674a8f2211`. CLI `grok 1.0.3 (1a29d5bc12d4)
+[stable]`. Protected config
+`2cb4dcdaf0f1841aab54fb2ae10586381ca78b560eb9fc0477efb521e92140ae`, 2,894
+bytes, mode `0600`.
+
+Branch: `codex/grokbuild-c8-p2-cursor-mcp`.
+
+#### Host split (no overlap)
+
+Cursor Agent catalog has one desktop Computer Use server:
+`user-grokbuild-computer-use` (`~/.cursor/mcp.json` key `grokbuild-computer-use`,
+helper `~/.grokbuild/computer-use/GrokBuildComputerUseMCP`, parent `Cursor
+Helper: mcp-process` PID `16089`). `cursor-ide-browser` is a different surface
+(web pages only) and was not used. GrokBuild session Computer Use is a second
+stdio bus (`grokbuild-computer-use` injected into `grok agent stdio` from the
+bundled helper). This Phase 2 grok launch carried `--deny MCPTool(*__*)`, so
+grok did not spawn a second `GrokBuildComputerUseMCP`. Direct Shell
+`agent-desktop` was not used. Do not drive the same target from both hosts in
+one turn.
+
+#### Phase 1 leftover patched on this MCP
+
+Phase 1 typed the Light packet with clipboard because agent-desktop
+set-value/type failed on the readonly composer. Cursor MCP `computer_type`
+against `grok-message-composer` succeeded (`193 characters`) with no clipboard.
+Live empty accessibility value on the `fa44cb25` binary is still `Empty`;
+**Describe a task** remains source-only until a later authorized ship. Do not
+`make ship` this phase to chase that AX.
+
+`computer_press` `cmd+q` is **POLICY_DENIED** on this Cursor MCP. Graceful
+`computer_close_app` `app=GrokBuild` quit the workbench. `computer_screenshot`
+was not invoked.
+
+Working verbs: `computer_permissions`, `computer_list_apps`,
+`computer_list_windows`, `computer_snapshot`, `computer_click`,
+`computer_type`, `computer_wait`, `computer_get`, `computer_close_app`.
+Fallback `agent-desktop` was not required.
+
+Installed proof: `/Applications/GrokBuild.app/Contents/MacOS/GrokBuild` PID
+`16651`, window `w-4049` 1440×819.
+
+#### Frozen packet
+
+| Field | Value |
+|---|---|
+| Run ID | `20260815T055806Z` |
+| Marker | `GB-C8-P2-MCP-20260815T055806Z` |
+| Model / route | inherited New chat default `grok-4.6`, native xAI through the Grok CLI (`--model grok-4.6 --reasoning-effort low`) |
+| Turns / children | 1 parent turn, 0 children |
+| Allowed tools | none |
+| Forbidden | terminal, spawn_subagent, wait_all, search/web, browser, Computer Use, write/edit, git, retries |
+| Suggested ceiling | 200k actual tokens |
+| Prompt | `Reply with exactly GB-C8-P2-MCP-20260815T055806Z and nothing else. Do not use any tools: no terminal, spawn_subagent, wait_all, search, web, browser, Computer Use, write, edit, git, or retries.` |
+
+| Identity | Value |
+|---|---|
+| Local tab | `2791A853-A397-4E6D-B182-65520EA426A2` |
+| Parent backend | `01a00400-1942-7de2-b6ce-e19db88c32ba` |
+| Process generation | 1 |
+| Live model | `Grok 4.6` confirmed / usage `grok-4.6-build` |
+| Route | `--model grok-4.6` native CLI; picker `Live model Grok 4.6, confirmed by the current process.` |
+| Outcome | Settled: Turn completed |
+| Tools | 0 succeeded • 0 failed |
+| Coordination | 0 requested • 0 spawned • 0 finished • max 0 concurrent |
+| Parent usage | 16,107 tokens • 1 model call • $0.06 provider-reported (16,053 in • 54 out • 33 reasoning; 1.7 s API) |
+| Reply | exact `GB-C8-P2-MCP-20260815T055806Z` (Thought for 1s; no retry) |
+
+Variance: no-tool first turn is 16,107 tokens, well under the ~148k tool-using Grok 4.6 first-turn band and the 200k ceiling. No Slice 6/7 or Phase 1 markers reused.
+
+#### Gate F–G
+
+Exact **Close Session** removed local tab
+`2791A853-A397-4E6D-B182-65520EA426A2` and parent backend
+`01a00400-1942-7de2-b6ce-e19db88c32ba`. Transcript files for that UUID are
+absent. CLI `grok sessions search GB-C8-P2-MCP-20260815T055806Z` returned
+`Total: 0`. **Clear Empty** was not used. Protected user sessions were not
+touched. `computer_close_app` graceful quit at `2026-08-15T01:02:46-0500`.
+Process samples at `01:02:46` and `01:02:51` found no `GrokBuild`, `grok`, or
+`agent-desktop`. Cursor-owned `GrokBuildComputerUseMCP` PID `16089` (parent
+`Cursor Helper: mcp-process`) remained as the loaded user MCP, not a
+GrokBuild session leak. Origin untouched. Installed stamp still `fa44cb25` /
+`dirty=false`. Config hash unchanged.
+
+Do not start Phase 3 until this PR merges. Do not `make ship` this docs PR
+just to chase stamp == HEAD.
 
 ## Slice 7 — refresh public evidence and onboarding (complete, PR #85 + closeout, 2026-08-14)
 
