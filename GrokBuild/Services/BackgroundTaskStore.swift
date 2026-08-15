@@ -247,6 +247,49 @@ struct BackgroundTaskTracker {
         Array(pendingSpawnedEvents.values)
     }
 
+    /// Turn-scoped run-evidence workers. ChatStore still owns which activity IDs
+    /// belong to the current parent turn and the role→model table; this reducer
+    /// maps tracker rows plus unbound spawn receipts onto
+    /// `RunEvidenceSnapshot.Worker` without inventing a `BackgroundActivity`.
+    func evidenceWorkers(
+        currentTurnActivityIDs: Set<String>,
+        planStepIDs: [String: String],
+        rolesByName: [String: String]
+    ) -> [RunEvidenceSnapshot.Worker] {
+        let activityWorkers = activities.filter {
+            $0.kind == .subagent && currentTurnActivityIDs.contains($0.id)
+        }.map { worker(from: $0, planStepIDs: planStepIDs, rolesByName: rolesByName) }
+        let boundChildIDs = Set(activityWorkers.compactMap(\.childID))
+        let unbound = unboundSpawnedEvents
+            .filter { !boundChildIDs.contains($0.childID) }
+            .map { RunEvidenceSnapshot.unboundWorker(from: $0, rolesByName: rolesByName) }
+        return activityWorkers + unbound
+    }
+
+    private func worker(
+        from activity: BackgroundActivity,
+        planStepIDs: [String: String],
+        rolesByName: [String: String]
+    ) -> RunEvidenceSnapshot.Worker {
+        RunEvidenceSnapshot.Worker(
+            id: activity.id,
+            title: activity.title,
+            status: activity.status,
+            owningPlanStepID: planStepIDs[activity.id],
+            childID: activity.childID,
+            durationMilliseconds: activity.durationMilliseconds,
+            toolCallCount: activity.toolCallCount,
+            redactedError: activity.redactedError,
+            childToolReceipts: activity.childToolReceipts,
+            runtimeModelID: activity.runtimeModelID,
+            routedModel: SubagentRouting.routedModel(
+                forWorkerTitle: activity.title,
+                rolesByName: rolesByName
+            ),
+            childLedgerReadOutcome: activity.childLedgerReadOutcome
+        )
+    }
+
     /// Typed, per-turn observations for the settled Run receipt. This reducer
     /// owns correlation only; the parent usage value still comes from the
     /// authoritative parent `turn_completed` receipt supplied by ChatStore.

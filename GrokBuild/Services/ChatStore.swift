@@ -4755,33 +4755,10 @@ final class ChatStore {
     }
 
     private func currentTurnEvidenceWorkers() -> [RunEvidenceSnapshot.Worker] {
-        let activityWorkers = backgroundActivities.filter {
-            $0.kind == .subagent && currentTurnWorkerActivityIDs.contains($0.id)
-        }.map { worker(from: $0) }
-        let boundChildIDs = Set(activityWorkers.compactMap(\.childID))
-        let unbound = backgroundTaskTracker.unboundSpawnedEvents
-            .filter { !boundChildIDs.contains($0.childID) }
-            .map { RunEvidenceSnapshot.unboundWorker(from: $0, rolesByName: subagentRoleModelsByName) }
-        return activityWorkers + unbound
-    }
-
-    private func worker(from activity: BackgroundActivity) -> RunEvidenceSnapshot.Worker {
-        RunEvidenceSnapshot.Worker(
-            id: activity.id,
-            title: activity.title,
-            status: activity.status,
-            owningPlanStepID: currentTurnWorkerPlanStepIDs[activity.id],
-            childID: activity.childID,
-            durationMilliseconds: activity.durationMilliseconds,
-            toolCallCount: activity.toolCallCount,
-            redactedError: activity.redactedError,
-            childToolReceipts: activity.childToolReceipts,
-            runtimeModelID: activity.runtimeModelID,
-            routedModel: SubagentRouting.routedModel(
-                forWorkerTitle: activity.title,
-                rolesByName: subagentRoleModelsByName
-            ),
-            childLedgerReadOutcome: activity.childLedgerReadOutcome
+        backgroundTaskTracker.evidenceWorkers(
+            currentTurnActivityIDs: currentTurnWorkerActivityIDs,
+            planStepIDs: currentTurnWorkerPlanStepIDs,
+            rolesByName: subagentRoleModelsByName
         )
     }
 

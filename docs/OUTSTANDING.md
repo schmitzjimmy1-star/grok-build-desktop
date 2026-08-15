@@ -17,13 +17,15 @@
 > User conversations, historical acceptance evidence, unnamed sessions that were not
 > created by the current slice, and unrelated browser/app state are protected.
 >
-> **Current campaign slice:** Slice 6, extract coordination seams, authorized and not
-> started. Spec:
+> **Current campaign slice:** Slice 6, extract coordination seams, authorized;
+> PR 1 (evidence-worker projection onto `BackgroundTaskTracker`) is implemented
+> locally on `codex/grokbuild-audit-s6-evidence-workers` and unpublished.
+> Spec:
 > [`docs/GROKBUILD_VERIFICATION_AND_FORWARD_SLICES_2026-08-13.md`](GROKBUILD_VERIFICATION_AND_FORWARD_SLICES_2026-08-13.md).
 > Numbered `## Slice N` headings below the 2026-08-14 harness receipt are historical
 > campaigns. Do not implement them.
 
-## Slice 6 — extract coordination seams and replace brittle test pins (authorized, not started, 2026-08-14)
+## Slice 6 — extract coordination seams and replace brittle test pins (authorized, PR 1 unpublished, 2026-08-14)
 
 Authorized scope is the Slice 6 section in
 `docs/GROKBUILD_VERIFICATION_AND_FORWARD_SLICES_2026-08-13.md`. Product identity is
@@ -42,7 +44,7 @@ export layer):
 
 | Seam | Already extracted | Still coordinates from |
 |---|---|---|
-| 1. Subagent/lifecycle correlation | `BackgroundTaskTracker` in `GrokBuild/Services/BackgroundTaskStore.swift` | `ChatStore.backgroundTaskTracker`, `ChatStore.currentTurnEvidenceWorkers()` in `GrokBuild/Services/ChatStore.swift` |
+| 1. Subagent/lifecycle correlation | `BackgroundTaskTracker` in `GrokBuild/Services/BackgroundTaskStore.swift`, including `evidenceWorkers(...)` | `ChatStore.backgroundTaskTracker`, thin `ChatStore.currentTurnEvidenceWorkers()` delegate, `ChatStore` turn-scoped worker ID sets |
 | 2. Session-retention/LRU | `SessionRuntimeRetentionPolicy` in `GrokBuild/Models/SessionProcessIdentity.swift` | `ContentView.runtimeRetentionDecision`, `ContentView.enforceConnectionCap()` in `GrokBuild/ContentView.swift` |
 | 3. Run-history/export | `RunHistory` in `GrokBuild/Models/RunHistory.swift` | `GrokBuild/Views/SessionDashboardPanel.swift`, `ContentView` `RunHistory.records(from:)` |
 | 4. Top bar and composer | none as small components yet | `ChatView.topBar`, `ChatView.composer`, `ChatView.headerReviewToggle` in `GrokBuild/Views/ChatView.swift` |

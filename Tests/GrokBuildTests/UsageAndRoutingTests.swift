@@ -313,13 +313,31 @@ final class UsageAndRoutingTests: XCTestCase {
             contentsOf: repositoryRoot.appendingPathComponent("GrokBuild/Services/ChatStore.swift"),
             encoding: .utf8
         )
-        XCTAssertEqual(
-            chatStoreSource.components(separatedBy: "routedModel: SubagentRouting.routedModel(").count - 1,
-            1,
-            "worker construction carries routing through currentTurnEvidenceWorkers()"
+        let trackerSource = try String(
+            contentsOf: repositoryRoot.appendingPathComponent("GrokBuild/Services/BackgroundTaskStore.swift"),
+            encoding: .utf8
         )
-        XCTAssertTrue(chatStoreSource.contains("func currentTurnEvidenceWorkers()"),
-                      "live projection and settled snapshot share one worker builder")
+        XCTAssertEqual(
+            trackerSource.components(separatedBy: "routedModel: SubagentRouting.routedModel(").count - 1,
+            1,
+            "worker construction carries routing through BackgroundTaskTracker.evidenceWorkers()"
+        )
+        XCTAssertFalse(
+            chatStoreSource.contains("routedModel: SubagentRouting.routedModel("),
+            "ChatStore no longer maps BackgroundActivity onto run-evidence workers"
+        )
+        XCTAssertTrue(
+            trackerSource.contains("func evidenceWorkers("),
+            "the tracker owns turn-scoped evidence-worker mapping"
+        )
+        XCTAssertTrue(
+            chatStoreSource.contains("backgroundTaskTracker.evidenceWorkers("),
+            "live projection and settled snapshot share the tracker evidence builder"
+        )
+        XCTAssertTrue(
+            chatStoreSource.contains("func currentTurnEvidenceWorkers()"),
+            "ChatStore keeps one thin delegate so live and settled snapshots share one call"
+        )
         let settleAnchor = try XCTUnwrap(chatStoreSource.range(of: "let turnSucceeded = completion.isSuccessful"))
         let afterSettle = String(chatStoreSource[settleAnchor.upperBound...].prefix(600))
         XCTAssertTrue(afterSettle.contains("sessionUsage.recordTurn("),
