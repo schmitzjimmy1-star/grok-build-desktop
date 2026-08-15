@@ -165,15 +165,16 @@ private struct AssistantToolTraceRow: View {
                     }
                     Text(tool.title)
                         .font(AppTheme.Typography.thinking)
+                        .foregroundStyle(.primary)
                     Text(statusLine)
                         .font(AppTheme.Typography.caption)
-                        .foregroundStyle(.tertiary)
+                        .foregroundStyle(.secondary)
                 }
             }
             if let output {
                 Text(output)
                     .font(AppTheme.Typography.caption.monospaced())
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(.primary.opacity(0.82))
                     // Settled tool detail remains available in the Run inspector.
                     // Selectable AppKit text inside the transcript LazyVStack can
                     // re-enter SelectionOverlay layout during session recovery.

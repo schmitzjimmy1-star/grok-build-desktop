@@ -6,21 +6,20 @@ import Foundation
 /// 2. the sidebar collapses next;
 /// 3. the transcript never compresses below its readable minimum.
 enum ResponsiveLayoutPolicy {
-    /// Minimum chat-area width at which the 260-pt top-trailing inspector
+    /// Minimum chat-area width at which the bounded top-trailing activity canvas
     /// overlay can be shown without covering most of the reading column.
     /// Below this the overlay stands down and an open inspector becomes a
     /// collapsed strip; the user's open/closed state is preserved and the
     /// panel returns when the window widens.
     static let inspectorMinimumChatWidth: Double = 900
 
-    /// Workbench W-6 (2026-08-08), audit Slice 4 (2026-08-13): at this chat-area
-    /// width the open inspector stops overlaying the reading column and docks as
-    /// a real third column. 1,100 − ~284 (260-pt panel + padding) leaves ≥816 pt
-    /// of transcript, above the readable minimum. The default 1440×900 window
-    /// (chat area ≈1,200 pt with the sidebar visible) therefore docks. Below 900
-    /// the inspector collapses to a trailing strip; overlay remains only for
-    /// 900..<1,100.
-    static let inspectorDockMinimumChatWidth: Double = 1100
+    /// P3D (2026-08-15): the live-worker surface is a 340-pt activity canvas,
+    /// not the old 260-pt receipt rail. Dock only when the full canvas plus its
+    /// breathing room still leaves the 812-pt readable transcript. Below that,
+    /// use the bounded overlay; below 900, collapse to the named worker control.
+    static let inspectorDockMinimumChatWidth: Double = 1180
+
+    static let activityCanvasWidth: CGFloat = 340
 
     /// The transcript's readable minimum: the 760-pt reading column plus its
     /// 26-pt horizontal padding on each side.
@@ -37,7 +36,7 @@ enum ResponsiveLayoutPolicy {
     /// ScrollView, and pins a core at 100% (2026-08-14 installed sample).
     static let measuredWidthEpsilon: Double = 1
 
-    /// Keep the current inspector chrome across the 900 / 1,100 thresholds so
+    /// Keep the current inspector chrome across the 900 / 1,180 thresholds so
     /// overlay ↔ dock ↔ strip cannot chase a noisy measurement.
     static let inspectorHysteresis: Double = 16
 

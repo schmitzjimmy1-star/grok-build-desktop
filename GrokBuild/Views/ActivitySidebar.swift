@@ -221,6 +221,28 @@ enum ActivitySidebarPresentation {
             .map { $0.prefix(1).uppercased() + $0.dropFirst().lowercased() }
             .joined(separator: " ")
     }
+
+    /// A child can finish its lifecycle while one of its typed tool receipts
+    /// failed or stayed unreconciled. Do not paint that worker as a clean green
+    /// completion just because `subagent_finished` arrived.
+    static func workerNeedsReview(_ worker: RunEvidenceSnapshot.Worker) -> Bool {
+        worker.isCompleted && worker.hasUnresolvedChildToolOutcome
+    }
+
+    static func workerDisplayStatus(_ worker: RunEvidenceSnapshot.Worker) -> String {
+        workerNeedsReview(worker) ? "Needs Review" : activityStatus(worker.status)
+    }
+
+    static func workerStatusSummary(_ workers: [RunEvidenceSnapshot.Worker]) -> String {
+        let running = workers.filter(\.isActive).count
+        let review = workers.filter { workerNeedsReview($0) || (!$0.isActive && !$0.isCompleted) }.count
+        let finished = max(0, workers.count - running - review)
+        var parts: [String] = []
+        if running > 0 { parts.append("\(running) live") }
+        if finished > 0 { parts.append("\(finished) finished") }
+        if review > 0 { parts.append("\(review) needs review") }
+        return parts.isEmpty ? "No workers" : parts.joined(separator: " · ")
+    }
 }
 
 /// A read-only renderer for two deliberately separate evidence phases. Live
@@ -245,20 +267,36 @@ struct ActivitySidebar: View {
     @State private var showsExecutionReceipts = false
 
     var body: some View {
-        // Codex parity Slice 5: a compact contextual inspector, not a dashboard.
-        // Short optional sections; deep generation-bound receipts stay one
-        // disclosure away under Run details. Recovery always outranks parity.
+        // P3D: active workers own this canvas. Runtime state still comes only
+        // from the generation-bound live projection or settled snapshot.
         VStack(spacing: 0) {
             header
             Divider()
-            VStack(alignment: .leading, spacing: 12) {
-                if let snapshot, snapshot.continuity.requiresRecoveryAction {
-                    continuityCard(snapshot)
-                }
+            ScrollView {
+                VStack(alignment: .leading, spacing: 10) {
+                    if let snapshot, snapshot.continuity.requiresRecoveryAction {
+                        continuityCard(snapshot)
+                    }
 
-                if let subagents = inspector.subagents {
-                    subagentsSection(subagents)
-                }
+                    if let liveProjection, !liveProjection.workers.isEmpty {
+                        workerActivityCanvas(
+                            workers: liveProjection.workers,
+                            goalSummary: liveProjection.goalSummary,
+                            plan: liveProjection.plan,
+                            parentBackendSessionID: liveProjection.binding.backendSessionID,
+                            isLive: true
+                        )
+                    } else if let snapshot, !snapshot.workers.isEmpty {
+                        workerActivityCanvas(
+                            workers: snapshot.workers,
+                            goalSummary: snapshot.goalSummary,
+                            plan: snapshot.plan,
+                            parentBackendSessionID: snapshot.binding.backendSessionID,
+                            isLive: false
+                        )
+                    } else if let subagents = inspector.subagents {
+                        subagentsSection(subagents)
+                    }
 
                 // The Computer Use readiness note was removed from the inspector
                 // (owner decision, 2026-08-08): it restated a feature toggle on
@@ -266,41 +304,39 @@ struct ActivitySidebar: View {
                 // (`inspector.computerUse`) for tests and future surfaces;
                 // Settings → Computer Use remains the control surface.
 
-                if showsDebugLedger, let capabilities = inspector.mcpCapabilities {
-                    mcpCapabilitiesSection(capabilities)
-                }
+                    if showsDebugLedger, let capabilities = inspector.mcpCapabilities {
+                        mcpCapabilitiesSection(capabilities)
+                    }
 
-                if showsDebugLedger, let sources = inspector.sources {
-                    sourcesSection(sources)
-                }
+                    if showsDebugLedger, let sources = inspector.sources {
+                        sourcesSection(sources)
+                    }
 
-                if inspector.failedToolCount > 0 || !inspector.unresolvedErrors.isEmpty {
-                    unresolvedErrorsLine
-                }
+                    if inspector.failedToolCount > 0 || !inspector.unresolvedErrors.isEmpty {
+                        unresolvedErrorsLine
+                    }
 
-                if showsDebugLedger, inspector.hasRunDetails {
-                    Divider()
-                    DisclosureGroup(isExpanded: $showsExecutionReceipts) {
-                        ScrollView {
+                    if showsDebugLedger, inspector.hasRunDetails {
+                        Divider()
+                        DisclosureGroup(isExpanded: $showsExecutionReceipts) {
                             runDetailsContent
                                 .padding(.top, 10)
+                        } label: {
+                            Label("Run details", systemImage: "list.bullet.rectangle")
+                                .font(AppTheme.Typography.captionStrong)
                         }
-                        .frame(maxHeight: 360)
-                    } label: {
-                        Label("Run details", systemImage: "list.bullet.rectangle")
-                            .font(AppTheme.Typography.captionStrong)
+                        .accessibilityHint("Opens the generation-bound worker, tool, artifact, model, process, continuity, and usage receipts.")
+                        .accessibilityIdentifier("grok-inspector-run-details")
                     }
-                    .accessibilityHint("Opens the generation-bound worker, tool, artifact, model, process, continuity, and usage receipts.")
-                    .accessibilityIdentifier("grok-inspector-run-details")
-                }
 
-                if inspector.isEmpty {
-                    Text("No activity for this task yet.")
-                        .font(AppTheme.Typography.caption)
-                        .foregroundStyle(.secondary)
+                    if inspector.isEmpty {
+                        Text("No activity for this task yet.")
+                            .font(AppTheme.Typography.caption)
+                            .foregroundStyle(.secondary)
+                    }
                 }
+                .padding(12)
             }
-            .padding(12)
 
             // Escape closes the inspector without losing state (Slice 5 contract).
             Button("") { onClose() }
@@ -309,14 +345,11 @@ struct ActivitySidebar: View {
                 .frame(width: 0, height: 0)
                 .accessibilityHidden(true)
         }
-        // Workbench W-1 (2026-08-08): a leaner overlay budget — the inspector is
-        // a receipt surface, not a second canvas.
-        .frame(minWidth: 240, idealWidth: 260, maxWidth: 300)
-        .fixedSize(horizontal: false, vertical: true)
+        .frame(minWidth: 300, idealWidth: 340, maxWidth: 380, maxHeight: .infinity)
         .background(AppTheme.Palette.sidebar)
         .modifier(ActivitySidebarChrome())
         .accessibilityElement(children: .contain)
-        .accessibilityLabel("Run inspector")
+        .accessibilityLabel(liveProjection?.workers.isEmpty == false ? "Live worker activity" : "Run inspector")
         .accessibilityIdentifier("grok-run-inspector")
         .confirmationDialog("Continue this transcript as a new conversation?", isPresented: $confirmsContinueAsNew) {
             Button("Continue as New", role: .destructive, action: onContinueAsNew)
@@ -324,6 +357,153 @@ struct ActivitySidebar: View {
         } message: {
             Text("Your local messages stay in this tab. The previous backend is preserved, and no new backend starts until you send.")
         }
+    }
+
+    private func workerActivityCanvas(
+        workers: [RunEvidenceSnapshot.Worker],
+        goalSummary: String?,
+        plan: [RunEvidenceSnapshot.PlanStep],
+        parentBackendSessionID: String?,
+        isLive: Bool
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(alignment: .firstTextBaseline, spacing: 8) {
+                Label(isLive ? "Working now" : "Worker receipts", systemImage: "person.2.fill")
+                    .font(.system(size: 14, weight: .semibold))
+                Spacer(minLength: 8)
+                Text(ActivitySidebarPresentation.workerStatusSummary(workers))
+                    .font(AppTheme.Typography.caption)
+                    .foregroundStyle(.secondary)
+            }
+
+            if let goalSummary, !goalSummary.isEmpty {
+                DisclosureGroup {
+                    Text(goalSummary)
+                        .font(AppTheme.Typography.caption)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .padding(.top, 3)
+                } label: {
+                    Label("Parent request", systemImage: "scope")
+                        .font(AppTheme.Typography.caption)
+                        .foregroundStyle(.secondary)
+                }
+                .accessibilityHint("Reveals the full parent request for these workers.")
+            }
+
+            if let current = plan.first(where: \.isCurrent) {
+                HStack(alignment: .top, spacing: 7) {
+                    Image(systemName: "arrow.right.circle.fill")
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundStyle(.tint)
+                        .padding(.top, 2)
+                    Text(current.title)
+                        .font(AppTheme.Typography.captionStrong)
+                        .lineLimit(2)
+                }
+                .accessibilityElement(children: .combine)
+                .accessibilityLabel("Current parent action: \(current.title)")
+                .accessibilityIdentifier("grok-worker-activity-current-action")
+            }
+
+            ForEach(workers) { worker in
+                workerActivityCard(
+                    worker,
+                    plan: plan,
+                    parentBackendSessionID: parentBackendSessionID,
+                    isLive: isLive
+                )
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier(isLive ? "grok-live-worker-activity" : "grok-settled-worker-activity")
+    }
+
+    private func workerActivityCard(
+        _ worker: RunEvidenceSnapshot.Worker,
+        plan: [RunEvidenceSnapshot.PlanStep],
+        parentBackendSessionID: String?,
+        isLive: Bool
+    ) -> some View {
+        let status = ActivitySidebarPresentation.workerDisplayStatus(worker)
+        let color = ActivitySidebarPresentation.workerNeedsReview(worker)
+            ? AppTheme.Palette.warning
+            : statusColor(worker.status)
+        let ownedStep = worker.owningPlanStepID.flatMap { stepID in
+            plan.first(where: { $0.id == stepID })
+        }
+        let detail = workerReceiptDetail(for: worker)
+        let currentAction = ownedStep?.title.trimmingCharacters(in: .whitespacesAndNewlines)
+        let showsCurrentAction = currentAction?.isEmpty == false
+            && currentAction?.localizedCaseInsensitiveCompare(worker.title) != .orderedSame
+        return VStack(alignment: .leading, spacing: 6) {
+            HStack(alignment: .center, spacing: 8) {
+                ZStack {
+                    Circle().fill(color.opacity(0.14))
+                    Image(systemName: worker.isActive ? "person.wave.2.fill" : "person.2.fill")
+                        .font(.system(size: 10, weight: .semibold))
+                        .foregroundStyle(color)
+                }
+                .frame(width: 24, height: 24)
+                .accessibilityHidden(true)
+                Text(worker.title)
+                    .font(.system(size: 13, weight: .semibold))
+                    .lineLimit(2)
+                Spacer(minLength: 6)
+                Text(status)
+                    .font(AppTheme.Typography.section.weight(.semibold))
+                    .foregroundStyle(color)
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 3)
+                    .background(color.opacity(0.10), in: Capsule())
+            }
+
+            if showsCurrentAction, let currentAction {
+                Label(currentAction, systemImage: "arrow.right")
+                    .font(AppTheme.Typography.caption)
+                    .foregroundStyle(worker.isActive ? .primary : .secondary)
+                    .lineLimit(2)
+            }
+
+            DisclosureGroup {
+                VStack(alignment: .leading, spacing: 4) {
+                    if let parentBackendSessionID {
+                        Text("Parent session: \(parentBackendSessionID)")
+                    }
+                    if let spawn = worker.spawnToolCallID {
+                        Text("Spawn tool: \(spawn)")
+                    }
+                    if let childID = worker.childID {
+                        Text("Child session: \(childID)")
+                    }
+                    if !detail.isEmpty { Text(detail) }
+                    if isLive {
+                        Text("Live generation receipt; outcome and usage are not settled.")
+                    }
+                }
+                .font(AppTheme.Typography.section)
+                .foregroundStyle(.secondary)
+                .textSelection(.enabled)
+                .fixedSize(horizontal: false, vertical: true)
+                .padding(.top, 5)
+            } label: {
+                Label("Details", systemImage: "doc.text.magnifyingglass")
+                    .font(AppTheme.Typography.caption)
+                    .foregroundStyle(.secondary)
+            }
+            .accessibilityLabel("Worker receipt")
+        }
+        .padding(9)
+        .background(Color.primary.opacity(0.035), in: RoundedRectangle(cornerRadius: AppTheme.Radius.medium))
+        .overlay {
+            RoundedRectangle(cornerRadius: AppTheme.Radius.medium)
+                .stroke(color.opacity(worker.isActive || ActivitySidebarPresentation.workerNeedsReview(worker) ? 0.28 : 0.12), lineWidth: 1)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("grok-worker-activity-\(worker.id)")
+        .accessibilityLabel("Worker \(worker.title). \(status).")
     }
 
     /// Live tracker: counts plus the visible worker rows, no extra disclosure.
@@ -481,7 +661,7 @@ struct ActivitySidebar: View {
         HStack(spacing: 8) {
             VStack(alignment: .leading, spacing: 2) {
                 HStack(spacing: 6) {
-                    Text(inspector.subagents == nil ? "Run" : "Subagents")
+                    Text(headerTitle)
                         .font(AppTheme.Typography.captionStrong)
                     if snapshot != nil {
                         evidencePhaseBadge("Finished", color: .secondary)
@@ -489,9 +669,7 @@ struct ActivitySidebar: View {
                         evidencePhaseBadge("Live", color: .accentColor)
                     }
                 }
-                Text(snapshot != nil ? "What the agent did" : liveProjection != nil
-                    ? "Happening now — not final"
-                    : "Workspace")
+                Text(headerSubtitle)
                 .font(AppTheme.Typography.caption)
                 .foregroundStyle(.tertiary)
             }
@@ -506,6 +684,20 @@ struct ActivitySidebar: View {
             .help("Hide run inspector").accessibilityLabel("Hide run inspector")
         }
         .padding(.horizontal, 12).padding(.vertical, 8)
+    }
+
+    private var headerTitle: String {
+        if liveProjection?.workers.isEmpty == false { return "Worker activity" }
+        if snapshot?.workers.isEmpty == false { return "Worker receipts" }
+        return inspector.subagents == nil ? "Run" : "Subagents"
+    }
+
+    private var headerSubtitle: String {
+        if liveProjection?.workers.isEmpty == false { return "Current turn · live receipts" }
+        if snapshot?.workers.isEmpty == false { return "Settled terminal state" }
+        if snapshot != nil { return "What the agent did" }
+        if liveProjection != nil { return "Happening now — not final" }
+        return "Workspace"
     }
 
     private func evidencePhaseBadge(_ label: String, color: Color) -> some View {
