@@ -221,6 +221,67 @@ final class RunEvidenceSnapshotTests: XCTestCase {
         XCTAssertNil(store.runEvidenceSnapshot)
     }
 
+    @MainActor
+    func testHasActiveBackgroundTasksTracksNonScheduledWork() {
+        let store = ChatStore()
+        XCTAssertFalse(store.hasActiveBackgroundTasks, "a fresh session has no background work")
+
+        // A running background shell must count as active long-horizon work.
+        store.ingestBackgroundActivityForTests([
+            "toolCallId": "bg-1",
+            "_meta": ["x.ai/tool": ["name": "run_terminal_command"]],
+            "rawInput": ["command": "tail -f build.log", "background": true],
+        ])
+        XCTAssertTrue(store.hasActiveBackgroundTasks, "a running background shell must be protected")
+
+        // Its terminal receipt releases the protection.
+        store.ingestBackgroundActivityForTests([
+            "toolCallId": "bg-1",
+            "_meta": ["x.ai/tool": ["name": "run_terminal_command"]],
+            "rawInput": ["command": "tail -f build.log", "background": true],
+            "rawOutput": ["id": "bg-1", "status": "completed", "output": "done"],
+            "status": "completed",
+        ])
+        XCTAssertFalse(store.hasActiveBackgroundTasks, "a completed background shell no longer pins the session")
+    }
+
+    @MainActor
+    func testUnboundSubagentSpawnSetsHasActiveBackgroundTasks() {
+        let store = ChatStore()
+        store.ingestSubagentSpawnedForTests(SubagentSpawnedEvent(
+            identity: ACPEventIdentity(
+                localTabID: UUID(),
+                backendSessionID: "backend",
+                processGeneration: 1,
+                backendEventID: "unbound"
+            ),
+            childID: "unbound-child",
+            parentPromptID: nil,
+            subagentType: "explore",
+            modelID: "grok-4.5",
+            description: "Still running"
+        ))
+        XCTAssertTrue(
+            store.hasActiveBackgroundTasks,
+            "a spawned subagent with no terminal receipt keeps the session protected"
+        )
+    }
+
+    @MainActor
+    func testScheduledActivityAloneDoesNotSetHasActiveBackgroundTasks() {
+        let store = ChatStore()
+        // Scheduled tasks are covered by the runtime lease, not the background flag,
+        // so a scheduler mirror alone must not double-report as background work.
+        store.ingestBackgroundActivityForTests([
+            "toolCallId": "sched-1",
+            "_meta": ["x.ai/tool": ["name": "scheduler_create"]],
+            "rawInput": ["interval": "60s", "prompt": "check inbox"],
+            "rawOutput": ["type": "SchedulerCreate", "id": "schedule-xyz"],
+        ])
+        XCTAssertTrue(store.backgroundActivities.contains { $0.kind == .scheduled })
+        XCTAssertFalse(store.hasActiveBackgroundTasks)
+    }
+
     func testCancelledWorkerFromStopCountsAsUnresolvedNotDone() {
         let worker = RunEvidenceSnapshot.Worker(
             id: "worker",

@@ -41,12 +41,14 @@ enum SessionProcessLRUPolicy {
 enum SessionRuntimeProtectionReason: String, Equatable, Hashable, Sendable {
     case starting
     case busy
+    case activeBackgroundTask
     case activeSchedule
 
     var displayName: String {
         switch self {
         case .starting: return "Agent starting"
         case .busy: return "Active turn"
+        case .activeBackgroundTask: return "Background work"
         case .activeSchedule: return "Active schedule"
         }
     }
@@ -59,6 +61,28 @@ struct SessionRuntimeRetentionCandidate: Equatable, Sendable {
     let isSelected: Bool
     let lastActivationOrdinal: UInt64
     let hasAuthoritativeActiveSchedule: Bool
+    /// True when a non-scheduled background activity (background shell, monitor,
+    /// or live subagent) is still running even though the parent turn may have
+    /// settled. Such long-horizon work must survive LRU eviction like `.busy`.
+    let hasActiveBackgroundTasks: Bool
+
+    init(
+        id: UUID,
+        connectionState: GrokProcessState,
+        hasLiveProcess: Bool,
+        isSelected: Bool,
+        lastActivationOrdinal: UInt64,
+        hasAuthoritativeActiveSchedule: Bool,
+        hasActiveBackgroundTasks: Bool = false
+    ) {
+        self.id = id
+        self.connectionState = connectionState
+        self.hasLiveProcess = hasLiveProcess
+        self.isSelected = isSelected
+        self.lastActivationOrdinal = lastActivationOrdinal
+        self.hasAuthoritativeActiveSchedule = hasAuthoritativeActiveSchedule
+        self.hasActiveBackgroundTasks = hasActiveBackgroundTasks
+    }
 }
 
 struct SessionRuntimeRetentionDecision: Equatable, Sendable {
@@ -72,8 +96,9 @@ struct SessionRuntimeRetentionDecision: Equatable, Sendable {
 }
 
 /// Pure ownership policy for the normal four-process window. Starting turns, active
-/// turns, and exact live schedule leases may overflow the soft cap; ordinary idle
-/// sessions outside the selected/MRU window remain eviction candidates.
+/// turns, live background work (background shells, monitors, subagents), and exact
+/// live schedule leases may overflow the soft cap; ordinary idle sessions outside
+/// the selected/MRU window remain eviction candidates.
 enum SessionRuntimeRetentionPolicy {
     static func decision(
         candidates: [SessionRuntimeRetentionCandidate],
@@ -92,6 +117,12 @@ enum SessionRuntimeRetentionPolicy {
                 candidateReasons.insert(.busy)
             case .idle, .ready, .failed:
                 break
+            }
+            // A background `/loop`, monitor, or live subagent keeps working after
+            // the parent turn settles to `.ready`/`.idle`. Protect it so opening
+            // other tabs cannot silently sever long-horizon work.
+            if candidate.hasActiveBackgroundTasks {
+                candidateReasons.insert(.activeBackgroundTask)
             }
             if candidate.hasAuthoritativeActiveSchedule {
                 candidateReasons.insert(.activeSchedule)
