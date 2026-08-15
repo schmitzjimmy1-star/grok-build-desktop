@@ -16,6 +16,54 @@
 > after its receipt is captured. Only exact, ledgered test-thread IDs may be deleted.
 > User conversations, historical acceptance evidence, unnamed sessions that were not
 > created by the current slice, and unrelated browser/app state are protected.
+>
+> **Current campaign slice:** Slice 6, extract coordination seams, authorized and not
+> started. Spec:
+> [`docs/GROKBUILD_VERIFICATION_AND_FORWARD_SLICES_2026-08-13.md`](GROKBUILD_VERIFICATION_AND_FORWARD_SLICES_2026-08-13.md).
+> Numbered `## Slice N` headings below the 2026-08-14 harness receipt are historical
+> campaigns. Do not implement them.
+
+## Slice 6 — extract coordination seams and replace brittle test pins (authorized, not started, 2026-08-14)
+
+Authorized scope is the Slice 6 section in
+`docs/GROKBUILD_VERIFICATION_AND_FORWARD_SLICES_2026-08-13.md`. Product identity is
+merged PR #74 `da07f559f038ec510638d7e3e9e42060def602ea` with installed SHA-256
+`9b955934c44e723fc0a32b37c5995134ab4042fc4112ec2db3914fd442590a9a`. Docs-only Gate H
+receipt PR #75 sits on `main` at `f01760c322c8bb39f7b4f84ee29f0d49eecf41ba`. Prove
+`git merge-base --is-ancestor da07f559 HEAD` and an empty product diff before
+editing. Do not `make ship` a docs-only successor just to chase `stamp == HEAD`.
+
+Purpose: lower later feature cost without a behavior rewrite. Multiple tiny PRs are
+allowed. Never mix this with product copy, persistence schema, launch argv, provider
+route, Resume chrome, or installed behavior.
+
+Current files (reuse these owners; do not invent a second reducer, LRU policy, or
+export layer):
+
+| Seam | Already extracted | Still coordinates from |
+|---|---|---|
+| 1. Subagent/lifecycle correlation | `BackgroundTaskTracker` in `GrokBuild/Services/BackgroundTaskStore.swift` | `ChatStore.backgroundTaskTracker`, `ChatStore.currentTurnEvidenceWorkers()` in `GrokBuild/Services/ChatStore.swift` |
+| 2. Session-retention/LRU | `SessionRuntimeRetentionPolicy` in `GrokBuild/Models/SessionProcessIdentity.swift` | `ContentView.runtimeRetentionDecision`, `ContentView.enforceConnectionCap()` in `GrokBuild/ContentView.swift` |
+| 3. Run-history/export | `RunHistory` in `GrokBuild/Models/RunHistory.swift` | `GrokBuild/Views/SessionDashboardPanel.swift`, `ContentView` `RunHistory.records(from:)` |
+| 4. Top bar and composer | none as small components yet | `ChatView.topBar`, `ChatView.composer`, `ChatView.headerReviewToggle` in `GrokBuild/Views/ChatView.swift` |
+| 5. Source-string pins for touched contracts | keep a few architecture tripwires | `Tests/GrokBuildTests/ACPClientContractTests.swift` methods that `String(contentsOf:)` `ChatStore.swift`, `ContentView.swift`, `ChatView.swift`, or `GrokChatChrome.swift` |
+
+Supporting tests already in tree: `Tests/GrokBuildTests/SessionRuntimeRetentionTests.swift`,
+`Tests/GrokBuildTests/RunHistoryTests.swift`,
+`Tests/GrokBuildTests/LifecycleAndSubprocessTests.swift`,
+`Tests/GrokBuildTests/AcceptanceHarnessTests.swift`. Smoke driver:
+`scripts/acceptance/run.py` (dry-run default; `--billable` plus a new UTC run ID;
+never reuse `20260814T225910Z` or `20260814T235900Z`). Handoff renderer:
+`scripts/acceptance/harness/handoff.py`. Gates A–H live in this file under
+**Mandatory workflow for every slice**. Computer Use and `make ship` proof is
+`/Applications/GrokBuild.app` only; `make run` opens `.build` and is not installed
+acceptance.
+
+Acceptance: focused tests plus `make test`, `make ship`, session switch/restore,
+Stop, close, quit, and process-zero. Neutral-extraction smoke is one agentic packet
+(three ordered tools, two parallel read-only children, one follow-up turn, one
+deliberate Stop) under a **250k** actual-token ceiling. Slice 7, releases, tags,
+origin, force-push, branch deletion, and configuration changes remain forbidden.
 
 ## Slice 5 — first-class agentic acceptance harness (complete, 2026-08-14)
 
@@ -1618,7 +1666,10 @@ Requirements:
 6. No unreviewed user changes exist. If the worktree is dirty, stop; do not stash,
    reset, checkout, or absorb unrelated paths.
 7. The installed bundle stamp names the personal repository, branch `main`, current
-   `HEAD`, and `dirty=false`.
+   `HEAD` or an ancestor followed only by receipt/documentation commits, and
+   `dirty=false`. Prove the ancestor case with the `git merge-base` plus empty
+   product-diff commands in `CANONICAL_WORKTREE.md`. Do not `make ship` a
+   docs-only successor just to chase `stamp == HEAD`.
 
 Record the starting `HEAD`, Git tree, installed stamp, executable hash, app version,
 CLI version, and pre-existing GrokBuild-owned PIDs in the slice receipt.
@@ -1638,7 +1689,9 @@ Examples:
 
 Rules:
 
-- One branch and one PR per slice.
+- One branch and one PR per slice, except Slice 6 which the forward-slices spec
+  allows as multiple tiny PRs (one bounded seam per PR, never mixed with product
+  behavior).
 - Touch only files named in the slice plus directly necessary tests/docs.
 - Document any compile-mandated extra file before editing it.
 - Do not combine nearby cleanup, dependency upgrades, formatting sweeps, config
@@ -2889,7 +2942,11 @@ tool/worker, missing terminal receipt, or accumulated actual usage already at/ab
 
 ---
 
-## Slice 5 — navigation-rail accessibility selection
+## Historical Slice 5 (2026-08-09) — navigation-rail accessibility selection
+
+> Closed historical campaign. Not current scope. Current Slice 6 is extract
+> coordination seams at the top of this ledger and in
+> `docs/GROKBUILD_VERIFICATION_AND_FORWARD_SLICES_2026-08-13.md`.
 
 ### Problem
 
@@ -3065,7 +3122,11 @@ at/above the 200,000-token ceiling before the next prompt.
 
 ---
 
-## Slice 6 — tiny-turn context cost and deterministic lifecycle closeout
+## Historical Slice 6 (2026-08-09) — tiny-turn context cost and deterministic lifecycle closeout
+
+> Closed historical campaign. Not current scope. Current Slice 6 is extract
+> coordination seams at the top of this ledger and in
+> `docs/GROKBUILD_VERIFICATION_AND_FORWARD_SLICES_2026-08-13.md`.
 
 ### Problem
 

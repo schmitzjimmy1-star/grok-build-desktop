@@ -503,17 +503,39 @@ Suggested anomaly ceiling for the installed harness proof: **1.5m actual tokens*
 
 ### Scope
 
-Do this as multiple tiny PRs if necessary, but never mix it with product behavior:
+Do this as multiple tiny PRs if necessary, but never mix it with product behavior.
 
-1. Extract subagent/lifecycle correlation from `ChatStore` into a pure reducer already
-   proven by Slice 1.
-2. Extract session-retention/LRU decisions from `ContentView` into the pure policy
-   proven by Slice 2.
-3. Extract Run-history/export formatting from the view into a Sendable value layer.
-4. Move top bar and composer presentation into small `ChatView` components without
-   moving state ownership.
-5. Replace source-string assertions for touched contracts with compile-time or
-   behavior tests; keep a few deliberate architecture tripwires.
+Current files. Reuse the extracted owners; do not create a second reducer, LRU
+policy, or export type:
+
+1. Extract remaining subagent/lifecycle correlation from `ChatStore` into
+   `BackgroundTaskTracker` in `GrokBuild/Services/BackgroundTaskStore.swift`
+   (already proven by Slice 1). Remaining call sites:
+   `ChatStore.backgroundTaskTracker` and `ChatStore.currentTurnEvidenceWorkers()`
+   in `GrokBuild/Services/ChatStore.swift`.
+2. Extract remaining session-retention/LRU decisions from `ContentView` into
+   `SessionRuntimeRetentionPolicy` in `GrokBuild/Models/SessionProcessIdentity.swift`
+   (already proven by Slice 2). Remaining call sites:
+   `ContentView.runtimeRetentionDecision` and `ContentView.enforceConnectionCap()`
+   in `GrokBuild/ContentView.swift`.
+3. Keep `RunHistory` in `GrokBuild/Models/RunHistory.swift` as the Sendable export
+   layer. Move any remaining view-side formatting out of
+   `GrokBuild/Views/SessionDashboardPanel.swift` and the `ContentView`
+   `RunHistory.records(from:)` snapshot.
+4. Move `ChatView.topBar`, `ChatView.composer`, and `ChatView.headerReviewToggle`
+   in `GrokBuild/Views/ChatView.swift` into small components without moving state
+   ownership out of `ChatStore` / `ContentView`.
+5. Replace source-string assertions for touched contracts in
+   `Tests/GrokBuildTests/ACPClientContractTests.swift` (the tests that
+   `String(contentsOf:)` `ChatStore.swift`, `ContentView.swift`, `ChatView.swift`,
+   or `GrokChatChrome.swift`) with compile-time or behavior tests; keep a few
+   deliberate architecture tripwires.
+
+Supporting tests: `SessionRuntimeRetentionTests.swift`, `RunHistoryTests.swift`,
+`LifecycleAndSubprocessTests.swift`, `AcceptanceHarnessTests.swift`. Smoke driver:
+`scripts/acceptance/run.py`. Checkpoint handoff:
+`scripts/acceptance/harness/handoff.py`. Installed proof is
+`/Applications/GrokBuild.app` after `make ship`; `make run` opens `.build`.
 
 ### Acceptance
 
