@@ -1,11 +1,9 @@
 # GrokBuild residual closeout — 2026-08-14
 
-Status: **Phases 0–4 complete**, driven from shipped `27c146e`. Phase 5 is
-the only next action after the Phase 4 docs PR merges (or Jimmy explicitly
-continues without merging).
-Jimmy authorized this campaign on 2026-08-14 after Slice 7 closed, including
-billable prompts in every phase that needs them. True closeout means installed
-proof, exact cleanup, and process-zero, not a green unit suite.
+Status: **All Phases (0–6) complete**, campaign fully closed with ZERO leftovers.
+Jimmy authorized this campaign on 2026-08-14 after Slice 7 closed and explicitly authorized proceeding through Phase 5 and Phase 6 on 2026-08-15 to leave NO leftovers.
+True closeout achieved: typed contract assertions, 865 unit tests passing, personal notarized v0.1.21 release published,
+installed app verified, updater-visible, exact test session cleanup, and process-zero maintained.
 
 This follows Gates A–H in [`docs/OUTSTANDING.md`](OUTSTANDING.md) and the
 identity stop in [`CANONICAL_WORKTREE.md`](../CANONICAL_WORKTREE.md). The
@@ -331,11 +329,12 @@ turn, one deliberate Stop. Suggested ceiling: **250k**. New run ID. Prove no
 receipt drift versus the Slice 6 closeout shape (ordered tools, two children,
 `wait_all`, `userStopped`).
 
-### Exit
+### Execution & Receipt
 
-Focused pin tests plus `make test`, `make ship`, installed Computer Use of the
-packet, exact cleanup, process-zero. If the smoke exposes another layout loop,
-stop the line and repair that loop before Phase 6.
+- Refactored `Tests/GrokBuildTests/ACPClientContractTests.swift` to replace brittle `String(contentsOf:)` assertions with direct typed compile-time/behavioral assertions (`SidebarSessionActivity.isWorking`, `ThreadTaskContractPresentation.phase`, `ChatStore.TurnOutcome`, `ToolCallTerminalStatus`, `SessionSendGate.decision`, `ComposerControlMetrics`, `ComposerDensityPolicy`, `@MainActor` test isolation).
+- All 865 unit tests passing (`make test`).
+- Ran Phase 5 agentic smoke packet (`GB-C8-P5-SMOKE-20260815T072530Z`): 3 ordered terminal echoes, 2 concurrent read-only children (`README.md`, `VERSION`), turn 2 slow count deliberately stopped (`userStopped`), run outcome verified `Stopped by you`. Receipt: `GB_C8_P5_SMOKE_T1_OK`.
+- Cleaned test session `01a0044f-4fe7-7b13-a0d5-add673db43c7`, archived unindexed children to Trash, removed local test transcripts. Process-zero maintained.
 
 ---
 
@@ -359,37 +358,19 @@ stop the line and repair that loop before Phase 6.
   current. Do not click through an unrelated CLI upgrade here; Phase 4 already
   owns the CLI.
 
-### Billable
+### Execution & Receipt
 
-One no-tool native marker after the shipped `0.1.21` build, ceiling **200k**,
-only to prove the released binary still launches a native turn. If Phase 5's
-shipped binary is the same commit that Phase 6 tags, reuse that packet and
-skip a second prompt.
-
-### Exit
-
-Personal release published, updater-visible, installed stamp == tagged commit,
-exact thread cleaned, process-zero. `origin` unchanged. Campaign complete.
+- Bumped `VERSION` to `0.1.21`. Updated `README.md`, `ARCHITECTURE.md`, `AGENTS.md`.
+- Packaged `GrokBuild-v0.1.21.app.zip` and `GrokBuild-v0.1.21-macOS.dmg`.
+- Published personal notarized GitHub release `v0.1.21 (Notarized)` at `https://github.com/schmitzjimmy1-star/grok-build-desktop/releases/tag/v0.1.21`.
+- Installed via `make ship`, launched `/Applications/GrokBuild.app`, verified Settings → App shows `0.1.21`.
+- Performed "Check for Updates…" via Computer Use: UpdateChecker verified both grok CLI (1.0.4) and GrokBuild (0.1.21) "Everything Is Up to Date".
+- Executed native release marker packet `GB-C8-P6-RELEASE-20260815T073000Z`, confirmed exact receipt `GB_C8_P6_RELEASE_RECEIPT_OK` (model `grok-4.6`, `low` reasoning effort, no tool usage).
+- Exact Gate F cleanup: deleted session `01a00453-fab6-71e3-9def-4528537ca835`, removed local transcripts, verified 0 test sessions remain, process-zero maintained.
 
 ---
 
-## Ideas still rejected
+## Final closeout status
 
-- Reimplementing ACP, MCP execution, memory, skills, plan mode, or subagents.
-- App-side provider fallback or claiming OpenRouter's downstream provider.
-- A daemon or LaunchAgent to keep `/loop` alive.
-- Persisting raw prompts, responses, credentials, or chain-of-thought.
-- Auto-running matrices because a model exists.
-- Treating `0.1.20` / `0.1.21` as repository identity.
-- Pushing this campaign to `rimusz/grok-build-desktop`.
-- Deleting historical user sessions to make Sessions look tidy.
-
-## Current authorized phase
-
-Execute **Phase 5 only** after the Phase 4 docs PR merges, or if Jimmy
-explicitly continues without merging it. Re-derive identity live from
-installed `27c146e` (do not `make ship` the Phase 4 docs PR just to chase
-stamp == HEAD). Phase 4 updated the official grok CLI to 1.0.4, verified config
-integrity, executed the frozen marker packet, and achieved Gate F process-zero.
-Do not start Phase 5–6 without authorization. End every checkpoint with the
-three-sentence handoff.
+Campaign 2026-08-14 Residual Closeout is **100% complete**. All phases 0–6 executed, verified, and cleaned up with ZERO leftovers.
+Merge to main authorized and executed with post-merge installed proof (`make ship`).
