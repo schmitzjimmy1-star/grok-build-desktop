@@ -17,14 +17,17 @@
 > User conversations, historical acceptance evidence, unnamed sessions that were not
 > created by the current slice, and unrelated browser/app state are protected.
 >
-> **Current campaign slice:** Slice 7, refresh public evidence and onboarding.
-> Slice 6 closeout merged as `150fbbe858a1c11f9447441bcbe717a88e59975b` (PR #84).
+> **Current campaign slice:** none. Slices 0–7 of the 2026-08-13 campaign are
+> complete. Slice 7 feature merge is
+> `4c7514f2cf4a696087f4173ec99f4c02a3731938` (PR #85). Installed product remains
+> stamp `150fbbe858a1c11f9447441bcbe717a88e59975b`. Do not start another slice
+> from this session.
 > Spec:
 > [`docs/GROKBUILD_VERIFICATION_AND_FORWARD_SLICES_2026-08-13.md`](GROKBUILD_VERIFICATION_AND_FORWARD_SLICES_2026-08-13.md).
 > Numbered `## Slice N` headings below the 2026-08-14 harness receipt are historical
 > campaigns. Do not implement them.
 
-## Slice 7 — refresh public evidence and onboarding (in progress, 2026-08-14)
+## Slice 7 — refresh public evidence and onboarding (complete, PR #85 + closeout, 2026-08-14)
 
 Authorized scope is the Slice 7 section in
 `docs/GROKBUILD_VERIFICATION_AND_FORWARD_SLICES_2026-08-13.md`. Start from clean
@@ -116,6 +119,62 @@ staged by mutating Settings → App.
 `git diff --check` is clean. Paths: `README.md`, `ARCHITECTURE.md`,
 `docs/OUTSTANDING.md`, `docs/GROKBUILD_VERIFICATION_AND_FORWARD_SLICES_2026-08-13.md`,
 `docs/images/grokbuild-app.png`, `docs/images/grokbuild-run-inspector.png`.
+
+PR [#85](https://github.com/schmitzjimmy1-star/grok-build-desktop/pull/85)
+passed required GitHub **Test and Build App** run `31864327993` and merged
+reviewed head `7a952028caf69efa25d9a60963b449495642ef94` normally as
+`4c7514f2cf4a696087f4173ec99f4c02a3731938`. Do not `make ship` this docs-only
+successor just to chase `stamp == HEAD`.
+
+### Gate F–H closeout
+
+After the merge, local `main == personal/main` at `4c7514f`. Installed stamp
+stayed `personal` / `main` / `150fbbe8` / `dirty=false`. `git merge-base
+--is-ancestor 150fbbe8 HEAD` and the product diff
+`150fbbe8..HEAD` across `GrokBuild`, helpers, `Package.swift`, `VERSION`,
+`Makefile`, and `scripts` were empty. Dist/installed executable SHA-256
+remained `350b2f1487afa222bff043eeeae9fbde07f4cd8bb8ece9bea583ded35c41b01b`.
+`diff -qr dist/GrokBuild.app /Applications/GrokBuild.app` was silent. Signing
+was Apple Development, Team `DD2GCQJVB4`, deep/strict, no quarantine. Origin
+remained untouched at `433ddf861a86447a8fee2b1cf13e6c674a8f2211`. Protected
+`~/.grok/config.toml` stayed SHA-256
+`2cb4dcdaf0f1841aab54fb2ae10586381ca78b560eb9fc0477efb521e92140ae`, 2,894
+bytes, mode `0600`. CLI remained `grok 1.0.3 (1a29d5bc12d4) [stable]`.
+
+Relaunched `/Applications/GrokBuild.app` PID `95814` (window `w-3620`,
+1440×819). Settings → App showed **Personal • main @ 150fbbe8**, repository
+`https://github.com/schmitzjimmy1-star/grok-build-desktop`, and **Installed:
+1.0.3**. Appearance was not mutated.
+
+Exact **Close Session** on the visual-packet row removed local tab
+`C7B29221-4B7B-4C3E-BE03-542BB213738F` and parent backend
+`01a003a5-855b-7900-b6db-b1c99676f13e`. Both transcript files are absent.
+`grok sessions delete` for leftover children
+`01a003a5-b855-7773-8309-47f40b40026d` and
+`01a003a5-b858-7743-af2f-5e015334385b` reported `No session found` while the
+directories remained. Those two paths were proven non-symlinks with canonical
+cwd and `session_kind=subagent`, then moved recoverably to
+`~/.Trash/GrokBuild-Slice7-child-backends-20260815T044208Z`. Live backend
+directories for all three IDs are absent. Sessions search for
+`GB-S7-VIS-20260815T041847Z` returned CLI `Total: 0` and a UI result with the
+marker in **Search sessions** and zero session rows (project headers only).
+**Clear Empty** was not used. `session_search.sqlite` may still hold private
+index residue; it was not edited. `prompt_history.jsonl` was not edited.
+
+Normal `osascript` quit (`tell application "GrokBuild" to quit`) exited at
+`2026-08-14T23:45:32-0500`. Process-zero samples at
+`2026-08-14T23:45:42-0500` and `2026-08-14T23:45:47-0500` found no
+`GrokBuild`, `grok`, `GrokBuildComputerUseMCP`, or `agent-desktop`, and no
+owned browser-profile process.
+
+Handoff: Slice 7 merged as `4c7514f` (PR #85 head `7a95202`) after CI passed;
+installed product remains `150fbbe8` / SHA-256
+`350b2f1487afa222bff043eeeae9fbde07f4cd8bb8ece9bea583ded35c41b01b` /
+`dirty=false` / Team `DD2GCQJVB4`. Exact Close Session removed tab
+`C7B29221-…` and parent `01a003a5-855b-…`; leftover children
+`01a003a5-b855-…` / `01a003a5-b858-…` were moved to the dated Trash bundle
+after CLI delete reported no session found. Next slice only after a new
+session, with no leftover Slice 7 markers in live stores.
 
 ## Slice 6 — extract coordination seams and replace brittle test pins (complete, PR 1–4 + hotfixes + final closeout, 2026-08-14)
 
