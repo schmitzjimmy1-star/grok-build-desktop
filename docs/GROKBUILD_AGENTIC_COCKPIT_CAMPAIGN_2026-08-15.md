@@ -1,8 +1,8 @@
 # GrokBuild Agentic Cockpit Campaign — 2026-08-15
 
-Status: **Phase 1 in progress** (branch `codex/grokbuild-c9-p1-retention`); Phases 2–4 planned.
+Status: **Phase 1 complete** (merged as `2b7f377`, PR #96; Gates A–H green, billable retention proof passed); Phases 2–4 planned.
 
-Baseline: campaign spec merged as `b58b973` (PR #95) on top of `4613bdee0ad27c296482fd66cce816afef375357` (PR #94), installed app `b58b973` with `dirty=false` and notarized release `v0.1.21` active.
+Baseline: campaign spec merged as `b58b973` (PR #95) on top of `4613bdee0ad27c296482fd66cce816afef375357` (PR #94), installed app `b58b973` with `dirty=false` and notarized release `v0.1.21` active. Phase 1 implementation merged as `2b7f377` (PR #96); installed app re-shipped at `2b7f377` with `dirty=false`.
 
 Following the 2026-08-14 Residual Closeout Campaign (which closed all open leftovers, updated the official CLI to 1.0.4, modernized ACP contract tests, and published the notarized release with zero leftovers), this campaign elevates GrokBuild into a resilient, transparent cockpit for long-horizon agentic workloads.
 
@@ -41,23 +41,27 @@ Each phase must be executed on a dedicated feature branch, verified locally via 
 
 ## Phase 1 — Long-Horizon Task Retention & Scheduled Work Lifetime
 
-> **Execution status (2026-08-15):** Implemented on branch
-> `codex/grokbuild-c9-p1-retention`. `SessionRuntimeRetentionPolicy` now protects
-> active background work (`SessionRuntimeProtectionReason.activeBackgroundTask` fed
-> by `ChatStore.hasActiveBackgroundTasks`) in addition to the existing starting /
+> **Execution status (2026-08-15): Complete — merged as `2b7f377` (PR #96).**
+> `SessionRuntimeRetentionPolicy` now protects active background work
+> (`SessionRuntimeProtectionReason.activeBackgroundTask` fed by
+> `ChatStore.hasActiveBackgroundTasks`) in addition to the existing starting /
 > busy / active-schedule reasons, and active schedule status is surfaced in the
 > top-bar Tasks pill (`grok-tasks-status`) and the sidebar session row
 > (`grok-sidebar-session-schedule`). `make test` is green at **880 tests, 0
 > failures**; new coverage lives in
 > `Tests/GrokBuildTests/SessionRetentionPolicyTests.swift` plus store tests in
-> `RunEvidenceSnapshotTests.swift`. Gate C candidate installed at stamp `b58b973`
-> (branch, `dirty=true` scoped implementation), SHA-256
-> `fa73150c79a9280b6751f99f74e622ffd68f9bac1caa362a727b02fbd44f1ae6`, Team
-> `DD2GCQJVB4`, deep/strict, no quarantine; installed Computer Use confirmed the
-> live `grok-tasks-status` control and sidebar rows. The billable multi-tab
-> retention turn (frozen marker `GB-C9-P1-RETENTION-*`) and the merge remain the
-> outstanding acceptance steps. Full receipt in
-> [`docs/OUTSTANDING.md`](OUTSTANDING.md).
+> `RunEvidenceSnapshotTests.swift`. The implementation was committed as `2cef894`
+> and merged via PR #96 as `2b7f377`. The authorized billable multi-tab retention
+> turn (frozen marker `GB-C9-P1-RETENTION-20260815T083223Z`) proved a live
+> scheduled Session A survives LRU eviction under five additional ordinary
+> sessions past the connection cap, with the orange schedule pill and sidebar
+> badge rendering and then reverting after the schedule was deleted. Post-merge
+> `make ship` re-installed `/Applications/GrokBuild.app` at stamp `2b7f377`
+> (`dirty=false`, Team `DD2GCQJVB4`, deep/strict valid, no quarantine, dist ↔
+> installed SHA-256
+> `f4b82c09012883b3621216291ffaedf0468ba3efc6e43f01c0540f209f8d9b4c`); marker
+> sessions were cleaned up with zero leftovers and process-zero confirmed. Full
+> receipt in [`docs/OUTSTANDING.md`](OUTSTANDING.md).
 
 ### Purpose
 Ensure long-running agentic tasks (such as recurring `/loop` commands, background shells, and multi-turn workflows) are not silently terminated by the 4-tab LRU connection cap when a user opens other tabs.
