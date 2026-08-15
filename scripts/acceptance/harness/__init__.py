@@ -1,5 +1,11 @@
-"""GrokBuild Slice 5 agentic acceptance harness (stdlib only)."""
+"""GrokBuild agentic acceptance harness (stdlib only)."""
 
 SCHEMA_VERSION = 1
 ANOMALY_CEILING_ACTUAL_TOKENS = 1_500_000
+SLICE6_ANOMALY_CEILING_ACTUAL_TOKENS = 250_000
+ALLOWED_ANOMALY_CEILINGS = {
+    SLICE6_ANOMALY_CEILING_ACTUAL_TOKENS,
+    ANOMALY_CEILING_ACTUAL_TOKENS,
+}
 DEFAULT_MANIFEST_NAME = "installed-three-route-v1.json"
+SLICE6_MANIFEST_NAME = "installed-slice6-packet-v1.json"

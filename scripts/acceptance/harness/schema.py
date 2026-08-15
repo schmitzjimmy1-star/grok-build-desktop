@@ -9,7 +9,7 @@ from copy import deepcopy
 from pathlib import Path
 from typing import Any
 
-from . import ANOMALY_CEILING_ACTUAL_TOKENS, SCHEMA_VERSION
+from . import ALLOWED_ANOMALY_CEILINGS, SCHEMA_VERSION
 from .errors import SchemaError
 
 REQUIRED_ROOT = (
@@ -83,8 +83,8 @@ def load_manifest(path: Path, *, run_id: str | None = None) -> dict[str, Any]:
     _require_keys(data, REQUIRED_ROOT, where="manifest")
     if data["schemaVersion"] != SCHEMA_VERSION:
         raise SchemaError(f"unsupported schemaVersion {data['schemaVersion']}")
-    if data["anomalyCeilingActualTokens"] != ANOMALY_CEILING_ACTUAL_TOKENS:
-        raise SchemaError("anomalyCeilingActualTokens must be 1500000")
+    if data["anomalyCeilingActualTokens"] not in ALLOWED_ANOMALY_CEILINGS:
+        raise SchemaError("anomalyCeilingActualTokens must be 250000 or 1500000")
     if data["effort"] != "low":
         raise SchemaError("effort must be low")
     if data["parentAgent"] != "default":
@@ -143,6 +143,7 @@ def load_manifest(path: Path, *, run_id: str | None = None) -> dict[str, Any]:
         _validate_continuation(packet)
         _validate_retry(packet)
         _validate_cleanup_slots(packet)
+        _validate_deliberate_stop(packet)
         if int(packet["checkpointCount"]) < 1 or int(packet["turnCount"]) < 1:
             raise SchemaError(f"{packet_id}: checkpointCount and turnCount must be >= 1")
     return materialized
@@ -209,6 +210,13 @@ def _validate_cleanup_slots(packet: dict[str, Any]) -> None:
     _as_str_list(slots["childIds"], where=f"{packet['id']}.childIds")
 
 
+def _validate_deliberate_stop(packet: dict[str, Any]) -> None:
+    if "deliberateStop" not in packet:
+        return
+    if not isinstance(packet["deliberateStop"], bool):
+        raise SchemaError(f"{packet['id']}: deliberateStop must be a boolean")
+
+
 def require_live_run_id(run_id: str) -> None:
     if not RUN_ID_LIVE.fullmatch(run_id):
         raise SchemaError("billable runId must be UTC like 20260814T180000Z")
@@ -237,6 +245,7 @@ def dry_run_plan(manifest: dict[str, Any]) -> dict[str, Any]:
                 "turnCount": packet["turnCount"],
                 "continuation": packet["continuation"],
                 "explicitRetryBoundary": packet["explicitRetryBoundary"],
+                "deliberateStop": bool(packet.get("deliberateStop")),
                 "expectedReceiptClasses": packet["expectedReceiptClasses"],
                 "cleanupIdentities": packet["cleanupIdentities"],
             }

@@ -16,9 +16,9 @@ scripts/performance-ledger.sh report /tmp/grokbuild-s7-cold-1.jsonl
 
 ## Agentic acceptance harness
 
-`scripts/acceptance/run.py` is the Slice 5 first-class agentic acceptance harness.
-Dry-run is the default and prints the frozen plan without credentials or response
-bodies. Fixture mode (`--fixture`) evaluates synthetic receipts at zero provider
+`scripts/acceptance/run.py` is the agentic acceptance harness. Dry-run is the
+default and prints the frozen plan without credentials or response bodies.
+Fixture mode (`--fixture`) evaluates synthetic receipts at zero provider
 cost. Fresh provider Sends require explicit `--billable` plus a UTC `--run-id`
 after installed stamp/signing/hash, CLI version, model availability, process-zero,
 marker uniqueness, and a clean test ledger. Cleanup accepts only exact IDs from
@@ -27,14 +27,20 @@ marker uniqueness, and a clean test ledger. Cleanup accepts only exact IDs from
 installed bundle only and refuses `.build` or `dist` copies if they are running.
 After quit/relaunch, continuation packets click **Resume current task** (ACP
 `session/load`, no prompt) then Send, which may be labeled **Send and resume
-session** while continuity is verifying.
+session** while continuity is verifying. Slice 6 uses
+`manifests/installed-slice6-packet-v1.json` (250k actual-token ceiling, one
+grok-4.6 packet with three ordered tools, two read-only children, one follow-up
+turn, and a deliberate **Stop turn**). Slice 5's three-route 1.5m ceiling
+manifest remains the default.
 
 ```bash
 python3 scripts/acceptance/run.py
 python3 scripts/acceptance/run.py --fixture scripts/acceptance/fixtures/happy-path
 python3 scripts/acceptance/run.py --billable --run-id 20260814T180000Z \
   --ledger /tmp/grokbuild-s5-ledger.jsonl
-python3 scripts/acceptance/run.py --cleanup --ids-from-ledger /tmp/grokbuild-s5-ledger.jsonl
+python3 scripts/acceptance/run.py --manifest scripts/acceptance/manifests/installed-slice6-packet-v1.json \
+  --billable --run-id 20260815T020000Z --ledger /tmp/grokbuild-s6-ledger.jsonl
+python3 scripts/acceptance/run.py --cleanup --ids-from-ledger /tmp/grokbuild-s6-ledger.jsonl
 ```
 
 Focused tests: `swift test --filter AcceptanceHarnessTests`.

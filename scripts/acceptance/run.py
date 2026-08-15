@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""GrokBuild Slice 5 agentic acceptance harness.
+"""GrokBuild agentic acceptance harness.
 
 Dry-run is the default. Pass --billable for fresh provider Sends after preflight.
 Never prints credentials or response bodies. Never fakes ACP or guesses cleanup IDs.
@@ -10,6 +10,7 @@ from __future__ import annotations
 import argparse
 import json
 import sys
+import time
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent
@@ -26,7 +27,9 @@ from harness.driver import (
     resume_saved_task,
     select_model,
     send_prompt,
+    stop_turn,
     wait_for_marker,
+    wait_for_stop_control,
 )
 from harness.errors import HarnessError
 from harness.evidence import extract_receipt
@@ -115,10 +118,12 @@ def _billable(args: argparse.Namespace) -> int:
     receipts: list[dict] = []
     cumulative = 0
     try:
-        for packet in manifest["packets"]:
-            if cumulative >= manifest["anomalyCeilingActualTokens"]:
+        packets = manifest["packets"]
+        for index, packet in enumerate(packets):
+            ceiling = int(manifest["anomalyCeilingActualTokens"])
+            if cumulative >= ceiling:
                 raise HarnessError(
-                    f"ceiling breach: cumulative actual tokens {cumulative} exceed 1500000"
+                    f"ceiling breach: cumulative actual tokens {cumulative} exceed {ceiling}"
                 )
             continuation = packet["continuation"]
             start_new = continuation is None or int(continuation["turn"]) == 1
@@ -129,33 +134,53 @@ def _billable(args: argparse.Namespace) -> int:
                 restore_continuation(marker=receipts[-1]["marker"])
                 resume_saved_task()
             send_prompt(packet["prompt"])
-            timeout = 480 if packet["childTopology"] else 300
-            wait_for_marker(packet["marker"], timeout_seconds=timeout)
+            if packet.get("deliberateStop"):
+                wait_for_stop_control(timeout_seconds=60)
+                time.sleep(2)
+                stop_turn()
+            else:
+                timeout = 480 if packet["childTopology"] else 300
+                wait_for_marker(packet["marker"], timeout_seconds=timeout)
             identities = capture_identities(REPO, packet["marker"])
             receipt = extract_receipt(packet, identities, TRANSCRIPTS)
+            if packet.get("deliberateStop"):
+                receipt["outcome"] = "stopped"
             receipts.append(receipt)
             cumulative += int(receipt["tokenSplit"]["total"])
             _append_ledger(args.ledger, receipt)
-            if continuation and int(continuation["turn"]) == 2:
+            nxt = packets[index + 1] if index + 1 < len(packets) else None
+            nxt_continuation = (nxt or {}).get("continuation") or {}
+            if nxt_continuation.get("resumeAfterQuit"):
                 quit_installed()
                 two_process_zero_samples()
                 launch_installed()
         summary = evaluate(manifest, receipts)
+        slice_id = "6" if int(manifest["anomalyCeilingActualTokens"]) == 250000 else "5"
+        if slice_id == "6":
+            live_state = "installed GrokBuild after Slice 6 extraction packet"
+            next_action = "exact Slice 6 cleanup then merged-main closeout"
+            hard_stop = "Slice 7, releases, tags, origin, force-push, branch deletion, and configuration changes"
+            checkpoint = "signed-installed Slice 6 acceptance"
+        else:
+            live_state = "installed GrokBuild after three-route manifest"
+            next_action = "exact Slice 5 cleanup then personal PR merge"
+            hard_stop = "Slice 6 until merged-main closeout, Slice 7, releases, tags, origin, force-push, branch deletion, and configuration changes"
+            checkpoint = "signed-installed acceptance"
         handoff = render_handoff(
             HandoffContext(
                 repo=str(REPO),
-                branch="codex/grokbuild-s5-acceptance-harness",
+                branch="main",
                 commit=report["identity"]["head"],
-                slice="5",
-                checkpoint="signed-installed acceptance",
+                slice=slice_id,
+                checkpoint=checkpoint,
                 result="completed",
-                live_state="installed GrokBuild after three-route manifest",
+                live_state=live_state,
                 usage=str(summary["actualTokens"]),
                 thread_ids=",".join(row["tabId"] for row in receipts),
                 cleanup="none",
                 risk="none",
-                next_action="exact Slice 5 cleanup then personal PR merge",
-                hard_stop="Slice 6 until merged-main closeout, Slice 7, releases, tags, origin, force-push, branch deletion, and configuration changes",
+                next_action=next_action,
+                hard_stop=hard_stop,
             )
         )
         safe_print(handoff)

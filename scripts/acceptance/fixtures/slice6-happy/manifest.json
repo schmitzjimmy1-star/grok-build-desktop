@@ -1,0 +1,184 @@
+{
+  "schemaVersion": 1,
+  "runId": "20260814T000000Z",
+  "anomalyCeilingActualTokens": 250000,
+  "effort": "low",
+  "parentAgent": "default",
+  "forbiddenToolsDefault": [
+    "update_plan",
+    "search",
+    "web_search",
+    "browser",
+    "computer_use",
+    "write",
+    "edit",
+    "git",
+    "glob",
+    "grep",
+    "image",
+    "config",
+    "scheduler",
+    "workflow"
+  ],
+  "packets": [
+    {
+      "id": "S6-PKT-T1",
+      "marker": "GB-S6-PKT-T1-{runId}",
+      "prompt": "Acceptance packet, turn 1 of 3. This is not a planning task. Do not call update_plan or any extra tool. Call the terminal exactly three times, sequentially, as three separate calls: (1) /bin/echo ONE (2) /bin/echo TWO (3) /bin/echo THREE. Then spawn exactly two general-purpose children concurrently in the background. LEFT child prompt: Use terminal exactly once with /bin/echo LEFT; then reply exactly {marker}-LEFT. No other tool, worker, or retry. RIGHT child prompt: Use terminal exactly once with /bin/echo RIGHT; then reply exactly {marker}-RIGHT. After both spawns, use exactly one wait_all collection. The parent must not retry. If any required receipt is missing, stop without retry. Otherwise reply exactly: {marker}-PARENT ONE|TWO|THREE LEFT+RIGHT",
+      "model": "grok-4.6",
+      "routeKind": "nativeXAI",
+      "effort": "low",
+      "parentAgent": "default",
+      "allowedTools": [
+        "spawn_subagent",
+        "wait_all",
+        "terminal"
+      ],
+      "requiredTools": [
+        "spawn_subagent",
+        "wait_all",
+        "terminal"
+      ],
+      "forbiddenTools": [
+        "update_plan",
+        "search",
+        "web_search",
+        "browser",
+        "computer_use",
+        "write",
+        "edit",
+        "git"
+      ],
+      "orderedGroups": [
+        [
+          "terminal:ONE",
+          "terminal:TWO",
+          "terminal:THREE"
+        ]
+      ],
+      "parallelGroups": [
+        [
+          "spawn_subagent:LEFT",
+          "spawn_subagent:RIGHT"
+        ]
+      ],
+      "childTopology": {
+        "count": 2,
+        "roles": [
+          "LEFT",
+          "RIGHT"
+        ],
+        "collection": "wait_all"
+      },
+      "checkpointCount": 1,
+      "turnCount": 3,
+      "continuation": {
+        "group": "S6-PKT",
+        "turn": 1,
+        "of": 3,
+        "resumeAfterQuit": false
+      },
+      "explicitRetryBoundary": null,
+      "expectedReceiptClasses": [
+        "parent-complete",
+        "tool-terminal:ONE",
+        "tool-terminal:TWO",
+        "tool-terminal:THREE",
+        "child-left",
+        "child-right",
+        "collection-wait_all",
+        "continuation"
+      ],
+      "cleanupIdentities": {
+        "tabId": null,
+        "backendId": null,
+        "childIds": []
+      }
+    },
+    {
+      "id": "S6-PKT-T2",
+      "marker": "GB-S6-PKT-T2-{runId}",
+      "prompt": "Acceptance packet, turn 2 of 3. This is not a planning task. Do not call update_plan or any other tool. Reply exactly: {marker}-FOLLOW",
+      "model": "grok-4.6",
+      "routeKind": "nativeXAI",
+      "effort": "low",
+      "parentAgent": "default",
+      "allowedTools": [],
+      "requiredTools": [],
+      "forbiddenTools": [
+        "update_plan",
+        "terminal",
+        "spawn_subagent",
+        "wait_all",
+        "search",
+        "web_search",
+        "browser",
+        "computer_use"
+      ],
+      "orderedGroups": [],
+      "parallelGroups": [],
+      "childTopology": null,
+      "checkpointCount": 2,
+      "turnCount": 3,
+      "continuation": {
+        "group": "S6-PKT",
+        "turn": 2,
+        "of": 3,
+        "resumeAfterQuit": false
+      },
+      "explicitRetryBoundary": null,
+      "expectedReceiptClasses": [
+        "parent-complete",
+        "continuation"
+      ],
+      "cleanupIdentities": {
+        "tabId": null,
+        "backendId": null,
+        "childIds": []
+      }
+    },
+    {
+      "id": "S6-PKT-T3",
+      "marker": "GB-S6-PKT-T3-{runId}",
+      "prompt": "Acceptance packet, turn 3 of 3. This is not a planning task. Do not call update_plan. Call terminal exactly once with /bin/sleep 30. Then reply exactly: {marker}-STOP",
+      "model": "grok-4.6",
+      "routeKind": "nativeXAI",
+      "effort": "low",
+      "parentAgent": "default",
+      "allowedTools": [
+        "terminal"
+      ],
+      "requiredTools": [],
+      "forbiddenTools": [
+        "update_plan",
+        "spawn_subagent",
+        "wait_all",
+        "search",
+        "web_search",
+        "browser",
+        "computer_use"
+      ],
+      "orderedGroups": [],
+      "parallelGroups": [],
+      "childTopology": null,
+      "checkpointCount": 3,
+      "turnCount": 3,
+      "continuation": {
+        "group": "S6-PKT",
+        "turn": 3,
+        "of": 3,
+        "resumeAfterQuit": false
+      },
+      "explicitRetryBoundary": null,
+      "deliberateStop": true,
+      "expectedReceiptClasses": [
+        "parent-stopped"
+      ],
+      "cleanupIdentities": {
+        "tabId": null,
+        "backendId": null,
+        "childIds": []
+      }
+    }
+  ]
+}

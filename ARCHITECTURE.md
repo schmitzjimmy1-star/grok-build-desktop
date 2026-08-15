@@ -1136,7 +1136,7 @@ make release   # GitHub release via scripts/release.sh
 | `scripts/release.sh` | Build, zip, DMG, `gh release create` |
 | `scripts/notarize.sh` | Notarize signed app |
 | `scripts/grokbuild-install-update.sh` | In-app replace + relaunch |
-| `scripts/acceptance/run.py` | Slice 5 agentic acceptance harness: versioned manifests, dry-run default, fixture rejection, `--billable` installed UI only |
+| `scripts/acceptance/run.py` | Agentic acceptance harness: versioned manifests, dry-run default, fixture rejection, `--billable` installed UI only; Slice 6 packet ceiling 250k |
 
 **SPM targets:** `GrokBuild` (app), `GrokBuildComputerUseCore` (shared Computer Use contract library), `GrokBuildComputerUseMCP` (MCP helper), `GrokBuildTests`.
 
@@ -1179,7 +1179,7 @@ Slice 7 adds an opt-in redacted JSONL stage ledger driven by
 spawn/ACP/session/model/MCP readiness, submit/dispatch/first-chunk/settled boundaries
 using only stage, time, and PID. It never records prompts, response bodies, tool
 arguments, credentials, URLs, or environment contents.
-| **Agentic acceptance harness** | `scripts/acceptance/run.py`, `scripts/acceptance/schema/v1.json`, `scripts/acceptance/manifests/installed-three-route-v1.json`; dry-run default, `--billable` after preflight, fixture-mode rejection, exact-ID cleanup |
+| **Agentic acceptance harness** | `scripts/acceptance/run.py`, `scripts/acceptance/schema/v1.json`, `scripts/acceptance/manifests/installed-three-route-v1.json`, `scripts/acceptance/manifests/installed-slice6-packet-v1.json`; dry-run default, `--billable` after preflight, fixture-mode rejection, exact-ID cleanup, Slice 6 250k Stop packet |
 | **Add/remove project** | `WorkspaceStore`, `WorkspacePicker` |
 | **Browser tools** | `AgentBrowserService`, `BrowserSettingsStore`, settings `.browser` (agent-browser CLI over MCP) |
 | **Session agent** | `GrokAgentProfiles`, `GrokCLIService.listAgents`, settings `.agents` |
@@ -1253,7 +1253,7 @@ make test    # Tests/GrokBuildTests/
 | `OpenRouterOAuthTests.swift` | PKCE/authorization/exchange parsing plus real loopback capture and a cancellation-safe timeout |
 | `SettingsTabTests.swift` | Settings destination metadata/grouping, selected-pane-only lifecycle, shared value-state/status/accessibility reducers, adaptive rows, explicit persistence, and the six-priority-pane parent-draft/cancellation source contract |
 | `LifecycleAndSubprocessTests.swift` | Coalesced streaming Settings reconnects, exact apply/fork receipts, process-LRU identity safety, store/process release, one-shot subprocess hygiene, and restored-empty Resume chrome vs New chat |
-| `AcceptanceHarnessTests.swift` | Slice 5 `scripts/acceptance/` harness: dry-run default, `--billable` fail-closed without a run ID, guessed-cleanup refusal, fixture-mode reject/accept cases at zero provider cost, Resume-then-Send labels, and installed-exec refuse of `.build` / `dist` |
+| `AcceptanceHarnessTests.swift` | Agentic `scripts/acceptance/` harness: dry-run default, `--billable` fail-closed without a run ID, guessed-cleanup refusal, fixture-mode reject/accept cases at zero provider cost, Resume-then-Send labels, installed-exec refuse of `.build` / `dist`, Slice 6 250k Stop packet |
 
 Prefer extending existing test files. Test pure logic without launching real `grok` when possible.
 

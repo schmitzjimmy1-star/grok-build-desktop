@@ -535,7 +535,8 @@ policy, or export type:
 
 Supporting tests: `SessionRuntimeRetentionTests.swift`, `RunHistoryTests.swift`,
 `LifecycleAndSubprocessTests.swift`, `AcceptanceHarnessTests.swift`. Smoke driver:
-`scripts/acceptance/run.py`. Checkpoint handoff:
+`scripts/acceptance/run.py` with `manifests/installed-slice6-packet-v1.json`
+(250k actual-token ceiling). Checkpoint handoff:
 `scripts/acceptance/harness/handoff.py`. Installed proof is
 `/Applications/GrokBuild.app` after `make ship`; `make run` opens `.build`.
 

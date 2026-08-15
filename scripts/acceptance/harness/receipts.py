@@ -6,7 +6,6 @@ import json
 from pathlib import Path
 from typing import Any
 
-from . import ANOMALY_CEILING_ACTUAL_TOKENS
 from .errors import ReceiptError
 
 REQUIRED_RECEIPT = (
@@ -80,9 +79,10 @@ def evaluate(manifest: dict[str, Any], receipts: list[dict[str, Any]]) -> dict[s
             continuation_tabs=continuation_tabs,
         )
         total_tokens += int(row["tokenSplit"]["total"])
-        if total_tokens > ANOMALY_CEILING_ACTUAL_TOKENS:
+        ceiling = int(manifest["anomalyCeilingActualTokens"])
+        if total_tokens > ceiling:
             raise ReceiptError(
-                f"ceiling breach: cumulative actual tokens {total_tokens} exceed {ANOMALY_CEILING_ACTUAL_TOKENS}"
+                f"ceiling breach: cumulative actual tokens {total_tokens} exceed {ceiling}"
             )
     return {
         "packets": len(packets),
@@ -121,7 +121,7 @@ def _evaluate_packet(
     if int(token_split["total"]) < 0:
         raise ReceiptError(f"{packet_id}: tokenSplit.total is invalid")
 
-    if row.get("interrupted"):
+    if row.get("interrupted") and not packet.get("deliberateStop"):
         raise ReceiptError(f"interrupted horizon: {packet_id}")
 
     tools = row["toolReceipts"]
@@ -239,6 +239,8 @@ def _check_receipt_classes(packet: dict[str, Any], row: dict[str, Any]) -> None:
     observed: list[str] = []
     if row.get("outcome") == "accepted":
         observed.append("parent-complete")
+    if row.get("outcome") == "stopped":
+        observed.append("parent-stopped")
     for worker in row["workerReceipts"]:
         role = str(worker.get("role", "")).lower()
         observed.append(f"child-{role}")
