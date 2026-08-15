@@ -15,14 +15,10 @@ Before edits or acceptance, read and follow in order:
 1. `CANONICAL_WORKTREE.md` — canonical identity and mandatory live preflight.
 2. `ARCHITECTURE.md` — ownership, data flow, persistence, and file map.
 3. `docs/OUTSTANDING.md` — current slice scope and Gates A–H when a campaign slice is active.
-4. `docs/GROKBUILD_VISUAL_QUIET_CAMPAIGN_2026-08-15.md` — Visual Quiet
-   campaign. Phases 1–3 (cool tokens, Path A chips, and overlay/quiet chrome)
-   are verified and P3C composer/task-strip density is accepted. The next
-   proposed slice is P3D live activity composition: remove the redundant live
-   transcript Run bar and promote active subagents into a first-class right-side
-   canvas before the Phase 4 accent sweep. Do not start P3D without Jimmy's
-   explicit slice authorization. Leftover Phase 3 (`ChatView` split) stays
-   deferred and is not the visual work.
+4. `docs/GROKBUILD_VISUAL_QUIET_CAMPAIGN_2026-08-15.md` — Visual Quiet.
+   Phases 1–3 and P3C are accepted. P3D (remove the duplicate live Run bar;
+   promote workers into a right canvas) is proposed but not authorized. Accent
+   sweep follows; broad `ChatView` split stays deferred.
 
 Stop on a path, branch, remote, installed-stamp, signing, hash, or dirty-state mismatch.
 
