@@ -156,21 +156,27 @@ if [ -f "$ROOT_DIR/Package.swift" ]; then
         local iconset_dir="$BUILD_DIR/AppIcon.iconset"
         rm -rf "$iconset_dir"
         mkdir -p "$iconset_dir"
-        sips -z 16 16     "$src" --out "$iconset_dir/icon_16x16.png"     >/dev/null 2>&1 || true
-        sips -z 32 32     "$src" --out "$iconset_dir/icon_16x16@2x.png"  >/dev/null 2>&1 || true
-        sips -z 32 32     "$src" --out "$iconset_dir/icon_32x32.png"     >/dev/null 2>&1 || true
-        sips -z 64 64     "$src" --out "$iconset_dir/icon_32x32@2x.png"  >/dev/null 2>&1 || true
-        sips -z 128 128   "$src" --out "$iconset_dir/icon_128x128.png"   >/dev/null 2>&1 || true
-        sips -z 256 256   "$src" --out "$iconset_dir/icon_128x128@2x.png" >/dev/null 2>&1 || true
-        sips -z 256 256   "$src" --out "$iconset_dir/icon_256x256.png"   >/dev/null 2>&1 || true
-        sips -z 512 512   "$src" --out "$iconset_dir/icon_256x256@2x.png" >/dev/null 2>&1 || true
-        sips -z 512 512   "$src" --out "$iconset_dir/icon_512x512.png"   >/dev/null 2>&1 || true
-        sips -z 1024 1024 "$src" --out "$iconset_dir/icon_512x512@2x.png" >/dev/null 2>&1 || true
-        iconutil -c icns "$iconset_dir" -o "$APP_BUNDLE/Contents/Resources/AppIcon.icns" >/dev/null 2>&1 || true
+        sips -z 16 16     "$src" --out "$iconset_dir/icon_16x16.png"      >/dev/null
+        sips -z 32 32     "$src" --out "$iconset_dir/icon_16x16@2x.png"   >/dev/null
+        sips -z 32 32     "$src" --out "$iconset_dir/icon_32x32.png"      >/dev/null
+        sips -z 64 64     "$src" --out "$iconset_dir/icon_32x32@2x.png"   >/dev/null
+        sips -z 128 128   "$src" --out "$iconset_dir/icon_128x128.png"    >/dev/null
+        sips -z 256 256   "$src" --out "$iconset_dir/icon_128x128@2x.png" >/dev/null
+        sips -z 256 256   "$src" --out "$iconset_dir/icon_256x256.png"    >/dev/null
+        sips -z 512 512   "$src" --out "$iconset_dir/icon_256x256@2x.png" >/dev/null
+        sips -z 512 512   "$src" --out "$iconset_dir/icon_512x512.png"    >/dev/null
+        sips -z 1024 1024 "$src" --out "$iconset_dir/icon_512x512@2x.png" >/dev/null
+        iconutil -c icns "$iconset_dir" -o "$APP_BUNDLE/Contents/Resources/AppIcon.icns" >/dev/null
+        test -s "$APP_BUNDLE/Contents/Resources/AppIcon.icns"
         rm -rf "$iconset_dir"
     }
 
-    if [ -f "$ROOT_DIR/AppIcon.png" ]; then
+    if [ -f "$ROOT_DIR/AppIcon.svg" ] && [ -f "$ROOT_DIR/scripts/render-app-icon.swift" ]; then
+        rendered_app_icon="$BUILD_DIR/AppIcon-master.png"
+        echo "==> Rendering AppIcon.png from vector master"
+        swift "$ROOT_DIR/scripts/render-app-icon.swift" "$ROOT_DIR/AppIcon.svg" "$rendered_app_icon"
+        generate_app_icon "$rendered_app_icon"
+    elif [ -f "$ROOT_DIR/AppIcon.png" ]; then
         generate_app_icon "$ROOT_DIR/AppIcon.png"
     elif [ -f "$ROOT_DIR/AppIcon1024.png" ]; then
         generate_app_icon "$ROOT_DIR/AppIcon1024.png"
