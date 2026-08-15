@@ -27,16 +27,19 @@
 > User conversations, historical acceptance evidence, unnamed sessions that were not
 > created by the current slice, and unrelated browser/app state are protected.
 >
-> **Current campaign:** 2026-08-14 residual closeout, Phase 2 complete pending
-> merge, Phase 3 next. Spec:
+> **Current campaign:** 2026-08-14 residual closeout, Phases 0–2 leftover-close
+> complete, Phase 3 next. Spec:
 > [`docs/GROKBUILD_RESIDUAL_CLOSEOUT_2026-08-14.md`](GROKBUILD_RESIDUAL_CLOSEOUT_2026-08-14.md).
-> Phase 0 shipped stamp == `fa44cb2559735d2819789ed77d72a7a8f022abee` (PR #87).
-> Phase 1 merged as `fb095d14844f76367659ecec7ea7566fd9517b5c` (PR #89). Do not
-> `make ship` Phase 1 or 2 just to chase stamp == HEAD. The 2026-08-13
-> campaign (Slices 0–7) remains closed. Numbered `## Slice N` headings below the
-> 2026-08-14 harness receipt are historical campaigns. Do not implement them.
+> Phase 0 shipped `fa44cb2559735d2819789ed77d72a7a8f022abee` (PR #87). Phase 1
+> merged as `fb095d14844f76367659ecec7ea7566fd9517b5c` (PR #89). Phase 2 merged
+> as `27c146e6693927474e34e47238b3480e35429443` (PR #90). Leftover-close shipped
+> stamp == that Phase 2 merge. Live empty composer AX is **Describe a task**.
+> Do not `make ship` this leftover-close docs PR just to chase stamp == HEAD.
+> The 2026-08-13 campaign (Slices 0–7) remains closed. Numbered `## Slice N`
+> headings below the 2026-08-14 harness receipt are historical campaigns. Do
+> not implement them.
 
-## Residual closeout — 2026-08-14 (Phase 2 complete pending merge, Phase 3 next)
+## Residual closeout — 2026-08-14 (Phases 0–2 leftover-close complete, Phase 3 next)
 
 Authorized scope is
 [`docs/GROKBUILD_RESIDUAL_CLOSEOUT_2026-08-14.md`](GROKBUILD_RESIDUAL_CLOSEOUT_2026-08-14.md).
@@ -56,9 +59,9 @@ Phases, in order:
 | 5 | Replace remaining extracted-contract source-string pins | Slice 6-shaped smoke, 250k ceiling |
 | 6 | Personal notarized `v0.1.21` release; no `origin` | one no-tool marker unless Phase 5 already proved that binary |
 
-Execute Phase 3 only after this Phase 2 PR merges. Do not `make ship` Phase 1
-or 2 to chase stamp == HEAD; drive the `fa44cb25` binary until a later
-authorized ship. Phase 2 proved Cursor `user-grokbuild-computer-use`.
+Execute Phase 3 only. Installed stamp is `27c146e`. Do not `make ship` this
+leftover-close docs PR just to chase stamp == HEAD. Phase 2 proved Cursor
+`user-grokbuild-computer-use`. Do not start Phase 4–6.
 
 ### Phase 0 receipt — 2026-08-15
 
@@ -278,8 +281,56 @@ Process samples at `01:02:46` and `01:02:51` found no `GrokBuild`, `grok`, or
 GrokBuild session leak. Origin untouched. Installed stamp still `fa44cb25` /
 `dirty=false`. Config hash unchanged.
 
-Do not start Phase 3 until this PR merges. Do not `make ship` this docs PR
-just to chase stamp == HEAD.
+Phase 2 merged as `27c146e6693927474e34e47238b3480e35429443` (PR #90). The
+live AX/ship leftover from Phases 1–2 is closed in the leftover-close receipt
+below.
+
+### Leftover-close receipt — 2026-08-15
+
+GitHub issues are disabled on `schmitzjimmy1-star/grok-build-desktop`. No open
+PRs remained after PR #90. This closes the Phase 0–2 leftovers so Phase 3
+starts with zero leftover work from those phases.
+
+Gate A: clean `main == personal/main` at
+`27c146e6693927474e34e47238b3480e35429443`. Product diff vs that HEAD was
+empty. Origin remained `433ddf861a86447a8fee2b1cf13e6c674a8f2211`. CLI
+`grok 1.0.3 (1a29d5bc12d4) [stable]`. Protected config
+`2cb4dcdaf0f1841aab54fb2ae10586381ca78b560eb9fc0477efb521e92140ae`, 2,894
+bytes, mode `0600`.
+
+Authorized `make ship` from that `main`: **867 tests, 0 failures** in
+38.257 s; stamp == HEAD `27c146e`; `dirty=false`; dist/installed SHA-256
+`753e0027c1c70583d69028fee13f7eb1b5791e9277f693f06fe94f3a3c37f1aa`; Team
+`DD2GCQJVB4`; deep/strict; no quarantine.
+
+Cursor `user-grokbuild-computer-use` drove `/Applications/GrokBuild.app` PID
+`20973` (executable `/Applications/GrokBuild.app/Contents/MacOS/GrokBuild`),
+window `w-4157` 1440×819. Settings → App showed **Personal • main @ 27c146e6**,
+version `0.1.20`, Dark selected. New chat composer `grok-message-composer` /
+**Message composer** empty value is **Describe a task** (`computer_get`
+confirmed). No chat prompt. No Phase 3–6 work.
+
+Computer Use command timeout leftover `5s` restored to the code default
+`60s` in Settings → Computer Use, then Apply (Allow computer control stayed
+on). Applied UserDefaults and `~/.cursor/mcp.json`
+`GROKBUILD_COMPUTER_USE_TIMEOUT` are both `60`. Cursor helpers under
+`~/.grokbuild/computer-use/` match the shipped MCP/agent-desktop binaries.
+Apply respawned the Cursor-owned helper as PID `21715`; that is the loaded
+user MCP, not a GrokBuild session leak.
+
+An unused idle New chat tab was opened for the AX proof and was not sent.
+Close Session from that leftover-close pass did not land; the tab has no
+backend and no marker. It is not a leftover test thread. Phase 3 must not
+delete it unless a later inventory proves a distinct leftover ID.
+
+Graceful `computer_close_app` `app=GrokBuild`. Process-zero samples at
+`2026-08-15T01:25:29-0500` and `01:25:34` found no `GrokBuild`, `grok`, or
+`agent-desktop`. Cursor-owned `GrokBuildComputerUseMCP` PID `21715` remained.
+Config hash unchanged. Origin untouched.
+
+This leftover-close PR is docs-only plus a skill-format fix. Do not `make
+ship` it just to chase stamp == HEAD. Stamp `27c146e` remains the installed
+ancestor with an empty product diff. Phase 3 is the only next action.
 
 ## Slice 7 — refresh public evidence and onboarding (complete, PR #85 + closeout, 2026-08-14)
 
