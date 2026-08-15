@@ -1,11 +1,9 @@
 # GrokBuild Visual Quiet Campaign — 2026-08-15
 
-Status: **Phases 1–2 verified** (Path A chips). **Phase 3 is the Codex-style
-overlay sidebar plus quiet chrome** (compact projects, slide-over canvas,
-account-row Settings, titlebar inline with the traffic lights, inspector
-dropdown + subagent tracker, no header hairline). Composer tightness
-still waits. Then Phase 4 accent sweep. Phases 5–6 wait. Leftover
-`ChatView` split stays deferred.
+Status: **Phases 1–3 verified** (cool tokens, Path A chips, and Codex-style
+overlay/quiet chrome). **P3C composer and post-send task-strip density is the
+current authorized slice.** Then Phase 4 accent sweep. Phases 5–6 wait.
+Leftover `ChatView` split stays deferred.
 
 This is a **product visual** campaign. It is **not** leftover Phase 3
 (`ChatView` file-split). That stays deferred. Optional Phase 6 is a
@@ -368,6 +366,29 @@ Command-comma Settings.
 
 **Exit:** meaningful AX names; `make test` + `make ship` + Computer Use;
 Gate F; Jimmy OK.
+
+Phase 3 shipped as `bb01c58` (PR #104) and was accepted from clean merged
+`main` on 2026-08-15. `make ship` passed 894 tests, installed `dirty=false`,
+and produced matching dist/installed SHA-256 `9109250b74ef…`; the exact
+`GB-VQ-P3-20260815T154813Z` packet returned `GB_VQ_P3_OK`, was ledgered, and
+only its exact local/backend session was deleted. Two post-quit process-zero
+samples passed; protected OK-F and `019ffdad-0d4f-7f42-a429-7ac12ad8198d`
+remain.
+
+### P3C — Composer and post-send density closeout
+
+Tighten only `ChatComposer` inner/outer vertical padding and floating-card
+weight, preserving every 36×36 target and all existing editor, add, mode,
+model, mic, Send/Stop/Cancel, focus, hover, growth, and AX contracts. Slim
+`grok-task-context-strip` to one calm summary line plus disclosure while
+retaining identity, recovery, branch, model, and receipt truth. Do not redesign
+Settings, welcome chips, transcript content, runtime behavior, or begin the
+accent sweep.
+
+Acceptance adds the normal exact `GB-VQ-P3C-<UTC>` reply packet plus bounded
+tool-use and two-child agentic layout probes authorized by Jimmy on 2026-08-15.
+Each probe gets a fresh chat, a frozen marker and ceiling, typed receipt capture,
+and exact-session cleanup; no probe is allowed to mutate source or configuration.
 
 ---
 
