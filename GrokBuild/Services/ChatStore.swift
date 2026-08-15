@@ -602,6 +602,18 @@ final class ChatStore {
         messages.reversed().first(where: { $0.assistantTrace?.checkpoint != nil })?.timestamp
     }
     var hasLiveProcess: Bool { process.activeProcessGeneration != nil }
+    /// True when this session still has non-scheduled background work in flight —
+    /// a background shell/monitor or a live subagent — even after the parent turn
+    /// has settled. Scheduled tasks are covered separately by ``runtimeLease``.
+    /// Drives protected retention in `SessionRuntimeRetentionPolicy` so opening
+    /// other tabs cannot LRU-evict a session that is still doing long-horizon work.
+    var hasActiveBackgroundTasks: Bool {
+        if !unboundSubagentSpawnedEvents.isEmpty { return true }
+        return backgroundActivities.contains { activity in
+            activity.kind != .scheduled
+                && BackgroundActivityStatusPolicy.isActive(activity.status)
+        }
+    }
     var runtimeLease: SessionRuntimeLease? {
         SessionRuntimeLease.authoritative(
             tasks: scheduledTasks,

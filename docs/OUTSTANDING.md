@@ -27,7 +27,9 @@
 > User conversations, historical acceptance evidence, unnamed sessions that were not
 > created by the current slice, and unrelated browser/app state are protected.
 >
-> **Current campaign:** 2026-08-15 Agentic Cockpit Campaign, authorized and planned.
+> **Current campaign:** 2026-08-15 Agentic Cockpit Campaign — Phase 1 in progress
+> on branch `codex/grokbuild-c9-p1-retention` (Gates A–C done; billable acceptance
+> and Gates D–H pending). Phases 2–4 planned.
 > Spec: [`docs/GROKBUILD_AGENTIC_COCKPIT_CAMPAIGN_2026-08-15.md`](GROKBUILD_AGENTIC_COCKPIT_CAMPAIGN_2026-08-15.md).
 > Target: Elevate GrokBuild into a resilient, transparent agentic cockpit across 4 phases:
 > Phase 1 (Task Retention & /loop Lifetime Policy), Phase 2 (ChatView Decomposition),
@@ -49,6 +51,66 @@ Phases in order:
 | 2 | `ChatView` Component Decomposition | Extract `TopBarView.swift`, `ComposerBarView.swift`, `WelcomeStateView.swift` (~3,300 lines down) with zero contract/visual regressions | None (pure UI structural refactor) |
 | 3 | Hostile Subagent Permutation Hardening & Delegation Tree | Harden `BackgroundTaskTracker` against hostile out-of-order events; enhance Run Inspector subagent delegation tree with duration & metrics | 1 native agentic smoke packet |
 | 4 | OpenRouter Catalog Pricing & Provider Routing Expansion | Integrate live catalog pricing into `SessionUsageLedger`; refine subagent role-to-model presets with provider grouping | 1 live OpenRouter/custom model probe |
+
+### Phase 1 receipt — 2026-08-15 (Gates A–C done; billable acceptance + Gates D–H pending)
+
+Gate A: clean `main == personal/main` at
+`b58b973aeeceab1eb53f45283baa047afeebdbf8`, `+0/-0`, installed stamp == HEAD
+(`b58b973`, `dirty=false`, repo `schmitzjimmy1-star/grok-build-desktop`, branch
+`main`), CLI `grok 1.0.4 (d846eb93d94d) [stable]`, `gh` authenticated as
+`schmitzjimmy1-star`. Origin remained the read-only upstream. Process-zero
+confirmed for `GrokBuild`, `grok`, and `agent-desktop`; the only live
+GrokBuild-named process was the Cursor-hosted `user-grokbuild-computer-use` MCP
+(`GrokBuildComputerUseMCP`, parent `Cursor Helper: mcp-process`), the sanctioned
+verification driver, not a session orphan.
+
+Gate B: branch `codex/grokbuild-c9-p1-retention`.
+
+Scope (Phase 1 — Long-Horizon Task Retention & Scheduled Work Lifetime):
+
+- `GrokBuild/Models/SessionProcessIdentity.swift` — added
+  `SessionRuntimeProtectionReason.activeBackgroundTask` ("Background work") and a
+  defaulted `SessionRuntimeRetentionCandidate.hasActiveBackgroundTasks`; the
+  policy now protects live non-scheduled background work outside the ordinary
+  four-process window exactly like `.busy`/`.starting`/`.activeSchedule`.
+- `GrokBuild/Services/ChatStore.swift` — added `hasActiveBackgroundTasks`
+  (any non-scheduled active `backgroundActivities` row or unbound spawned
+  subagent).
+- `GrokBuild/ContentView.swift` — fed `hasActiveBackgroundTasks` into
+  `runtimeRetentionDecision`, and `SidebarSession.hasActiveSchedule` (from
+  `runtimeLease != nil`) into `sidebarSessions`.
+- `GrokBuild/Views/SidebarView.swift` — `SidebarSession.hasActiveSchedule` +
+  `grok-sidebar-session-schedule` clock badge and schedule-aware accessibility
+  label.
+- `GrokBuild/Views/ChatView.swift` — top-bar Tasks pill now shows an orange
+  `clock.badge.checkmark` "· Scheduled" state, a stable `grok-tasks-status`
+  accessibility id, and a "runtime pinned by active schedule" label when a lease
+  is live.
+- Tests: new `Tests/GrokBuildTests/SessionRetentionPolicyTests.swift` (10 cases:
+  background-task priority, eviction ordering, selected-session priority,
+  combined reasons, release-to-eviction, dead-runtime guard, reason vocabulary);
+  extended `Tests/GrokBuildTests/RunEvidenceSnapshotTests.swift` (3 store cases).
+- Docs: `ARCHITECTURE.md` (eviction/runtime-lease section + source map),
+  `README.md` (Background tasks feature bullet), this ledger, and the campaign
+  spec status.
+
+Gate C: `swift test --filter SessionRetentionPolicyTests` green (10/10);
+`make test` **880 tests, 0 failures** (867 baseline + 13). `make ship` installed
+`/Applications/GrokBuild.app` at branch stamp `b58b973` (`dirty=true` scoped
+implementation), dist == installed SHA-256
+`fa73150c79a9280b6751f99f74e622ffd68f9bac1caa362a727b02fbd44f1ae6`, Team
+`DD2GCQJVB4`, deep/strict PASS, no quarantine. Installed Computer Use (Cursor
+`user-grokbuild-computer-use` MCP) launched the app and confirmed the live
+`grok-tasks-status` control ("Background tasks, runtime not pinned" in the
+no-schedule state) and the `grok-sidebar-session-row` list rendering with the
+schedule badge correctly absent while no lease is live.
+
+Outstanding: the billable multi-tab retention verification turn (frozen marker
+`GB-C9-P1-RETENTION-<UTC>`) that exercises a live `/loop`/background session
+across 5+ tabs and the orange/badge active-schedule rendering, then Gate D
+(commit/push/PR/merge) and Gates E–H (post-merge `make ship`, exact test-thread
+cleanup, process-zero, identity/parity). No provider calls, config, credential,
+or `origin` writes occurred during Gates A–C.
 
 ## Residual closeout — 2026-08-14 (Complete — all phases 0–6 closed)
 

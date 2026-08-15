@@ -2143,6 +2143,7 @@ struct ChatView: View {
         let subagents = activities.filter { $0.kind == .subagent }
         let count = activities.count + unboundSpawns.count
         let available = store.hasLoopCommand
+        let hasActiveSchedule = store.runtimeLease != nil
         let title = count > 0 ? "Tasks (\(count))" : "Tasks"
 
         return Menu {
@@ -2212,11 +2213,16 @@ struct ChatView: View {
             Button("Type /loop <interval> <prompt> to schedule") {}
                 .disabled(true)
         } label: {
-            Label(title, systemImage: count > 0 ? "clock.badge.checkmark" : "clock")
-                .font(.caption2.weight(.semibold))
-                .padding(.horizontal, 2)
-                .padding(.vertical, 2)
-                .foregroundStyle(.secondary)
+            Label(
+                hasActiveSchedule ? "\(title) · Scheduled" : title,
+                systemImage: hasActiveSchedule
+                    ? "clock.badge.checkmark"
+                    : (count > 0 ? "clock.badge" : "clock")
+            )
+            .font(.caption2.weight(.semibold))
+            .padding(.horizontal, 2)
+            .padding(.vertical, 2)
+            .foregroundStyle(hasActiveSchedule ? Color.orange : .secondary)
         }
         .menuStyle(.borderlessButton)
         .fixedSize()
@@ -2224,9 +2230,10 @@ struct ChatView: View {
         .help(available
             ? "Background tasks observed in this session; active schedules visibly pin their exact live runtime."
             : "Background tasks mirror — refresh to query grok; cached metadata never pins runtime.")
-        .accessibilityLabel(store.runtimeLease == nil
-            ? "Background tasks, runtime not pinned"
-            : "Background tasks, runtime pinned")
+        .accessibilityLabel(hasActiveSchedule
+            ? "Background tasks, runtime pinned by active schedule"
+            : "Background tasks, runtime not pinned")
+        .accessibilityIdentifier("grok-tasks-status")
     }
 
     @ViewBuilder

@@ -8,6 +8,29 @@ struct SidebarSession: Identifiable, Hashable {
     let modelName: String
     let lastAccessed: Date?
     let isRunning: Bool
+    /// True when this session holds an authoritative active schedule lease
+    /// (recurring `/loop` or other `scheduler_*` work pinning its live runtime).
+    /// Surfaced as a distinct sidebar indicator so long-horizon scheduled work is
+    /// visible even when the session is otherwise idle between checkpoints.
+    let hasActiveSchedule: Bool
+
+    init(
+        id: UUID,
+        workspaceID: Workspace.ID,
+        title: String,
+        modelName: String,
+        lastAccessed: Date?,
+        isRunning: Bool,
+        hasActiveSchedule: Bool = false
+    ) {
+        self.id = id
+        self.workspaceID = workspaceID
+        self.title = title
+        self.modelName = modelName
+        self.lastAccessed = lastAccessed
+        self.isRunning = isRunning
+        self.hasActiveSchedule = hasActiveSchedule
+    }
 }
 
 enum SidebarSessionActivity {
@@ -36,7 +59,8 @@ enum SessionSidebarMetadata {
         let activity = session.lastAccessed.map {
             "last used \($0.formatted(date: .abbreviated, time: .shortened))"
         } ?? "new session"
-        return "Session: \(session.title), \(session.modelName), \(state), \(activity)"
+        let schedule = session.hasActiveSchedule ? ", scheduled work active" : ""
+        return "Session: \(session.title), \(session.modelName), \(state)\(schedule), \(activity)"
     }
 }
 
@@ -558,6 +582,14 @@ private struct SessionSidebarRow: View {
                     .lineLimit(1)
                     .foregroundStyle(isSelected ? .primary : .secondary)
                 Spacer()
+                if session.hasActiveSchedule {
+                    Image(systemName: "clock.badge.checkmark")
+                        .font(.caption2.weight(.semibold))
+                        .foregroundStyle(Color.orange)
+                        .help("Scheduled work is pinning this session's live runtime")
+                        .accessibilityHidden(true)
+                        .accessibilityIdentifier("grok-sidebar-session-schedule")
+                }
                 }
                 .padding(.horizontal, 8)
                 .padding(.vertical, 5)

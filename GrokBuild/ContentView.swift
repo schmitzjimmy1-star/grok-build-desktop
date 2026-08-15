@@ -683,7 +683,8 @@ struct ContentView: View {
                     isSelected: session.id == selectedSessionID,
                     lastActivationOrdinal: sessionLayout.records.first(where: { $0.id == session.id })?
                         .lastActivationOrdinal ?? 0,
-                    hasAuthoritativeActiveSchedule: session.store.runtimeLease != nil
+                    hasAuthoritativeActiveSchedule: session.store.runtimeLease != nil,
+                    hasActiveBackgroundTasks: session.store.hasActiveBackgroundTasks
                 )
             },
             normalCap: maxConnectedSessions
@@ -951,7 +952,8 @@ struct ContentView: View {
                         isRunning: SidebarSessionActivity.isWorking(
                             connectionState: session.store.connectionState,
                             isStreaming: session.store.isStreaming
-                        )
+                        ),
+                        hasActiveSchedule: session.store.runtimeLease != nil
                     )
                 )
             }
