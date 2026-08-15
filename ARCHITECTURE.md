@@ -1030,7 +1030,7 @@ Minimum size **1100×720** and default logical canvas **1440×900** (`MainWindow
 | `SidebarView.swift` | Navigation-only (Codex parity Slice 1): New chat/Sessions/Plugins/Security rail, collapsible project/session hierarchy, pins, on-demand filter, model/running/last-used metadata, hover/context rename and close actions, header **Session dashboard** bell, and an account footer. Settings opens from the session header and Command-comma. The former permanent Activity lane, Agents hub, and Connections sections were removed; their capabilities live in the Run inspector / session dashboard, Settings → Agents, and the composer MCP menu |
 | `ChatView.swift` | Centered work transcript, Ask/Build/Review welcome on genuine New chat, **Loading saved conversation…** plus Resume/Start/Browse on restored tabs (including empty-hydrate); owns composite transcript-block identity, coalesced settled scrolling, and the non-selectable restore-transition snapshot; hosts thin `topBar` / `composer` / `headerReviewToggle` wrappers |
 | `ChatTopBar.swift` | Workbench header chrome and project menu; Tasks / Review / Run inspector remain ChatView-owned slots |
-| `ChatComposer.swift` | One-to-eight-line matte composer envelope, file/MCP chips, Describe a task editor |
+| `ChatComposer.swift` | One-to-eight-line matte composer envelope, file/MCP chips, Describe a task editor. Identifier `grok-message-composer`, label **Message composer**; empty accessibility value is **Describe a task** via `ChatComposerAccessibility` |
 | `ChatHeaderReviewToggle.swift` | Contextual header Review control (`grok-header-review-toggle`) |
 | `ActivitySidebar.swift` | Codex parity Slice 5 plus browser-truth Slice 2: compact **Run inspector** (overlay in the mid band, docked column at default width, or collapsed strip when narrow) driven by the pure `ContextInspectorProjection` (`Models/ContextInspectorProjection.swift`) — recovery card first, then Subagents counts, gated Computer Use, typed MCP request/configuration/process/discovery/exercise/unavailable rows, Sources limited to attachments and invocation-evidenced servers, and a non-collapsible unresolved-errors line; the full generation-bound `Live`/`Settled` evidence stack survives inside one Run details disclosure; Escape/X/header toggle all close it; no lifecycle or worker state lives in SwiftUI |
 | `ComposerViews.swift` | File chips, workflow chips, goal banner, plan/question cards |
@@ -1258,6 +1258,7 @@ make test    # Tests/GrokBuildTests/
 | `ComputerUseIntegrationTests.swift` | Settings round-trips, MCP config shape, permission resolution truthfulness, process runner (pipe drain + timeout), helper RPC plumbing, Cursor installer refresh |
 | `ComputerUseCoreTests.swift` | Helper contract: 10-tool table, argv mapping, policy enforcement, error mapping, SKILL.md/tool parity, app↔helper env parity |
 | `WorkbenchIntentTests.swift` | Ask/Build/Review intent catalog, editable drafts, pre-send model selection, Codex-shaped composer source contract, and restored-empty loading copy |
+| `ComposerPresentationContractTests.swift` | Codex-shaped composer controls, relocated telemetry homes, extracted ChatComposer/ChatTopBar wrappers, and empty Message composer accessibility value **Describe a task** |
 | `UpdateCheckerTests.swift` | Version compare, GitHub asset selection, CLI JSON parse, notarized filter |
 | `GrokCLIUpdaterTests.swift` | Updater helpers / phase reset |
 | `SettingsExtensionContractTests.swift` | Current/legacy/malformed compatibility schema, exact MCP argument/env/header/scope serialization, secret redaction, stale inventory retention, and the canonical `TOMLLineParsing` behavior |
@@ -1300,7 +1301,7 @@ Prefer extending existing test files. Test pure logic without launching real `gr
 | `BUILDING.md` | Signing, notarization, release CI |
 | `docs/OUTSTANDING.md` | Canonical current-slice ledger and Gates A–H |
 | `docs/GROKBUILD_VERIFICATION_AND_FORWARD_SLICES_2026-08-13.md` | 2026-08-13 campaign spec (Slices 0–7 complete) |
-| `docs/GROKBUILD_RESIDUAL_CLOSEOUT_2026-08-14.md` | Current residual-closeout campaign (Phase 1 Light evidence) |
+| `docs/GROKBUILD_RESIDUAL_CLOSEOUT_2026-08-14.md` | Current residual-closeout campaign (Phase 1 complete pending merge; Phase 2 next) |
 | `.cursor/rules/` | Architecture, SwiftUI, CLI integration, AppKit panels |
 | `.cursor/skills/grokbuild-*` | Dev workflow, release, CLI checks |
 | `GrokBuild/Resources/Skills/` | Bundled runtime skills only; the unused `grokbuild-desktop` editing skill was retired |

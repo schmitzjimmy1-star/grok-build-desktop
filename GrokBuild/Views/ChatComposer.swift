@@ -3,6 +3,16 @@ import UniformTypeIdentifiers
 
 /// Composer envelope. ChatView still owns draft state, slash matching, the add
 /// menu, and send; this view only lays out chips, the editor, and the control row.
+enum ChatComposerAccessibility {
+    static let identifier = "grok-message-composer"
+    static let label = "Message composer"
+
+    /// Empty-field VoiceOver value must include the visible placeholder.
+    static func value(forDraft input: String) -> String {
+        input.isEmpty ? "Describe a task" : "\(input.count) characters"
+    }
+}
+
 struct ChatComposer<QueueBar: View, PrimaryControls: View, ActionControls: View>: View {
     @Bindable var store: ChatStore
     @Binding var input: String
@@ -140,10 +150,10 @@ struct ChatComposer<QueueBar: View, PrimaryControls: View, ActionControls: View>
                     .contentShape(Rectangle())
                     .overlay(ComposerCursorRegion())
                     .submitLabel(.send)
-                    .accessibilityLabel("Message composer")
-                    .accessibilityValue(input.isEmpty ? "Empty" : "\(input.count) characters")
+                    .accessibilityLabel(ChatComposerAccessibility.label)
+                    .accessibilityValue(ChatComposerAccessibility.value(forDraft: input))
                     .accessibilityHint("Enter a question, build request, or review request. Return sends; Shift-Return adds a line.")
-                    .accessibilityIdentifier("grok-message-composer")
+                    .accessibilityIdentifier(ChatComposerAccessibility.identifier)
                     .disabled(store.isPreparingSubmit)
                     .onSubmit {
                         if showSlashPopover {
