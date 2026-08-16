@@ -43,7 +43,7 @@
 > accepted on code-bearing candidate `ade5794`; its single final publication PR
 > closes the original Visual Quiet campaign as `b03f2f6` in PR #111. Jimmy
 > authorized **P5F verification closeout** on 2026-08-15. P5F is accepted on
-> code-bearing candidate `3295d0c`: the transient running task-contract bar is
+> code-bearing candidate `b410a80`: the transient running task-contract bar is
 > gone, the four-worker receipt-layout hang found by paid stress is fixed, and
 > fresh paid acceptance used 2,139,970 settled parent tokens. Its single final
 > publication PR is the remaining gate. Optional Phase 6 remains unauthorized.
@@ -114,12 +114,21 @@ adds a regression test for that boundary.
 
 Gate C/E: the final clean suite and code-bearing `make ship` passed **906/906**.
 `/Applications/GrokBuild.app` stamps exact candidate
-`3295d0c468c538c1868a46028bda9e3abef62b02`, `dirty=false`; dist/install parity,
+`b410a804f0d69edfb128864093147056cb86c4e3`, `dirty=false`; dist/install parity,
 Apple Development Team `DD2GCQJVB4`, deep/strict signing, and no quarantine all
 passed. Installed Computer Use directly proved the full-screen sidebar, no task
 bar, the retained Stop/trace/Run-inspector path, and four compact live then
 Completed ALPHA2/BETA2/GAMMA2/DELTA2 cards in the right canvas. Repeated live AX
 snapshots returned immediately after the fix at 0.2% CPU and 1.8% memory.
+
+The first PR #112 check is retained as failed evidence: all but one of 906 tests
+passed, while the existing fast-exit Computer Use helper contract intermittently
+reported `emptyResponse` instead of the written wrong request ID. Commit
+`b410a80` closes that real stdout/termination race by serializing readability
+delivery with a final EOF drain before classification; the exact regression now
+runs the immediate write-and-exit helper 20 times. Its focused test, a fresh
+local full **906/906**, and the final exact-head `make ship` all passed; required
+CI must rerun on the updated PR head before merge.
 
 The installed Finder Applications search directly showed the GrokBuild app and
 its revised icon. Dock accessibility still timed out, so Dock remains
@@ -152,7 +161,7 @@ directories moved recoverably to
 
 **Three-sentence handoff**
 
-P5F is accepted on code-bearing candidate `3295d0c`: the run bar is gone, heavy-agentic stress found and closed the worker-card layout spiral, and the recovered four-worker canvas remained compact and responsive. The final exact-head PR, required CI, merge, merged-main parity, and process-zero check are the only remaining publication gates for this already-scoped slice. Do not begin optional Phase 6 or any `ChatView`/`ContentView` structural split without a new explicit authorization.
+P5F is accepted on code-bearing candidate `b410a80`: the run bar is gone, heavy-agentic stress found and closed the worker-card layout spiral, and the recovered four-worker canvas remained compact and responsive. The final exact-head PR, required CI, merge, merged-main parity, and process-zero check are the only remaining publication gates for this already-scoped slice. Do not begin optional Phase 6 or any `ChatView`/`ContentView` structural split without a new explicit authorization.
 
 ### Visual Quiet Phase 5 receipt — 2026-08-15
 
