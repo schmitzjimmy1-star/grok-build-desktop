@@ -2,6 +2,25 @@ import XCTest
 @testable import GrokBuild
 
 final class ActivitySidebarTests: XCTestCase {
+    func testLiveWorkerCardDoesNotMountSelectableFixedReceiptText() throws {
+        let root = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+        let source = try String(
+            contentsOf: root.appendingPathComponent("GrokBuild/Views/ActivitySidebar.swift"),
+            encoding: .utf8
+        )
+        let start = try XCTUnwrap(source.range(of: "private func workerActivityCard("))
+        let end = try XCTUnwrap(source.range(of: "private func subagentsSection(", range: start.upperBound..<source.endIndex))
+        let card = String(source[start.lowerBound..<end.lowerBound])
+
+        XCTAssertFalse(card.contains(".textSelection(.enabled)"),
+                       "streaming receipt text must not create a SelectionOverlay in the worker rail")
+        XCTAssertFalse(card.contains(".fixedSize(horizontal: false, vertical: true)"),
+                       "live receipt growth must not force unbounded vertical remeasurement")
+        XCTAssertTrue(card.contains(".lineLimit(isLive ? 6 : 10)"),
+                      "expanded technical receipts stay readable but layout-bounded")
+    }
+
     func testLiveProgressProjectsExistingReceiptsWithoutUsageOrBudgetCopy() {
         let projection = RunEvidenceLiveProjection(
             binding: .init(

@@ -484,8 +484,14 @@ struct ActivitySidebar: View {
                 }
                 .font(AppTheme.Typography.section)
                 .foregroundStyle(.secondary)
-                .textSelection(.enabled)
-                .fixedSize(horizontal: false, vertical: true)
+                // Live child receipts can change several times per second. A
+                // selectable, vertically fixed subtree here made AppKit's
+                // SelectionOverlay repeatedly remeasure the docked rail and
+                // pinned the installed app at 100% CPU under four workers.
+                // Keep the technical receipt behind disclosure, but bound its
+                // layout; the authoritative text remains in the run record.
+                .lineLimit(isLive ? 6 : 10)
+                .truncationMode(.middle)
                 .padding(.top, 5)
             } label: {
                 Label("Details", systemImage: "doc.text.magnifyingglass")
