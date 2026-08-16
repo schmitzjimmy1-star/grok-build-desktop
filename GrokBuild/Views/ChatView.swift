@@ -323,9 +323,6 @@ struct ChatView: View {
     @State private var slashSkillsExpanded = false
     @State private var slashCommandsExpanded = false
     @State private var toolActivityExpanded = false
-    @State private var taskContractExpanded = false
-    /// W-4 context strip: cached branch name (reads .git/HEAD, no subprocess).
-    @State private var contextBranchName: String?
     @State private var expandedAssistantTraceIDs: Set<UUID> = []
     @State private var collapsedAssistantTraceIDs: Set<UUID> = []
     @State private var autoScrollTask: Task<Void, Never>?
@@ -722,10 +719,6 @@ struct ChatView: View {
             VStack(spacing: 0) {
             topBar
                 .disabled(isSessionRestoreInProgress)
-
-            if showsTaskContextStrip {
-                taskContextStrip
-            }
 
             if let authMsg = store.authRequiredMessage {
                 AuthBanner(
@@ -1333,111 +1326,6 @@ struct ChatView: View {
         }
     }
 
-    /// Slice 10 expands the old one-line context strip into a compact task
-    /// contract. Empty New chats and idle restored transcripts keep the header
-    /// plus composer (and Resume/Start/Browse when a saved backend is waiting).
-    /// The strip returns for a live, stalled, recovery, Send-owned start, or
-    /// connected-idle draft. `.ready` is connected with no turn — copy says
-    /// Connected — idle, matching the sidebar, not a live task.
-    private var showsTaskContextStrip: Bool {
-        guard store.currentWorkspace != nil else { return false }
-        if store.showsEmptyTranscriptWelcome { return false }
-        if store.continuityRequiresRecovery { return true }
-        if store.isStreaming || store.isPreparingSubmit { return true }
-        if store.turnStalledSince != nil { return true }
-        if store.goalState != nil { return true }
-        if store.liveRunEvidenceProjection != nil { return true }
-        switch store.connectionState {
-        case .starting, .busy:
-            return true
-        case .ready, .idle, .failed:
-            return false
-        }
-    }
-
-    private var taskContextStrip: some View {
-        ThreadTaskContractView(
-            objective: ThreadTaskContractPresentation.objective(
-                live: store.liveRunEvidenceProjection,
-                snapshot: store.runEvidenceSnapshot,
-                checkpoint: store.latestTaskCheckpoint,
-                latestUserText: store.messages.last(where: { $0.role == .user })?.content,
-                fallback: sessionTitle
-            ),
-            phase: ThreadTaskContractPresentation.phase(
-                live: store.liveRunEvidenceProjection,
-                snapshot: store.runEvidenceSnapshot,
-                checkpoint: store.latestTaskCheckpoint,
-                connectionState: store.connectionState,
-                isPreparingSubmit: store.isPreparingSubmit,
-                canResumeSavedTask: store.canResumeTaskSession,
-                continuityRequiresRecovery: store.continuityRequiresRecovery,
-                isResumedSession: store.isResumedSessionTab
-            ),
-            project: store.currentWorkspace?.displayName ?? "No project",
-            worktree: store.currentWorkspace?.path.path ?? "No worktree selected",
-            branch: contextBranchName,
-            modelReceipt: ThreadTaskContractPresentation.modelReceipt(
-                current: store.sessionReceiptCompactLabel,
-                checkpoint: store.latestTaskCheckpoint,
-                connectionState: store.connectionState
-            ),
-            requestedToolFamilies: ThreadTaskContractPresentation.requestedToolFamilies(
-                current: store.taskContractRequestedToolNames,
-                checkpoint: store.latestTaskCheckpoint
-            ),
-            reviewState: reviewFileCount == 0
-                ? "Clean at last Git refresh"
-                : "\(reviewFileCount) changed \(reviewFileCount == 1 ? "file" : "files") at last Git refresh",
-            checkpoint: store.latestTaskCheckpoint,
-            workerHandoffs: ThreadTaskContractPresentation.workerHandoffs(
-                live: store.liveRunEvidenceProjection,
-                snapshot: store.runEvidenceSnapshot,
-                checkpoint: store.latestTaskCheckpoint
-            ),
-            backgroundReceiptCount: store.backgroundActivities.count,
-            scheduledTaskCount: store.scheduledTasks.count,
-            canCancelPending: store.isPreparingSubmit,
-            canStopTurn: store.isStreaming,
-            canPauseGoal: store.goalState != nil && store.goalState?.isPaused == false && !store.isStreaming,
-            canResumeGoal: store.goalState?.isPaused == true && !store.isStreaming,
-            canResumeSavedTask: store.canResumeTaskSession,
-            canContinueAsNew: store.continuityRequiresRecovery,
-            onCancelPending: { store.cancelPendingSubmit() },
-            onStopTurn: { store.requestStop() },
-            onPauseGoal: { Task { _ = await store.pauseGoal() } },
-            onResumeGoal: { Task { _ = await store.resumeGoal() } },
-            onResumeSavedTask: {
-                Task {
-                    _ = await performTranscriptSessionTransition {
-                        await store.resumeTaskSession()
-                    }
-                }
-            },
-            onContinueAsNew: {
-                Task {
-                    _ = await performTranscriptSessionTransition {
-                        await store.continueAsNew()
-                    }
-                }
-            },
-            onOpenActivity: {
-                selectedActivityMessageID = nil
-                setActivitySidebarVisible(true)
-            },
-            isExpanded: $taskContractExpanded
-        )
-        .accessibilityIdentifier("grok-task-context-strip")
-        .task(id: store.currentWorkspace?.id) { refreshContextBranch() }
-        .onChange(of: store.gitRefreshRevision) { _, _ in refreshContextBranch() }
-    }
-
-    private func refreshContextBranch() {
-        contextBranchName = store.currentWorkspace.flatMap {
-            GitService.currentBranch(in: $0.path)
-        }
-    }
-
     private var restoredEmptyState: some View {
         Text("Loading saved conversation…")
             .font(.system(size: 20, weight: .semibold))
@@ -1513,7 +1401,6 @@ struct ChatView: View {
         _ operation: @MainActor () async -> Bool
     ) async -> Bool {
         guard !transcriptSessionTransitionInProgress else { return false }
-        taskContractExpanded = false
         cancelSettledAutoScroll()
         transcriptSessionTransitionInProgress = true
         await Task.yield()

@@ -176,32 +176,17 @@ final class ResponsiveAndAccessibilityTests: XCTestCase {
                       "VoiceOver exposes exact session close without requiring hover")
     }
 
-    func testTaskContractControlsExposeDistinctNamedSemantics() throws {
+    func testTaskContractBarIsGoneWhileRunControlsRemainReachable() throws {
+        let chatView = try source("GrokBuild/Views/ChatView.swift")
         let contract = try source("GrokBuild/Views/LivePlanSpine.swift")
-        for identifier in [
-            "grok-task-contract-toggle",
-            "grok-task-contract-details",
-            "Cancel pending",
-            "Stop turn",
-            "Pause goal",
-            "Resume goal",
-            "Resume saved task",
-            "Continue as New",
-        ] {
-            XCTAssertTrue(contract.contains(identifier), "missing task-contract semantic: \(identifier)")
-        }
-        XCTAssertTrue(contract.contains("An active model turn can be stopped, not paused."),
-                      "the UI must not invent pause semantics the CLI does not expose")
-        XCTAssertTrue(contract.contains(".popover(isPresented: $isExpanded"),
-                      "task details must not resize the selectable transcript during live ACP updates")
-        XCTAssertTrue(contract.contains("ThreadTaskContractPresentation.collapsedSummary("),
-                      "the collapsed strip is one summary line plus disclosure")
-        for retainedDetail in ["Project", "Worktree", "Branch", "Model receipt"] {
-            XCTAssertTrue(contract.contains("contractRow(\"\(retainedDetail)\""),
-                          "the disclosure must retain \(retainedDetail) truth")
-        }
-        XCTAssertTrue(contract.contains("\"Identity\""),
-                      "the disclosure must retain exact checkpoint identity truth")
+        XCTAssertFalse(chatView.contains("grok-task-context-strip"))
+        XCTAssertFalse(contract.contains("struct ThreadTaskContractView"))
+        XCTAssertTrue(chatView.contains(".accessibilityLabel(\"Stop turn\")"),
+                      "Stop remains directly reachable in the composer")
+        XCTAssertTrue(chatView.contains("RunInspectorQuickLook"),
+                      "run receipts remain reachable from the header")
+        XCTAssertTrue(chatView.contains("activityInspector(docked:"),
+                      "worker receipts remain visible in the right-side canvas")
     }
 
     func testFocusOrderSectionsRemainDeclared() throws {

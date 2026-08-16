@@ -41,7 +41,12 @@
 > `d62a396` in PR #109; required CI, merged-main install, billable acceptance,
 > exact cleanup, and process-zero closeout passed. Phase 5 icon/bundle honesty is
 > accepted on code-bearing candidate `ade5794`; its single final publication PR
-> closes the Visual Quiet campaign.** Optional Phase 6 remains unauthorized.
+> closes the original Visual Quiet campaign as `b03f2f6` in PR #111. Jimmy
+> authorized **P5F verification closeout** on 2026-08-15. P5F is accepted on
+> code-bearing candidate `b410a80`: the transient running task-contract bar is
+> gone, the four-worker receipt-layout hang found by paid stress is fixed, and
+> fresh paid acceptance used 2,139,970 settled parent tokens. Its single final
+> publication PR is the remaining gate. Optional Phase 6 remains unauthorized.
 > Leftover closeout Phases 1–2 are merged on `main` as `7a3006d`
 > (PR #102). Leftover Phase 3 (`ChatView` split) stays deferred.
 > Install path is `make ship` on this Mac.
@@ -49,7 +54,7 @@
 > Prior campaigns: 2026-08-14 Residual Closeout (Phases 0–6) complete and merged as `4613bde` (PR #94);
 > 2026-08-13 campaign (Slices 0–7) closed at merge `c0895ee` (PR #86).
 
-## Visual Quiet — 2026-08-15 (Phase 5 accepted; publication gate in progress)
+## Visual Quiet — 2026-08-15 (P5F candidate accepted; publication gate open)
 
 Authorized spec is
 [`docs/GROKBUILD_VISUAL_QUIET_CAMPAIGN_2026-08-15.md`](GROKBUILD_VISUAL_QUIET_CAMPAIGN_2026-08-15.md).
@@ -58,8 +63,105 @@ activity closeout merged as `1e11be2` in PR #107: the duplicate transcript Run c
 active workers occupy a compact truthful right-side canvas. It does not redesign
 Settings or runtime behavior and is not leftover Phase 3. **Phase 4** is accepted
 as `d62a396` in PR #109. **Phase 5** is accepted on code-bearing candidate
-`ade5794`; only its exact Gate F cleanup and one final exact-head PR/merge gate
-remain. Phase 6 and broader structural cleanup are unauthorized.
+`ade5794` and merged as `b03f2f6` in PR #111. **P5F** is a narrow follow-up:
+remove the below-composer task-contract bar while retaining composer Stop,
+assistant trace, header Run inspector, right-side worker canvas, and underlying
+checkpoint truth; directly inspect Finder/Dock where Computer Use permits; run
+fresh installed-app paid ordered-tool, parallel-worker, continuity, and recovery
+acceptance up to 4,000,000 settled tokens; then perform exact cleanup and one
+final exact-head PR/merge. It does not authorize provider/config/credential
+changes, optional Phase 6, or any ChatView/ContentView structural split.
+
+### Visual Quiet P5F acceptance contract — 2026-08-15
+
+- Source: `grok-task-context-strip`, its mounting condition, expansion state,
+  and dead `ThreadTaskContractView` are absent. The task/checkpoint presentation
+  authority that `ChatStore` uses remains intact.
+- Installed UI: the running canvas has no task-contract bar; Stop, compact tool
+  trace, header inspector, full-size project sidebar, and auto-opening worker
+  canvas remain reachable and readable.
+- Icon: directly observe Finder and Dock if their accessibility surfaces are
+  targetable; retain any timeout or inaccessible surface as unverified instead
+  of substituting source/package evidence.
+- Paid packet: ordered multi-tool, concurrent workers, continuity, and honest
+  stop/failure/recovery receipts. Aggregate settled parent usage must remain at
+  or below 4,000,000 tokens; volume alone is not a performance claim.
+- Exit: focused and full tests, code-bearing `make ship`, installed Computer Use
+  acceptance, exact parent/child cleanup, protected OK-F untouched, clean review,
+  required CI on exact head, merge, merged-main parity, and process zero.
+
+### Visual Quiet P5F receipt — 2026-08-15
+
+Gate A/B: branch `codex/grokbuild-vq-p5f-verification-closeout` started from
+merged Phase 5 closeout `b03f2f6`. Commit `02b7950` removes the transient
+`grok-task-context-strip`, its mounting predicate, expansion/branch cache state,
+and the 166-line dead `ThreadTaskContractView`; it deliberately retains composer
+Stop, assistant trace, the header Run inspector, the right-side worker canvas,
+and `ThreadTaskContractPresentation`, which still formats checkpoint truth for
+`ChatStore`. Contract tests now assert the removed bar and view remain absent
+while the retained controls and owners stay reachable.
+
+The first installed four-worker stress exposed a real defect rather than a
+cosmetic nit: after ALPHA/BETA/GAMMA/DELTA mounted, accessibility snapshots timed
+out and exact app PID `54924` pinned near 99% CPU and 10.1% memory. A five-second
+sample at `/tmp/GrokBuild_2026-08-15_204816_dXBh.sample.txt` isolated recursive
+SwiftUI/AttributeGraph `sizeThatFits` work around selectable, vertically fixed
+live receipt text; Command-period did not recover the app, so that exact PID was
+terminated and the parent remains honestly `cancelled`. Commit `3295d0c` removes
+selection/fixed-size layout from the live worker-card receipt disclosure, bounds
+it to 6 live or 10 settled lines, preserves the authoritative run record, and
+adds a regression test for that boundary.
+
+Gate C/E: the final clean suite and code-bearing `make ship` passed **906/906**.
+`/Applications/GrokBuild.app` stamps exact candidate
+`b410a804f0d69edfb128864093147056cb86c4e3`, `dirty=false`; dist/install parity,
+Apple Development Team `DD2GCQJVB4`, deep/strict signing, and no quarantine all
+passed. Installed Computer Use directly proved the full-screen sidebar, no task
+bar, the retained Stop/trace/Run-inspector path, and four compact live then
+Completed ALPHA2/BETA2/GAMMA2/DELTA2 cards in the right canvas. Repeated live AX
+snapshots returned immediately after the fix at 0.2% CPU and 1.8% memory.
+
+The first PR #112 check is retained as failed evidence: all but one of 906 tests
+passed, while the existing fast-exit Computer Use helper contract intermittently
+reported `emptyResponse` instead of the written wrong request ID. Commit
+`b410a80` closes that real stdout/termination race by serializing readability
+delivery with a final EOF drain before classification; the exact regression now
+runs the immediate write-and-exit helper 20 times. Its focused test, a fresh
+local full **906/906**, and the final exact-head `make ship` all passed; required
+CI must rerun on the updated PR head before merge.
+
+The installed Finder Applications search directly showed the GrokBuild app and
+its revised icon. Dock accessibility still timed out, so Dock remains
+**unverified**; Finder evidence, source assets, and package representations are
+not substituted for that inaccessible surface.
+
+Paid receipt: ordered marker `GB-P5F-TOOL-20260815T204200Z` made exactly three
+successful sequential terminal calls, returned `GB_P5F_TOOL_OK`, and used
+66,351 tokens. The first heavy parent
+`GB-P5F-WORKERS-20260815T204300Z` spawned four workers before waiting, exposed
+the UI hang above, and is retained as cancelled at 1,865,391 parent tokens. After
+relaunch, **Resume current task** reattached the same saved parent backend; marker
+`GB-P5F-POSTFIX-WORKERS-20260815T205400Z` spawned four new parallel workers before
+waiting, each completed two read-only tools with no edits or tool failures, and
+returned `GB_P5F_POSTFIX_WORKERS_OK` at 208,228 parent tokens. Aggregate settled
+parent usage is **2,139,970 tokens**, below the 4,000,000 ceiling; child usage is
+not double-counted, and this is heavy-agentic stress acceptance rather than a
+universal model-performance claim.
+
+Exact local/backend parents were
+`93255232-FECA-4442-BA1D-F6E8DB9F97E3` /
+`01a00805-12d4-78f3-ab71-8e70e671b2e4` and
+`81A35BEE-A55D-41DF-9FEA-1A0CBD898FA8` /
+`01a00806-2cc5-7792-903b-52b93758b0e2`. Native **Close Session** removed both
+parents and their transcript/backend records. The eight exact child backend
+directories moved recoverably to
+`~/.Trash/GrokBuild-P5F-20260815T213000Z/RemovedChildBackends`; canonical
+`prompt_history.jsonl`, unrelated sessions, and protected OK-F/backend
+`019ffdad-0d4f-7f42-a429-7ac12ad8198d` remain present.
+
+**Three-sentence handoff**
+
+P5F is accepted on code-bearing candidate `b410a80`: the run bar is gone, heavy-agentic stress found and closed the worker-card layout spiral, and the recovered four-worker canvas remained compact and responsive. The final exact-head PR, required CI, merge, merged-main parity, and process-zero check are the only remaining publication gates for this already-scoped slice. Do not begin optional Phase 6 or any `ChatView`/`ContentView` structural split without a new explicit authorization.
 
 ### Visual Quiet Phase 5 receipt — 2026-08-15
 

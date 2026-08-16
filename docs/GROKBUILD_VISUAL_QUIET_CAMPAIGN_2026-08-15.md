@@ -586,9 +586,41 @@ single Visual Quiet P5 pull request. Phase 6 remains optional and unauthorized.*
   and disappears at settlement. Removing or relocating that strip is a separate
   visual follow-up; it was not smuggled into icon/bundle housekeeping.
 
+### P5F verification closeout — candidate accepted 2026-08-15
+
+Code-bearing candidate `b410a80` removes the transient below-composer task bar
+and dead `ThreadTaskContractView` while retaining composer Stop, assistant trace,
+the header Run inspector, the right-side worker canvas, and checkpoint
+presentation authority. The final clean suite and `make ship` passed **906/906**;
+the installed candidate passed full-screen UI acceptance and Finder directly
+showed the installed app icon. Dock accessibility still timed out and remains
+unverified.
+
+The first four-worker paid stress found an installed SwiftUI layout spiral:
+selectable, vertically fixed live receipt text drove the app near 99% CPU and
+made AX snapshots time out. The candidate bounds that disclosure text and adds a
+regression test; a same-parent Resume then ran four new parallel workers with two
+read-only tools each, immediate repeated snapshots, 0.2% CPU, and four truthful
+Completed cards. Ordered, cancelled-heavy, and successful recovery parents used
+**2,139,970 aggregate settled tokens**, below the 4,000,000 ceiling.
+
+The first PR #112 run retained a 905/906 failure from a genuine pre-existing
+fast-helper stdout/termination race. Candidate `b410a80` serializes the final
+stdout drain before classifying the helper response, repeats that immediate-exit
+regression 20 times, and passed the focused test, a fresh local 906/906, and
+exact-head `make ship`. The failed run is not upgraded; fresh exact-head CI is
+still required.
+
+Both exact paid parent sessions were closed natively and eight orphan child
+backend directories were moved recoverably to the Trash; prompt history,
+unrelated sessions, and protected OK-F remain. The final exact-head PR, required
+CI, merge, merged-main parity, and process-zero check remain the publication
+gate. Provider, routing, credential, Settings architecture, Phase 6 welcome
+extraction, and broad `ChatView`/`ContentView` decomposition remain excluded.
+
 **Three-sentence handoff after completion**
 
-Slice 4 is complete: the icon is visibly sharper, dead workflow chrome is gone, the measured bundle delta is recorded honestly, and Computer Use remains bundled. The optional welcome-only extraction remains a separate proposed slice only if it still has a concrete payoff after the visual campaign settles. Do not begin any structural cleanup without Jimmy's explicit authorization, and never turn it into a full ChatView or ContentView decomposition.
+P5F is accepted on code-bearing candidate `b410a80`: the run bar is gone, heavy-agentic stress found and closed the worker-card layout spiral, and the recovered four-worker canvas remained compact and responsive. The final exact-head PR, required CI, merge, merged-main parity, and process-zero check are the only remaining publication gates for this already-scoped slice. Do not begin optional Phase 6 or any `ChatView`/`ContentView` structural split without a new explicit authorization.
 
 ---
 

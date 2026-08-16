@@ -729,21 +729,26 @@ final class ComputerUseIntegrationTests: XCTestCase {
             at: wrongIDHelper,
             body: "read line\nprintf '%s\\n' '{\"jsonrpc\":\"2.0\",\"id\":99,\"result\":{}}'"
         )
-        do {
-            _ = try await ComputerUseService.runHelperRPC(
-                helper: wrongIDHelper,
-                environment: ProcessInfo.processInfo.environment,
-                requests: [#"{"jsonrpc":"2.0","id":2}"#],
-                finalID: 2,
-                timeout: 2
-            )
-            XCTFail("Expected wrong final request ID")
-        } catch let error as ComputerUseService.HelperRPCError {
-            guard case let .wrongFinalRequestID(expected, observed) = error else {
-                return XCTFail("Unexpected error: \(error)")
+        // Exercise the immediate-write-and-exit path repeatedly. Process
+        // termination used to beat stdout delivery intermittently in CI and
+        // turn this response into a false emptyResponse.
+        for _ in 0..<20 {
+            do {
+                _ = try await ComputerUseService.runHelperRPC(
+                    helper: wrongIDHelper,
+                    environment: ProcessInfo.processInfo.environment,
+                    requests: [#"{"jsonrpc":"2.0","id":2}"#],
+                    finalID: 2,
+                    timeout: 2
+                )
+                XCTFail("Expected wrong final request ID")
+            } catch let error as ComputerUseService.HelperRPCError {
+                guard case let .wrongFinalRequestID(expected, observed) = error else {
+                    return XCTFail("Unexpected error: \(error)")
+                }
+                XCTAssertEqual(expected, 2)
+                XCTAssertEqual(observed, [99])
             }
-            XCTAssertEqual(expected, 2)
-            XCTAssertEqual(observed, [99])
         }
 
         let failingHelper = directory.appendingPathComponent("failing-helper")

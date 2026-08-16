@@ -70,7 +70,8 @@ final class WorkbenchIntentTests: XCTestCase {
         XCTAssertTrue(source.contains(".frame(width: 24, height: 24)"))
         XCTAssertTrue(source.contains("AppTheme.Typography.heading"))
         XCTAssertTrue(source.contains(".padding(.vertical, 24)"))
-        XCTAssertTrue(source.contains("private var showsTaskContextStrip"))
+        XCTAssertFalse(source.contains("grok-task-context-strip"),
+                       "the transient task-contract bar must not return below the header")
         XCTAssertFalse(source.contains("Text(\"Recent tasks\")"))
         XCTAssertFalse(source.contains("showComposerDetails"))
 
