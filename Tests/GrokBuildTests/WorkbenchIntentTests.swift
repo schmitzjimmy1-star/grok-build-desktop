@@ -43,17 +43,23 @@ final class WorkbenchIntentTests: XCTestCase {
             contentsOf: repositoryRoot.appendingPathComponent("GrokBuild/Views/ChatView.swift"),
             encoding: .utf8
         )
+        let welcomeState = try String(
+            contentsOf: repositoryRoot.appendingPathComponent("GrokBuild/Views/WelcomeStateView.swift"),
+            encoding: .utf8
+        )
         let composer = try String(
             contentsOf: repositoryRoot.appendingPathComponent("GrokBuild/Views/ChatComposer.swift"),
             encoding: .utf8
         )
-        let source = chatView + "\n" + composer
+        let source = chatView + "\n" + welcomeState + "\n" + composer
 
         XCTAssertTrue(source.contains("Text(\"What do you want to work on?\")"))
+        XCTAssertTrue(chatView.contains("WelcomeStateView("))
+        XCTAssertFalse(chatView.contains("private var welcomeState"))
         XCTAssertTrue(source.contains("Text(\"Loading saved conversation…\")"))
         XCTAssertTrue(source.contains("private var restoredEmptyState"))
-        XCTAssertTrue(source.contains("private struct CodexPromptPill"))
-        XCTAssertTrue(source.contains("ForEach(WorkbenchIntent.defaults)"))
+        XCTAssertTrue(welcomeState.contains("private struct CodexPromptPill"))
+        XCTAssertTrue(welcomeState.contains("ForEach(WorkbenchIntent.defaults)"))
         // The welcome model pill was removed 2026-08-03 (redundant with the composer's
         // always-visible model menu); model choice must not reappear mid-canvas.
         XCTAssertFalse(source.contains("grok-starter-model-selector"))

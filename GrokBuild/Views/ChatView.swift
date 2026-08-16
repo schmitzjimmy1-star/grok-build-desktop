@@ -761,7 +761,12 @@ struct ChatView: View {
                             } else if case .failed = store.connectionState {
                                 EmptyView()
                             } else {
-                                welcomeState
+                                WelcomeStateView(
+                                    workspaceName: store.currentWorkspace?.displayName ?? "Choose a project to begin"
+                                ) { item in
+                                    input = item.prompt
+                                    inputFocused = true
+                                }
                                     .disabled(isSessionRestoreInProgress)
                             }
                         } else if store.messages.isEmpty && store.isResumedSessionTab {
@@ -1309,23 +1314,6 @@ struct ChatView: View {
         }
     }
 
-    private var brandMark: some View {
-        Group {
-            if let icon = GrokBrandIcon.mark() {
-                Image(nsImage: icon)
-                    .renderingMode(.template)
-                    .resizable()
-                    .scaledToFit()
-                    .frame(width: 24, height: 24)
-                    .foregroundStyle(.secondary)
-            } else {
-                Image(systemName: "sparkles")
-                    .font(.system(size: 22))
-                    .foregroundStyle(.secondary)
-            }
-        }
-    }
-
     private var restoredEmptyState: some View {
         Text("Loading saved conversation…")
             .font(.system(size: 20, weight: .semibold))
@@ -1337,34 +1325,9 @@ struct ChatView: View {
             .accessibilityIdentifier("grok-restored-conversation-loading")
     }
 
-    private var welcomeState: some View {
-        VStack(spacing: 12) {
-            brandMark
-                .frame(width: 24, height: 24)
-            Text("What do you want to work on?")
-                .font(AppTheme.Typography.heading)
-            Text(store.currentWorkspace?.displayName ?? "Choose a project to begin")
-                .font(AppTheme.Typography.caption)
-                .foregroundStyle(.secondary)
-
-            HStack(spacing: 8) {
-                ForEach(WorkbenchIntent.defaults) { item in
-                    CodexPromptPill(item: item) {
-                        input = item.prompt
-                        inputFocused = true
-                    }
-                }
-            }
-        }
-        .frame(maxWidth: 720)
-        .frame(maxWidth: .infinity)
-        .padding(.vertical, 24)
-        .padding(.horizontal, 32)
-    }
-
     private var noProjectState: some View {
         VStack(spacing: 18) {
-            brandMark
+            GrokBrandMarkView()
             VStack(spacing: 6) {
                 Text("Welcome to GrokBuild")
                     .font(.title2.weight(.semibold))
@@ -2828,39 +2791,6 @@ private struct LaunchSessionChoices: View {
             .accessibilityLabel(title)
             .accessibilityHint(help)
             .accessibilityIdentifier(identifier)
-    }
-}
-
-// MARK: - Workbench Intents
-
-private struct CodexPromptPill: View {
-    let item: WorkbenchIntent
-    var onSelect: () -> Void
-
-    @State private var isHovered = false
-
-    var body: some View {
-        Button(action: onSelect) {
-            HStack(spacing: 6) {
-                Image(systemName: item.icon)
-                    .font(.system(size: 11, weight: .semibold))
-                Text(item.title)
-                    .font(AppTheme.Typography.label)
-            }
-            .foregroundStyle(isHovered ? Color.primary : Color.secondary)
-            .padding(.horizontal, 10)
-            .padding(.vertical, 6)
-            .background(
-                isHovered ? AppTheme.Palette.surfaceHover : AppTheme.Palette.surface,
-                in: Capsule()
-            )
-            .contentShape(Capsule())
-        }
-        .buttonStyle(.plain)
-        .onHover { isHovered = $0 }
-        .help(item.prompt)
-        .accessibilityLabel("\(item.title). \(item.detail)")
-        .accessibilityHint("Adds an editable \(item.title.lowercased()) request to the message composer.")
     }
 }
 

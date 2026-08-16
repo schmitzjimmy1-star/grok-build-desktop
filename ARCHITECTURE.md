@@ -85,7 +85,8 @@ grok-build-desktop/
 │   ├── ContentView.swift         # Root view: multi-session orchestration
 │   ├── Views/                    # SwiftUI screens
 │   │   ├── Settings/             # One file per Settings pane (Slice 10 split)
-│   │   └── ActivitySidebar.swift # Optional right-side run-evidence drawer
+│   │   ├── ActivitySidebar.swift # Optional right-side run-evidence drawer
+│   │   └── WelcomeStateView.swift # Quiet new-session welcome + intent chips
 │   ├── Services/                 # Business logic, CLI integration
 │   ├── Models/                   # Workspace, Message, Composer, RunEvidenceSnapshot types
 │   ├── Resources/
@@ -1180,7 +1181,7 @@ See `BUILDING.md` for the local install path.
 | **Composer, send, streaming** | `ChatComposer.swift`, `ChatView.swift`, `ChatStore.send`, `consumeOutput` |
 | **Workflow slash commands** | `WorkflowSlashCommands` in `ComposerModels.swift`, consolidated Skills and workflows menu in `ChatView` |
 | **Session goal banner** | `GoalBanner` in `ComposerViews.swift`, `ChatStore.goalState` + `/goal` helpers, `GoalCommand` in `ComposerModels.swift` |
-| **Empty/welcome state, work intents** | `ChatView.swift` (`welcomeState`, `restoredEmptyState`, `noProjectState`, `WorkbenchIntentCard`), `ChatStore.showsEmptyTranscriptWelcome` / `isResumedSessionTab`, `WorkbenchIntent` in `ComposerModels.swift` |
+| **Empty/welcome state, work intents** | `WelcomeStateView.swift` (quiet workspace welcome + intent chips), `ChatView.swift` (`restoredEmptyState`, `noProjectState`, mount/send gate), `ChatStore.showsEmptyTranscriptWelcome` / `isResumedSessionTab`, `WorkbenchIntent` in `ComposerModels.swift` |
 | **ACP events / tool cards** | `GrokProcess` (`AcpEvent`), `RichMessageView` |
 | **Permissions UI** | `ChatStore.pendingPermissions`, `MessageBubble` |
 | **MCP permission identity** | `GrokProcess.qualifiedToolName` / `MCPQualifiedToolIdentity.composed`, `PermissionRequestPolicy`, `ChatStore` permission responder |
@@ -1267,7 +1268,7 @@ make test    # Tests/GrokBuildTests/
 | `MemoryStoreTests.swift` | `MemoryStore` enumeration/grouping (global/workspace/session, newest-first), session-only delete guard, note appending; `GrokMemoryFlag` mapping + memory-enabled default in `AgentsAndCapabilitiesTests` |
 | `ComputerUseIntegrationTests.swift` | Settings round-trips, MCP config shape, permission resolution truthfulness, process runner (pipe drain + timeout), helper RPC plumbing, Cursor installer refresh |
 | `ComputerUseCoreTests.swift` | Helper contract: 10-tool table, argv mapping, policy enforcement, error mapping, SKILL.md/tool parity, app↔helper env parity |
-| `WorkbenchIntentTests.swift` | Ask/Build/Review intent catalog, editable drafts, pre-send model selection, Codex-shaped composer source contract, and restored-empty loading copy |
+| `WorkbenchIntentTests.swift` | Ask/Build/Review intent catalog, extracted welcome ownership, editable drafts, pre-send model selection, Codex-shaped composer source contract, and restored-empty loading copy |
 | `ComposerPresentationContractTests.swift` | Codex-shaped composer controls, relocated telemetry homes, extracted ChatComposer/ChatTopBar wrappers, and empty Message composer accessibility value **Describe a task** |
 | `UpdateCheckerTests.swift` | Version compare, GitHub asset selection, CLI JSON parse, notarized filter |
 | `GrokCLIUpdaterTests.swift` | Updater helpers / phase reset |

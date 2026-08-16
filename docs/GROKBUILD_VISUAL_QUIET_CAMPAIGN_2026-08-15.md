@@ -1,11 +1,8 @@
 # GrokBuild Visual Quiet Campaign — 2026-08-15
 
-Status: **Phases 1–4, P3C, and P3D verified** (cool tokens, Path A chips,
-Codex-style overlay/quiet chrome, composer/task-strip density, live activity
-composition, and the semantic accent sweep). Phase 4 used **330,658** reported
-parent tokens against its 2.5 million cap and merged as `d62a396` in PR #109.
-Phases 5–6 wait for explicit authorization.
-Leftover `ChatView` split stays deferred.
+Status: **Phases 1–5, P3C, P3D, and P5F verified and merged**. Jimmy authorized
+Phase 6 on 2026-08-15 as the welcome-only extraction specified below. The
+leftover `ChatView` split stays deferred and unauthorized.
 
 This is a **product visual** campaign. It is **not** leftover Phase 3
 (`ChatView` file-split). That stays deferred. Optional Phase 6 is a
@@ -624,12 +621,57 @@ P5F is accepted on code-bearing candidate `b410a80`: the run bar is gone, heavy-
 
 ---
 
-## Phase 6 — Optional welcome extract (last / never)
+## Phase 6 — Welcome extract (authorized 2026-08-15)
 
 Move the already-quiet welcome into
 `GrokBuild/Views/WelcomeStateView.swift` (name flexible). Do **not**
 extract TopBar or Composer again. No visual redesign. Update source-path
 asserts only. Computer Use parity vs post-P2. No billable packet.
+
+**Authorized implementation boundary:** `ChatView` mounts the extracted view
+and retains send/draft focus ownership. `WelcomeStateView` owns only the quiet
+workspace welcome and private Ask/Build/Review chip presentation. Existing
+headline, project name, 24-point mark, spacing, typography, prompts, hover,
+help, and accessibility copy must remain visually and behaviorally unchanged.
+
+### Phase 6 candidate receipt — 2026-08-15
+
+- Code-bearing candidate `a437c018911358b87aae9bcc1e520eeeafc7e44f`
+  adds `WelcomeStateView.swift`, moves the quiet workspace welcome plus private
+  `CodexPromptPill`, and centralizes the existing mark as
+  `GrokBrandMarkView`. `ChatView` retains the welcome predicate, project value,
+  draft mutation, focus, and Send gate; TopBar, Composer, stores, services, ACP,
+  providers, credentials, and the broad decomposition are untouched.
+- `ChatView.swift` moved from 3,266 to 3,196 lines (−70); the extracted view is
+  84 lines. Source-location contracts now require the new owner and forbid the
+  former private `welcomeState` from returning to `ChatView`.
+- Focused `WorkbenchIntentTests` passed **5/5** and the extracted-shell parity
+  contract passed **1/1**. The clean full suite and code-bearing `make ship`
+  each passed **906/906**.
+- The installed bundle stamps exact candidate `a437c01`, branch
+  `codex/grokbuild-vq-p6-welcome-extract`, and `dirty=false`. Dist and installed
+  executable SHA-256 both equal
+  `7d27efb32d9f243e059fa88ac49703e832549d8a60ee95664b33a745669c9f0f`;
+  Team `DD2GCQJVB4`, deep/strict signing, and no quarantine passed.
+- The first post-install screenshot was deliberately not accepted as runtime
+  proof because the pre-install process was still resident. After an exact
+  Command-Q and two process-zero samples, fresh installed PID `71034` launched
+  from `/Applications/GrokBuild.app` with no child process and restored the
+  full-screen sidebar.
+- Fresh Computer Use exposed the same 24-point mark, “What do you want to work
+  on?” headline, project name, and Ask/Build/Review chips with their exact
+  accessible outcome/help copy. Ask seeded the 107-character editable draft,
+  hid the welcome, enabled Send, and a keyboard clear restored the welcome and
+  disabled Send; Send was never invoked.
+- No prompt, provider call, backend session, tool, or billable packet ran.
+  Both exact empty New chat tabs created for baseline/fresh-process acceptance
+  were removed through native **Close Session**; protected OK-F remained and
+  was selected afterward.
+- PR #113 is the single exact-head publication vehicle for this slice.
+
+**Three-sentence handoff**
+
+Phase 6 is accepted on candidate `a437c01`: the welcome has one focused source owner while `ChatView` keeps behavior and Send authority, and the installed full-screen UI is pixel/AX-parity quiet. PR #113, required exact-head CI, merge, merged-main identity proof, and final process-zero check close the Visual Quiet campaign. Do not begin the broad `ChatView`/`ContentView` split or any provider, Settings, runtime, or credential work.
 
 ---
 
@@ -664,5 +706,5 @@ asserts only. Computer Use parity vs post-P2. No billable packet.
 - [x] P1–P5 implemented and accepted (P6 optional); P5 publication closes Gates G–H
 - [x] Welcome quieter; header denser; composer tighter; colors cool / `AppTheme`
 - [x] Bundle lighter without dropping `agent-desktop`
-- [ ] Full ChatView split still deferred unless P6 welcome-only is done
+- [x] Welcome-only Phase 6 extracted; full ChatView split remains deferred
 - [x] Protected sessions untouched; exact P5 test identities ledgered for Gate F cleanup
