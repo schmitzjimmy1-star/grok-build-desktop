@@ -59,8 +59,8 @@ final class ChatTranscriptLayoutTests: XCTestCase {
         XCTAssertTrue(chatSource.contains("await Task.yield()\n        let result = await operation()"))
         XCTAssertGreaterThanOrEqual(
             chatSource.components(separatedBy: "performTranscriptSessionTransition {").count - 1,
-            4,
-            "launch, task-contract, and inspector Resume/Continue actions share one transaction boundary"
+            2,
+            "launch and inspector Resume/Continue actions share one transaction boundary after the task bar removal"
         )
         XCTAssertTrue(chatSource.contains("private func sendWithTranscriptSessionTransition("))
         XCTAssertTrue(chatSource.contains("if store.continuityRequiresRecovery"))
@@ -293,8 +293,8 @@ final class ChatTranscriptLayoutTests: XCTestCase {
     }
 
     /// P3D — live phase/plan/worker truth moves to the right activity canvas.
-    /// The transcript keeps its task strip and tool trace, but never mounts the
-    /// redundant full-width Run card under the assistant header.
+    /// The transcript keeps its compact tool trace, but never mounts either the
+    /// old task-contract bar or the redundant full-width Run card.
     func testLiveRunCardLeavesTranscriptForWorkerActivityCanvas() throws {
         let repositoryRoot = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent()
@@ -307,6 +307,8 @@ final class ChatTranscriptLayoutTests: XCTestCase {
         XCTAssertTrue(chatSource.contains("containsPlanSpine: false"))
         XCTAssertFalse(chatSource.contains("ThreadRunSpineView("),
                        "the duplicate Run card must not mount in the transcript")
+        XCTAssertFalse(chatSource.contains("grok-task-context-strip"),
+                       "the task-contract bar must not mount above the transcript")
         XCTAssertTrue(chatSource.contains("activityInspector(docked:"),
                       "live worker evidence remains reachable in the right canvas")
         XCTAssertFalse(

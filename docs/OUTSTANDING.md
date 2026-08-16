@@ -41,7 +41,11 @@
 > `d62a396` in PR #109; required CI, merged-main install, billable acceptance,
 > exact cleanup, and process-zero closeout passed. Phase 5 icon/bundle honesty is
 > accepted on code-bearing candidate `ade5794`; its single final publication PR
-> closes the Visual Quiet campaign.** Optional Phase 6 remains unauthorized.
+> closes the original Visual Quiet campaign as `b03f2f6` in PR #111. Jimmy
+> authorized **P5F verification closeout** on 2026-08-15 to remove the transient
+> running task-contract bar, directly prove installed icon surfaces, and run a
+> fresh paid heavy-agentic packet capped at 4,000,000 settled tokens. Optional
+> Phase 6 remains unauthorized.
 > Leftover closeout Phases 1–2 are merged on `main` as `7a3006d`
 > (PR #102). Leftover Phase 3 (`ChatView` split) stays deferred.
 > Install path is `make ship` on this Mac.
@@ -49,7 +53,7 @@
 > Prior campaigns: 2026-08-14 Residual Closeout (Phases 0–6) complete and merged as `4613bde` (PR #94);
 > 2026-08-13 campaign (Slices 0–7) closed at merge `c0895ee` (PR #86).
 
-## Visual Quiet — 2026-08-15 (Phase 5 accepted; publication gate in progress)
+## Visual Quiet — 2026-08-15 (P5F verification closeout authorized)
 
 Authorized spec is
 [`docs/GROKBUILD_VISUAL_QUIET_CAMPAIGN_2026-08-15.md`](GROKBUILD_VISUAL_QUIET_CAMPAIGN_2026-08-15.md).
@@ -58,8 +62,32 @@ activity closeout merged as `1e11be2` in PR #107: the duplicate transcript Run c
 active workers occupy a compact truthful right-side canvas. It does not redesign
 Settings or runtime behavior and is not leftover Phase 3. **Phase 4** is accepted
 as `d62a396` in PR #109. **Phase 5** is accepted on code-bearing candidate
-`ade5794`; only its exact Gate F cleanup and one final exact-head PR/merge gate
-remain. Phase 6 and broader structural cleanup are unauthorized.
+`ade5794` and merged as `b03f2f6` in PR #111. **P5F** is a narrow follow-up:
+remove the below-composer task-contract bar while retaining composer Stop,
+assistant trace, header Run inspector, right-side worker canvas, and underlying
+checkpoint truth; directly inspect Finder/Dock where Computer Use permits; run
+fresh installed-app paid ordered-tool, parallel-worker, continuity, and recovery
+acceptance up to 4,000,000 settled tokens; then perform exact cleanup and one
+final exact-head PR/merge. It does not authorize provider/config/credential
+changes, optional Phase 6, or any ChatView/ContentView structural split.
+
+### Visual Quiet P5F acceptance contract — 2026-08-15
+
+- Source: `grok-task-context-strip`, its mounting condition, expansion state,
+  and dead `ThreadTaskContractView` are absent. The task/checkpoint presentation
+  authority that `ChatStore` uses remains intact.
+- Installed UI: the running canvas has no task-contract bar; Stop, compact tool
+  trace, header inspector, full-size project sidebar, and auto-opening worker
+  canvas remain reachable and readable.
+- Icon: directly observe Finder and Dock if their accessibility surfaces are
+  targetable; retain any timeout or inaccessible surface as unverified instead
+  of substituting source/package evidence.
+- Paid packet: ordered multi-tool, concurrent workers, continuity, and honest
+  stop/failure/recovery receipts. Aggregate settled parent usage must remain at
+  or below 4,000,000 tokens; volume alone is not a performance claim.
+- Exit: focused and full tests, code-bearing `make ship`, installed Computer Use
+  acceptance, exact parent/child cleanup, protected OK-F untouched, clean review,
+  required CI on exact head, merge, merged-main parity, and process zero.
 
 ### Visual Quiet Phase 5 receipt — 2026-08-15
 

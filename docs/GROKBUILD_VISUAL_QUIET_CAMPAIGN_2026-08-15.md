@@ -586,6 +586,23 @@ single Visual Quiet P5 pull request. Phase 6 remains optional and unauthorized.*
   and disappears at settlement. Removing or relocating that strip is a separate
   visual follow-up; it was not smuggled into icon/bundle housekeeping.
 
+### P5F verification closeout — authorized 2026-08-15
+
+Jimmy authorized the separate follow-up. Remove the transient below-composer
+task-contract bar and its dead view/state while preserving composer Stop,
+assistant trace, header Run inspector, the right-side worker canvas, and the
+underlying checkpoint presentation used by `ChatStore`. Directly inspect the
+installed Finder/Dock icon surfaces where Computer Use permits, then run fresh
+installed-app ordered-tool, parallel-worker, continuity, and recovery acceptance
+under a hard aggregate ceiling of **4,000,000 settled parent tokens**.
+
+This follow-up excludes provider, routing, credential, Settings architecture,
+Phase 6 welcome extraction, and broad `ChatView`/`ContentView` decomposition.
+Failed tools, failed workers, stop outcomes, inaccessible icon surfaces, and
+unsettled usage remain failed or unverified evidence. It exits only after focused
+and full tests, code-bearing `make ship`, installed UI proof, exact ledgered
+cleanup, exact-head CI/review/merge, merged-main parity, and process zero.
+
 **Three-sentence handoff after completion**
 
 Slice 4 is complete: the icon is visibly sharper, dead workflow chrome is gone, the measured bundle delta is recorded honestly, and Computer Use remains bundled. The optional welcome-only extraction remains a separate proposed slice only if it still has a concrete payoff after the visual campaign settles. Do not begin any structural cleanup without Jimmy's explicit authorization, and never turn it into a full ChatView or ContentView decomposition.

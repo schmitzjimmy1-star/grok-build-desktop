@@ -257,8 +257,8 @@ final class CodexShellParityTests: XCTestCase {
                       "VoiceOver still hears the Ask/Build/Review outcome copy")
         XCTAssertFalse(chatView.contains("Text(\"Recent tasks\")"),
                        "W-3 recent-task dashboard must not return to the empty canvas")
-        XCTAssertTrue(chatView.contains("private var showsTaskContextStrip"),
-                      "the task-contract strip is gated, not permanent chrome")
+        XCTAssertFalse(chatView.contains("grok-task-context-strip"),
+                       "the running task-contract bar must not return")
     }
 
     /// Slice 4 contract (supersedes the Slice 0/2 residue inventory): Review has
@@ -395,8 +395,8 @@ final class CodexShellParityTests: XCTestCase {
                       "saved-task choices remain")
         XCTAssertTrue(chatView.contains(".frame(maxWidth: AppTheme.Layout.composerMaxWidth, alignment: .leading)"),
                       "launch choices sit in the composer column, not a full-width bar")
-        XCTAssertTrue(chatView.contains("case .ready, .idle, .failed:"),
-                      "the task strip stays off on idle connected sessions")
+        XCTAssertFalse(chatView.contains("showsTaskContextStrip"),
+                       "the task-contract bar is removed, not merely hidden while idle")
 
         XCTAssertTrue(contentView.contains("ZStack(alignment: .leading)"),
                       "the project sidebar overlays the full-width canvas")
