@@ -81,6 +81,13 @@ parity, Apple Development Team `DD2GCQJVB4`, deep/strict signing, no quarantine,
 and `CFBundleIconFile=AppIcon` passed. Dev and release bundles both exposed all
 ten ICNS representations.
 
+The first PR #111 CI run is retained as failed evidence: the expanded campaign
+status pushed `AGENTS.md` below its required 25% fresh-context reduction, and the
+real-helper test hit its existing wrong-final-request-ID race. Compressing the
+same status contract restored the deterministic budget; the helper passed an
+immediate focused retry, both focused failures passed together, and a clean local
+full rerun passed **905/905**. The failed CI run is not upgraded to green.
+
 Measured bundle truth: **26,712 KiB → 26,616 KiB (−96 KiB)**. Main executable
 24,520,752 → 24,473,728 bytes (−47,024); ICNS 305,895 → 252,168 (−53,727);
 PNG 110,160 → 91,568 (−18,592); new SVG 756 bytes. `agent-desktop` stayed
