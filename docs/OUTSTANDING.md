@@ -63,6 +63,16 @@
 
 Authorized spec is
 [`docs/GROKBUILD_VISUAL_QUIET_CAMPAIGN_2026-08-15.md`](GROKBUILD_VISUAL_QUIET_CAMPAIGN_2026-08-15.md).
+**Phase 6 is accepted on code-bearing candidate `a437c01`.** The quiet
+workspace welcome and its private intent chip now live in
+`WelcomeStateView.swift`; `ChatView` still owns visibility, editable drafts,
+focus, and Send. Focused contracts, a clean full suite, and candidate
+`make ship` passed **906/906**; the fresh installed process retained the
+full-screen sidebar and exact post-P2 welcome behavior. No prompt was sent, no
+provider child started, and no billable tokens were used. Both exact empty
+acceptance tabs were closed natively, protected OK-F is selected, and one final
+exact-head publication PR is the only remaining gate.
+
 Phases 1–3 and **P3C** are merged and verified. **P3D** is the accepted live
 activity closeout merged as `1e11be2` in PR #107: the duplicate transcript Run card is gone and
 active workers occupy a compact truthful right-side canvas. It does not redesign
