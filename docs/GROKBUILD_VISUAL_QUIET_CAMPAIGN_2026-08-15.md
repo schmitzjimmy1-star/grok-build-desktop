@@ -667,10 +667,11 @@ help, and accessibility copy must remain visually and behaviorally unchanged.
   Both exact empty New chat tabs created for baseline/fresh-process acceptance
   were removed through native **Close Session**; protected OK-F remained and
   was selected afterward.
+- PR #113 is the single exact-head publication vehicle for this slice.
 
 **Three-sentence handoff**
 
-Phase 6 is accepted on candidate `a437c01`: the welcome has one focused source owner while `ChatView` keeps behavior and Send authority, and the installed full-screen UI is pixel/AX-parity quiet. One exact-head PR, required CI, merge, merged-main identity proof, and final process-zero check close the Visual Quiet campaign. Do not begin the broad `ChatView`/`ContentView` split or any provider, Settings, runtime, or credential work.
+Phase 6 is accepted on candidate `a437c01`: the welcome has one focused source owner while `ChatView` keeps behavior and Send authority, and the installed full-screen UI is pixel/AX-parity quiet. PR #113, required exact-head CI, merge, merged-main identity proof, and final process-zero check close the Visual Quiet campaign. Do not begin the broad `ChatView`/`ContentView` split or any provider, Settings, runtime, or credential work.
 
 ---
 
