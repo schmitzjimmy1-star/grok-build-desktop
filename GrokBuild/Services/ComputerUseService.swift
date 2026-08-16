@@ -902,6 +902,32 @@ enum ComputerUseService {
                 var didResume = false
             }
             let box = RPCBox()
+            // FileHandle delivery and Process termination use different
+            // queues. A short-lived helper can write its final JSON line and
+            // exit before the readability callback records that line, which
+            // previously misclassified a valid wrong-ID response as empty.
+            // Serialize every stdout read with the final EOF drain so
+            // termination can only classify after all available bytes have
+            // been parsed.
+            let stdoutQueue = DispatchQueue(label: "com.grokbuild.computer-use-rpc.stdout")
+
+            @Sendable
+            func ingest(_ chunk: Data) -> [Int: [String: Any]] {
+                box.lock.lock()
+                let lines = AcpLineBuffer.drainLines(buffer: &box.buffer, appending: chunk)
+                for line in lines {
+                    guard let data = line.data(using: .utf8),
+                          let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                          let id = json["id"] as? Int else {
+                        box.sawMalformedLine = true
+                        continue
+                    }
+                    box.responses[id] = json
+                }
+                let snapshot = box.responses
+                box.lock.unlock()
+                return snapshot
+            }
 
             @Sendable
             func finish(_ result: Result<[Int: [String: Any]], Error>) {
@@ -921,47 +947,41 @@ enum ComputerUseService {
             }
 
             stdoutPipe.fileHandleForReading.readabilityHandler = { handle in
-                let chunk = handle.availableData
-                if chunk.isEmpty {
-                    handle.readabilityHandler = nil
-                    return
-                }
-                box.lock.lock()
-                let lines = AcpLineBuffer.drainLines(buffer: &box.buffer, appending: chunk)
-                for line in lines {
-                    guard let data = line.data(using: .utf8),
-                          let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-                          let id = json["id"] as? Int else {
-                        box.sawMalformedLine = true
-                        continue
+                stdoutQueue.async {
+                    let chunk = handle.availableData
+                    if chunk.isEmpty {
+                        handle.readabilityHandler = nil
+                        return
                     }
-                    box.responses[id] = json
-                }
-                let snapshot = box.responses
-                box.lock.unlock()
-                if snapshot[finalID] != nil {
-                    finish(.success(snapshot))
+                    let snapshot = ingest(chunk)
+                    if snapshot[finalID] != nil {
+                        finish(.success(snapshot))
+                    }
                 }
             }
 
             process.terminationHandler = { terminated in
-                box.lock.lock()
-                let responses = box.responses
-                let malformed = box.sawMalformedLine
-                box.lock.unlock()
-                if responses[finalID] != nil {
-                    finish(.success(responses))
-                } else if terminated.terminationStatus != 0 {
-                    finish(.failure(HelperRPCError.nonzeroExit(code: terminated.terminationStatus)))
-                } else if malformed {
-                    finish(.failure(HelperRPCError.malformedResponse))
-                } else if !responses.isEmpty {
-                    finish(.failure(HelperRPCError.wrongFinalRequestID(
-                        expected: finalID,
-                        observed: Array(responses.keys)
-                    )))
-                } else {
-                    finish(.failure(HelperRPCError.emptyResponse))
+                stdoutPipe.fileHandleForReading.readabilityHandler = nil
+                stdoutQueue.async {
+                    let trailing = stdoutPipe.fileHandleForReading.readDataToEndOfFile()
+                    let responses = ingest(trailing)
+                    box.lock.lock()
+                    let malformed = box.sawMalformedLine
+                    box.lock.unlock()
+                    if responses[finalID] != nil {
+                        finish(.success(responses))
+                    } else if terminated.terminationStatus != 0 {
+                        finish(.failure(HelperRPCError.nonzeroExit(code: terminated.terminationStatus)))
+                    } else if malformed {
+                        finish(.failure(HelperRPCError.malformedResponse))
+                    } else if !responses.isEmpty {
+                        finish(.failure(HelperRPCError.wrongFinalRequestID(
+                            expected: finalID,
+                            observed: Array(responses.keys)
+                        )))
+                    } else {
+                        finish(.failure(HelperRPCError.emptyResponse))
+                    }
                 }
             }
 
