@@ -45,6 +45,12 @@ Build from a clean committed checkout for an acceptance artifact; a dirty build
 is labeled `(dirty)` and cannot masquerade as the settled personal line. The
 canonical/retired repository contract lives in `CANONICAL_WORKTREE.md`.
 
+Both builders also call `scripts/package-app-icon.sh`. `AppIcon.svg` is the
+canonical vector master; `scripts/render-app-icon.swift` renders the committed
+1024×1024 PNG fallback, and the shared packager fail-closes unless the resulting
+ICNS contains all ten required macOS representations. Do not hand-copy a loose
+PNG into either app bundle or let the dev and release icon paths diverge.
+
 ## For Development (Recommended)
 
 If you're going to edit the SwiftUI code, install the **full Xcode** IDE from the App Store.
@@ -84,7 +90,8 @@ Output:
 GitHub release assets use versioned names, e.g. `GrokBuild-v0.1.10.app.zip` and `GrokBuild-v0.1.10-macOS.dmg`.
 
 The build script (`scripts/build-macos-app.sh`) also:
-- Copies Grok brand-mark assets into `Contents/Resources/`
+- Renders and packages the canonical AppIcon into `Contents/Resources/AppIcon.icns`
+- Copies the remaining Grok brand-mark assets into `Contents/Resources/`
 - Stamps the personal repository, branch, exact git commit, channel, and dirty state into `Contents/Info.plist`
 - Bundles `Resources/Skills/` into the app
 - Copies `scripts/grokbuild-install-update.sh` → `Contents/Resources/grokbuild-install-update` (in-app upgrade helper)
@@ -96,6 +103,8 @@ The build script (`scripts/build-macos-app.sh`) also:
 |--------|---------|
 | `scripts/build-macos-app.sh` | Assemble `dist/GrokBuild.app`, optional `--sign` |
 | `scripts/build-dev-app.sh` | Lightweight `.build/GrokBuild.app` for `make run` |
+| `scripts/package-app-icon.sh` | Shared fail-closed AppIcon/ICNS packaging for dev and release bundles |
+| `scripts/render-app-icon.swift` | Deterministically render the canonical SVG master to a 1024×1024 PNG |
 | `scripts/notarize.sh` | Unused on this line. `make notarize` is refused. |
 | `scripts/release.sh` | Unsigned personal GitHub release only if explicitly asked; refuses notarized |
 | `scripts/grokbuild-install-update.sh` | Used by the app at **Install and Restart** — wait for PID, `ditto` replace bundle, relaunch |

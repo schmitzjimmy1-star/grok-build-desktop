@@ -16,10 +16,13 @@ Before edits or acceptance, read and follow in order:
 2. `ARCHITECTURE.md` — ownership, data flow, persistence, and file map.
 3. `docs/OUTSTANDING.md` — current slice scope and Gates A–H when a campaign slice is active.
 4. `docs/GROKBUILD_VISUAL_QUIET_CAMPAIGN_2026-08-15.md` — Visual Quiet.
-   Phases 1–4, P3C, and P3D are accepted. P3D removed the duplicate live Run
+   Phases 1–5, P3C, and P3D are accepted. P3D removed the duplicate live Run
    card and promoted workers into a compact right canvas; Phase 4 routed ordinary
-   interaction chrome through semantic theme owners. Phase 5 and the broad
-   `ChatView` split remain unauthorized.
+   interaction chrome through semantic theme owners. Phase 5 sharpened the
+   canonical app icon, removed dead workflow chrome while keeping Saved Workflows
+   reachable from the composer Add menu, and retained every bundled helper. The
+   optional welcome-only extraction and the broad `ChatView` split remain
+   unauthorized.
 
 Stop on a path, branch, remote, installed-stamp, signing, hash, or dirty-state mismatch.
 

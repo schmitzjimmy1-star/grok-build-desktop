@@ -39,7 +39,9 @@
 > `1e11be2` in PR #107; required CI, merged-main install, and installed UI
 > closeout passed. Phase 4's semantic accent sweep is accepted and merged as
 > `d62a396` in PR #109; required CI, merged-main install, billable acceptance,
-> exact cleanup, and process-zero closeout passed.** Phase 5 remains unauthorized.
+> exact cleanup, and process-zero closeout passed. Phase 5 icon/bundle honesty is
+> accepted on code-bearing candidate `ade5794`; its single final publication PR
+> closes the Visual Quiet campaign.** Optional Phase 6 remains unauthorized.
 > Leftover closeout Phases 1–2 are merged on `main` as `7a3006d`
 > (PR #102). Leftover Phase 3 (`ChatView` split) stays deferred.
 > Install path is `make ship` on this Mac.
@@ -47,7 +49,7 @@
 > Prior campaigns: 2026-08-14 Residual Closeout (Phases 0–6) complete and merged as `4613bde` (PR #94);
 > 2026-08-13 campaign (Slices 0–7) closed at merge `c0895ee` (PR #86).
 
-## Visual Quiet — 2026-08-15 (Phase 4 accepted; Phase 5 unauthorized)
+## Visual Quiet — 2026-08-15 (Phase 5 accepted; publication gate in progress)
 
 Authorized spec is
 [`docs/GROKBUILD_VISUAL_QUIET_CAMPAIGN_2026-08-15.md`](GROKBUILD_VISUAL_QUIET_CAMPAIGN_2026-08-15.md).
@@ -55,7 +57,78 @@ Phases 1–3 and **P3C** are merged and verified. **P3D** is the accepted live
 activity closeout merged as `1e11be2` in PR #107: the duplicate transcript Run card is gone and
 active workers occupy a compact truthful right-side canvas. It does not redesign
 Settings or runtime behavior and is not leftover Phase 3. **Phase 4** is accepted
-as `d62a396` in PR #109. Phase 5 remains unauthorized.
+as `d62a396` in PR #109. **Phase 5** is accepted on code-bearing candidate
+`ade5794`; only its exact Gate F cleanup and one final exact-head PR/merge gate
+remain. Phase 6 and broader structural cleanup are unauthorized.
+
+### Visual Quiet Phase 5 receipt — 2026-08-15
+
+Gate A/B: branch `codex/grokbuild-vq-p5-icon-bundle-honesty` started from merged
+P4 closeout `6f35526`. Code commits `967bdab` and `ade5794` add a deterministic
+`AppIcon.svg`, a shared fail-closed dev/release ICNS packager, and four packaging/
+source contract tests. Dead `showWorkflowsPill`, `workflowsStatusPill`,
+`workflowMenuTitle`, and `onOpenWorkflowSettings` chrome is gone. Real workflows,
+deep research, the Settings toggle, and the Saved Workflows sheet remain; paid
+skeptic evidence caused the compact **Add → Saved Workflows…** trigger to be
+restored before acceptance. `AppIconProvider` no longer lets stale executable-
+directory loose files outrank the bundle or committed master.
+
+Gate C/E: focused P5 tests passed **4/4** and the clean full suite plus final
+candidate `make ship` passed **905/905**. `/Applications/GrokBuild.app` stamped
+exact code-bearing commit `ade57946eb3b365810c2e39ece21049b10e7a81d`, branch
+`codex/grokbuild-vq-p5-icon-bundle-honesty`, and `dirty=false`; dist/install
+parity, Apple Development Team `DD2GCQJVB4`, deep/strict signing, no quarantine,
+and `CFBundleIconFile=AppIcon` passed. Dev and release bundles both exposed all
+ten ICNS representations.
+
+Measured bundle truth: **26,712 KiB → 26,616 KiB (−96 KiB)**. Main executable
+24,520,752 → 24,473,728 bytes (−47,024); ICNS 305,895 → 252,168 (−53,727);
+PNG 110,160 → 91,568 (−18,592); new SVG 756 bytes. `agent-desktop` stayed
+2,252,000 bytes, Computer Use MCP 221,072, updater 2,970, and all three bundled
+skills remained present. This is a small housekeeping win, not a major app-size
+claim.
+
+Installed Computer Use proved the full-screen workbench and usable sidebar, a
+crisp About icon plus actual 16/128/512 representations, the compact Saved
+Workflows entry and sheet, and a real bundled-helper JSON-RPC
+`initialize → computer_list_apps` round trip (`agent-desktop` protocol 2.1,
+version 0.6.0). Finder/Dock targeting timed out, so those two surfaces are not
+claimed as directly observed. Four parallel paid workers opened automatically in
+the 340-point right canvas with compact readable ALPHA/BETA/GAMMA/DELTA cards;
+two settled Completed and two honestly remained **Needs Review** after child-tool
+errors. The transient running task-contract strip still appears below the composer
+until settlement; removal is a separately scoped visual follow-up.
+
+Billable receipt: no-tool marker used 16,046 tokens and returned
+`GB_VQ_P5_NO_TOOL_OK`; ordered-tool marker used 84,453 and returned
+`GB_VQ_P5_TOOL_OK`; four-worker marker used 1,998,794 and returned
+`GB_VQ_P5_WORKERS_OK`; post-fix marker used 91,002 and returned
+`GB_VQ_P5_POST_FIX_OK`. Total settled usage is **2,190,295 tokens**, below Jimmy's
+3,000,000 ceiling. The post-fix turn kept its third tool red because the prompt
+named nonexistent root `Sources/`; the dedicated contract test separately proved
+the dead-symbol absence and reachable Saved Workflows trigger. No model prose is
+substituted for that failed tool receipt.
+
+Exact parent local transcript/backend pairs are
+`F219F8D0-6F96-4EEE-8BC3-1B383DE6D55F` / `01a007cd-d0c7-7732-8a81-ac3664b5b963`,
+`E83962AE-E34D-4811-B64A-B89CB1537BF4` / `01a007ce-655e-77e0-a30a-1b2f3a399c71`,
+`44296BD3-7ED8-481B-B3C1-A286A9C18141` / `01a007cf-1a1e-7f22-858c-65f1aa9182bf`,
+and `F36CEF89-6FFA-4ED3-AC8C-728CDE180B8D` /
+`01a007dc-9b23-7f70-a2a6-db34a00bb0bb`. The four exact worker backend IDs are
+`01a007cf-8ee3-7e21-b631-66b468060de2`,
+`01a007cf-8ee5-7c63-ab09-9e8411b1a471`,
+`01a007cf-8ee6-7401-9ab2-945585303254`, and
+`01a007cf-8ee8-75a2-be89-887cd94833d8`. Gate F closed all four exact parents
+through native **Close Session**; their transcript/metadata files and parent
+backend directories are absent. The four exact orphan child directories moved
+recoverably to
+`~/.Trash/GrokBuild-P5-20260815T201200Z/RemovedChildBackends`.
+Durable `prompt_history.jsonl`, unrelated sessions, audit evidence, and protected
+OK-F/backend `019ffdad-0d4f-7f42-a429-7ac12ad8198d` remain present.
+
+**Three-sentence handoff**
+
+Slice 4 is complete: the icon is visibly sharper, dead workflow chrome is gone, the measured bundle delta is recorded honestly, and Computer Use remains bundled. The optional welcome-only extraction remains a separate proposed slice only if it still has a concrete payoff after the visual campaign settles. Do not begin any structural cleanup without Jimmy's explicit authorization, and never turn it into a full ChatView or ContentView decomposition.
 
 ### Visual Quiet Phase 4 receipt — 2026-08-15
 
@@ -5634,7 +5707,8 @@ them:
 
 ## One-sentence new-session handoff
 
-Visual Quiet through Phase 4 is accepted; Phase 5 is proposed but unauthorized
+Visual Quiet through Phase 5 is accepted; the optional welcome-only Phase 6 is
+proposed but unauthorized
 ([`docs/GROKBUILD_VISUAL_QUIET_CAMPAIGN_2026-08-15.md`](GROKBUILD_VISUAL_QUIET_CAMPAIGN_2026-08-15.md)).
 Leftover closeout Phases 1–2 are merged as `7a3006d` (PR #102). Do not start
 leftover Phase 3 (`ChatView` split) unless Jimmy explicitly authorizes it, and

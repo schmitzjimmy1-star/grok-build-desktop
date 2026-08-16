@@ -6,12 +6,13 @@
 
 ---
 
-## P3D release snapshot (authoritative)
+## P5 candidate snapshot (authoritative)
 
 | Field | Value |
 |---|---|
 | **Remote** | `personal` → `schmitzjimmy1-star/grok-build-desktop` |
-| **Release branch** | `main` |
+| **Release branch** | `codex/grokbuild-vq-p5-icon-bundle-honesty` pending its single final PR |
+| **P5 code-bearing candidate** | `ade57946eb3b365810c2e39ece21049b10e7a81d` (`ade5794`) |
 | **P3D merge** | `1e11be228dba6321ba12bdd2933b9a240011a133` (`1e11be2`) |
 | **Code/test commit** | `2e1deb7e2d135a007334096e5deace53a409dc6f` (`2e1deb7`) |
 | **P3D publication** | PR #107 — *Promote live workers into the activity canvas* — merged |
@@ -22,9 +23,10 @@
 | **Version file** | `0.1.22` (identity is stamp + commit, not version alone) |
 | **Upstream (read-only)** | `origin` → `rimusz/grok-build-desktop` — do not push |
 
-At P3D closeout, local `main` and `personal/main` matched at `1e11be2`; the
-code-bearing commit is `2e1deb7`. Run the canonical preflight in
-`CANONICAL_WORKTREE.md` before any later work because HEAD may advance.
+P5 started from merged P4 closeout `6f35526`; its accepted code-bearing commit is
+`ade5794`. Run the canonical preflight in `CANONICAL_WORKTREE.md` before any
+later work because the publication merge advances `main` without changing the
+accepted product tree.
 
 ---
 
@@ -40,8 +42,8 @@ GrokBuild is a native SwiftUI macOS workbench for `grok agent stdio`. The CLI st
 | **P2** Quiet welcome | Smaller mark, compact chips | **Merged** (`7a3006d`). Path A: Ask/Build/Review chips, no detail paragraphs. |
 | **P3** Header + composer *(screenshot)* | Icon-only Tasks/Review/inspector; slim task strip; tighter composer | **Accepted in two bounded pieces:** overlay/quiet chrome at `bb01c58`, closeout at `aff384c`, and P3C density at `6697530`. |
 | **P3D** Live activity composition | Remove duplicate live Run card; show active workers confidently at right | **Merged and installed** (`1e11be2`, PR #107). |
-| **P4** Accent sweep | Send/chips/CTAs stop macOS orange/brown | **Not started** |
-| **P5** Cheap size | Sharper Dock icon; drop dead Workflows pill | **Not started** |
+| **P4** Accent sweep | Send/chips/CTAs stop macOS orange/brown | **Merged** (`d62a396`, PR #109). |
+| **P5** Icon/bundle honesty | Sharper icon; drop dead workflow chrome; preserve helpers | **Accepted** (`ade5794` candidate; final publication gate only). |
 | **P6** Optional | Welcome-only file extract (not full ChatView split) | **Deferred** |
 
 Jimmy redirected P3 twice on 2026-08-15. The shipped slice is **overlay sidebar + quiet chrome**, not the narrower “header + composer only” row in the early screenshot. Treat the campaign doc phase table as authoritative over the screenshot wording.
@@ -127,20 +129,18 @@ Jimmy attached a **six-phase roadmap** (cool tokens → quiet welcome → header
 
 ### Immediate next work (recommended order)
 
-**A. Phase 4 — Accent-leak sweep** *(proposed next; wait for explicit start)*
-- Grep and replace `Color.accentColor`, raw `.orange`, unscoped `.borderedProminent`.
-- Route through `AppTheme.Palette.accent`, `Palette.warning`, `Palette.link`.
-- High-traffic files listed in campaign doc § Phase 4.
-- Billable: `GB-VQ-P4-<UTC>` → `GB_VQ_P4_OK` in Light **and** Dark.
+**A. Phase 5 — accepted, publish once**
+- Run required exact-head CI and merge the single final P5 PR to `personal/main`.
+- Preserve the accepted installed code-bearing candidate; do not rebuild merely
+  to chase a docs-only descendant stamp.
+- Exact parent cleanup is complete; four orphan child backends are recoverable in
+  `~/.Trash/GrokBuild-P5-20260815T201200Z/RemovedChildBackends`. Prove process zero
+  after the publication gate.
 
-**B. Phase 5 — Cheap bundle lightening**
-- Real AppIcon asset; drop duplicate PNGs.
-- Delete unused `workflowsStatusPill` (defined, never mounted).
-- Keep bundled `agent-desktop`.
-
-**C. Phase 6 — Optional welcome extract**
+**B. Phase 6 — Optional welcome extract**
 - Move quiet welcome stack to its own view file only.
 - **Not** the full leftover `ChatView` decomposition.
+- Unauthorized unless Jimmy explicitly names a concrete payoff.
 
 ### Jimmy feedback already baked into `bb01c58`
 

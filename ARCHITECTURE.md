@@ -741,7 +741,7 @@ grok's **Rhai workflow engine** (`.grok/workflows/`, `/workflow`, `/workflows`) 
 | Config toggle | `WorkflowsConfigStore` — `[workflows] enabled` in `~/.grok/config.toml` (shared with grok TUI); `SettingsView` → `.workflows` (`WorkflowsSettingsPane`); posts `.workflowsConfigChanged` |
 | Runs mirror | `WorkflowRunStore.swift`, `ChatStore.workflowRuns`, `AcpEvent.workflowActivity` |
 | Saved scripts | `SavedWorkflowStore.swift`, `SavedWorkflowsPanel.swift` |
-| Chat UI | Composer command menu/slash commands; workflow runs remain backend/CLI state and are not rendered as a permanent status pill |
+| Chat UI | Composer command menu/slash commands plus **Add → Saved Workflows…**; workflow runs remain backend/CLI state and are not rendered as a permanent status pill |
 
 ### Session goals (`/goal`)
 
@@ -1152,6 +1152,8 @@ make ship      # Apple Development install to /Applications/GrokBuild.app
 |--------|---------|
 | `scripts/build-macos-app.sh` | Assemble `.app` bundle, copy resources/skills |
 | `scripts/build-identity.sh` | Resolve and escape personal repo / branch / commit / dirty bundle receipts |
+| `scripts/package-app-icon.sh` | Render and verify the shared ten-representation ICNS for dev and release bundles |
+| `scripts/render-app-icon.swift` | Deterministically rasterize the canonical `AppIcon.svg` master |
 | `scripts/release.sh` | Unsigned personal GitHub release only if explicitly asked; refuses `RELEASE_TYPE=notarized` |
 | `scripts/notarize.sh` | Present but unused. `make notarize` is refused on this personal line. |
 | `scripts/grokbuild-install-update.sh` | In-app replace + relaunch |
@@ -1159,7 +1161,11 @@ make ship      # Apple Development install to /Applications/GrokBuild.app
 
 **SPM targets:** `GrokBuild` (app), `GrokBuildComputerUseCore` (shared Computer Use contract library), `GrokBuildComputerUseMCP` (MCP helper), `GrokBuildTests`.
 
-**Resources in bundle:** `Assets.xcassets`, three skill folders (`Package.swift` `resources:`).
+**Resources in bundle:** canonical `AppIcon.icns`, committed `AppIcon.png` fallback,
+`Assets.xcassets`, and three skill folders (`Package.swift` `resources:`). The SVG
+master is packaging input, not a runtime lookup lane; `AppIconProvider` checks the
+bundle icon and committed project fallback only, never stale executable-directory
+artifacts.
 
 This personal line installs with `make ship` under Apple Development Team `DD2GCQJVB4`. It does not publish notarized GitHub releases. The in-app GrokBuild app-release feed stays off.
 
