@@ -139,7 +139,7 @@ dropping Computer Use.
 | **P3C** | Composer + task-strip density | Composer loses padding/shadow weight. Collapsed task strip becomes one objective/phase line plus disclosure. | S | `GB-VQ-P3C-<UTC>` → `GB_VQ_P3C_OK` |
 | **P3D** | Live activity composition | Redundant transcript Run card goes. Active workers become a first-class right-side activity canvas with honest narrow fallback. | M | `GB-VQ-P3D-<UTC>` → `GB_VQ_P3D_OK` |
 | **P4** | Accent-leak sweep | Send, chips, CTAs, inspector dots use `AppTheme`, not system brown/orange. | M | `GB-VQ-P4-<UTC>` → `GB_VQ_P4_OK` |
-| **P5** | Cheap bundle lightening | Real AppIcon. Drop duplicate PNGs. Delete unused `workflowsStatusPill`. Keep `agent-desktop`. | S | `GB-VQ-P5-<UTC>` → `GB_VQ_P5_OK` |
+| **P5** | Icon polish + bundle honesty | Canonical vector AppIcon. Remove dead workflow chrome. Measure honestly. Keep `agent-desktop`. | S | `GB-VQ-P5-<UTC>` → `GB_VQ_P5_OK` |
 | **P6** | Optional welcome extract | Move the quiet welcome into its own file. Not the full ChatView split. | M | none (structural) |
 
 ```text
@@ -515,6 +515,9 @@ Computer Use; Gate F; Jimmy OK.
 
 ## Phase 5 — Cheap bundle lightening
 
+**Status: accepted on the code-bearing candidate `ade5794`; publication is the
+single Visual Quiet P5 pull request. Phase 6 remains optional and unauthorized.**
+
 **Goal:** Same product, slightly smaller install. Maybe a sharper Dock icon.
 
 **Size:** S
@@ -545,6 +548,47 @@ Computer Use; Gate F; Jimmy OK.
 
 **Exit:** documented MB delta; `agent-desktop` still in the bundle;
 `make ship` + Computer Use; Gate F; Jimmy OK.
+
+### Completion receipt — 2026-08-15
+
+- `AppIcon.svg` is now the deterministic vector master. Both dev and release
+  bundles call `scripts/package-app-icon.sh`, which renders the 1024 fallback and
+  proves all ten ICNS representations instead of swallowing conversion failures.
+- Dead `showWorkflowsPill`, `workflowsStatusPill`, `workflowMenuTitle`, and
+  `onOpenWorkflowSettings` chrome is gone. The real workflow engine, Settings
+  toggle, deep-research actions, and Saved Workflows sheet remain; the sheet has
+  a compact **Add → Saved Workflows…** entry after a paid skeptic found it had
+  become unreachable.
+- `VisualQuietBundleTests` passed **4/4** and the clean full suite passed
+  **905/905**. Candidate `make ship` installed exact code-bearing commit
+  `ade57946eb3b365810c2e39ece21049b10e7a81d`, `dirty=false`, with dist/install
+  parity, Team `DD2GCQJVB4`, deep/strict signing, no quarantine, and
+  `CFBundleIconFile=AppIcon`.
+- The installed bundle moved from **26,712 KiB to 26,616 KiB** (−96 KiB).
+  The main executable fell 47,024 bytes, ICNS 53,727 bytes, and PNG 18,592
+  bytes; the 756-byte SVG is new. `agent-desktop` (2,252,000 bytes), Computer
+  Use MCP (221,072), updater (2,970), and all three bundled skills are unchanged.
+  This is housekeeping, not a meaningful binary diet.
+- Installed acceptance proved a crisp About icon and the actual 16, 128, and
+  512 representations, plus the complete ten-slot ICNS. Finder/Dock targeting
+  timed out, so those two surfaces are not upgraded to directly observed proof.
+  The full-screen workbench, usable sidebar, Saved Workflows sheet, four compact
+  right-canvas worker cards, truthful **Completed / Needs Review** outcomes, and
+  the real Computer Use helper `initialize → computer_list_apps` path all passed.
+- Paid markers used **2,190,295 total tokens**: 16,046 no-tool, 84,453 ordered
+  tools, 1,998,794 four-worker stress, and 91,002 post-fix acceptance. The worker
+  packet retained two Completed and two Needs Review children with child-tool
+  failures. The post-fix turn returned `GB_VQ_P5_POST_FIX_OK`; its third `rg`
+  call honestly failed because the prompt named a nonexistent root `Sources/`
+  directory, while the dedicated contract test independently proves the source
+  symbols and reachable trigger.
+- The transient running task-contract strip still appears below the composer
+  and disappears at settlement. Removing or relocating that strip is a separate
+  visual follow-up; it was not smuggled into icon/bundle housekeeping.
+
+**Three-sentence handoff after completion**
+
+Slice 4 is complete: the icon is visibly sharper, dead workflow chrome is gone, the measured bundle delta is recorded honestly, and Computer Use remains bundled. The optional welcome-only extraction remains a separate proposed slice only if it still has a concrete payoff after the visual campaign settles. Do not begin any structural cleanup without Jimmy's explicit authorization, and never turn it into a full ChatView or ContentView decomposition.
 
 ---
 
@@ -585,8 +629,8 @@ asserts only. Computer Use parity vs post-P2. No billable packet.
 
 ## Definition of done (campaign)
 
-- [ ] P1–P5 merged (P6 optional) with Gates A–H each
-- [ ] Welcome quieter; header denser; composer tighter; colors cool / `AppTheme`
-- [ ] Bundle lighter without dropping `agent-desktop`
+- [x] P1–P5 implemented and accepted (P6 optional); P5 publication closes Gates G–H
+- [x] Welcome quieter; header denser; composer tighter; colors cool / `AppTheme`
+- [x] Bundle lighter without dropping `agent-desktop`
 - [ ] Full ChatView split still deferred unless P6 welcome-only is done
-- [ ] Protected sessions untouched; all `GB-VQ-*` test threads Gate-F cleaned
+- [x] Protected sessions untouched; exact P5 test identities ledgered for Gate F cleanup

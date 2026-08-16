@@ -1,20 +1,23 @@
 # GrokBuild refinement review and remaining slices — 2026-08-15
 
-Status: **Slices 0–3 complete; Slice 4 proposed and not started**. The semantic
-accent sweep merged as `d62a396` in PR #109 after installed Light, Dark,
-tool-use, and four-worker acceptance; only its exact parent/child sessions were
-removed. Icon and bundle work remains unauthorized.
+Status: **Slices 0–4 complete on the accepted P5 candidate; Slice 4 publication
+is the campaign's final required pull request**. The semantic accent sweep
+merged as `d62a396` in PR #109. Icon/bundle candidate `ade5794` passed 905 tests,
+signed installed acceptance, real Computer Use, and 2,190,295-token presentation
+stress; optional Slice 5 remains unauthorized.
 
 ## Verdict
 
 The screenshot's direction fits GrokBuild. Cool tokens, the quiet welcome, the
 overlay sidebar, and the tiny header all push the app toward a native agent
-workbench instead of a dashboard wearing a chat costume. The remaining useful
-work is narrower than the screenshot implies: sweep semantic accent leaks, then
-do icon and dead-code housekeeping.
+workbench instead of a dashboard wearing a chat costume. The useful screenshot
+work is complete: semantic accents are cool, the icon is sharp, dead workflow
+chrome is gone, and the bundle delta is measured honestly. The only visible
+residual named during acceptance is the transient running task strip below the
+composer; changing it is a separate visual decision.
 
 The backend does not present an immediate correctness fire. The current suite
-passes **897 tests with 0 failures**, the ACP/process/session boundaries are
+passes **905 tests with 0 failures**, the ACP/process/session boundaries are
 explicit and fail closed, and the live UI exposed truthful idle/model/run state.
 The maintenance smell is concentration rather than obvious breakage:
 `ChatView.swift` is 3,485 lines, `ContentView.swift` is 2,125 lines, and the test
@@ -24,14 +27,14 @@ build emits three unused-local warnings in `SettingsTabTests.swift`.
 
 | Surface | Current evidence | Judgment |
 |---|---|---|
-| Local source | `main == personal/main == 1e11be228dba6321ba12bdd2933b9a240011a133`; code/test commit `2e1deb7e2d135a007334096e5deace53a409dc6f` | Canonical merged Slice 2 |
-| GitHub | PR #107, **Promote live workers into the activity canvas**, merged as `1e11be2` | Required `Test and Build App` passed on exact head `34e9520` |
-| Installed app | `Personal • main @ 1e11be22` (`dirty=false`) | Clean merged-main acceptance |
+| Local source | P5 code-bearing candidate `ade57946eb3b365810c2e39ece21049b10e7a81d` from merged P4 `6f35526` | Canonical Visual Quiet Slice 4 branch |
+| GitHub | One final P5 PR only; exact-head CI and merge are the remaining publication gate | No direct-main or upstream write |
+| Installed app | `Personal • codex/grokbuild-vq-p5-icon-bundle-honesty @ ade5794` (`dirty=false`) | Clean signed code-bearing acceptance |
 | Installed bytes | `dist` and installed executable match byte-for-byte | Package/install parity passes |
 | Signing | Deep/strict valid, Team `DD2GCQJVB4`, no quarantine | Packaging integrity passes |
-| Automated tests | focused 61/0; candidate and merged-main `make ship`: 897/0 each | Regression gates pass |
-| Worktree | Clean at merged P3D `1e11be2`; paid probes made no source/configuration changes | Scope stayed exact |
-| Bundle | 26 MB total: 24 MB app binary, 2.1 MB `agent-desktop`, 216 KB Computer Use MCP, 300 KB icon | No large cheap deletion exists |
+| Automated tests | focused P5 4/0; full suite and candidate `make ship`: 905/0 | Regression gates pass |
+| Worktree | Clean at code-bearing P5 `ade5794` before documentation; paid probes made no source/configuration changes | Scope stayed exact |
+| Bundle | 26,616 KiB, down 96 KiB; helpers unchanged; ICNS down 53,727 bytes | Honest housekeeping, not major shrinkage |
 
 ## Live UI review
 
@@ -59,25 +62,19 @@ build emits three unused-local warnings in `SettingsTabTests.swift`.
 4. **Workers now own a real canvas.** Compact cards show one assignment and one
    truthful status, raw parent/identity/usage detail stays disclosed, and a failed
    typed child tool forces **Needs Review** instead of false green completion.
-5. **Accent behavior is still fragmented.** High-traffic views retain raw
-   `Color.accentColor`, `.orange`, and `.borderedProminent` call sites, so macOS
-   appearance/accent choices can still punch warm color into an otherwise cool
-   workbench. Real warnings may stay warm, but they need the semantic
-   `AppTheme.Palette.warning` owner instead of ad hoc color.
+5. **P4 fixed accent fragmentation.** Ordinary high-traffic controls now use
+   semantic `AppTheme` owners; genuine warning/failure states remain distinct.
 6. **Settings has not caught up visually.** The navigation is clear, but the pane
    content is a stack of large cards with substantial dead space. Keep this out
    of the current campaign unless the composer/accent work leaves the app feeling
    inconsistent; it is a separate visual slice, not an excuse to balloon Phase 4.
-7. **The icon issue is quality, not missing resolution.** A tracked 1024×1024
-   `AppIcon.png` already feeds the 300 KB installed ICNS, so the build is not
-   currently falling back to the 909-byte 66 px menu mark. The source artwork is
-   visibly jagged, however, so a genuinely redrawn high-quality icon still fits
-   the vibe.
-8. **The “cheap size” claim is overstated.** Deleting three tiny loose brand PNGs
-   and the dead `workflowsStatusPill` improves hygiene, not the 26 MB bundle in a
-   meaningful way. Keep `agent-desktop`; it is a required first-class capability.
-9. **Campaign ledgers are reconciled through Slice 2.** They now name P3D
-   complete and the Phase 4 semantic accent sweep as the proposed next slice.
+7. **P5 fixed icon quality and packaging.** A deterministic SVG master feeds one
+   shared fail-closed dev/release ICNS packager with ten verified slots.
+8. **The “cheap size” claim remains overstated, honestly.** The installed bundle
+   fell only 96 KiB. `agent-desktop`, Computer Use MCP, updater, and skills remain
+   first-class package contents.
+9. **Campaign ledgers are reconciled through Slice 4.** Optional welcome-only
+   extraction and any task-strip change require a new explicit product decision.
 
 ## Slice rules
 
@@ -272,6 +269,10 @@ recovery packet, durable prompt history, and protected OK-F task remain.
 Slice 3 is complete: ordinary interaction chrome now follows GrokBuild's cool semantic palette while warnings and failures remain distinct. The next proposed slice is limited to icon quality, dead workflow chrome, bundle measurement, and helper-presence proof. Do not start icon work, the optional welcome extraction, Settings redesign, or the full ChatView split without Jimmy's explicit authorization.
 
 ## Slice 4 — icon polish and bundle honesty
+
+Status: **complete on code-bearing candidate `ade5794`**. Full details and the
+2,190,295-token receipt are in the Phase 5 completion entry in the Visual Quiet
+campaign and the canonical ledger.
 
 **Goal:** improve what users can see and delete genuine dead weight without
 pretending a few kilobytes transformed the app.

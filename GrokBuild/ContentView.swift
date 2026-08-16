@@ -198,7 +198,6 @@ struct ContentView: View {
                     onOpenModelSettings: { openSettings(tab: .models) },
                     onOpenConnectionSettings: { openSettings(tab: .mcpServers) },
                     onOpenMemorySettings: { openSettings(tab: .memory) },
-                    onOpenWorkflowSettings: { openSettings(tab: .workflows) },
                     onForkSession: { Task { await forkCurrentSession() } },
                     onOpenDashboard: { openActivityDashboard() },
                     onSwitchBranch: {

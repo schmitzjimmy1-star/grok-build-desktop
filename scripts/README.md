@@ -59,6 +59,8 @@ Focused tests: `swift test --filter AcceptanceHarnessTests`.
 | [`build-dev-app.sh`](build-dev-app.sh) | Assemble a lightweight **dev** app bundle at `.build/GrokBuild.app` from an existing SPM binary. Bundles skills, brand assets, browser MCP, install helper, and `agent-desktop`. Uses `com.grokbuild.app` so Accessibility settings match packaged builds. |
 | [`build-macos-app.sh`](build-macos-app.sh) | Build a **distributable** app under `dist/GrokBuild.app` (runs `swift build -c release`), bundle resources, optional DMG, optional codesign. Primary path for `make app` / `make dmg`. |
 | [`build-identity.sh`](build-identity.sh) | Shared personal-build provenance: canonical repository, branch, exact commit, channel, dirty state, and plist-safe values for both bundle builders. |
+| [`package-app-icon.sh`](package-app-icon.sh) | Shared dev/release AppIcon packager. Renders the vector master, creates every ICNS slot, verifies all ten representations, and fails closed on conversion errors. |
+| [`render-app-icon.swift`](render-app-icon.swift) | Deterministically rasterize `AppIcon.svg` to the committed 1024×1024 PNG fallback used by the packager. |
 
 **`build-dev-app.sh`**
 
@@ -76,7 +78,7 @@ make app
 make dmg
 ```
 
-Output: `dist/GrokBuild.app` and `dist/GrokBuild-macOS.dmg` (release.sh copies the DMG to a versioned `GrokBuild-{tag}-macOS.dmg` name at publish time). Copies the Grok mark from `GrokBuild/Resources/Assets.xcassets/MenuBarIcon.imageset/` (or legacy project-root PNGs).
+Output: `dist/GrokBuild.app` and `dist/GrokBuild-macOS.dmg` (release.sh copies the DMG to a versioned `GrokBuild-{tag}-macOS.dmg` name at publish time). Both bundle paths package `AppIcon.svg` through the shared icon script and copy the separate menu-bar mark from `GrokBuild/Resources/Assets.xcassets/MenuBarIcon.imageset/`.
 
 Both bundle paths stamp the source receipt into `Contents/Info.plist`; inspect
 the `GrokBuildSource*` and `GrokBuildBuildChannel` keys when proving an installed

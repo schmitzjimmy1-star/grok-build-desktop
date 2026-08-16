@@ -308,7 +308,6 @@ struct ChatView: View {
     var onOpenModelSettings: () -> Void = {}
     var onOpenConnectionSettings: () -> Void = {}
     var onOpenMemorySettings: () -> Void = {}
-    var onOpenWorkflowSettings: () -> Void = {}
     var onForkSession: () -> Void = {}
     var onOpenDashboard: () -> Void = {}
     var onSwitchBranch: () -> Void = {}
@@ -372,11 +371,6 @@ struct ChatView: View {
     @State private var showRecoveryReview = false
     @State private var createSkillName = ""
     @State private var imaginePrompt = ""
-    // Constant default (matches WorkflowsConfigStore's missing-file default,
-    // pinned by WorkflowRunTests); the real value loads in .onAppear. A file
-    // read here would run on every ChatView struct init — once per streamed
-    // token while ContentView invalidates.
-    @State private var workflowsEnabled = true
 
     private var slashMatch: (query: String, range: Range<String.Index>)? {
         SlashAutocomplete.match(in: input)
@@ -1275,7 +1269,6 @@ struct ChatView: View {
             }
         }
         .onAppear {
-            workflowsEnabled = WorkflowsConfigStore.loadEnabled()
             input = store.composerDraft
         }
         .task(id: promptMCPRefreshIdentity) {
@@ -1283,9 +1276,6 @@ struct ChatView: View {
         }
         .onChange(of: input) { _, newValue in
             store.composerDraft = newValue
-        }
-        .onReceive(NotificationCenter.default.publisher(for: .workflowsConfigChanged)) { _ in
-            workflowsEnabled = WorkflowsConfigStore.loadEnabled()
         }
         .onChange(of: store.connectionState) { _, newState in
             if case .ready = newState {
@@ -1754,6 +1744,13 @@ struct ChatView: View {
             }
 
             Section("Skills and workflows") {
+                Button {
+                    showSavedWorkflows = true
+                } label: {
+                    Label("Saved Workflows…", systemImage: "doc.text")
+                }
+                .disabled(store.isStreaming || store.currentWorkspace == nil)
+
                 if composerChips.isEmpty {
                     Button {
                         input = "/"
@@ -2027,108 +2024,6 @@ struct ChatView: View {
             return retained
         }
         return []
-    }
-
-    private var showWorkflowsPill: Bool {
-        workflowsEnabled
-            || !store.workflowRuns.isEmpty
-            || store.hasWorkflowCommand
-            || store.hasDeepResearchCommand
-    }
-
-    private var workflowsStatusPill: some View {
-        let runs = store.workflowRuns
-        let count = runs.count
-        let title = count > 0 ? "Workflows (\(count))" : "Workflows"
-
-        return Menu {
-            if runs.isEmpty {
-                Button("No workflow runs") {}
-                    .disabled(true)
-            } else {
-                Section("Runs") {
-                    ForEach(runs) { run in
-                        Menu(workflowMenuTitle(run)) {
-                            if !run.phase.isEmpty {
-                                Text("Phase: \(run.phase)")
-                            }
-                            if !run.progress.isEmpty {
-                                Text(run.progress)
-                            }
-                            Text("Status: \(run.status)")
-                            Divider()
-                            if run.status.lowercased() != "paused" {
-                                Button {
-                                    Task { await store.pauseWorkflowRun(run.id) }
-                                } label: {
-                                    Label("Pause", systemImage: "pause.fill")
-                                }
-                            }
-                            if run.status.lowercased() == "paused" {
-                                Button {
-                                    Task { await store.resumeWorkflowRun(run.id) }
-                                } label: {
-                                    Label("Resume", systemImage: "play.fill")
-                                }
-                            }
-                            Button(role: .destructive) {
-                                Task { await store.stopWorkflowRun(run.id) }
-                            } label: {
-                                Label("Stop", systemImage: "stop.fill")
-                            }
-                        }
-                    }
-                }
-            }
-
-            Divider()
-
-            Button {
-                Task { await store.refreshWorkflowRuns() }
-            } label: {
-                Label("Refresh Runs", systemImage: "arrow.clockwise")
-            }
-            .disabled(store.isStreaming)
-
-            Button {
-                showSavedWorkflows = true
-            } label: {
-                Label("Saved Workflows…", systemImage: "doc.text")
-            }
-
-            if store.hasDeepResearchCommand {
-                Button {
-                    showDeepResearch = true
-                } label: {
-                    Label("Deep Research…", systemImage: "magnifyingglass")
-                }
-                .disabled(store.isStreaming)
-            }
-
-            Button {
-                onOpenWorkflowSettings()
-            } label: {
-                Label("Open Workflow Settings", systemImage: "gearshape")
-            }
-        } label: {
-            Label(title, systemImage: count > 0 ? "arrow.triangle.branch" : "arrow.triangle.branch")
-                .font(.caption2.weight(.semibold))
-                .padding(.horizontal, 2)
-                .padding(.vertical, 2)
-                .foregroundStyle(.secondary)
-        }
-        .menuStyle(.borderlessButton)
-        .fixedSize()
-        .disabled(store.currentWorkspace == nil)
-        .help("Background workflow runs for this session. Pause/stop via /workflow; saved scripts live in .grok/workflows.")
-        .accessibilityLabel(title)
-    }
-
-    private func workflowMenuTitle(_ run: WorkflowRun) -> String {
-        let status = run.status.isEmpty ? "run" : run.status
-        let label = run.name.isEmpty ? run.id : run.name
-        let short = label.count > 28 ? String(label.prefix(28)) + "…" : label
-        return "\(short) · \(status)"
     }
 
     private static func parseWorkflowArgsJSON(_ text: String) -> [String: Any]? {

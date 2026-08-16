@@ -142,7 +142,7 @@ struct WorkflowsSettingsPane: View {
     private var infoCard: some View {
         settingsCard(title: "Saved Workflows", systemImage: "doc.text") {
             VStack(alignment: .leading, spacing: 8) {
-                Text("Project workflows appear in Session controls, where you can start, pause, or stop them.")
+                Text("Open the composer Add menu to browse saved project workflows. Active runs remain visible in Tasks and the run inspector.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
@@ -176,4 +176,3 @@ struct WorkflowsSettingsPane: View {
         )
     }
 }
-
