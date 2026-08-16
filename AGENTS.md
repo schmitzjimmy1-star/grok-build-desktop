@@ -19,7 +19,8 @@ Before edits or acceptance, read and follow in order:
    Phases 1–5, P3C, and P3D are accepted. P3D put workers in the right canvas;
    P4 unified semantic interaction colors; P5 sharpened the canonical icon,
    removed dead workflow chrome, kept Saved Workflows in Add, and retained all
-   helpers. Optional P6 and the broad `ChatView` split remain unauthorized.
+   helpers. P6 is authorized as a welcome-only extraction; the broad `ChatView`
+   split remains unauthorized.
 
 Stop on a path, branch, remote, installed-stamp, signing, hash, or dirty-state mismatch.
 

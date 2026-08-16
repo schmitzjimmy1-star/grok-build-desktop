@@ -46,7 +46,12 @@
 > code-bearing candidate `b410a80`: the transient running task-contract bar is
 > gone, the four-worker receipt-layout hang found by paid stress is fixed, and
 > fresh paid acceptance used 2,139,970 settled parent tokens. Its single final
-> publication PR is the remaining gate. Optional Phase 6 remains unauthorized.
+> publication PR merged as `bb2b395` in PR #112. Jimmy authorized optional
+> **Phase 6 welcome extraction** on 2026-08-15; it is limited to moving the
+> already-quiet welcome and its private intent chip into their own view file,
+> updating source-location tests/docs, nonbillable installed parity, and the
+> standard exact-head publication closeout. The broad `ChatView` split remains
+> deferred and unauthorized.
 > Leftover closeout Phases 1–2 are merged on `main` as `7a3006d`
 > (PR #102). Leftover Phase 3 (`ChatView` split) stays deferred.
 > Install path is `make ship` on this Mac.
@@ -54,7 +59,7 @@
 > Prior campaigns: 2026-08-14 Residual Closeout (Phases 0–6) complete and merged as `4613bde` (PR #94);
 > 2026-08-13 campaign (Slices 0–7) closed at merge `c0895ee` (PR #86).
 
-## Visual Quiet — 2026-08-15 (P5F candidate accepted; publication gate open)
+## Visual Quiet — 2026-08-15 (Phase 6 welcome extraction authorized)
 
 Authorized spec is
 [`docs/GROKBUILD_VISUAL_QUIET_CAMPAIGN_2026-08-15.md`](GROKBUILD_VISUAL_QUIET_CAMPAIGN_2026-08-15.md).

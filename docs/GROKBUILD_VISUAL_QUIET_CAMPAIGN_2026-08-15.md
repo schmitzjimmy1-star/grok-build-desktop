@@ -1,11 +1,8 @@
 # GrokBuild Visual Quiet Campaign — 2026-08-15
 
-Status: **Phases 1–4, P3C, and P3D verified** (cool tokens, Path A chips,
-Codex-style overlay/quiet chrome, composer/task-strip density, live activity
-composition, and the semantic accent sweep). Phase 4 used **330,658** reported
-parent tokens against its 2.5 million cap and merged as `d62a396` in PR #109.
-Phases 5–6 wait for explicit authorization.
-Leftover `ChatView` split stays deferred.
+Status: **Phases 1–5, P3C, P3D, and P5F verified and merged**. Jimmy authorized
+Phase 6 on 2026-08-15 as the welcome-only extraction specified below. The
+leftover `ChatView` split stays deferred and unauthorized.
 
 This is a **product visual** campaign. It is **not** leftover Phase 3
 (`ChatView` file-split). That stays deferred. Optional Phase 6 is a
@@ -624,12 +621,18 @@ P5F is accepted on code-bearing candidate `b410a80`: the run bar is gone, heavy-
 
 ---
 
-## Phase 6 — Optional welcome extract (last / never)
+## Phase 6 — Welcome extract (authorized 2026-08-15)
 
 Move the already-quiet welcome into
 `GrokBuild/Views/WelcomeStateView.swift` (name flexible). Do **not**
 extract TopBar or Composer again. No visual redesign. Update source-path
 asserts only. Computer Use parity vs post-P2. No billable packet.
+
+**Authorized implementation boundary:** `ChatView` mounts the extracted view
+and retains send/draft focus ownership. `WelcomeStateView` owns only the quiet
+workspace welcome and private Ask/Build/Review chip presentation. Existing
+headline, project name, 24-point mark, spacing, typography, prompts, hover,
+help, and accessibility copy must remain visually and behaviorally unchanged.
 
 ---
 

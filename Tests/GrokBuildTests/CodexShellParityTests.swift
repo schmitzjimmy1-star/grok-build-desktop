@@ -245,17 +245,20 @@ final class CodexShellParityTests: XCTestCase {
     /// do not disturb the Codex hierarchy.
     func testEmptyStateIntentPillsStillExist() throws {
         let chatView = try source("GrokBuild/Views/ChatView.swift")
-        XCTAssertTrue(chatView.contains("welcomeState"),
-                      "Red-baseline inventory: the welcome state still exists")
-        XCTAssertTrue(chatView.contains("WorkbenchIntent.defaults"),
+        let welcomeState = try source("GrokBuild/Views/WelcomeStateView.swift")
+        XCTAssertTrue(chatView.contains("WelcomeStateView("),
+                      "ChatView still mounts the extracted welcome state")
+        XCTAssertFalse(chatView.contains("private var welcomeState"),
+                       "Phase 6 keeps the welcome implementation out of ChatView")
+        XCTAssertTrue(welcomeState.contains("WorkbenchIntent.defaults"),
                       "Red-baseline inventory: the Ask/Build/Review intent chips still render")
-        XCTAssertFalse(chatView.contains("Text(\"Grok agent runs in this folder.\")"),
+        XCTAssertFalse(welcomeState.contains("Text(\"Grok agent runs in this folder.\")"),
                        "Visual Quiet Path A dropped the redundant folder-as-cwd line")
-        XCTAssertFalse(chatView.contains("Text(item.detail)"),
+        XCTAssertFalse(welcomeState.contains("Text(item.detail)"),
                        "Ask/Build/Review chips keep outcome copy in accessibility, not card paragraphs")
-        XCTAssertTrue(chatView.contains("accessibilityLabel(\"\\(item.title). \\(item.detail)\")"),
+        XCTAssertTrue(welcomeState.contains("accessibilityLabel(\"\\(item.title). \\(item.detail)\")"),
                       "VoiceOver still hears the Ask/Build/Review outcome copy")
-        XCTAssertFalse(chatView.contains("Text(\"Recent tasks\")"),
+        XCTAssertFalse(welcomeState.contains("Text(\"Recent tasks\")"),
                        "W-3 recent-task dashboard must not return to the empty canvas")
         XCTAssertFalse(chatView.contains("grok-task-context-strip"),
                        "the running task-contract bar must not return")
