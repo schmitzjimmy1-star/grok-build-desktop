@@ -1,3 +1,5 @@
+import CryptoKit
+import Darwin
 import Foundation
 import Observation
 
@@ -13,6 +15,110 @@ enum GrokProcessState: Sendable, Equatable {
         return nil
     }
 
+}
+
+/// Explicit, credential-free authority for one armed CLI process. Ambient
+/// hard-budget state is intentionally never inherited by a child process.
+struct HardBudgetLaunchContract: Sendable, Equatable {
+    let manifestPath: String
+    let ledgerPath: String
+    let allocationID: String
+    let expectedManifestSHA256: String
+    private let manifestIdentity: HardBudgetAuthorityFileIdentity
+    private let ledgerIdentity: HardBudgetAuthorityFileIdentity
+
+    init?(
+        manifestPath: String,
+        ledgerPath: String,
+        allocationID: String,
+        expectedManifestSHA256: String
+    ) {
+        guard NSString(string: manifestPath).isAbsolutePath,
+              NSString(string: ledgerPath).isAbsolutePath,
+              !allocationID.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+              expectedManifestSHA256.range(
+                of: #"^[0-9a-f]{64}$"#,
+                options: .regularExpression
+              ) != nil,
+              let manifestIdentity = HardBudgetAuthorityFileIdentity.capture(
+                path: manifestPath,
+                expectedSHA256: expectedManifestSHA256
+              ),
+              let ledgerIdentity = HardBudgetAuthorityFileIdentity.capture(path: ledgerPath) else { return nil }
+        self.manifestPath = manifestPath
+        self.ledgerPath = ledgerPath
+        self.allocationID = allocationID
+        self.expectedManifestSHA256 = expectedManifestSHA256
+        self.manifestIdentity = manifestIdentity
+        self.ledgerIdentity = ledgerIdentity
+    }
+
+    var filesRemainValid: Bool {
+        HardBudgetAuthorityFileIdentity.capture(
+            path: manifestPath,
+            expectedSHA256: expectedManifestSHA256
+        ) == manifestIdentity
+            && HardBudgetAuthorityFileIdentity.capture(path: ledgerPath) == ledgerIdentity
+    }
+}
+
+private struct HardBudgetAuthorityFileIdentity: Sendable, Equatable {
+    let device: UInt64
+    let inode: UInt64
+    let size: Int64
+
+    static func capture(path: String, expectedSHA256: String? = nil) -> Self? {
+        guard NSString(string: path).isAbsolutePath else { return nil }
+        let descriptor = Darwin.open(path, O_RDONLY | O_CLOEXEC | O_NOFOLLOW)
+        guard descriptor >= 0 else { return nil }
+        let handle = FileHandle(fileDescriptor: descriptor, closeOnDealloc: true)
+        var metadata = stat()
+        guard fstat(descriptor, &metadata) == 0,
+              metadata.st_uid == getuid(),
+              metadata.st_mode & mode_t(S_IFMT) == mode_t(S_IFREG),
+              metadata.st_mode & mode_t(S_IRWXG | S_IRWXO) == 0,
+              metadata.st_size >= 0,
+              metadata.st_size <= 1_048_576 else { return nil }
+        if let expectedSHA256 {
+            let expectedSize = Int(metadata.st_size)
+            guard let data = try? handle.read(upToCount: expectedSize + 1),
+                  data.count == expectedSize,
+                  SHA256.hash(data: data).map({ String(format: "%02x", $0) }).joined()
+                    == expectedSHA256 else { return nil }
+        }
+        var afterRead = stat()
+        guard fstat(descriptor, &afterRead) == 0,
+              afterRead.st_dev == metadata.st_dev,
+              afterRead.st_ino == metadata.st_ino,
+              afterRead.st_size == metadata.st_size else { return nil }
+        return Self(
+            device: UInt64(metadata.st_dev),
+            inode: UInt64(metadata.st_ino),
+            size: Int64(metadata.st_size)
+        )
+    }
+}
+
+enum GrokProcessLaunchEnvironment {
+    static let hardBudgetKeys = [
+        "GROK_HARD_TOKEN_BUDGET_LEDGER",
+        "GROK_HARD_TOKEN_BUDGET_MANIFEST",
+        "GROK_HARD_TOKEN_BUDGET_ALLOCATION",
+    ]
+
+    static func resolved(
+        base: [String: String],
+        hardBudget contract: HardBudgetLaunchContract?
+    ) -> [String: String] {
+        var environment = base
+        hardBudgetKeys.forEach { environment.removeValue(forKey: $0) }
+        if let contract {
+            environment[hardBudgetKeys[0]] = contract.ledgerPath
+            environment[hardBudgetKeys[1]] = contract.manifestPath
+            environment[hardBudgetKeys[2]] = contract.allocationID
+        }
+        return environment
+    }
 }
 
 struct GrokLaunchOptions: Sendable {
@@ -50,6 +156,7 @@ struct GrokLaunchOptions: Sendable {
     /// app's default catch-all MCP deny rule. Grok and user-supplied deny rules
     /// remain authoritative, and the app never mutates global MCP configuration.
     var mcpGatewayEnabled: Bool = false
+    var hardBudgetLaunchContract: HardBudgetLaunchContract? = nil
 }
 
 enum GrokLaunchOutcome: String, Sendable, Equatable {
@@ -1445,6 +1552,21 @@ final class GrokProcess: @unchecked Sendable {
         availableModelsInfo.removeAll()
         hasAuthoritativeModelCatalog = false
 
+        guard options.hardBudgetLaunchContract?.filesRemainValid != false else {
+            var receipt = GrokLaunchReceipt(
+                options: options,
+                workspaceID: workspace.id,
+                processGeneration: launchGeneration
+            )
+            receipt.outcome = .failed
+            launchReceipt = receipt
+            rejectLaunchModelReceipt(identity: launchIdentity)
+            activeProcessGeneration = nil
+            mcpServerStatuses = MCPReadinessPolicy.failedStatuses(for: options.mcpServers)
+            state = .failed("Acceptance authority changed after authorization. No Grok process was launched.")
+            return
+        }
+
         guard let cli = Self.locateGrokCLI() else {
             var receipt = GrokLaunchReceipt(
                 options: options,
@@ -1463,7 +1585,10 @@ final class GrokProcess: @unchecked Sendable {
         let proc = Process()
         proc.executableURL = cli
         proc.currentDirectoryURL = workspace.path
-        proc.environment = ProcessInfo.processInfo.environment
+        proc.environment = GrokProcessLaunchEnvironment.resolved(
+            base: ProcessInfo.processInfo.environment,
+            hardBudget: options.hardBudgetLaunchContract
+        )
 
         // ACP: grok [top-level flags] agent [agent flags] stdio
         var args: [String] = []

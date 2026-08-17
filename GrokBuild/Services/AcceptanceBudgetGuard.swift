@@ -98,6 +98,11 @@ struct AcceptanceBudgetAuthorization: Equatable, Sendable {
     let hardBudgetManifestSHA256: String
     let expectedCLIBuild: String
     let budget: AcceptanceTurnBudget
+    /// Swift's private schema-2 authorization sidecar; never passed to the CLI.
+    let authorizationManifestPath: String
+    /// The independently validated CLI HardTokenCampaignManifest used by the sampler.
+    let hardBudgetCLIManifestPath: String
+    let hardBudgetLedgerPath: String
 
     var spendableTokenCeiling: Int? {
         let (value, overflow) = campaignTokenCeiling.subtractingReportingOverflow(emergencyReserveTokens)
@@ -113,20 +118,39 @@ enum AcceptanceBudgetResolution: Equatable, Sendable {
 
 enum AcceptanceBudgetGuard {
     static let argumentPrefix = "--grokbuild-acceptance-budget-file="
+    static let cliManifestArgumentPrefix = "--grokbuild-acceptance-cli-manifest-file="
+    static let ledgerArgumentPrefix = "--grokbuild-acceptance-budget-ledger-file="
+
+    static func isConfigured(arguments: [String] = ProcessInfo.processInfo.arguments) -> Bool {
+        arguments.contains { $0.hasPrefix(argumentPrefix) }
+    }
 
     static func resolve(
         prompt: String,
         arguments: [String] = ProcessInfo.processInfo.arguments
     ) -> AcceptanceBudgetResolution {
-        let paths = arguments.compactMap { argument -> String? in
+        let manifestPaths = arguments.compactMap { argument -> String? in
             guard argument.hasPrefix(argumentPrefix) else { return nil }
             return String(argument.dropFirst(argumentPrefix.count))
         }
-        guard !paths.isEmpty else { return .inactive }
-        guard paths.count == 1,
-              !paths[0].isEmpty,
-              let data = secureRead(path: paths[0]),
+        guard !manifestPaths.isEmpty else { return .inactive }
+        let ledgerPaths = arguments.compactMap { argument -> String? in
+            guard argument.hasPrefix(ledgerArgumentPrefix) else { return nil }
+            return String(argument.dropFirst(ledgerArgumentPrefix.count))
+        }
+        let cliManifestPaths = arguments.compactMap { argument -> String? in
+            guard argument.hasPrefix(cliManifestArgumentPrefix) else { return nil }
+            return String(argument.dropFirst(cliManifestArgumentPrefix.count))
+        }
+        guard manifestPaths.count == 1,
+              cliManifestPaths.count == 1,
+              ledgerPaths.count == 1,
+              !manifestPaths[0].isEmpty,
+              let data = secureRead(path: manifestPaths[0]),
+              let cliManifest = secureRead(path: cliManifestPaths[0]),
+              securePrivateRegularPath(ledgerPaths[0]),
               let manifest = try? JSONDecoder().decode(AcceptanceBudgetManifest.self, from: data),
+              sha256(cliManifest) == manifest.hardBudgetManifestSHA256,
               manifest.isValid else {
             return .blocked
         }
@@ -137,7 +161,10 @@ enum AcceptanceBudgetGuard {
             emergencyReserveTokens: manifest.emergencyReserveTokens,
             hardBudgetManifestSHA256: manifest.hardBudgetManifestSHA256,
             expectedCLIBuild: manifest.expectedCLIBuild,
-            budget: budget
+            budget: budget,
+            authorizationManifestPath: manifestPaths[0],
+            hardBudgetCLIManifestPath: cliManifestPaths[0],
+            hardBudgetLedgerPath: ledgerPaths[0]
         ))
     }
 
@@ -162,5 +189,18 @@ enum AcceptanceBudgetGuard {
               afterRead.st_ino == metadata.st_ino,
               afterRead.st_size == metadata.st_size else { return nil }
         return data
+    }
+
+    private static func securePrivateRegularPath(_ path: String) -> Bool {
+        guard NSString(string: path).isAbsolutePath else { return false }
+        var metadata = stat()
+        return lstat(path, &metadata) == 0
+            && metadata.st_uid == getuid()
+            && metadata.st_mode & mode_t(S_IFMT) == mode_t(S_IFREG)
+            && metadata.st_mode & mode_t(S_IRWXG | S_IRWXO) == 0
+    }
+
+    private static func sha256(_ data: Data) -> String {
+        SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()
     }
 }

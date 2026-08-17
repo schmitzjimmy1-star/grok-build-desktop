@@ -1123,6 +1123,7 @@ final class ChatStore {
     private var currentTurnObservedParallelToolExecution = false
     private let customModelSnapshotLoader: () -> CustomModelStore.Snapshot
     private let acceptanceBudgetResolver: (String) -> AcceptanceBudgetResolution
+    private let acceptanceBudgetIsConfigured: () -> Bool
     private var acceptanceBudgetPollingTask: Task<Void, Never>?
     private var currentTurnHardBudgetReceipt: AssistantTurnCheckpoint.HardBudgetReceipt?
 
@@ -1132,12 +1133,16 @@ final class ChatStore {
         customModelSnapshotLoader: @escaping () -> CustomModelStore.Snapshot = { CustomModelStore.load() },
         acceptanceBudgetResolver: @escaping (String) -> AcceptanceBudgetResolution = {
             AcceptanceBudgetGuard.resolve(prompt: $0)
+        },
+        acceptanceBudgetIsConfigured: @escaping () -> Bool = {
+            AcceptanceBudgetGuard.isConfigured()
         }
     ) {
         self.process = process ?? GrokProcess()
         self.continuityKeyOverride = continuityKeyOverride
         self.customModelSnapshotLoader = customModelSnapshotLoader
         self.acceptanceBudgetResolver = acceptanceBudgetResolver
+        self.acceptanceBudgetIsConfigured = acceptanceBudgetIsConfigured
         applyBuiltInModelCatalog(GrokModelCatalog.cachedOrFallback())
         loadSessionSelections()
         Task { [weak self] in await self?.consumeOutput() }
@@ -1892,6 +1897,12 @@ final class ChatStore {
         } else {
             clearTurnState()
         }
+        if acceptanceBudgetIsConfigured() {
+            // A configured campaign cannot warm-start an unarmed CLI. The exact
+            // final payload selects its allocation before the one permitted spawn.
+            connectionState = .idle
+            return
+        }
         await restartProcess(resumeSessionID: resumeSession?.id)
     }
 
@@ -2249,10 +2260,16 @@ final class ChatStore {
     private func restartProcess(
         resumeSessionID: String? = nil,
         forceFreshStart: Bool = false,
-        freshStartPredecessorBackendID: String? = nil
+        freshStartPredecessorBackendID: String? = nil,
+        hardBudgetLaunchContract: HardBudgetLaunchContract? = nil
     ) async {
         guard !isPermanentlyShutdown else { return }
         guard let ws = currentWorkspace else { return }
+        guard !acceptanceBudgetIsConfigured() || hardBudgetLaunchContract != nil else {
+            connectionState = .failed("Acceptance requires an exact packet allocation before starting Grok.")
+            lastError = "Acceptance launch stopped because this path did not carry the immutable CLI budget contract."
+            return
+        }
         // A runtime lease belongs to one exact backend/process generation. A
         // reconnect must re-observe scheduler inventory before it can pin runtime.
         clearScheduledTaskRuntimeState(notify: false)
@@ -2397,7 +2414,8 @@ final class ChatStore {
             mcpGatewayEnabled: Self.mcpGatewayEnabled(
                 selectedPromptMCPNames: selectedPromptMCPNames,
                 enabledBuiltInToolNames: enabledBuiltInToolNames
-            )
+            ),
+            hardBudgetLaunchContract: hardBudgetLaunchContract
         )
         guard !isPermanentlyShutdown else {
             connectionWatchdogTask?.cancel()
@@ -2870,6 +2888,23 @@ final class ChatStore {
         }
     }
 
+    private static func materializedDispatchPrompt(
+        _ text: String,
+        requestedMCPNames: Set<String>,
+        attachments: [FileAttachment]
+    ) -> String {
+        var blocks: [String] = []
+        if let mcpBlock = PromptMCPAttachmentPromptBuilder.build(from: requestedMCPNames.sorted()) {
+            blocks.append(mcpBlock)
+        }
+        if let fileBlock = AttachmentPromptBuilder.build(from: attachments) {
+            blocks.append(fileBlock)
+        }
+        guard !blocks.isEmpty else { return text }
+        let attachmentBlock = blocks.joined(separator: "\n\n")
+        return text.isEmpty ? attachmentBlock : "\(attachmentBlock)\n\n\(text)"
+    }
+
     private func deliverPrompt(
         _ text: String,
         waitForCompletion: Bool,
@@ -2878,6 +2913,8 @@ final class ChatStore {
     ) async -> Bool {
         var trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         var claimedPendingIntent: PendingSubmitIntent?
+        var prelaunchedAcceptanceAuthorization: AcceptanceBudgetAuthorization?
+        var prelaunchedAcceptancePrompt: String?
         defer {
             if let claimedPendingIntent,
                pendingSubmitIntent?.id == claimedPendingIntent.id {
@@ -2899,6 +2936,10 @@ final class ChatStore {
             GrokBuildPerformance.mark(.submitIntent)
         }
         if continuityRequiresRecovery {
+            guard !acceptanceBudgetIsConfigured() else {
+                lastError = "Acceptance dispatch stopped because this saved task requires an unbudgeted recovery fork. Resolve continuity before running the campaign."
+                return false
+            }
             // Never a dead end: the saved backend can't be safely resumed, so fork to a
             // clean backend (preserving the local transcript) and continue. continueAsNew
             // sets .recoveryForked, which the send gate below allows. This never appends to
@@ -2906,6 +2947,10 @@ final class ChatStore {
             guard await continueAsNew() else { return false }
         }
         if isStreaming {
+            if acceptanceBudgetIsConfigured() {
+                lastError = "Acceptance dispatch stopped because another packet is still running."
+                return false
+            }
             if waitForCompletion {
                 lastError = "Wait for the current response to finish."
                 return false
@@ -2916,6 +2961,58 @@ final class ChatStore {
             }
             lastError = "Wait for the current response to finish."
             return false
+        }
+
+        if acceptanceBudgetIsConfigured() {
+            let intent: PendingSubmitIntent
+            if let preparedIntentID {
+                guard let pendingSubmitIntent, pendingSubmitIntent.id == preparedIntentID else {
+                    return false
+                }
+                intent = pendingSubmitIntent
+            } else if let pendingSubmitIntent {
+                guard pendingSubmitIntent.draft == trimmed else { return false }
+                intent = pendingSubmitIntent
+            } else {
+                intent = makePendingSubmitIntent(draft: trimmed)
+                pendingSubmitIntent = intent
+            }
+            claimedPendingIntent = intent
+            guard pendingSubmitRouteStillMatches(intent),
+                  intent.requestedMCPNames.isEmpty else {
+                lastError = "Acceptance dispatch stopped because the frozen route changed or external MCP tools were attached."
+                return false
+            }
+
+            let frozenPrompt = Self.materializedDispatchPrompt(
+                trimmed,
+                requestedMCPNames: intent.requestedMCPNames,
+                attachments: intent.fileAttachments
+            )
+            guard case .budget(let authorization) = acceptanceBudgetResolver(frozenPrompt),
+                  let launchContract = HardBudgetLaunchContract(
+                    manifestPath: authorization.hardBudgetCLIManifestPath,
+                    ledgerPath: authorization.hardBudgetLedgerPath,
+                    allocationID: authorization.budget.allocationID,
+                    expectedManifestSHA256: authorization.hardBudgetManifestSHA256
+                  ) else {
+                lastError = "Acceptance dispatch stopped because the launch budget does not authorize this exact final payload."
+                return false
+            }
+            let previousGeneration = process.activeProcessGeneration
+            await restartProcess(
+                resumeSessionID: process.sessionId ?? savedGrokSessionID,
+                hardBudgetLaunchContract: launchContract
+            )
+            guard connectionState == .ready,
+                  process.activeProcessGeneration != previousGeneration else {
+                if lastError == nil {
+                    lastError = "Acceptance dispatch stopped because a fresh hard-budget CLI process could not be prepared."
+                }
+                return false
+            }
+            prelaunchedAcceptanceAuthorization = authorization
+            prelaunchedAcceptancePrompt = frozenPrompt
         }
         if preparedIntentID != nil || (connectionState != .ready &&
             (leftoverWarmStartTask != nil || connectionState == .starting)) {
@@ -3012,6 +3109,10 @@ final class ChatStore {
         if process.launchReceipt?.mcpGatewayEnabled != desiredMCPGatewayState
             || Set(process.launchReceipt?.allowedMCPServerNames ?? []) != desiredAllowedMCPServerNames
             || frozenReasoningLaunchMismatch {
+            guard prelaunchedAcceptanceAuthorization == nil else {
+                lastError = "Acceptance dispatch stopped because the governed CLI launch did not retain the frozen reasoning and tool policy."
+                return false
+            }
             await restartProcess(resumeSessionID: process.sessionId ?? savedGrokSessionID)
             guard connectionState == .ready,
                   process.launchReceipt?.mcpGatewayEnabled == desiredMCPGatewayState,
@@ -3066,21 +3167,20 @@ final class ChatStore {
             return false
         }
 
-        var attachmentBlocks: [String] = []
         let turnRequestedMCPNames = desiredAllowedMCPServerNames.sorted()
-        if let mcpBlock = PromptMCPAttachmentPromptBuilder.build(from: turnRequestedMCPNames) {
-            attachmentBlocks.append(mcpBlock)
-        }
         let dispatchAttachments = claimedPendingIntent?.fileAttachments ?? fileAttachments
         let turnAttachmentNames = dispatchAttachments
             .filter { !$0.isHidden }
             .map(\.relativePath)
-        if let fileBlock = AttachmentPromptBuilder.build(from: dispatchAttachments) {
-            attachmentBlocks.append(fileBlock)
-        }
-        if !attachmentBlocks.isEmpty {
-            let attachmentBlock = attachmentBlocks.joined(separator: "\n\n")
-            trimmed = trimmed.isEmpty ? attachmentBlock : "\(attachmentBlock)\n\n\(trimmed)"
+        trimmed = Self.materializedDispatchPrompt(
+            trimmed,
+            requestedMCPNames: Set(turnRequestedMCPNames),
+            attachments: dispatchAttachments
+        )
+        if let prelaunchedAcceptancePrompt,
+           trimmed != prelaunchedAcceptancePrompt {
+            lastError = "Acceptance dispatch stopped because the frozen payload changed after the governed process launched."
+            return false
         }
 
         var acceptanceBudgetContext: (
@@ -3090,13 +3190,19 @@ final class ChatStore {
             backendSessionID: String,
             hardBudgetReceipt: AssistantTurnCheckpoint.HardBudgetReceipt
         )?
-        let acceptanceBudgetResolution = acceptanceBudgetResolver(trimmed)
+        let acceptanceBudgetResolution = prelaunchedAcceptanceAuthorization.map {
+            AcceptanceBudgetResolution.budget($0)
+        } ?? acceptanceBudgetResolver(trimmed)
         if acceptanceBudgetResolution == .blocked {
             lastError = "Acceptance dispatch stopped because the launch budget is missing, invalid, or does not authorize this exact final payload."
             return false
         }
         if case .budget(let authorization) = acceptanceBudgetResolution {
             let budget = authorization.budget
+            guard prelaunchedAcceptanceAuthorization != nil else {
+                lastError = "Acceptance dispatch stopped because the packet was not launched under its immutable CLI allocation."
+                return false
+            }
             guard process.acpControlCapabilityState(for: .sessionUsage) != .unsupported else {
                 lastError = "Acceptance dispatch stopped because this Grok runtime cannot report live official session usage."
                 return false
