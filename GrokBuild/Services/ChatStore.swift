@@ -4213,11 +4213,6 @@ final class ChatStore {
             recordCurrentTurnWorkerChanges(since: previousActivities)
         case .plan(let payload):
             currentRunPlan = Self.applyingPlanUpdate(payload, to: currentRunPlan)
-        case .planFileContent(let content):
-            if !content.isEmpty, var plan = pendingExitPlan {
-                plan.planText = content
-                pendingExitPlan = plan
-            }
         case .exitPlanRequest(let req):
             guard !process.isStopDraining else { break }
             guard ACPInteractionRequestIdentity.ownsActiveSession(

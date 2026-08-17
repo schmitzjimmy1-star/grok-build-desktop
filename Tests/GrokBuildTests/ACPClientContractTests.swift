@@ -1658,97 +1658,75 @@ final class ACPClientContractTests: XCTestCase {
         XCTAssertEqual(process.modelExecutionState.failure, .unknown)
     }
 
-    func testAdvertisedTerminalCapabilityHasWorkingLifecycle() async throws {
-        XCTAssertEqual(GrokProcess.clientCapabilities["terminal"] as? Bool, true)
-
-        let manager = ACPClientTerminalManager()
-        let terminalID = try manager.create(
-            command: "/usr/bin/printf",
-            arguments: ["terminal-contract-ok"],
-            environment: [:],
-            workingDirectory: FileManager.default.temporaryDirectory.path,
-            outputByteLimit: 1_024
-        )
-
-        let exit = try await manager.waitForExit(terminalID: terminalID)
-        XCTAssertEqual(exit, .init(exitCode: 0, signal: nil))
-        let snapshot = try manager.snapshot(terminalID: terminalID)
-        XCTAssertEqual(snapshot.output, "terminal-contract-ok")
-        XCTAssertFalse(snapshot.truncated)
-        XCTAssertEqual(snapshot.exitStatus, exit)
-        XCTAssertNoThrow(try JSONSerialization.data(withJSONObject: snapshot.jsonObject))
-
-        try manager.release(terminalID: terminalID)
-        XCTAssertThrowsError(try manager.snapshot(terminalID: terminalID))
-    }
-
-    func testTerminalTeardownEscalatesTermIgnoringClientProcess() async throws {
+    func testClientExecutionCapabilitiesAreDisabledAndReverseExecutionFailsClosed() async throws {
         let root = FileManager.default.temporaryDirectory
-            .appendingPathComponent("grokbuild-terminal-teardown-\(UUID().uuidString)", isDirectory: true)
+            .appendingPathComponent("grokbuild-client-execution-\(UUID().uuidString)", isDirectory: true)
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: root) }
-        let pidURL = root.appendingPathComponent("terminal.pid")
-        let scriptURL = root.appendingPathComponent("term-ignoring-script")
-        try """
+
+        let inputLogURL = root.appendingPathComponent("client-input.jsonl")
+        let sideEffectURL = root.appendingPathComponent("reverse-execution-must-not-run")
+        let scriptURL = root.appendingPathComponent("fake-grok")
+        let script = """
         #!/bin/sh
-        printf '%s' "$$" > '\(pidURL.path)'
-        trap '' TERM
-        while true; do sleep 1; done
-        """.write(to: scriptURL, atomically: true, encoding: .utf8)
+        while IFS= read -r line; do
+          printf '%s\\n' "$line" >> '\(inputLogURL.path)'
+          id=$(printf '%s' "$line" | sed -E 's/.*"id":([0-9]+).*/\\1/')
+          case "$line" in
+            *'"method":"initialize"'*)
+              printf '{"jsonrpc":"2.0","id":%s,"result":{}}\\n' "$id"
+              ;;
+            *'"method":"session/new"'*)
+              printf '{"jsonrpc":"2.0","id":%s,"result":{"sessionId":"fixture-client-execution"}}\\n' "$id"
+              printf '{"jsonrpc":"2.0","id":7001,"method":"fs/write_text_file","params":{"path":"\(sideEffectURL.path)","content":"owned"}}\\n'
+              printf '{"jsonrpc":"2.0","id":7002,"method":"terminal/create","params":{"command":"/usr/bin/touch","args":["\(sideEffectURL.path)"],"cwd":"\(root.path)"}}\\n'
+              ;;
+          esac
+        done
+        """
+        try script.write(to: scriptURL, atomically: true, encoding: .utf8)
         try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: scriptURL.path)
 
-        let manager = ACPClientTerminalManager()
-        _ = try manager.create(
-            command: scriptURL.path,
-            arguments: [],
-            environment: [:],
-            workingDirectory: root.path,
-            outputByteLimit: 1_024
+        GrokProcess.cliOverrideForTests = scriptURL
+        defer { GrokProcess.cliOverrideForTests = nil }
+        let process = GrokProcess()
+        await process.start(
+            workspace: Workspace(name: "fixture", path: root),
+            options: GrokLaunchOptions(localTabID: UUID())
         )
-        for _ in 0..<100 where !FileManager.default.fileExists(atPath: pidURL.path) {
-            try await Task.sleep(for: .milliseconds(5))
-        }
-        let pid = try XCTUnwrap(pid_t(String(contentsOf: pidURL, encoding: .utf8)))
-        let fingerprint = try XCTUnwrap(OwnedProcessTree.fingerprint(of: pid))
+        XCTAssertEqual(process.state, .ready)
 
-        await manager.releaseAllAndEscalate()
-
-        for _ in 0..<50 where OwnedProcessTree.stillMatches(fingerprint) {
+        for _ in 0..<100 {
+            let input = (try? String(contentsOf: inputLogURL, encoding: .utf8)) ?? ""
+            if input.contains("\"id\":7001") && input.contains("\"id\":7002") { break }
             try await Task.sleep(for: .milliseconds(10))
         }
-        XCTAssertFalse(OwnedProcessTree.stillMatches(fingerprint))
-    }
+        await process.stop()
 
-    func testTerminalOutputRetainsBoundedValidUTF8Suffix() async throws {
-        let manager = ACPClientTerminalManager()
-        let terminalID = try manager.create(
-            command: "/usr/bin/printf",
-            arguments: ["éééé"],
-            environment: [:],
-            workingDirectory: FileManager.default.temporaryDirectory.path,
-            outputByteLimit: 5
-        )
-        _ = try await manager.waitForExit(terminalID: terminalID)
-        let snapshot = try manager.snapshot(terminalID: terminalID)
-        XCTAssertTrue(snapshot.truncated)
-        XCTAssertLessThanOrEqual(snapshot.output.utf8.count, 5)
-        XCTAssertFalse(snapshot.output.contains("�"))
-        try manager.release(terminalID: terminalID)
-    }
+        XCTAssertFalse(FileManager.default.fileExists(atPath: sideEffectURL.path))
+        let fsCapabilities = try XCTUnwrap(GrokProcess.clientCapabilities["fs"] as? [String: Bool])
+        XCTAssertEqual(fsCapabilities["readTextFile"], false)
+        XCTAssertEqual(fsCapabilities["writeTextFile"], false)
+        XCTAssertEqual(GrokProcess.clientCapabilities["terminal"] as? Bool, false)
 
-    func testGrokCombinedShellCommandCompatibility() async throws {
-        let manager = ACPClientTerminalManager()
-        let terminalID = try manager.create(
-            command: "/bin/bash -lc \"printf combined-command-ok\"",
-            arguments: [],
-            environment: [:],
-            workingDirectory: FileManager.default.temporaryDirectory.path,
-            outputByteLimit: 1_024
-        )
-        let exit = try await manager.waitForExit(terminalID: terminalID)
-        XCTAssertEqual(exit.exitCode, 0)
-        XCTAssertEqual(try manager.snapshot(terminalID: terminalID).output, "combined-command-ok")
-        try manager.release(terminalID: terminalID)
+        let messages: [[String: Any]] = try String(contentsOf: inputLogURL, encoding: .utf8)
+            .split(whereSeparator: \.isNewline)
+            .compactMap { line in
+                try? JSONSerialization.jsonObject(with: Data(line.utf8)) as? [String: Any]
+            }
+        let initialize = try XCTUnwrap(messages.first { $0["method"] as? String == "initialize" })
+        let params = try XCTUnwrap(initialize["params"] as? [String: Any])
+        let wireCapabilities = try XCTUnwrap(params["clientCapabilities"] as? [String: Any])
+        XCTAssertEqual(wireCapabilities["terminal"] as? Bool, false)
+        XCTAssertEqual((wireCapabilities["fs"] as? [String: Bool])?["readTextFile"], false)
+        XCTAssertEqual((wireCapabilities["fs"] as? [String: Bool])?["writeTextFile"], false)
+
+        for requestID in [7001, 7002] {
+            let response = try XCTUnwrap(messages.first { ($0["id"] as? NSNumber)?.intValue == requestID })
+            let error = try XCTUnwrap(response["error"] as? [String: Any])
+            XCTAssertEqual((error["code"] as? NSNumber)?.intValue, -32601)
+            XCTAssertTrue((error["message"] as? String)?.contains("Method not found") == true)
+        }
     }
 
     func testToolCallFailureStatusAndMessageSurviveACPParsing() {
