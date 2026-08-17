@@ -40,8 +40,17 @@ enum ACPControlMethod: String, CaseIterable, Sendable {
     case sessionInfo = "x.ai/session/info"
     case sessionUpdates = "x.ai/session/updates"
 
-    /// These extension contracts are pinned to official Grok 1.0.5 source.
-    static let officialExtensionFloor = ACPAgentVersion("1.0.5")!
+    /// Method-specific floors pinned to official source. `x.ai/models/list` is
+    /// already the implementation behind `grok models` in 1.0.4; the persisted
+    /// session controls remain gated to the audited 1.0.5 family.
+    var officialExtensionFloor: ACPAgentVersion {
+        switch self {
+        case .models:
+            ACPAgentVersion("1.0.4")!
+        case .sessionUsage, .sessionInfo, .sessionUpdates:
+            ACPAgentVersion("1.0.5")!
+        }
+    }
 }
 
 enum ACPControlCapabilityState: Sendable, Equatable {
@@ -77,7 +86,7 @@ final class ACPControlCapabilityRegistry: @unchecked Sendable {
             states[method] = .unsupported
             return false
         }
-        if agentVersion < ACPControlMethod.officialExtensionFloor {
+        if agentVersion < method.officialExtensionFloor {
             states[method] = .unsupported
             return false
         }
@@ -98,7 +107,7 @@ final class ACPControlCapabilityRegistry: @unchecked Sendable {
         guard self.generation == generation else { return .unsupported }
         if let state = states[method] { return state }
         guard let agentVersion else { return .unsupported }
-        if agentVersion < ACPControlMethod.officialExtensionFloor {
+        if agentVersion < method.officialExtensionFloor {
             return .unsupported
         }
         return .unknown

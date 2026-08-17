@@ -223,7 +223,7 @@ final class UsageAndRoutingTests: XCTestCase {
             available: ["grok-4.5", "deepseek-deepseek-v4-flash-0731", "gpt-5.6-terra"],
             customIDs: ["deepseek-deepseek-v4-flash-0731", "gpt-5.6-terra"]
         )
-        XCTAssertEqual(grouped.map(\.label), ["Grok", "Your models"])
+        XCTAssertEqual(grouped.map(\.label), ["Grok CLI", "Your models"])
         XCTAssertEqual(grouped[0].ids, ["grok-4.5"])
         XCTAssertEqual(grouped[1].ids, ["deepseek-deepseek-v4-flash-0731", "gpt-5.6-terra"])
 
@@ -232,7 +232,7 @@ final class UsageAndRoutingTests: XCTestCase {
             customIDs: ["deepseek-deepseek-v4-flash-0731"]
         )
         XCTAssertEqual(customOnly.map(\.label), ["Your models"],
-                       "empty groups render nothing — no dead Grok header for custom-only setups")
+                       "empty groups render nothing — no dead Grok CLI header for custom-only setups")
     }
 
     func testWorkbenchPolishWiring() throws {

@@ -688,6 +688,9 @@ enum AcpEvent: @unchecked Sendable {
     case questionRequest(QuestionRequest)
     case permissionRequest(PermissionRequest)
     case modeChanged(mode: AgentMode)
+    /// Complete effective-model catalog replacement from the exact live CLI
+    /// generation. This is membership authority, not a provider discovery hint.
+    case modelCatalogChanged(ACPModelCatalogEvent)
     case contextUsage(totalTokens: Int)
     case availableCommands([SlashCommand])
     /// A grok `scheduler_*` tool-call `session/update`, forwarded raw for the scheduled-tasks panel.
@@ -708,6 +711,43 @@ enum AcpEvent: @unchecked Sendable {
     /// here interleaved with structured parent-session updates.
     case rawLine(String)
     case error(String)
+}
+
+struct ACPModelCatalogEvent: Sendable, Equatable {
+    struct Model: Sendable, Equatable {
+        let id: String
+        let name: String
+        let contextTokens: Int?
+    }
+
+    let processGeneration: UInt64
+    let currentModelID: String?
+    let models: [Model]
+
+    static func parse(_ raw: [String: Any], processGeneration: UInt64) -> ACPModelCatalogEvent? {
+        let state = raw["modelState"] as? [String: Any] ?? raw
+        guard let available = state["availableModels"] as? [[String: Any]] else { return nil }
+        var seen = Set<String>()
+        let models = available.compactMap { item -> Model? in
+            guard let rawID = item["modelId"] as? String else { return nil }
+            let id = rawID.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !id.isEmpty, seen.insert(id).inserted else { return nil }
+            let name = (item["name"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines)
+            let meta = item["_meta"] as? [String: Any]
+            return Model(
+                id: id,
+                name: name?.isEmpty == false ? name! : id,
+                contextTokens: meta?["totalContextTokens"] as? Int
+            )
+        }
+        // A malformed row cannot silently shrink the official complete catalog.
+        guard models.count == available.count else { return nil }
+        return ACPModelCatalogEvent(
+            processGeneration: processGeneration,
+            currentModelID: state["currentModelId"] as? String,
+            models: models
+        )
+    }
 }
 
 /// The terminal parent-turn receipt emitted by ACP. This is deliberately small
@@ -950,6 +990,7 @@ final class GrokProcess: @unchecked Sendable {
 
     // Populated from initialize modelState so we use real models from grok CLI
     private(set) var availableModelsInfo: [(id: String, name: String, contextTokens: Int?)] = []
+    private(set) var hasAuthoritativeModelCatalog = false
     private(set) var availableSlashCommands: [SlashCommand] = []
     // MARK: - Parsing helpers (instance for access to state if needed)
 
@@ -1367,6 +1408,7 @@ final class GrokProcess: @unchecked Sendable {
             identity: launchIdentity
         )
         availableModelsInfo.removeAll()
+        hasAuthoritativeModelCatalog = false
 
         guard let cli = Self.locateGrokCLI() else {
             var receipt = GrokLaunchReceipt(
@@ -2421,25 +2463,21 @@ final class GrokProcess: @unchecked Sendable {
             acpControlCapabilities.reset(generation: generation, agentVersion: acpAgentVersion)
         }
         if let ms = (res?["modelState"] as? [String: Any]) ?? (meta?["modelState"] as? [String: Any]),
-           let models = ms["availableModels"] as? [[String: Any]] {
-            availableModelsInfo = models.compactMap { m in
-                guard let id = m["modelId"] as? String else { return nil }
-                let name = m["name"] as? String ?? id
-                let meta = m["_meta"] as? [String: Any]
-                return (id: id, name: name, contextTokens: meta?["totalContextTokens"] as? Int)
-            }
+           let event = ACPModelCatalogEvent.parse(ms, processGeneration: activeProcessGeneration ?? 0) {
+            applyModelCatalog(event)
         }
         // Official 1.0.5 waits for the first real catalog on this extension.
         // Use it only when initialize did not already provide models, and never
         // make launch depend on a non-standard method.
-        if availableModelsInfo.isEmpty,
+        if !hasAuthoritativeModelCatalog,
            let acpAgentVersion,
-           acpAgentVersion >= ACPControlMethod.officialExtensionFloor,
+           acpAgentVersion >= ACPControlMethod.models.officialExtensionFloor,
            let catalog = try? await fetchACPModelCatalog() {
             currentModelId = catalog.currentModelID ?? currentModelId
             availableModelsInfo = catalog.availableModels.map {
                 (id: $0.id, name: $0.name, contextTokens: $0.contextTokens)
             }
+            hasAuthoritativeModelCatalog = true
         }
     }
 
@@ -2559,15 +2597,21 @@ final class GrokProcess: @unchecked Sendable {
 
     private func updateModels(from modelState: [String: Any]?) {
         guard let modelState else { return }
-        currentModelId = modelState["currentModelId"] as? String ?? currentModelId
-        if let models = modelState["availableModels"] as? [[String: Any]] {
-            availableModelsInfo = models.compactMap { m in
-                guard let id = m["modelId"] as? String else { return nil }
-                let name = m["name"] as? String ?? id
-                let meta = m["_meta"] as? [String: Any]
-                return (id: id, name: name, contextTokens: meta?["totalContextTokens"] as? Int)
-            }
+        guard let generation = activeProcessGeneration,
+              let event = ACPModelCatalogEvent.parse(modelState, processGeneration: generation) else {
+            currentModelId = modelState["currentModelId"] as? String ?? currentModelId
+            return
         }
+        applyModelCatalog(event)
+    }
+
+    private func applyModelCatalog(_ event: ACPModelCatalogEvent) {
+        guard activeProcessGeneration == event.processGeneration else { return }
+        currentModelId = event.currentModelID ?? currentModelId
+        availableModelsInfo = event.models.map {
+            (id: $0.id, name: $0.name, contextTokens: $0.contextTokens)
+        }
+        hasAuthoritativeModelCatalog = true
     }
 
     private func setupReaders(stdout: Pipe, stderr: Pipe, processGeneration: UInt64) {
@@ -2636,6 +2680,16 @@ final class GrokProcess: @unchecked Sendable {
             if method == "_x.ai/mcp/servers_updated" {
                 observedCLIConfiguredMCPServerNames = Self.mcpServerNames(from: params)
                 launchReceipt?.observedCLIConfiguredMCPServerNames = observedCLIConfiguredMCPServerNames
+                return
+            }
+
+            if method == "x.ai/models/update" || method == "_x.ai/models/update" {
+                guard let event = ACPModelCatalogEvent.parse(
+                    params,
+                    processGeneration: processGeneration
+                ) else { return }
+                applyModelCatalog(event)
+                acpEventContinuation?.yield(.modelCatalogChanged(event))
                 return
             }
 

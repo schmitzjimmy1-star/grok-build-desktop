@@ -1051,7 +1051,7 @@ final class ChatStore {
         let custom = available.filter { customIDs.contains($0) }
         let native = available.filter { !customIDs.contains($0) }
         var groups: [(String, [String])] = []
-        if !native.isEmpty { groups.append(("Grok", native)) }
+        if !native.isEmpty { groups.append(("Grok CLI", native)) }
         if !custom.isEmpty { groups.append(("Your models", custom)) }
         return groups
     }
@@ -4486,6 +4486,9 @@ final class ChatStore {
             isYolo = (mode == .yolo)
             availableModes = process.availableModes
             saveCurrentSessionSelection()
+        case .modelCatalogChanged(let catalog):
+            guard process.activeProcessGeneration == catalog.processGeneration else { break }
+            syncModelsFromProcess()
         case .contextUsage(let totalTokens):
             usedContextTokens = totalTokens
 
@@ -5264,7 +5267,7 @@ final class ChatStore {
     }
 
     private func syncModelsFromProcess() {
-        if !process.availableModelsInfo.isEmpty {
+        if process.hasAuthoritativeModelCatalog {
             builtInModelIDs = Set(process.availableModelsInfo.map(\.id))
             availableModels = process.availableModelsInfo.map { $0.id }
             modelDisplayNames = Dictionary(uniqueKeysWithValues: process.availableModelsInfo.map { ($0.id, $0.name) })
@@ -5273,7 +5276,7 @@ final class ChatStore {
                 return (model.id, tokens)
             })
         }
-        mergeCustomModels()
+        mergeCustomModels(allowMembership: !process.hasAuthoritativeModelCatalog)
     }
 
     private func applyBuiltInModelCatalog(_ models: [GrokModelInfo]) {
@@ -5294,7 +5297,7 @@ final class ChatStore {
 
         let customIDs = availableModels.filter { customModelsByID[$0] != nil }
         availableModels = models.map(\.id) + customIDs.filter { !builtInModelIDs.contains($0) }
-        mergeCustomModels()
+        mergeCustomModels(allowMembership: true)
 
         guard !tabHasExplicitModel else { return }
         if case .legacyUnknown(let legacyModel) = tabModelIntent,
@@ -5315,7 +5318,7 @@ final class ChatStore {
     /// are selectable alongside the agent's built-in models. Without this they are only reachable
     /// by typing `/model <id>`, since the composer list is otherwise driven by the agent's
     /// advertised `modelState.availableModels`. Idempotent — safe to call on every resync.
-    private func mergeCustomModels() {
+    private func mergeCustomModels(allowMembership: Bool = true) {
         let previousCustomModelIDs = Set(customModelsByID.keys)
         let processModelIDs = Set(process.availableModelsInfo.map(\.id))
         availableModels.removeAll { previousCustomModelIDs.contains($0) && !processModelIDs.contains($0) }
@@ -5333,9 +5336,10 @@ final class ChatStore {
         })
 
         for model in customModels {
-            if !availableModels.contains(model.id) {
+            if allowMembership, !availableModels.contains(model.id) {
                 availableModels.append(model.id)
             }
+            guard allowMembership || availableModels.contains(model.id) else { continue }
             // Prefer the explicit display name, then the provider model name (what the connected
             // agent reports), then the table id — so the label is consistent before/after connect.
             let name = model.name.trimmingCharacters(in: .whitespacesAndNewlines)
