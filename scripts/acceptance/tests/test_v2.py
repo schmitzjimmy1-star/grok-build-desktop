@@ -94,6 +94,65 @@ class Slice4V2Contracts(unittest.TestCase):
         with self.assertRaises(SchemaError):
             _load_temp(raw)
 
+    def test_tracked_native_read_fixtures_are_hashed_and_missing_fixture_stays_absent(self) -> None:
+        ordered = next(packet for packet in self.manifest["packets"] if packet["id"] == "OAI-H-ORD3")
+        self.assertEqual(
+            [item["identity"] for item in ordered["readFixtures"]],
+            ["ONE", "TWO", "THREE"],
+        )
+        recovery = next(packet for packet in self.manifest["packets"] if packet["id"] == "OR-OW-CONT-T2")
+        self.assertEqual(
+            [(item["identity"], item["expectedStatus"]) for item in recovery["readFixtures"]],
+            [("MISSING", "failed"), ("RECOVERED", "succeeded")],
+        )
+        self.assertFalse((ROOT / "fixtures/.slice4-native-tools/MISSING.txt").exists())
+
+        raw = json.loads(MANIFEST.read_text(encoding="utf-8"))
+        raw["packets"][2]["readFixtures"][0]["sha256"] = "0" * 64
+        with self.assertRaises(SchemaError):
+            _load_temp(raw)
+
+        raw = json.loads(MANIFEST.read_text(encoding="utf-8"))
+        raw["packets"][7]["readFixtures"][0]["sha256"] = "0" * 64
+        with self.assertRaises(SchemaError):
+            _load_temp(raw)
+
+    def test_native_tool_receipts_require_exact_qualified_ids_and_read_identity_order(self) -> None:
+        rows = copy.deepcopy(self.rows)
+        ordered = _terminal(rows, "OAI-H-ORD3")
+        ordered["toolReceipts"][0]["qualifiedToolID"] = "terminal"
+        with self.assertRaises(ReceiptError):
+            evaluate(self.manifest, rows)
+
+        row = copy.deepcopy(self.rows[1])
+        row["toolReceipts"] = [{
+            "family": "terminal", "qualifiedToolID": "GrokBuild:read_file",
+            "identity": "ONE", "status": "succeeded", "order": 1,
+        }]
+        with self.assertRaises(ReceiptError):
+            _validate_row(row)
+
+        manifest = copy.deepcopy(self.manifest)
+        packet = next(item for item in manifest["packets"] if item["id"] == "OAI-H-ORD3")
+        packet["allowedTools"].append("GrokBuild:update_plan")
+        rows = copy.deepcopy(self.rows)
+        ordered = _terminal(rows, "OAI-H-ORD3")
+        ordered["toolReceipts"][0].update({"family": "update_plan", "qualifiedToolID": "GrokBuild:update_plan"})
+        with self.assertRaisesRegex(ReceiptError, "forbidden tool"):
+            evaluate(manifest, rows)
+
+        rows = copy.deepcopy(self.rows)
+        recovery = _terminal(rows, "OR-OW-CONT-T2")
+        recovery["toolReceipts"][0]["identity"] = "RECOVERED"
+        with self.assertRaises(ReceiptError):
+            evaluate(self.manifest, rows)
+
+    def test_unqualified_tool_policy_is_rejected_by_schema(self) -> None:
+        raw = json.loads(MANIFEST.read_text(encoding="utf-8"))
+        raw["packets"][2]["forbiddenTools"] = ["update_plan"]
+        with self.assertRaises(SchemaError):
+            _load_temp(raw)
+
     def test_ledger_refuses_a_preexisting_symlink(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
@@ -198,17 +257,19 @@ def _accepted_rows(manifest: dict) -> list[dict]:
 
 
 def _workload(packet: dict) -> tuple[list[dict], list[dict]]:
-    if packet["workload"] == "orderedMultiTool":
-        return ([{"family": "terminal", "identity": value, "status": "succeeded", "order": index}
-                 for index, value in enumerate(packet["orderedGroups"][0], 1)], [])
-    if packet["workload"] == "recovery":
-        return ([{"family": "terminal", "identity": None, "status": status, "order": index}
-                 for index, status in enumerate(packet["orderedGroups"][0], 1)], [])
+    if packet["readFixtures"]:
+        return ([
+            {
+                "family": "read_file", "qualifiedToolID": "GrokBuild:read_file",
+                "identity": fixture["identity"], "status": fixture["expectedStatus"], "order": index,
+            }
+            for index, fixture in enumerate(packet["readFixtures"], 1)
+        ], [])
     if packet["childTopology"] is not None:
         tools = [
-            {"family": "spawn_subagent", "identity": None, "status": "succeeded", "order": 1},
-            {"family": "spawn_subagent", "identity": None, "status": "succeeded", "order": 2},
-            {"family": "wait_all", "identity": None, "status": "succeeded", "order": 3},
+            {"family": "task", "qualifiedToolID": "GrokBuild:task", "identity": None, "status": "succeeded", "order": 1},
+            {"family": "task", "qualifiedToolID": "GrokBuild:task", "identity": None, "status": "succeeded", "order": 2},
+            {"family": "wait_tasks", "qualifiedToolID": "GrokBuild:wait_tasks", "identity": None, "status": "succeeded", "order": 3},
         ]
         workers = [
             {"role": role, "status": "completed", "childBackendSessionID": f"child-{role.lower()}",

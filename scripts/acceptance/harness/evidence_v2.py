@@ -213,18 +213,22 @@ def _message_for_prompt(messages: list[Any], prompt: str, marker: str) -> dict[s
 
 
 def _tools(trace: dict[str, Any], packet: dict[str, Any]) -> list[dict[str, Any]]:
-    expected_identities = {
-        value for group in packet.get("orderedGroups") or [] for value in group
-        if value not in {"failed", "succeeded"}
-    }
+    expected_fixtures = packet.get("readFixtures") or []
     rows: list[dict[str, Any]] = []
     for order, tool in enumerate(trace.get("tools") or [], 1):
         if not isinstance(tool, dict):
             continue
-        searchable = " ".join(str(tool.get(key) or "") for key in ("title", "resultDetail"))
-        identity = next((item for item in expected_identities if item in searchable), None)
+        searchable = " ".join(
+            str(tool.get(key) or "")
+            for key in ("title", "resultDetail", "path", "filePath", "rawInput")
+        )
+        identity = next(
+            (fixture["identity"] for fixture in expected_fixtures if fixture["workspacePath"] in searchable),
+            None,
+        )
         rows.append({
             "family": _tool_family(tool),
+            "qualifiedToolID": _qualified_tool_id(tool),
             "identity": identity,
             "status": _tool_status(tool.get("status")),
             "order": order,
@@ -253,11 +257,13 @@ def _workers(checkpoint: dict[str, Any], packet: dict[str, Any]) -> list[dict[st
 
 
 def _tool_family(tool: dict[str, Any]) -> str:
-    haystack = " ".join(str(tool.get(key) or "") for key in ("kind", "qualifiedToolName", "title")).lower()
-    for family in ("spawn_subagent", "wait_all", "terminal"):
-        if family in haystack or family.replace("_", " ") in haystack:
-            return family
-    return "unrecognized"
+    qualified = _qualified_tool_id(tool)
+    return qualified.rsplit(":", 1)[-1] if qualified else "unrecognized"
+
+
+def _qualified_tool_id(tool: dict[str, Any]) -> str:
+    value = str(tool.get("qualifiedToolName") or tool.get("qualifiedToolID") or "").strip()
+    return value if value.startswith("GrokBuild:") else "unrecognized"
 
 
 def _tool_status(value: Any) -> str:

@@ -55,10 +55,13 @@ PACKET_FIELDS = {
     "forbiddenTools",
     "requiredResponseTerms",
     "orderedGroups",
+    "readFixtures",
     "childTopology",
     "continuation",
     "frozenPricing",
 }
+READ_FIXTURE_FIELDS = {"identity", "workspacePath", "sha256", "expectedStatus"}
+READ_FIXTURE_ROOT = "scripts/acceptance/fixtures/.slice4-native-tools/"
 ROUTE_FIELDS = {
     "kind",
     "selectedModelID",
@@ -79,6 +82,13 @@ def _strings(value: Any, where: str) -> list[str]:
     if not isinstance(value, list) or any(not isinstance(item, str) or not item for item in value):
         raise SchemaError(f"{where}: expected non-empty strings")
     return value
+
+
+def _native_tool_ids(value: Any, where: str) -> list[str]:
+    tools = _strings(value, where)
+    if any(not tool.startswith("GrokBuild:") or tool == "GrokBuild:" for tool in tools):
+        raise SchemaError(f"{where}: tools must be exact qualified GrokBuild IDs")
+    return tools
 
 
 def _integer(value: Any, where: str, *, minimum: int | None = None) -> int:
@@ -137,8 +147,8 @@ def load_manifest(path: Path, *, run_id: str | None = None) -> dict[str, Any]:
         raise SchemaError("campaign maxAttempts must be exactly 1")
     if raw["effort"] != "low" or raw["parentAgent"] != "default":
         raise SchemaError("campaign effort must be low and parentAgent default")
-    if "update_plan" not in _strings(raw["forbiddenToolsDefault"], "forbiddenToolsDefault"):
-        raise SchemaError("forbiddenToolsDefault must include update_plan")
+    if "GrokBuild:update_plan" not in _native_tool_ids(raw["forbiddenToolsDefault"], "forbiddenToolsDefault"):
+        raise SchemaError("forbiddenToolsDefault must include GrokBuild:update_plan")
     if not isinstance(raw["packets"], list) or not raw["packets"]:
         raise SchemaError("packets must be a non-empty list")
 
@@ -196,11 +206,11 @@ def load_manifest(path: Path, *, run_id: str | None = None) -> dict[str, Any]:
         for key in ("modelIsPinned", "servingProviderIsProven"):
             if not isinstance(route[key], bool):
                 raise SchemaError(f"{packet_id}: routeReceipt.{key} must be boolean")
-        allowed = _strings(packet["allowedTools"], f"{packet_id}.allowedTools")
-        required = _strings(packet["requiredTools"], f"{packet_id}.requiredTools")
-        forbidden = _strings(packet["forbiddenTools"], f"{packet_id}.forbiddenTools")
+        allowed = _native_tool_ids(packet["allowedTools"], f"{packet_id}.allowedTools")
+        required = _native_tool_ids(packet["requiredTools"], f"{packet_id}.requiredTools")
+        forbidden = _native_tool_ids(packet["forbiddenTools"], f"{packet_id}.forbiddenTools")
         _strings(packet["requiredResponseTerms"], f"{packet_id}.requiredResponseTerms")
-        if "update_plan" not in forbidden or set(allowed) & set(forbidden):
+        if "GrokBuild:update_plan" not in forbidden or set(allowed) & set(forbidden):
             raise SchemaError(f"{packet_id}: invalid tool allow/deny sets")
         if not set(required).issubset(allowed):
             raise SchemaError(f"{packet_id}: required tools must be allowed")
@@ -208,6 +218,8 @@ def load_manifest(path: Path, *, run_id: str | None = None) -> dict[str, Any]:
             raise SchemaError(f"{packet_id}: orderedGroups must be a list")
         for group in packet["orderedGroups"]:
             _strings(group, f"{packet_id}.orderedGroups[]")
+        _validate_read_fixtures(path, packet_id, packet["readFixtures"])
+        _validate_native_read_workload(packet_id, packet)
         _validate_topology(packet_id, packet["childTopology"])
         _validate_continuation(packet_id, packet["continuation"])
         _validate_pricing(packet_id, packet["frozenPricing"])
@@ -224,8 +236,71 @@ def _validate_topology(packet_id: str, topology: Any) -> None:
         return
     if not isinstance(topology, dict) or set(topology) != {"count", "roles", "collection", "maxSimultaneous"}:
         raise SchemaError(f"{packet_id}: invalid childTopology")
-    if topology != {"count": 2, "roles": ["LEFT", "RIGHT"], "collection": "wait_all", "maxSimultaneous": 2}:
-        raise SchemaError(f"{packet_id}: childTopology must be exact LEFT/RIGHT wait_all")
+    if topology != {"count": 2, "roles": ["LEFT", "RIGHT"], "collection": "GrokBuild:wait_tasks", "maxSimultaneous": 2}:
+        raise SchemaError(f"{packet_id}: childTopology must be exact LEFT/RIGHT GrokBuild:wait_tasks")
+
+
+def _validate_read_fixtures(manifest_path: Path, packet_id: str, fixtures: Any) -> None:
+    if not isinstance(fixtures, list):
+        raise SchemaError(f"{packet_id}: readFixtures must be a list")
+    seen_paths: set[str] = set()
+    seen_identities: set[str] = set()
+    repo_root = manifest_path.parents[3]
+    fixture_root = (repo_root / READ_FIXTURE_ROOT).resolve()
+    for index, fixture in enumerate(fixtures):
+        where = f"{packet_id}.readFixtures[{index}]"
+        if not isinstance(fixture, dict):
+            raise SchemaError(f"{where}: expected an object")
+        _exact_fields(fixture, READ_FIXTURE_FIELDS, where)
+        identity = _required_string(fixture["identity"], f"{where}.identity")
+        workspace_path = _required_string(fixture["workspacePath"], f"{where}.workspacePath")
+        status = fixture["expectedStatus"]
+        if status not in {"succeeded", "failed"}:
+            raise SchemaError(f"{where}.expectedStatus must be succeeded or failed")
+        if identity in seen_identities or workspace_path in seen_paths:
+            raise SchemaError(f"{where}: duplicate read fixture identity or path")
+        seen_identities.add(identity)
+        seen_paths.add(workspace_path)
+        if not workspace_path.startswith(READ_FIXTURE_ROOT) or Path(workspace_path).is_absolute():
+            raise SchemaError(f"{where}.workspacePath must stay under the tracked native fixture root")
+        resolved = (repo_root / workspace_path).resolve()
+        if fixture_root not in resolved.parents:
+            raise SchemaError(f"{where}.workspacePath escapes the tracked native fixture root")
+        sha = fixture["sha256"]
+        if status == "succeeded":
+            if not isinstance(sha, str) or re.fullmatch(r"[0-9a-f]{64}", sha) is None:
+                raise SchemaError(f"{where}.sha256 must be a SHA-256 for a successful read")
+            try:
+                actual = hashlib.sha256(resolved.read_bytes()).hexdigest()
+            except OSError as exc:
+                raise SchemaError(f"{where}: tracked read fixture is unavailable") from exc
+            if actual != sha:
+                raise SchemaError(f"{where}: tracked read fixture SHA-256 mismatch")
+        else:
+            if sha is not None:
+                raise SchemaError(f"{where}.sha256 must be null for a missing-path read")
+            if resolved.exists():
+                raise SchemaError(f"{where}: missing-path fixture must remain absent")
+
+
+def _validate_native_read_workload(packet_id: str, packet: dict[str, Any]) -> None:
+    fixtures = packet["readFixtures"]
+    if not fixtures:
+        if packet["workload"] in {"orderedMultiTool", "recovery"}:
+            raise SchemaError(f"{packet_id}: native read workload requires tracked readFixtures")
+        return
+    if packet["allowedTools"] != ["GrokBuild:read_file"] or packet["requiredTools"] != ["GrokBuild:read_file"]:
+        raise SchemaError(f"{packet_id}: native read workload must allow and require only GrokBuild:read_file")
+    if len(packet["orderedGroups"]) != 1:
+        raise SchemaError(f"{packet_id}: native read workload requires exactly one ordered group")
+    identities = [fixture["identity"] for fixture in fixtures]
+    if packet["orderedGroups"][0] != identities:
+        raise SchemaError(f"{packet_id}: ordered read identities must match tracked fixture order")
+    statuses = [fixture["expectedStatus"] for fixture in fixtures]
+    if packet["workload"] == "orderedMultiTool" and any(status != "succeeded" for status in statuses):
+        raise SchemaError(f"{packet_id}: ordered native reads must all succeed")
+    if packet["workload"] == "recovery" and statuses != ["failed", "succeeded"]:
+        raise SchemaError(f"{packet_id}: native recovery must be missing-path failure then successful read")
 
 
 def _validate_continuation(packet_id: str, continuation: Any) -> None:

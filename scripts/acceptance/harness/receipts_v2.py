@@ -35,7 +35,7 @@ USAGE_FIELDS = {
 COST_FIELDS = {
     "providerCostUsdTicks", "providerCostIsPartial", "frozenEstimateUsd", "reconciliation",
 }
-TOOL_FIELDS = {"family", "identity", "status", "order"}
+TOOL_FIELDS = {"family", "qualifiedToolID", "identity", "status", "order"}
 WORKER_FIELDS = {"role", "status", "childBackendSessionID", "toolCallCount", "runtimeModelID"}
 CLEANUP_FIELDS = {"localTab", "backendSession"}
 COORDINATION_FIELDS = {"maximumUsefulConcurrency"}
@@ -144,6 +144,10 @@ def _validate_terminal_row(row: dict[str, Any]) -> None:
         _exact_object(tool, TOOL_FIELDS, f"toolReceipts[{index}]")
         if not isinstance(tool["family"], str) or not tool["family"]:
             raise ReceiptError("tool family must be non-empty")
+        if not isinstance(tool["qualifiedToolID"], str) or not tool["qualifiedToolID"].startswith("GrokBuild:"):
+            raise ReceiptError("tool qualifiedToolID must be an exact native GrokBuild ID")
+        if tool["family"] != tool["qualifiedToolID"].split(":", 1)[1]:
+            raise ReceiptError("tool family must match its exact native GrokBuild ID")
         if tool["identity"] is not None and not isinstance(tool["identity"], str):
             raise ReceiptError("tool identity must be a string or null")
         if tool["status"] not in {"succeeded", "failed", "cancelled", "unknown"}:
@@ -418,23 +422,24 @@ def _check_workload(packet: dict[str, Any], terminal: dict[str, Any]) -> None:
     tools = terminal["toolReceipts"]
     if [tool["order"] for tool in tools] != list(range(1, len(tools) + 1)):
         raise ReceiptError(f"{packet['id']}: tool order receipts are not contiguous")
-    families = [tool["family"] for tool in tools]
-    if set(families) - set(packet["allowedTools"]):
+    qualified = [tool["qualifiedToolID"] for tool in tools]
+    if set(qualified) - set(packet["allowedTools"]):
         raise ReceiptError(f"{packet['id']}: unallowed tool observed")
-    if set(packet["requiredTools"]) - set(families):
+    if set(packet["requiredTools"]) - set(qualified):
         raise ReceiptError(f"{packet['id']}: required tool missing")
-    if set(families) & set(packet["forbiddenTools"]):
+    if set(qualified) & set(packet["forbiddenTools"]):
         raise ReceiptError(f"{packet['id']}: forbidden tool observed")
     if packet["workload"] == "noTool" and tools:
         raise ReceiptError(f"{packet['id']}: no-tool packet used a tool")
     if any(tool["status"] != "succeeded" for tool in tools) and packet["workload"] != "recovery":
         raise ReceiptError(f"{packet['id']}: tool did not settle successfully")
+    expected_fixtures = packet.get("readFixtures") or []
+    if expected_fixtures:
+        expected_statuses = [fixture["expectedStatus"] for fixture in expected_fixtures]
+        if [tool["status"] for tool in tools] != expected_statuses:
+            raise ReceiptError(f"{packet['id']}: native read status evidence mismatch")
     for group in packet["orderedGroups"]:
-        actual = (
-            [tool["status"] for tool in tools]
-            if packet["workload"] == "recovery"
-            else [tool["identity"] for tool in tools]
-        )
+        actual = [tool["identity"] for tool in tools]
         if actual != group:
             raise ReceiptError(f"{packet['id']}: ordered tool evidence mismatch")
         if len(tools) != len(group):
@@ -453,9 +458,9 @@ def _check_workload(packet: dict[str, Any], terminal: dict[str, Any]) -> None:
         child_ids = [worker["childBackendSessionID"] for worker in workers]
         if len(set(child_ids)) != len(child_ids):
             raise ReceiptError(f"{packet['id']}: child backend identities are not unique")
-        if families.count("spawn_subagent") != topology["count"] or families.count(topology["collection"]) != 1:
+        if qualified.count("GrokBuild:task") != topology["count"] or qualified.count(topology["collection"]) != 1:
             raise ReceiptError(f"{packet['id']}: child coordination tools mismatch")
-        if families != ["spawn_subagent", "spawn_subagent", topology["collection"]]:
+        if qualified != ["GrokBuild:task", "GrokBuild:task", topology["collection"]]:
             raise ReceiptError(f"{packet['id']}: child coordination tool order mismatch")
         coordination = terminal["coordination"]
         if not isinstance(coordination, dict) or coordination.get("maximumUsefulConcurrency") != topology["maxSimultaneous"]:
