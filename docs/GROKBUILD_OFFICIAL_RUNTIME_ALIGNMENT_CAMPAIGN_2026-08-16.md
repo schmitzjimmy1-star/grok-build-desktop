@@ -392,5 +392,13 @@ Focused typed replay/control/recovery/reconnect contracts pass 25/25. Full
 `make test` passes 929/929. Production `swift build -c release` passes; symbol
 and string inspection finds no `GrokSessionTranscriptImporter`, private child
 reader, `chat_history.jsonl`, `updates.jsonl`, or `.grok/sessions` in the
-Release binary. Pending code commit, clean candidate ship, installed acceptance,
-exact-head CI, merge, and merged-main closeout.
+Release binary. Code-bearing candidate `e3b290475de83a1dd3f95b810307d4b5e3fa691f`
+completed clean `make ship` at 929/929. The installed executable matches dist at
+SHA-256 `b984f66d…619ee`, Team `DD2GCQJVB4`, deep/strict signing, and no
+quarantine. Nonbillable installed Computer Use resumed one existing saved backend
+without a prompt; its one existing user turn remained singular after typed replay,
+the live model confirmed, and About reported
+`0.1.22 Personal • codex/official-runtime-s3-session-truth @ e3b29047` with
+`grok CLI: 1.0.4 [stable]`. Native Quit produced process-zero samples at
+`2026-08-17T11:42:41-0400` and `2026-08-17T11:42:56-0400`. Exact-head CI,
+merge, and merged-main closeout remain pending.

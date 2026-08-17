@@ -105,8 +105,15 @@ and reconnect contracts pass 25/25. Full `make test` passes 929/929. Production
 `swift build -c release` passes, and symbol/string
 inspection finds no `GrokSessionTranscriptImporter`, private child reader,
 `chat_history.jsonl`, `updates.jsonl`, or `.grok/sessions` in the Release binary.
-Code commit, clean ship, installed acceptance, exact-head PR/CI/merge, merged-main
-ship, and process-zero closeout remain pending. Slice 4 stays locked.
+Code-bearing candidate `e3b290475de83a1dd3f95b810307d4b5e3fa691f` completed
+clean `make ship` at 929/929. The installed candidate matches dist at SHA-256
+`b984f66d…619ee`, Team `DD2GCQJVB4`, deep/strict signing, and no quarantine.
+Nonbillable installed Computer Use resumed one saved backend without a prompt;
+its one existing user turn remained singular after typed replay, the live model
+confirmed, and About reported branch `codex/official-runtime-s3-session-truth`,
+commit `e3b29047`, and CLI `1.0.4 [stable]`. Native Quit produced process-zero
+samples at `2026-08-17T11:42:41-0400` and `2026-08-17T11:42:56-0400`.
+Exact-head PR/CI/merge and merged-main closeout remain pending. Slice 4 stays locked.
 
 ## Visual Quiet — 2026-08-15 (Phase 6 welcome extraction authorized)
 
