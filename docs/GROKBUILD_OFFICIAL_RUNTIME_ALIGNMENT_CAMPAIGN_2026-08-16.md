@@ -1,12 +1,12 @@
 # GrokBuild Official Runtime Alignment Campaign — 2026-08-16
 
-Status: **active; Slice 1 authorized.** Jimmy authorized a rigorous merge-per-slice
+Status: **active; Slice 2 authorized.** Jimmy authorized a rigorous merge-per-slice
 campaign on 2026-08-16. Every slice gets its own branch, explicit commits, ready
 pull request, exact-head required checks, normal merge, merged-main installation,
 and process-zero closeout before the next slice begins.
 
 Current baseline: clean `main == personal/main` at
-`e6c0925ff847b5f51ff171b7ccf25aef4eaa97ce` (PR #114). The installed app is
+`f00b99216364cbedb47de221073cf3736d8012ca` (PR #115). The installed app is
 the same clean merged-main source, and the dist and installed executables match
 byte-for-byte. Installed CLI authority is `grok 1.0.4 (d846eb93d94d) [stable]`.
 Official 1.0.5 source informs this campaign, but no CLI upgrade is authorized by
@@ -31,8 +31,8 @@ Grok CLI.
 | Slice | Title | Authorized job | Status |
 |---|---|---|---|
 | **0** | **Restore CLI execution ownership** | Disable ACP client FS/terminal capabilities; remove Swift reverse executors; fail surprise reverse execution closed; retain typed tool receipts. | **Complete — PR #114** |
-| **1** | **Contain model-config corruption** | Refuse unsafe nested-model rewrites, add official nested-TOML fixtures, then choose a structure-preserving ownership boundary. | **Active** |
-| **2** | **Typed ACP control spine** | Add a version/capability-aware facade over each existing ACP connection; first methods are models, usage, session metadata, and bounded session updates. | Locked |
+| **1** | **Contain model-config corruption** | Refuse unsafe nested-model rewrites, add official nested-TOML fixtures, then choose a structure-preserving ownership boundary. | **Complete — PR #115** |
+| **2** | **Typed ACP control spine** | Add a version/capability-aware facade over each existing ACP connection; first methods are models, usage, session metadata, and bounded session updates. | **Active** |
 | **3** | **Session truth and recovery** | Consume typed `session/load` replay, reconcile the local presentation cache, and retire private root/child storage reads after a shadow-parity gate. | Locked |
 | **4** | **Official provider and open-weight lane** | Use official provider definitions, resolve the keyless-endpoint credential hazard, and pilot one Keychain-backed auth helper without bundling a model runtime. | Locked |
 | **5** | **Controls behave like controls** | Replace model-prompt control actions where official methods exist; separate cancel, worker cancel, and disconnect semantics. | Locked |
@@ -204,6 +204,76 @@ process-zero samples at `2026-08-17T04:05:06-0400` and
 `2026-08-17T04:05:14-0400`.
 
 No prompt, provider validation/fetch, backend process, credential read/write,
-live `~/.grok/config.toml` mutation, or CLI upgrade occurred. Installed CLI
-authority remains `grok 1.0.4 (d846eb93d94d) [stable]`. Publication and
-merged-main closeout remain; Slice 2 is still locked.
+live `~/.grok/config.toml` mutation, or CLI upgrade occurred. PR #115 merged
+normally as `f00b99216364cbedb47de221073cf3736d8012ca`. Merged-main `make ship`
+passed **914/914** and installed that exact clean merge with matching dist/install
+SHA-256 `5bd4f7412b1e2dd947a84808bd2ae76d104f167285db21ba686d59b600561043`,
+Team `DD2GCQJVB4`, deep/strict signing, and no quarantine. Local `main`,
+`personal/main`, and installed identity reconciled; crash-recovery process-zero
+samples at `2026-08-17T08:38:07-0400` and `2026-08-17T08:38:12-0400` confirmed
+the closeout. Installed CLI authority remains
+`grok 1.0.4 (d846eb93d94d) [stable]`. Slice 1 is complete.
+
+## Slice 2 — Typed ACP control spine
+
+### Ownership decision
+
+Slice 2 adds no second process or runtime. Each `GrokProcess` uses its existing
+per-tab stdio connection for read-only official controls. The exact
+`initialize._meta.agentVersion` and one bounded method probe determine whether
+an `x.ai/*` method exists for that process generation; a missing version or a
+known Grok version below 1.0.5 never puts those calls on the wire. A new
+generation resets every cached capability instead of inheriting truth from an
+older CLI process.
+
+The first typed contracts follow official 1.0.5 source:
+`x.ai/models/list`, `x.ai/session/usage`, `x.ai/session/info`, and bounded
+`x.ai/session/updates`. Models and session info unwrap xAI's extension-result
+envelope; usage and update pages retain their direct response shapes. Unknown,
+method-not-found, malformed, timed-out, and stale-generation outcomes remain
+distinct failures rather than empty success.
+
+### Exact scope
+
+- Capture and semantically compare the agent version from the live initialize
+  packet; cache support per exact method and process generation.
+- Add typed, credential-free models for the catalog, cumulative session usage,
+  resident-session metadata, and persisted update envelopes.
+- Cap every session-update page at 512 rows. Child receipt reconciliation may
+  walk at most four 256-row tail pages and keeps child prose excluded.
+- Prefer official `x.ai/session/updates` for terminal child tool receipts on the
+  current connection. Retain the existing private child-ledger reader only as a
+  clearly named compatibility fallback for installed Grok 1.0.4; Slice 3 owns
+  parity acceptance and removal.
+- If initialize has no model catalog on 1.0.5 or newer, use the official model
+  list on the same connection without making launch depend on an extension.
+- Pin exact fake-agent wire fixtures for supported 1.0.5, known-old 1.0.4,
+  method-not-found caching, typed response shapes, and request bounds.
+- Update architecture, README, campaign, and canonical outstanding state.
+
+### Exclusions
+
+- No CLI upgrade, provider/model call, billable prompt, authentication,
+  credential/Keychain access, config mutation, session deletion, or user-state
+  cleanup.
+- No `session/load` replay consumption, root history recovery, or removal of
+  private storage fallbacks; those are Slice 3.
+- No control mutations, task/fork/worktree redesign, second ACP process,
+  persistent leader/control daemon, coordinator split, or UI redesign.
+- No Slice 3 implementation, tag, GitHub release, notarization, write to
+  `origin`, force push, or broad cleanup.
+
+### Acceptance and publication
+
+1. Focused fake-agent contracts prove all four methods share the existing pipe,
+   known-old calls stay off wire, method-not-found is probed once, update pages
+   are bounded, and child receipts exclude prose.
+2. `make test`, `git diff --check`, and exact-path review pass.
+3. Commit the code-bearing candidate; run clean `make ship` and reconcile exact
+   installed identity, executable parity, signing, and quarantine.
+4. Installed Computer Use verifies ordinary launch/navigation and exact build
+   identity without Send, Resume, provider validation, or CLI upgrade.
+5. Push only to `personal`, open a ready PR, verify exact-head required CI, and
+   merge normally with `--match-head-commit`.
+6. Fast-forward local `main`, run merged-main `make ship`, reconcile parity, and
+   take two process-zero samples. Only then may Slice 3 be considered.

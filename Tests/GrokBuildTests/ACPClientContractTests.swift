@@ -25,7 +25,7 @@ final class ACPClientContractTests: XCTestCase {
             encoding: .utf8
         )
 
-        let receipts = try XCTUnwrap(process.loadChildToolReceipts(
+        let receipts = try XCTUnwrap(process.loadLegacyChildToolReceipts(
             childID: childID,
             workspacePath: workspace,
             sessionsRoot: root
@@ -42,7 +42,7 @@ final class ACPClientContractTests: XCTestCase {
 
     func testChildSessionLedgerRejectsTraversalIdentity() {
         let process = GrokProcess()
-        XCTAssertNil(process.loadChildToolReceipts(
+        XCTAssertNil(process.loadLegacyChildToolReceipts(
             childID: "../other",
             workspacePath: URL(fileURLWithPath: "/tmp/workspace"),
             sessionsRoot: FileManager.default.temporaryDirectory

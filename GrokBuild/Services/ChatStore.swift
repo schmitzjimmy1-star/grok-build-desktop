@@ -4121,7 +4121,7 @@ final class ChatStore {
 
     private func consumeOutput() async {
         for await event in process.acpEventStream {
-            handleAcpEvent(event)
+            await handleAcpEvent(event)
         }
     }
 
@@ -4163,7 +4163,7 @@ final class ChatStore {
         lastTurnEventAt = date
     }
 
-    private func handleAcpEvent(_ event: AcpEvent) {
+    private func handleAcpEvent(_ event: AcpEvent) async {
         if isStreaming { touchTurnActivity() }
         switch event {
         case .messageChunk(let text):
@@ -4293,7 +4293,7 @@ final class ChatStore {
             // barrier have already crossed ChatStore. Any worker still active here
             // is explicitly unresolved, never successful by implication from the
             // parent answer.
-            reconcileCurrentTurnChildToolReceipts()
+            await reconcileCurrentTurnChildToolReceipts()
             backgroundTaskTracker.markUnsettledSubagents(only: currentTurnWorkerActivityIDs)
             backgroundActivities = backgroundTaskTracker.activities
             settleToolCallsAtTurnBarrier()
@@ -4435,7 +4435,7 @@ final class ChatStore {
         }
     }
 
-    private func reconcileCurrentTurnChildToolReceipts() {
+    private func reconcileCurrentTurnChildToolReceipts() async {
         let candidates = backgroundTaskTracker.activities.filter { activity in
             guard activity.kind == .subagent,
                   currentTurnWorkerActivityIDs.contains(activity.id),
@@ -4447,7 +4447,10 @@ final class ChatStore {
             guard let childID = activity.childID else { continue }
             backgroundTaskTracker.reconcileChildToolReceipts(
                 childID: childID,
-                receipts: process.loadChildToolReceipts(childID: childID)
+                receipts: await process.fetchChildToolReceipts(
+                    childID: childID,
+                    expectedToolCallCount: activity.toolCallCount
+                )
             )
         }
         backgroundActivities = backgroundTaskTracker.activities

@@ -31,19 +31,19 @@
 >
 > **Current campaign:** 2026-08-16 Official Runtime Alignment —
 > [`docs/GROKBUILD_OFFICIAL_RUNTIME_ALIGNMENT_CAMPAIGN_2026-08-16.md`](GROKBUILD_OFFICIAL_RUNTIME_ALIGNMENT_CAMPAIGN_2026-08-16.md).
-> Jimmy authorized this merge-per-slice campaign on 2026-08-16. Slice 0 is
-> complete in PR #114. Slice 1 is the only active implementation scope: contain
-> custom-model config corruption by refusing unsupported advanced TOML rewrites,
-> pin official-shaped fixtures, surface the read-only boundary, and complete the
-> standard commit, installed-app, PR, exact-head CI, merge, merged-main install,
-> and process-zero gates. No later slice may begin before Slice 1 merges and
-> closes.
+> Jimmy authorized this merge-per-slice campaign on 2026-08-16. Slices 0 and 1
+> are complete in PRs #114 and #115. Slice 2 is the only active implementation
+> scope: add a typed, version/capability-aware read-only facade to each existing
+> per-tab ACP connection for models, usage, resident-session metadata, and bounded
+> session updates. No new runtime, CLI upgrade, provider call, config mutation,
+> replay recovery, or later-slice work is authorized. No later slice may begin
+> before Slice 2 merges and closes.
 >
 > Prior campaigns: 2026-08-15 Visual Quiet complete and merged through `3947136` (PR #113);
 > 2026-08-14 Residual Closeout (Phases 0–6) complete and merged as `4613bde` (PR #94);
 > 2026-08-13 campaign (Slices 0–7) closed at merge `c0895ee` (PR #86).
 
-## Official Runtime Alignment — 2026-08-16 (Slice 1 active)
+## Official Runtime Alignment — 2026-08-16 (Slice 2 active)
 
 Authorized spec is
 [`docs/GROKBUILD_OFFICIAL_RUNTIME_ALIGNMENT_CAMPAIGN_2026-08-16.md`](GROKBUILD_OFFICIAL_RUNTIME_ALIGNMENT_CAMPAIGN_2026-08-16.md).
@@ -52,16 +52,14 @@ Slice 0 is complete: PR #114 merged as
 903/903 with exact installed identity, matching dist/install executable, and two
 process-zero samples.
 
-Slice 1 contains the valid official 1.0.5 advanced-model TOML corruption path.
-It may make `CustomModelStore` parse only exact flat model tables, conservatively
-detect nested model/provider structures, fail writes inside the locked atomic
-update, surface a visible read-only notice, and add exact-byte preservation
-fixtures. The ownership decision is fail-closed containment: advanced Grok
-model configuration stays CLI-owned until a semantic representation or official
-mutation contract exists. Live config/credential changes, CLI upgrades, provider
-calls, billable prompts, ACP control work, and Slice 2 are out of scope.
+Slice 1 is complete. Code-bearing commit
+`53328c1d5559002e06afc909cecd415de6cc9999` contained the fail-closed advanced
+model-config boundary. PR #115 merged as
+`f00b99216364cbedb47de221073cf3736d8012ca`; merged-main `make ship` passed
+914/914 and installed that exact clean merge with matching dist/install SHA-256
+`5bd4f741…00561043`, Team `DD2GCQJVB4`, deep/strict signing, no quarantine, and
+two crash-recovery process-zero samples.
 
-Candidate receipt: code-bearing commit `53328c1d5559002e06afc909cecd415de6cc9999`.
 Two independent Sol Medium reviewers returned **COMMIT**; focused contracts
 passed 101/101, and both the clean full suite and candidate `make ship` passed
 914/914. The installed candidate carries exact clean stamp `53328c1d`, matching
@@ -69,7 +67,21 @@ dist/install SHA-256 `3289d021…d4fe8c`, Team `DD2GCQJVB4`, deep/strict signing
 and no quarantine. Nonbillable installed Computer Use verified Models and exact
 App identity without a provider check, prompt, backend start, credential access,
 live config mutation, or CLI upgrade. Native Quit produced two process-zero
-samples. Publication and merged-main closeout remain; Slice 2 stays locked.
+samples.
+
+Slice 2 is now the exact active scope. It may capture
+`initialize._meta.agentVersion`, cache support per exact method/process
+generation, and add typed read-only wrappers for `x.ai/models/list`,
+`x.ai/session/usage`, `x.ai/session/info`, and bounded
+`x.ai/session/updates` on the existing per-tab ACP connection. Missing or known
+versions below 1.0.5 must emit no extension request. Update pages are capped at 512 rows;
+child receipt reconciliation is capped at four 256-row tail pages. The official
+updates method becomes preferred, while the private child-ledger reader remains
+an explicit 1.0.4 compatibility fallback until Slice 3 parity/removal.
+
+CLI upgrade, provider/model calls, billable prompts, auth/credential/config
+changes, `session/load` replay recovery, root-history migration, control
+mutations, a second ACP process/daemon, and Slice 3 are out of scope.
 
 ## Visual Quiet — 2026-08-15 (Phase 6 welcome extraction authorized)
 
