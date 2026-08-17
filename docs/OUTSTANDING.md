@@ -31,19 +31,17 @@
 >
 > **Current campaign:** 2026-08-16 Official Runtime Alignment —
 > [`docs/GROKBUILD_OFFICIAL_RUNTIME_ALIGNMENT_CAMPAIGN_2026-08-16.md`](GROKBUILD_OFFICIAL_RUNTIME_ALIGNMENT_CAMPAIGN_2026-08-16.md).
-> Jimmy authorized this merge-per-slice campaign on 2026-08-16. Slices 0 and 1
-> are complete in PRs #114 and #115. Slice 2 is the only active implementation
-> scope: add a typed, version/capability-aware read-only facade to each existing
-> per-tab ACP connection for models, usage, resident-session metadata, and bounded
-> session updates. No new runtime, CLI upgrade, provider call, config mutation,
-> replay recovery, or later-slice work is authorized. No later slice may begin
-> before Slice 2 merges and closes.
+> Jimmy authorized this merge-per-slice campaign on 2026-08-16. Slices 0, 1,
+> and 2 are complete in PRs #114, #115, and #116. Slice 3 remains locked pending
+> explicit authorization and a fresh audit against the then-current CLI and
+> merged repository. No new runtime, CLI upgrade, provider call, config mutation,
+> replay recovery, or later-slice work is authorized by this closeout.
 >
 > Prior campaigns: 2026-08-15 Visual Quiet complete and merged through `3947136` (PR #113);
 > 2026-08-14 Residual Closeout (Phases 0–6) complete and merged as `4613bde` (PR #94);
 > 2026-08-13 campaign (Slices 0–7) closed at merge `c0895ee` (PR #86).
 
-## Official Runtime Alignment — 2026-08-16 (Slice 2 active)
+## Official Runtime Alignment — 2026-08-16 (Slice 2 complete; Slice 3 locked)
 
 Authorized spec is
 [`docs/GROKBUILD_OFFICIAL_RUNTIME_ALIGNMENT_CAMPAIGN_2026-08-16.md`](GROKBUILD_OFFICIAL_RUNTIME_ALIGNMENT_CAMPAIGN_2026-08-16.md).
@@ -92,8 +90,17 @@ deep/strict signing, and no quarantine. Nonbillable installed Computer Use
 verified exact About identity and ordinary Settings navigation without Send,
 Resume, provider validation, backend/helper launch, or CLI upgrade. Native Quit
 produced process-zero samples at `2026-08-17T09:12:06-0400` and
-`2026-08-17T09:12:17-0400`. Publication and merged-main closeout remain; Slice 3
-stays locked.
+`2026-08-17T09:12:17-0400`.
+
+PR #116 passed required **Test and Build App** on exact head `791b6fd8` and
+merged normally as code-bearing baseline
+`a615fed8f5ffd0173bfd66a306e73ddf4fb419c0`. Clean merged-main `make ship`
+passed 924/924 and installed that exact merge with matching dist/install SHA-256
+`afb0437c…fde9ab`, Team `DD2GCQJVB4`, deep/strict signing, and no quarantine.
+Installed Computer Use verified `0.1.22 Personal • main @ a615fed8` without
+starting or resuming a backend. Native Quit produced process-zero samples at
+`2026-08-17T09:26:32-0400` and `2026-08-17T09:26:41-0400`. Slice 2 is complete;
+Slice 3 stays locked pending explicit authorization.
 
 ## Visual Quiet — 2026-08-15 (Phase 6 welcome extraction authorized)
 

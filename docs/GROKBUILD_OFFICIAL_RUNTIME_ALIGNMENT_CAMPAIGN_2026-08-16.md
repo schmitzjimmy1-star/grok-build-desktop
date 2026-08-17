@@ -1,16 +1,16 @@
 # GrokBuild Official Runtime Alignment Campaign — 2026-08-16
 
-Status: **active; Slice 2 authorized.** Jimmy authorized a rigorous merge-per-slice
-campaign on 2026-08-16. Every slice gets its own branch, explicit commits, ready
-pull request, exact-head required checks, normal merge, merged-main installation,
-and process-zero closeout before the next slice begins.
+Status: **Slice 2 complete; Slice 3 locked.** Jimmy authorized a rigorous
+merge-per-slice campaign on 2026-08-16. Every slice gets its own branch,
+explicit commits, ready pull request, exact-head required checks, normal merge,
+merged-main installation, and process-zero closeout before the next slice begins.
 
-Current baseline: clean `main == personal/main` at
-`f00b99216364cbedb47de221073cf3736d8012ca` (PR #115). The installed app is
-the same clean merged-main source, and the dist and installed executables match
-byte-for-byte. Installed CLI authority is `grok 1.0.4 (d846eb93d94d) [stable]`.
-Official 1.0.5 source informs this campaign, but no CLI upgrade is authorized by
-Slice 1.
+Current code-bearing baseline and installed app: clean merge
+`a615fed8f5ffd0173bfd66a306e73ddf4fb419c0` (PR #116). The dist and installed
+executables match byte-for-byte. An accepted docs-only closeout descendant has
+zero code diff from that stamp. Installed CLI authority is
+`grok 1.0.4 (d846eb93d94d) [stable]`. Official 1.0.5 source informs this
+campaign, but no CLI upgrade is authorized.
 
 ## Governing decision
 
@@ -32,7 +32,7 @@ Grok CLI.
 |---|---|---|---|
 | **0** | **Restore CLI execution ownership** | Disable ACP client FS/terminal capabilities; remove Swift reverse executors; fail surprise reverse execution closed; retain typed tool receipts. | **Complete — PR #114** |
 | **1** | **Contain model-config corruption** | Refuse unsafe nested-model rewrites, add official nested-TOML fixtures, then choose a structure-preserving ownership boundary. | **Complete — PR #115** |
-| **2** | **Typed ACP control spine** | Add a version/capability-aware facade over each existing ACP connection; first methods are models, usage, session metadata, and bounded session updates. | **Active** |
+| **2** | **Typed ACP control spine** | Add a version/capability-aware facade over each existing ACP connection; first methods are models, usage, session metadata, and bounded session updates. | **Complete — PR #116** |
 | **3** | **Session truth and recovery** | Consume typed `session/load` replay, reconcile the local presentation cache, and retire private root/child storage reads after a shadow-parity gate. | Locked |
 | **4** | **Official provider and open-weight lane** | Use official provider definitions, resolve the keyless-endpoint credential hazard, and pilot one Keychain-backed auth helper without bundling a model runtime. | Locked |
 | **5** | **Controls behave like controls** | Replace model-prompt control actions where official methods exist; separate cancel, worker cancel, and disconnect semantics. | Locked |
@@ -298,4 +298,18 @@ Installed CLI authority remains `grok 1.0.4 (d846eb93d94d) [stable]`.
 Native Quit produced process-zero samples at `2026-08-17T09:12:06-0400` and
 `2026-08-17T09:12:17-0400`. No prompt, provider/model call, billable work,
 credential access, config mutation, session recovery, CLI upgrade, or Slice 3
-implementation occurred. Publication and merged-main closeout remain.
+implementation occurred.
+
+PR #116 passed required **Test and Build App** on exact head
+`791b6fd8e298ba2ba5f557ca5b27590906bfe9c2` and merged normally as
+`a615fed8f5ffd0173bfd66a306e73ddf4fb419c0`. Local `main == personal/main`
+reconciled cleanly. Merged-main `make ship` passed **924/924** and installed that
+exact clean merge; dist/install SHA-256 is
+`afb0437c83f96e94c28fc9baeb81b7d01ba214587508a04236eca09293fde9ab`,
+with Team `DD2GCQJVB4`, deep/strict signing, and no quarantine. Installed
+Computer Use verified About identity `0.1.22 Personal • main @ a615fed8` without
+starting or resuming a backend. Native Quit produced process-zero samples at
+`2026-08-17T09:26:32-0400` and `2026-08-17T09:26:41-0400`.
+
+Slice 2 is complete. Slice 3 remains locked pending explicit authorization and
+a fresh scope audit against the then-current CLI and merged repository.
