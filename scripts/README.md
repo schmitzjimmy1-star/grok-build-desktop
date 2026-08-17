@@ -36,6 +36,13 @@ coverage keeps those rows classified as child spawns rather than generic tools.
 Slice 5's three-route 1.5m ceiling
 manifest remains the default.
 
+The Official Runtime Alignment v2 manifest is deliberately **paid-locked**.
+It plans 3M tokens plus a 1M reserve, but official usage arrives after model work,
+so the reactive app Stop guard cannot prove the absolute 4M ceiling. V2 billable
+preflight refuses before launch until a hard official or worst-case bound exists.
+Legacy v1 billable execution is retired. V2 receipts are owner-only append-only
+triples: reservation, typed terminal evidence, then exact local cleanup.
+
 ```bash
 python3 scripts/acceptance/run.py
 python3 scripts/acceptance/run.py --fixture scripts/acceptance/fixtures/happy-path

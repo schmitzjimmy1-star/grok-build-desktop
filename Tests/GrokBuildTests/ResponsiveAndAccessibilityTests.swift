@@ -172,8 +172,10 @@ final class ResponsiveAndAccessibilityTests: XCTestCase {
                       "session rows keep their spoken title/model/state label")
         XCTAssertTrue(sidebar.contains(".accessibilityAction(named: \"Rename session\")"),
                       "VoiceOver exposes rename without requiring a pointer-only context menu")
-        XCTAssertTrue(sidebar.contains(".accessibilityAction(named: \"Close session\")"),
-                      "VoiceOver exposes exact session close without requiring hover")
+        XCTAssertTrue(sidebar.contains(".accessibilityAction(named: \"Close local tab\")"),
+                      "VoiceOver exposes non-destructive local close without requiring hover")
+        XCTAssertTrue(sidebar.contains(".accessibilityAction(named: \"Delete session\")"),
+                      "VoiceOver names destructive backend deletion honestly")
     }
 
     func testTaskContractBarIsGoneWhileRunControlsRemainReachable() throws {

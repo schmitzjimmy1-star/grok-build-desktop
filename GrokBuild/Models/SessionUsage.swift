@@ -33,6 +33,13 @@ enum SubagentRouting {
 /// figures are labeled estimates derived from catalog pricing — absent pricing shows
 /// tokens only, never a fabricated $0.
 struct SessionUsageLedger: Equatable {
+    /// Official Grok ACP unit: 10^10 cost ticks equal one US dollar.
+    static let costUsdTicksPerDollar = 10_000_000_000.0
+
+    static func dollarsFromCostTicks(_ ticks: Int) -> Double {
+        Double(ticks) / costUsdTicksPerDollar
+    }
+
     struct Entry: Equatable {
         let modelID: String?
         let totalTokens: Int
@@ -132,7 +139,7 @@ struct SessionUsageLedger: Equatable {
         ]
         let exactCostEntries = entries.compactMap(\.costUsdTicks)
         if !exactCostEntries.isEmpty {
-            let exactUSD = Double(exactCostEntries.reduce(0, +)) / 1_000_000_000
+            let exactUSD = Self.dollarsFromCostTicks(exactCostEntries.reduce(0, +))
             var cost = "\(Self.dollars(exactUSD)) provider-reported"
             if exactCostEntries.count != entries.count {
                 cost += " (partial)"

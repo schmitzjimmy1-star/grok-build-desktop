@@ -1122,15 +1122,21 @@ final class ChatStore {
     /// It classifies a comparable workload; it does not schedule or infer tools.
     private var currentTurnObservedParallelToolExecution = false
     private let customModelSnapshotLoader: () -> CustomModelStore.Snapshot
+    private let acceptanceBudgetResolver: (String) -> AcceptanceBudgetResolution
+    private var acceptanceBudgetPollingTask: Task<Void, Never>?
 
     init(
         process: GrokProcess? = nil,
         continuityKeyOverride: Data? = nil,
-        customModelSnapshotLoader: @escaping () -> CustomModelStore.Snapshot = { CustomModelStore.load() }
+        customModelSnapshotLoader: @escaping () -> CustomModelStore.Snapshot = { CustomModelStore.load() },
+        acceptanceBudgetResolver: @escaping (String) -> AcceptanceBudgetResolution = {
+            AcceptanceBudgetGuard.resolve(prompt: $0)
+        }
     ) {
         self.process = process ?? GrokProcess()
         self.continuityKeyOverride = continuityKeyOverride
         self.customModelSnapshotLoader = customModelSnapshotLoader
+        self.acceptanceBudgetResolver = acceptanceBudgetResolver
         applyBuiltInModelCatalog(GrokModelCatalog.cachedOrFallback())
         loadSessionSelections()
         Task { [weak self] in await self?.consumeOutput() }
@@ -3059,6 +3065,40 @@ final class ChatStore {
             return false
         }
 
+        var acceptanceBudgetContext: (
+            budget: AcceptanceTurnBudget,
+            baseline: ACPControlSessionUsage,
+            processGeneration: UInt64,
+            backendSessionID: String
+        )?
+        let acceptanceBudgetResolution = acceptanceBudgetResolver(trimmed)
+        if acceptanceBudgetResolution == .blocked {
+            lastError = "Acceptance dispatch stopped because the launch budget is missing, invalid, or does not authorize this exact packet."
+            return false
+        }
+        if case .budget(let budget) = acceptanceBudgetResolution {
+            guard process.acpControlCapabilityState(for: .sessionUsage) != .unsupported else {
+                lastError = "Acceptance dispatch stopped because this Grok runtime cannot report live official session usage."
+                return false
+            }
+            do {
+                let baseline = try await process.fetchACPSessionUsage()
+                guard baseline.totalTokens != nil, baseline.modelCalls != nil else {
+                    lastError = "Acceptance dispatch stopped because the baseline usage receipt is incomplete."
+                    return false
+                }
+                guard let processGeneration = process.activeProcessGeneration,
+                      let backendSessionID = process.sessionId else {
+                    lastError = "Acceptance dispatch stopped because the live process/session identity is unavailable."
+                    return false
+                }
+                acceptanceBudgetContext = (budget, baseline, processGeneration, backendSessionID)
+            } catch {
+                lastError = "Acceptance dispatch stopped because the baseline usage receipt is unavailable."
+                return false
+            }
+        }
+
         if commandHistory.last != trimmed {
             commandHistory.append(trimmed)
         }
@@ -3113,6 +3153,15 @@ final class ChatStore {
         pendingExitPlan = nil
         pendingQuestions.removeAll()
         connectionState = .busy
+
+        if let acceptanceBudgetContext {
+            startAcceptanceBudgetPolling(
+                budget: acceptanceBudgetContext.budget,
+                baseline: acceptanceBudgetContext.baseline,
+                processGeneration: acceptanceBudgetContext.processGeneration,
+                backendSessionID: acceptanceBudgetContext.backendSessionID
+            )
+        }
 
         let payload = trimmed
         currentTurnDispatchUptimeNanoseconds = DispatchTime.now().uptimeNanoseconds
@@ -3263,7 +3312,71 @@ final class ChatStore {
         isThinkingExpanded.toggle()
     }
 
+    private func cancelAcceptanceBudgetPolling() {
+        acceptanceBudgetPollingTask?.cancel()
+        acceptanceBudgetPollingTask = nil
+    }
+
+    private func startAcceptanceBudgetPolling(
+        budget: AcceptanceTurnBudget,
+        baseline: ACPControlSessionUsage,
+        processGeneration: UInt64,
+        backendSessionID: String
+    ) {
+        cancelAcceptanceBudgetPolling()
+        guard let baselineTokens = baseline.totalTokens,
+              let baselineCalls = baseline.modelCalls else { return }
+        acceptanceBudgetPollingTask = Task { [weak self] in
+            while !Task.isCancelled {
+                try? await Task.sleep(for: .milliseconds(500))
+                guard !Task.isCancelled, let self else { return }
+                guard self.isStreaming,
+                      self.process.activeProcessGeneration == processGeneration,
+                      self.process.sessionId == backendSessionID else { return }
+                do {
+                    let usage = try await self.process.fetchACPSessionUsage()
+                    guard let currentTokens = usage.totalTokens,
+                          let currentCalls = usage.modelCalls,
+                          currentTokens >= baselineTokens,
+                          currentCalls >= baselineCalls else {
+                        await self.stopForAcceptanceBudget(
+                            "official live usage became incomplete or moved backwards"
+                        )
+                        return
+                    }
+                    let turnTokens = currentTokens - baselineTokens
+                    let turnCalls = currentCalls - baselineCalls
+                    if turnTokens >= budget.tokenAllocation {
+                        await self.stopForAcceptanceBudget(
+                            "the packet reached its \(budget.tokenAllocation)-token allocation"
+                        )
+                        return
+                    }
+                    if turnCalls > budget.maxModelCalls {
+                        await self.stopForAcceptanceBudget(
+                            "the packet exceeded its \(budget.maxModelCalls)-call allocation"
+                        )
+                        return
+                    }
+                } catch {
+                    await self.stopForAcceptanceBudget("official live usage became unavailable")
+                    return
+                }
+            }
+        }
+    }
+
+    private func stopForAcceptanceBudget(_ reason: String) async {
+        // This method runs inside the polling task. Relinquish the stored handle
+        // before calling the ordinary Stop path so `stop()` does not cancel the
+        // task that must remain alive through GrokProcess's ACP cancel/drain window.
+        acceptanceBudgetPollingTask = nil
+        await stop()
+        lastError = "Acceptance safety stop: \(reason). No automatic retry is allowed."
+    }
+
     func clearTurnState() {
+        cancelAcceptanceBudgetPolling()
         firstChunkInterval?.end()
         firstChunkInterval = nil
         currentTurnDispatchUptimeNanoseconds = nil
@@ -3300,6 +3413,7 @@ final class ChatStore {
     }
 
     func stop() async {
+        cancelAcceptanceBudgetPolling()
         pendingSubmitIntent = nil
         let wasActiveTurn = isStreaming || isGrokking
         let stoppedAssistantID = streamingMessageID
@@ -3376,6 +3490,7 @@ final class ChatStore {
     }
 
     func shutdown() async {
+        cancelAcceptanceBudgetPolling()
         pendingSubmitIntent = nil
         firstChunkInterval?.end()
         firstChunkInterval = nil
@@ -4454,6 +4569,7 @@ final class ChatStore {
                 guard consumedTurnCompletionKeys.insert(key).inserted else { break }
             }
             activeTurnCompletionConsumed = true
+            cancelAcceptanceBudgetPolling()
             // This event shares the same AsyncStream queue as text/tool updates. By
             // acknowledging only here, `process.send` cannot outrun already-yielded
             // synthesis chunks and detach them from their assistant message. Keep

@@ -8,7 +8,6 @@ import subprocess
 import time
 from pathlib import Path
 from typing import Any
-from urllib.parse import quote
 
 from .errors import PreflightError
 
@@ -73,6 +72,10 @@ def installed_identity(repo: Path) -> dict[str, Any]:
     if head.returncode != 0:
         raise PreflightError("cannot read HEAD")
     head_sha = head.stdout.strip()
+    current_branch_result = _run(["git", "branch", "--show-current"], cwd=repo)
+    if current_branch_result.returncode != 0 or not current_branch_result.stdout.strip():
+        raise PreflightError("cannot read current branch")
+    current_branch = current_branch_result.stdout.strip()
     stamp = _plist("GrokBuildSourceCommit")
     dirty = _plist("GrokBuildSourceDirty")
     branch = _plist("GrokBuildSourceBranch")
@@ -85,6 +88,12 @@ def installed_identity(repo: Path) -> dict[str, Any]:
     inst_sha = _sha256(inst_exec)
     if stamp != head_sha:
         raise PreflightError(f"installed stamp {stamp} != HEAD {head_sha}")
+    if dirty.strip().lower() not in {"false", "0", "no"}:
+        raise PreflightError("installed app was built from a dirty source tree")
+    if branch != current_branch:
+        raise PreflightError(f"installed branch {branch} != current branch {current_branch}")
+    if "schmitzjimmy1-star/grok-build-desktop" not in repository:
+        raise PreflightError("installed app repository is not Jimmy's maintained fork")
     if dist_sha != inst_sha:
         raise PreflightError("dist/installed executable hash mismatch")
     verify = _run(["codesign", "--verify", "--deep", "--strict", str(APP)])
@@ -139,19 +148,11 @@ def require_models(needed: list[str]) -> None:
 
 
 def marker_collisions(repo: Path, markers: list[str]) -> None:
-    encoded = quote(str(repo), safe="")
-    session_root = Path.home() / ".grok/sessions" / encoded
     transcript_root = (
         Path.home() / "Library/Application Support/GrokBuild/Transcripts"
     )
     hits: list[str] = []
     for marker in markers:
-        if session_root.exists():
-            search = _run(
-                ["rg", "-l", "--glob", "!prompt_history.jsonl", marker, str(session_root)]
-            )
-            if search.stdout.strip():
-                hits.append(marker)
         if transcript_root.exists():
             search = _run(["rg", "-l", marker, str(transcript_root)])
             if search.stdout.strip():
@@ -161,8 +162,11 @@ def marker_collisions(repo: Path, markers: list[str]) -> None:
 
 
 def require_clean_test_ledger(ledger: Path) -> None:
-    if ledger.exists() and ledger.stat().st_size > 0:
-        raise PreflightError(f"test ledger is not clean: {ledger}")
+    try:
+        ledger.lstat()
+    except FileNotFoundError:
+        return
+    raise PreflightError(f"test ledger path must not pre-exist: {ledger}")
 
 
 def preflight(

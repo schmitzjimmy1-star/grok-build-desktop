@@ -163,6 +163,27 @@ contract, not more destructive string rewriting.
   original config bytes exactly; retain writable quoted dotted model ids.
 - Update architecture, README, campaign, and canonical outstanding state.
 
+### Slice 4 paid-gate checkpoint — 2026-08-17
+
+The v2 harness is implemented as a fail-closed, append-only acceptance ledger,
+but **paid execution remains locked**. Official ACP usage is reported only after
+a model response settles, so polling `x.ai/session/usage` and invoking Stop is a
+reactive circuit breaker, not proof that aggregate provider billing cannot cross
+Jimmy's absolute 4,000,000-token ceiling. The app retains that reactive guard as
+defense in depth; `preflight_v2.require_absolute_ceiling_support()` refuses every
+paid packet before app launch until an official per-request bound or another
+mathematically defensible worst-case bound exists. No paid Send has occurred and
+the requested paid test is blocked, not waived or accepted.
+
+The frozen harness records three fsync'd rows per packet—reservation, full typed
+terminal evidence, and exact local cleanup—so route/usage/cost evidence survives
+rejection and cleanup crashes. It pins the exact workspace, prompt hash, single
+Send actuator, app-launch epoch, official layered-config receipt, helper identity,
+model route, tool/worker topology, response continuity term, and backend/tab
+identities. Legacy v1 billable execution is retired. Unlocking still requires a
+clean exact-head signed install, CLI 1.0.5+, official provider migration, an exact
+launch-policy contract, and a hard ceiling mechanism; Slice 5 remains locked.
+
 ### Exclusions
 
 - No semantic TOML editor, provider-schema adoption, config migration, CLI
@@ -512,8 +533,9 @@ the CLI hid, rejected, or removed.
 5. Focused tests, `make test`, `git diff --check`, exact-path review, and a clean
    candidate `make ship` pass before any paid Send.
 6. Installed nonbillable acceptance verifies exact identity, official catalog
-   visibility, helper/config presentation, and no secret/config drift. Only then
-   may the frozen paid packet run, under the 3M planned / 4M absolute ceilings.
+   visibility, helper/config presentation, and no secret/config drift. The frozen
+   paid packet remains prohibited until the absolute-ceiling gate above has a
+   provable implementation; reactive usage polling alone cannot unlock it.
 7. Capture exact route, effective/provider-facing model, token split, model calls,
    provider cost or explicit unavailable state, frozen price estimate, tool/worker
    receipts, config hashes, and attempt/cleanup receipts. Preserve failures.

@@ -1143,7 +1143,7 @@ struct ActivitySidebar: View {
         let tokens = usage.totalTokens.map { $0.formatted() } ?? "Not reported"
         let calls = usage.modelCalls.map { "\($0) model calls" } ?? "model calls not reported"
         let cost = usage.costUsdTicks.map {
-            " • \(SessionUsageLedger.dollars(Double($0) / 1_000_000_000)) provider-reported"
+            " • \(SessionUsageLedger.dollars(SessionUsageLedger.dollarsFromCostTicks($0))) provider-reported"
         } ?? ""
         return "\(tokens) tokens • \(calls)\(cost)"
     }

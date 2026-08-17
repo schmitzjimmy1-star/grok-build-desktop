@@ -2,6 +2,40 @@ import XCTest
 @testable import GrokBuild
 
 final class ACPClientContractTests: XCTestCase {
+    func testAcceptanceBudgetManifestRejectsReserveConsumptionAndAmbiguousMarkers() {
+        let manifest = AcceptanceBudgetManifest(
+            schemaVersion: 1,
+            runID: "run",
+            campaignTokenCeiling: 4_000_000,
+            emergencyReserveTokens: 1_000_000,
+            packets: [
+                AcceptanceTurnBudget(marker: "ONE", promptHash: String(repeating: "0", count: 64), tokenAllocation: 2_000_000, maxModelCalls: 1),
+                AcceptanceTurnBudget(marker: "TWO", promptHash: String(repeating: "1", count: 64), tokenAllocation: 1_000_001, maxModelCalls: 1),
+            ]
+        )
+        XCTAssertFalse(manifest.isValid)
+
+        let valid = AcceptanceBudgetManifest(
+            schemaVersion: 1,
+            runID: "run",
+            campaignTokenCeiling: 4_000_000,
+            emergencyReserveTokens: 1_000_000,
+            packets: [AcceptanceTurnBudget(marker: "ONLY", promptHash: "3a4726dafd3f6c5e45b1c6a41a7e948aeedcb39387ffdaef1f8b666f407e1236", tokenAllocation: 10, maxModelCalls: 1)]
+        )
+        XCTAssertTrue(valid.isValid)
+        XCTAssertNotNil(valid.budget(for: "Return ONLY"))
+        XCTAssertNil(valid.budget(for: "Different ONLY"))
+        XCTAssertNil(valid.budget(for: "Return ONLY twice ONLY"))
+        XCTAssertEqual(AcceptanceBudgetGuard.resolve(prompt: "ordinary", arguments: []), .inactive)
+        XCTAssertEqual(
+            AcceptanceBudgetGuard.resolve(
+                prompt: "ordinary",
+                arguments: ["app", "--grokbuild-acceptance-budget-file=/does/not/exist"]
+            ),
+            .blocked
+        )
+    }
+
     func testChildSessionLedgerRejectsTraversalIdentity() async {
         let process = GrokProcess()
         let receipts = await process.fetchChildToolReceipts(childID: "../other")
@@ -592,6 +626,72 @@ final class ACPClientContractTests: XCTestCase {
         XCTAssertEqual(observed.modelFingerprint, "fingerprint-model-b")
         XCTAssertEqual(observed.turnUsageEffectiveModelID, "model-b")
         XCTAssertNotEqual(observed.sessionModelID, "model-a")
+        await store.shutdownPermanently()
+    }
+
+    @MainActor
+    func testAcceptanceBudgetUsesLiveOfficialUsageAndStopsWithoutRetry() async throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("grokbuild-acceptance-budget-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let rpcLogURL = root.appendingPathComponent("rpc.log")
+        let scriptURL = root.appendingPathComponent("fake-grok")
+        let script = """
+        #!/bin/sh
+        usage_calls=0
+        while IFS= read -r line; do
+          printf '%s\n' "$line" >> '\(rpcLogURL.path)'
+          id=$(printf '%s' "$line" | sed -E 's/.*"id":([0-9]+).*/\\1/')
+          case "$line" in
+            *'"method":"initialize"'*)
+              printf '{"jsonrpc":"2.0","id":%s,"result":{"_meta":{"agentVersion":"1.0.5","modelState":{"currentModelId":"grok-4.6","availableModels":[{"modelId":"grok-4.6"}]}}}}\n' "$id"
+              ;;
+            *'"method":"session/new"'*)
+              printf '{"jsonrpc":"2.0","id":%s,"result":{"sessionId":"budget-backend","models":{"currentModelId":"grok-4.6","availableModels":[{"modelId":"grok-4.6"}]}}}\n' "$id"
+              ;;
+            *'"method":"x.ai/session/info"'*)
+              printf '{"jsonrpc":"2.0","id":%s,"result":{"result":{"sessionId":"budget-backend","cwd":"\(root.path)","model":"grok-4.6"}}}\n' "$id"
+              ;;
+            *'"method":"x.ai/session/usage"'*)
+              usage_calls=$((usage_calls + 1))
+              if [ "$usage_calls" -eq 1 ]; then total=0; else total=10; fi
+              printf '{"jsonrpc":"2.0","id":%s,"result":{"usage":{"totalTokens":%s,"modelCalls":1,"numTurns":0}}}\n' "$id" "$total"
+              ;;
+            *'"method":"session/prompt"'*)
+              ;;
+          esac
+        done
+        """
+        try script.write(to: scriptURL, atomically: true, encoding: .utf8)
+        try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: scriptURL.path)
+
+        GrokProcess.cliOverrideForTests = scriptURL
+        defer { GrokProcess.cliOverrideForTests = nil }
+        let marker = "GB-S4-BUDGET-TEST"
+        let store = ChatStore(acceptanceBudgetResolver: { prompt in
+            prompt.contains(marker)
+                ? .budget(AcceptanceTurnBudget(marker: marker, promptHash: String(repeating: "0", count: 64), tokenAllocation: 10, maxModelCalls: 1))
+                : .blocked
+        })
+        store.bindTabSession(UUID(), savedModel: "grok-4.6")
+        await store.start(workspace: Workspace(name: "acceptance-budget", path: root))
+
+        let sent = await store.sendAndWait("Return \(marker)")
+        XCTAssertFalse(sent)
+        XCTAssertEqual(store.latestTurnOutcome, .userStopped)
+        XCTAssertTrue(store.lastError?.contains("Acceptance safety stop") == true)
+        let rpc = try String(contentsOf: rpcLogURL, encoding: .utf8)
+        XCTAssertEqual(rpc.components(separatedBy: "\"method\":\"session/prompt\"").count - 1, 1)
+        XCTAssertGreaterThanOrEqual(
+            rpc.components(separatedBy: "\"method\":\"x.ai/session/usage\"").count - 1,
+            2
+        )
+        XCTAssertEqual(
+            rpc.components(separatedBy: "\"method\":\"session/cancel\"").count - 1,
+            1,
+            rpc
+        )
         await store.shutdownPermanently()
     }
 

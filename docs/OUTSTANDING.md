@@ -36,6 +36,11 @@
 > limited to official provider projection, the OpenRouter Keychain-helper pilot,
 > official model-catalog authority, the paid-harness v2, and a paid packet with
 > at most 3,000,000 planned tokens plus a 1,000,000-token emergency reserve.
+> The v2 scaffolding is fail-closed and no paid Send has run: official ACP usage
+> arrives after provider work, so the current reactive Stop guard cannot prove
+> Jimmy's absolute 4,000,000-token ceiling. Paid execution remains locked until a
+> hard official or worst-case bound exists; this is blocked work, not a waiver.
+> CLI upgrade and provider/config/credential mutation remain unauthorized.
 > Slice 5 and later work remain locked.
 >
 > Prior campaigns: 2026-08-15 Visual Quiet complete and merged through `3947136` (PR #113);
@@ -125,7 +130,11 @@ prompt or backend resume. Native Quit produced process-zero samples at
 `2026-08-17T11:53:57-0400` and `2026-08-17T11:54:14-0400`. Slice 3 is complete.
 Jimmy authorized Slice 4 on 2026-08-17. Its exact ownership, implementation,
 nonbillable, paid-budget, cleanup, and publication contract is canonical in the
-campaign document. Slice 5 remains locked.
+campaign document. Provider/catalog/config implementation commits `b4623d8` and
+`afb5d3e` are retained on the Slice 4 branch. The v2 ledger/guard candidate is
+under test, but its paid path is explicitly locked because reactive usage polling
+cannot prove the absolute 4M ceiling. Zero paid Slice 4 packets have run. Slice 5
+remains locked.
 
 ## Visual Quiet — 2026-08-15 (Phase 6 welcome extraction authorized)
 

@@ -1,0 +1,73 @@
+{
+  "schemaVersion": 2,
+  "runId": "DRY-RUN",
+  "campaignTokenCeiling": 4000000,
+  "plannedTokenMaximum": 3000000,
+  "emergencyReserveTokens": 1000000,
+  "maxAttempts": 1,
+  "effort": "low",
+  "parentAgent": "default",
+  "forbiddenToolsDefault": ["update_plan"],
+  "packets": [
+    {
+      "id": "NAT-CTRL", "marker": "GB-S4-NAT-CTRL-{runId}", "prompt": "Return exactly {marker} and nothing else.",
+      "selectorModelID": "grok-4.6", "effectiveModelID": "grok-4.6", "expectedModelUsageIDs": ["grok-4.6"],
+      "routeReceipt": {"kind": "nativeXAI", "selectedModelID": "grok-4.6", "providerName": "xAI", "appProviderID": null, "officialProviderID": null, "endpointIdentity": null, "providerModelID": "grok-4.6", "apiBackend": null, "authBoundary": "nativeSession", "modelIsPinned": true, "servingProviderIsProven": true, "appFallbackEnabled": false},
+      "tokenAllocation": 100000, "maxModelCalls": 1, "maxAttempts": 1, "workload": "noTool", "allowedTools": [], "requiredTools": [], "forbiddenTools": ["update_plan"], "requiredResponseTerms": [], "orderedGroups": [], "childTopology": null, "continuation": null, "frozenPricing": null
+    },
+    {
+      "id": "OAI-H-NO", "marker": "GB-S4-OAI-H-NO-{runId}", "prompt": "Return exactly {marker} and nothing else.",
+      "selectorModelID": "gpt-5.6-terra", "effectiveModelID": "gpt-5.6-terra", "expectedModelUsageIDs": ["gpt-5.6-terra"],
+      "routeReceipt": {"kind": "directProvider", "selectedModelID": "gpt-5.6-terra", "providerName": "ChatGPT (OpenAI)", "appProviderID": "openai", "officialProviderID": "grokbuild.saved.openai", "endpointIdentity": "https://api.openai.com/v1", "providerModelID": "gpt-5.6-terra", "apiBackend": "responses", "authBoundary": "officialHelper", "modelIsPinned": true, "servingProviderIsProven": true, "appFallbackEnabled": false},
+      "tokenAllocation": 100000, "maxModelCalls": 1, "maxAttempts": 1, "workload": "noTool", "allowedTools": [], "requiredTools": [], "forbiddenTools": ["update_plan"], "requiredResponseTerms": [], "orderedGroups": [], "childTopology": null, "continuation": null, "frozenPricing": {"currency": "USD", "promptUsdPerMillion": 2.0, "completionUsdPerMillion": 12.0, "cacheTreatment": "uncachedUpperBound", "source": "https://openai.com/index/advancing-the-price-performance-frontier-with-gpt-5-6/"}
+    },
+    {
+      "id": "OAI-H-ORD3", "marker": "GB-S4-OAI-H-ORD3-{runId}", "prompt": "Run three terminal calls in exact order using /usr/bin/printf for ONE then TWO then THREE and finish with exactly {marker}.",
+      "selectorModelID": "gpt-5.6-terra", "effectiveModelID": "gpt-5.6-terra", "expectedModelUsageIDs": ["gpt-5.6-terra"],
+      "routeReceipt": {"kind": "directProvider", "selectedModelID": "gpt-5.6-terra", "providerName": "ChatGPT (OpenAI)", "appProviderID": "openai", "officialProviderID": "grokbuild.saved.openai", "endpointIdentity": "https://api.openai.com/v1", "providerModelID": "gpt-5.6-terra", "apiBackend": "responses", "authBoundary": "officialHelper", "modelIsPinned": true, "servingProviderIsProven": true, "appFallbackEnabled": false},
+      "tokenAllocation": 350000, "maxModelCalls": 4, "maxAttempts": 1, "workload": "orderedMultiTool", "allowedTools": ["terminal"], "requiredTools": ["terminal"], "forbiddenTools": ["update_plan"], "requiredResponseTerms": [], "orderedGroups": [["ONE", "TWO", "THREE"]], "childTopology": null, "continuation": null, "frozenPricing": {"currency": "USD", "promptUsdPerMillion": 2.0, "completionUsdPerMillion": 12.0, "cacheTreatment": "uncachedUpperBound", "source": "https://openai.com/index/advancing-the-price-performance-frontier-with-gpt-5-6/"}
+    },
+    {
+      "id": "OR-OW-NO", "marker": "GB-S4-OR-OW-NO-{runId}", "prompt": "Return exactly {marker} and nothing else.",
+      "selectorModelID": "deepseek-deepseek-v4-flash-0731", "effectiveModelID": "deepseek/deepseek-v4-flash", "expectedModelUsageIDs": ["deepseek/deepseek-v4-flash"],
+      "routeReceipt": {"kind": "brokeredOpenRouter", "selectedModelID": "deepseek-deepseek-v4-flash-0731", "providerName": "OpenRouter", "appProviderID": "openrouter", "officialProviderID": "grokbuild.saved.openrouter", "endpointIdentity": "https://openrouter.ai/api/v1", "providerModelID": "deepseek/deepseek-v4-flash", "apiBackend": "chat_completions", "authBoundary": "officialHelper", "modelIsPinned": true, "servingProviderIsProven": false, "appFallbackEnabled": false},
+      "tokenAllocation": 100000, "maxModelCalls": 1, "maxAttempts": 1, "workload": "noTool", "allowedTools": [], "requiredTools": [], "forbiddenTools": ["update_plan"], "requiredResponseTerms": [], "orderedGroups": [], "childTopology": null, "continuation": null, "frozenPricing": {"currency": "USD", "promptUsdPerMillion": 0.09, "completionUsdPerMillion": 0.18, "cacheTreatment": "uncachedUpperBound", "source": "https://openrouter.ai/deepseek/deepseek-v4-flash/api"}
+    },
+    {
+      "id": "OR-OW-ORD3", "marker": "GB-S4-OR-OW-ORD3-{runId}", "prompt": "Run three terminal calls in exact order using /usr/bin/printf for ONE then TWO then THREE and finish with exactly {marker}.",
+      "selectorModelID": "deepseek-deepseek-v4-flash-0731", "effectiveModelID": "deepseek/deepseek-v4-flash", "expectedModelUsageIDs": ["deepseek/deepseek-v4-flash"],
+      "routeReceipt": {"kind": "brokeredOpenRouter", "selectedModelID": "deepseek-deepseek-v4-flash-0731", "providerName": "OpenRouter", "appProviderID": "openrouter", "officialProviderID": "grokbuild.saved.openrouter", "endpointIdentity": "https://openrouter.ai/api/v1", "providerModelID": "deepseek/deepseek-v4-flash", "apiBackend": "chat_completions", "authBoundary": "officialHelper", "modelIsPinned": true, "servingProviderIsProven": false, "appFallbackEnabled": false},
+      "tokenAllocation": 350000, "maxModelCalls": 4, "maxAttempts": 1, "workload": "orderedMultiTool", "allowedTools": ["terminal"], "requiredTools": ["terminal"], "forbiddenTools": ["update_plan"], "requiredResponseTerms": [], "orderedGroups": [["ONE", "TWO", "THREE"]], "childTopology": null, "continuation": null, "frozenPricing": {"currency": "USD", "promptUsdPerMillion": 0.09, "completionUsdPerMillion": 0.18, "cacheTreatment": "uncachedUpperBound", "source": "https://openrouter.ai/deepseek/deepseek-v4-flash/api"}
+    },
+    {
+      "id": "OR-OW-CH2", "marker": "GB-S4-OR-OW-CH2-{runId}", "prompt": "Spawn exactly two concurrent inherited-model children named LEFT and RIGHT then use wait_all once and finish with exactly {marker}.",
+      "selectorModelID": "deepseek-deepseek-v4-flash-0731", "effectiveModelID": "deepseek/deepseek-v4-flash", "expectedModelUsageIDs": ["deepseek/deepseek-v4-flash"],
+      "routeReceipt": {"kind": "brokeredOpenRouter", "selectedModelID": "deepseek-deepseek-v4-flash-0731", "providerName": "OpenRouter", "appProviderID": "openrouter", "officialProviderID": "grokbuild.saved.openrouter", "endpointIdentity": "https://openrouter.ai/api/v1", "providerModelID": "deepseek/deepseek-v4-flash", "apiBackend": "chat_completions", "authBoundary": "officialHelper", "modelIsPinned": true, "servingProviderIsProven": false, "appFallbackEnabled": false},
+      "tokenAllocation": 750000, "maxModelCalls": 7, "maxAttempts": 1, "workload": "twoChildCoordination", "allowedTools": ["spawn_subagent", "wait_all"], "requiredTools": ["spawn_subagent", "wait_all"], "forbiddenTools": ["update_plan"], "requiredResponseTerms": [], "orderedGroups": [], "childTopology": {"count": 2, "roles": ["LEFT", "RIGHT"], "collection": "wait_all", "maxSimultaneous": 2}, "continuation": null, "frozenPricing": {"currency": "USD", "promptUsdPerMillion": 0.09, "completionUsdPerMillion": 0.18, "cacheTreatment": "uncachedUpperBound", "source": "https://openrouter.ai/deepseek/deepseek-v4-flash/api"}
+    },
+    {
+      "id": "OR-OW-CONT-T1", "marker": "GB-S4-OR-OW-CONT-T1-{runId}", "prompt": "Remember the nonce ALDER and return exactly {marker}.",
+      "selectorModelID": "deepseek-deepseek-v4-flash-0731", "effectiveModelID": "deepseek/deepseek-v4-flash", "expectedModelUsageIDs": ["deepseek/deepseek-v4-flash"],
+      "routeReceipt": {"kind": "brokeredOpenRouter", "selectedModelID": "deepseek-deepseek-v4-flash-0731", "providerName": "OpenRouter", "appProviderID": "openrouter", "officialProviderID": "grokbuild.saved.openrouter", "endpointIdentity": "https://openrouter.ai/api/v1", "providerModelID": "deepseek/deepseek-v4-flash", "apiBackend": "chat_completions", "authBoundary": "officialHelper", "modelIsPinned": true, "servingProviderIsProven": false, "appFallbackEnabled": false},
+      "tokenAllocation": 100000, "maxModelCalls": 1, "maxAttempts": 1, "workload": "continuation", "allowedTools": [], "requiredTools": [], "forbiddenTools": ["update_plan"], "requiredResponseTerms": [], "orderedGroups": [], "childTopology": null, "continuation": {"group": "OR-OW-CONT", "turn": 1, "of": 3, "resumeAfterQuit": false}, "frozenPricing": {"currency": "USD", "promptUsdPerMillion": 0.09, "completionUsdPerMillion": 0.18, "cacheTreatment": "uncachedUpperBound", "source": "https://openrouter.ai/deepseek/deepseek-v4-flash/api"}
+    },
+    {
+      "id": "OR-OW-CONT-T2", "marker": "GB-S4-OR-OW-CONT-T2-{runId}", "prompt": "Run one terminal command that fails and one that succeeds then return exactly {marker}.",
+      "selectorModelID": "deepseek-deepseek-v4-flash-0731", "effectiveModelID": "deepseek/deepseek-v4-flash", "expectedModelUsageIDs": ["deepseek/deepseek-v4-flash"],
+      "routeReceipt": {"kind": "brokeredOpenRouter", "selectedModelID": "deepseek-deepseek-v4-flash-0731", "providerName": "OpenRouter", "appProviderID": "openrouter", "officialProviderID": "grokbuild.saved.openrouter", "endpointIdentity": "https://openrouter.ai/api/v1", "providerModelID": "deepseek/deepseek-v4-flash", "apiBackend": "chat_completions", "authBoundary": "officialHelper", "modelIsPinned": true, "servingProviderIsProven": false, "appFallbackEnabled": false},
+      "tokenAllocation": 250000, "maxModelCalls": 3, "maxAttempts": 1, "workload": "recovery", "allowedTools": ["terminal"], "requiredTools": ["terminal"], "forbiddenTools": ["update_plan"], "requiredResponseTerms": [], "orderedGroups": [["failed", "succeeded"]], "childTopology": null, "continuation": {"group": "OR-OW-CONT", "turn": 2, "of": 3, "resumeAfterQuit": false}, "frozenPricing": {"currency": "USD", "promptUsdPerMillion": 0.09, "completionUsdPerMillion": 0.18, "cacheTreatment": "uncachedUpperBound", "source": "https://openrouter.ai/deepseek/deepseek-v4-flash/api"}
+    },
+    {
+      "id": "OR-OW-CONT-T3", "marker": "GB-S4-OR-OW-CONT-T3-{runId}", "prompt": "State the remembered nonce and return exactly {marker}.",
+      "selectorModelID": "deepseek-deepseek-v4-flash-0731", "effectiveModelID": "deepseek/deepseek-v4-flash", "expectedModelUsageIDs": ["deepseek/deepseek-v4-flash"],
+      "routeReceipt": {"kind": "brokeredOpenRouter", "selectedModelID": "deepseek-deepseek-v4-flash-0731", "providerName": "OpenRouter", "appProviderID": "openrouter", "officialProviderID": "grokbuild.saved.openrouter", "endpointIdentity": "https://openrouter.ai/api/v1", "providerModelID": "deepseek/deepseek-v4-flash", "apiBackend": "chat_completions", "authBoundary": "officialHelper", "modelIsPinned": true, "servingProviderIsProven": false, "appFallbackEnabled": false},
+      "tokenAllocation": 150000, "maxModelCalls": 1, "maxAttempts": 1, "workload": "continuation", "allowedTools": [], "requiredTools": [], "forbiddenTools": ["update_plan"], "requiredResponseTerms": ["ALDER"], "orderedGroups": [], "childTopology": null, "continuation": {"group": "OR-OW-CONT", "turn": 3, "of": 3, "resumeAfterQuit": true}, "frozenPricing": {"currency": "USD", "promptUsdPerMillion": 0.09, "completionUsdPerMillion": 0.18, "cacheTreatment": "uncachedUpperBound", "source": "https://openrouter.ai/deepseek/deepseek-v4-flash/api"}
+    },
+    {
+      "id": "OAI-H-CH2", "marker": "GB-S4-OAI-H-CH2-{runId}", "prompt": "Spawn exactly two concurrent inherited-model children named LEFT and RIGHT then use wait_all once and finish with exactly {marker}.",
+      "selectorModelID": "gpt-5.6-terra", "effectiveModelID": "gpt-5.6-terra", "expectedModelUsageIDs": ["gpt-5.6-terra"],
+      "routeReceipt": {"kind": "directProvider", "selectedModelID": "gpt-5.6-terra", "providerName": "ChatGPT (OpenAI)", "appProviderID": "openai", "officialProviderID": "grokbuild.saved.openai", "endpointIdentity": "https://api.openai.com/v1", "providerModelID": "gpt-5.6-terra", "apiBackend": "responses", "authBoundary": "officialHelper", "modelIsPinned": true, "servingProviderIsProven": true, "appFallbackEnabled": false},
+      "tokenAllocation": 750000, "maxModelCalls": 7, "maxAttempts": 1, "workload": "twoChildCoordination", "allowedTools": ["spawn_subagent", "wait_all"], "requiredTools": ["spawn_subagent", "wait_all"], "forbiddenTools": ["update_plan"], "requiredResponseTerms": [], "orderedGroups": [], "childTopology": {"count": 2, "roles": ["LEFT", "RIGHT"], "collection": "wait_all", "maxSimultaneous": 2}, "continuation": null, "frozenPricing": {"currency": "USD", "promptUsdPerMillion": 2.0, "completionUsdPerMillion": 12.0, "cacheTreatment": "uncachedUpperBound", "source": "https://openai.com/index/advancing-the-price-performance-frontier-with-gpt-5-6/"}
+    }
+  ]
+}

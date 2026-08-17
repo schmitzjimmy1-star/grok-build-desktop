@@ -547,7 +547,7 @@ struct CustomModelsSettingsPane: View {
     }
 
     private func costText(_ ticks: Int) -> String {
-        SessionUsageLedger.dollars(Double(ticks) / 1_000_000_000) + " provider-reported"
+        SessionUsageLedger.dollars(SessionUsageLedger.dollarsFromCostTicks(ticks)) + " provider-reported"
     }
 
     private func percentage(_ rate: Double) -> String {

@@ -872,6 +872,18 @@ OpenAI-compatible provider URLs; not a replacement for grok-native models. Offic
 
 **Advanced-config and provider boundary (Official Runtime Alignment Slices 1 and 4).** `CustomModelStore` owns canonical `[model.<id>]`, `[models].default`, and only namespaced `[model_providers."grokbuild.<provider>"]` tables it generated. A pinned TOML 1.0 parser validates the complete document; the writer still patches only exact owned blocks so comments, ordering, and unrelated CLI configuration are preserved. Nested model tables, unowned provider definitions/references, root dotted keys, alternate spellings, partial overrides, and unknown flat fields lock writes rather than being flattened or silently default-filled. Linked bearer providers use the CLI's official inline auth-helper contract; the helper reads one Keychain item and returns only the credential to the CLI. Linked provider secrets are never copied back into `[model.*]`, Disconnect clears both Keychain and legacy model state, local keyless models get an explicit no-auth provider, and remote keyless flat models may only be rewritten through a validated provider migration. Provider loading becomes read-only while any hard boundary is active. The final authority check runs inside `GrokConfigRepository.update` against current bytes; immediately before rename the repository performs a best-effort source comparison that refuses the tested external-replacement window. This is not a cross-process transaction or cooperative lock, so the tiny compare-to-rename race remains explicit. Provider/Keychain changes use `ProviderModelConfigurationTransaction` and restore the prior provider state if that final config write refuses. Unsupported files remain byte-for-byte unchanged (owner-only permission enforcement may still repair file mode).
 
+**Acceptance budget boundary (Official Runtime Alignment Slice 4).**
+`AcceptanceBudgetGuard` is opt-in through one owner-only launch manifest and
+requires the exact SHA-256 of the submitted prompt plus positive packet token/call
+allocations. Missing, malformed, ambiguous, or mismatched manifests block Send.
+The live app polls official `x.ai/session/usage` on the existing tab connection and
+invokes ordinary Stop on drift or allocation reach; this is a reactive safety stop,
+not a hard provider-billing cap. The v2 harness therefore refuses billable launch
+while the absolute 4M ceiling is unprovable. Its allowlisted ledger fsyncs separate
+reservation, typed terminal, and cleanup rows, retains rejected paid evidence, pins
+an app-launch epoch across continuation, and never scrapes private CLI sessions or
+runs a second ACP client.
+
 The TOML parser is the one deliberate third-party SwiftPM exception to the lightweight default. Foundation and the Apple SDK expose no TOML 1.0 parser, while the previous line parser demonstrably misclassified valid nested/quoted/partial official Grok configuration and could corrupt it on save. `swift-toml` is pinned to an exact revision, statically linked, performs no I/O or networking, and is used only for parse validation; `THIRD_PARTY_NOTICES.md` ships in the app bundle. Grok CLI remains the sole owner of provider resolution, auth-helper execution/cache/timeout, inference, tools, sessions, and model-catalog membership.
 
 Opening Models must not synchronously query Keychain on the SwiftUI main actor. `SettingsBackgroundLoader` runs `ProviderStore.loadResult()` and `CustomModelStore.load()` on a detached task, then the pane applies the loaded snapshot on the main actor. This keeps navigation and clicks responsive even when Security.framework credential migration is slow.

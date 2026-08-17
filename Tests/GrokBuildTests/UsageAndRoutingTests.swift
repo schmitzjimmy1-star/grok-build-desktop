@@ -176,7 +176,7 @@ final class UsageAndRoutingTests: XCTestCase {
         XCTAssertEqual(estimate.low, 0.004, accuracy: 1e-12)
         XCTAssertEqual(estimate.high, 0.004, accuracy: 1e-12)
         let summary = try! XCTUnwrap(ledger.summaryText(pricing: [:]))
-        XCTAssertTrue(summary.contains("$0.12 provider-reported"), summary)
+        XCTAssertTrue(summary.contains("$0.01 provider-reported"), summary)
         XCTAssertFalse(summary.contains("est."), summary)
     }
 
