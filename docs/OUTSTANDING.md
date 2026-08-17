@@ -32,15 +32,17 @@
 > **Current campaign:** 2026-08-16 Official Runtime Alignment —
 > [`docs/GROKBUILD_OFFICIAL_RUNTIME_ALIGNMENT_CAMPAIGN_2026-08-16.md`](GROKBUILD_OFFICIAL_RUNTIME_ALIGNMENT_CAMPAIGN_2026-08-16.md).
 > Jimmy authorized this merge-per-slice campaign on 2026-08-16. Slices 0–3 are
-> complete through PR #118. Slice 4 remains locked. No new
-> runtime, CLI upgrade, provider call, config mutation, provider/open-weight
-> work, control mutation, or later-slice work is authorized.
+> complete through PR #118. Jimmy authorized Slice 4 on 2026-08-17. Slice 4 is
+> limited to official provider projection, the OpenRouter Keychain-helper pilot,
+> official model-catalog authority, the paid-harness v2, and a paid packet with
+> at most 3,000,000 planned tokens plus a 1,000,000-token emergency reserve.
+> Slice 5 and later work remain locked.
 >
 > Prior campaigns: 2026-08-15 Visual Quiet complete and merged through `3947136` (PR #113);
 > 2026-08-14 Residual Closeout (Phases 0–6) complete and merged as `4613bde` (PR #94);
 > 2026-08-13 campaign (Slices 0–7) closed at merge `c0895ee` (PR #86).
 
-## Official Runtime Alignment — 2026-08-16 (Slices 0–3 complete; Slice 4 locked)
+## Official Runtime Alignment — 2026-08-16 (Slices 0–3 complete; Slice 4 active)
 
 Authorized spec is
 [`docs/GROKBUILD_OFFICIAL_RUNTIME_ALIGNMENT_CAMPAIGN_2026-08-16.md`](GROKBUILD_OFFICIAL_RUNTIME_ALIGNMENT_CAMPAIGN_2026-08-16.md).
@@ -120,8 +122,10 @@ matching dist/install SHA-256 `2f5f95d8…e03e4`, Team `DD2GCQJVB4`, deep/strict
 signing, and no quarantine. Installed Computer Use verified
 `0.1.22 Personal • main @ d774b365` with CLI `1.0.4 [stable]` without another
 prompt or backend resume. Native Quit produced process-zero samples at
-`2026-08-17T11:53:57-0400` and `2026-08-17T11:54:14-0400`. Slice 3 is complete;
-Slice 4 stays locked until separately authorized.
+`2026-08-17T11:53:57-0400` and `2026-08-17T11:54:14-0400`. Slice 3 is complete.
+Jimmy authorized Slice 4 on 2026-08-17. Its exact ownership, implementation,
+nonbillable, paid-budget, cleanup, and publication contract is canonical in the
+campaign document. Slice 5 remains locked.
 
 ## Visual Quiet — 2026-08-15 (Phase 6 welcome extraction authorized)
 

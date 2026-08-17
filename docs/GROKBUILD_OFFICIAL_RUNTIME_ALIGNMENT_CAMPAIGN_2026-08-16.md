@@ -1,6 +1,6 @@
 # GrokBuild Official Runtime Alignment Campaign — 2026-08-16
 
-Status: **Slices 0–3 complete; Slice 4 locked.** Jimmy authorized a rigorous
+Status: **Slices 0–3 complete; Slice 4 active.** Jimmy authorized a rigorous
 merge-per-slice campaign on 2026-08-16. Every slice gets its own branch,
 explicit commits, ready pull request, exact-head required checks, normal merge,
 merged-main installation, and process-zero closeout before the next slice begins.
@@ -32,8 +32,8 @@ Grok CLI.
 | **0** | **Restore CLI execution ownership** | Disable ACP client FS/terminal capabilities; remove Swift reverse executors; fail surprise reverse execution closed; retain typed tool receipts. | **Complete — PR #114** |
 | **1** | **Contain model-config corruption** | Refuse unsafe nested-model rewrites, add official nested-TOML fixtures, then choose a structure-preserving ownership boundary. | **Complete — PR #115** |
 | **2** | **Typed ACP control spine** | Add a version/capability-aware facade over each existing ACP connection; first methods are models, usage, session metadata, and bounded session updates. | **Complete — PR #116** |
-| **3** | **Session truth and recovery** | Consume typed `session/load` replay, reconcile the local presentation cache, and retire private root/child storage reads after a shadow-parity gate. | **Active** |
-| **4** | **Official provider and open-weight lane** | Use official provider definitions, resolve the keyless-endpoint credential hazard, and pilot one Keychain-backed auth helper without bundling a model runtime. | Locked |
+| **3** | **Session truth and recovery** | Consume typed `session/load` replay, reconcile the local presentation cache, and retire private root/child storage reads after a shadow-parity gate. | **Complete — PR #118** |
+| **4** | **Official provider and open-weight lane** | Use official provider definitions, resolve the keyless-endpoint credential hazard, and pilot one Keychain-backed auth helper without bundling a model runtime. | **Active** |
 | **5** | **Controls behave like controls** | Replace model-prompt control actions where official methods exist; separate cancel, worker cancel, and disconnect semantics. | Locked |
 | **6** | **Coordinator simplification** | Split transport/session/projection owners only after authority correction; evaluate workspace/profile process pooling without a default leader daemon. | Locked |
 
@@ -410,5 +410,115 @@ passed 929/929 and installed that exact merge with matching dist/install SHA-256
 Installed Computer Use verified `0.1.22 Personal • main @ d774b365` with CLI
 `1.0.4 [stable]` without sending or resuming another prompt. Native Quit produced
 process-zero samples at `2026-08-17T11:53:57-0400` and
-`2026-08-17T11:54:14-0400`. Slice 3 is complete; Slice 4 remains locked until
-Jimmy separately authorizes it.
+`2026-08-17T11:54:14-0400`. Slice 3 is complete. Jimmy authorized Slice 4 on
+2026-08-17; its fresh scope audit and execution contract follow.
+
+## Slice 4 — Official provider and open-weight lane
+
+### Ownership decision
+
+Grok CLI already owns provider inheritance, credential precedence, auth-helper
+execution and caching, request protocols, model eligibility, model execution,
+tools, subagents, sandboxing, and fallback behavior. GrokBuild may provide
+onboarding templates, a Keychain-backed credential helper, lossless edits to
+its own trusted user-config nodes, and typed presentation of the official ACP
+catalog and route receipts. It must not become a provider runtime.
+
+The former flat projection duplicated each provider URL and credential into
+every `[model.<id>]` table. A keyless flat custom endpoint can therefore inherit
+the signed-in xAI session bearer; clearing a provider credential can also leave
+an old model copy that later rehydrates Keychain. Official
+`[model_providers.<id>]` inheritance plus a declared helper is the fail-closed
+boundary. Every GrokBuild-managed custom endpoint, including loopback, must use
+that boundary so absence or failure of provider auth never falls back to xAI
+session auth.
+
+The effective model party list likewise belongs to the CLI. Provider `/models`
+fetches remain optional setup/catalog evidence, but initial ACP catalog state
+and generation-bound `x.ai/models/update` notifications own live membership.
+Local metadata may decorate an advertised model; it may not add back a model
+the CLI hid, rejected, or removed.
+
+### Exact scope
+
+- Add a spec-validating, syntax-preserving TOML document mutation boundary.
+  It may replace only explicitly GrokBuild-owned canonical provider/model nodes;
+  unrelated comments, ordering, unknown fields, partial overrides, nested tables,
+  and user-authored provider/auth definitions remain byte-for-byte untouched.
+- Immediately fail closed on flat partial model overrides or official fields the
+  current editor does not own. Preserve the atomic compare-before-rename boundary
+  and validate every candidate with bounded `grok inspect --json`; a parse or
+  app-owned warning rolls back config and provider metadata.
+- Migrate only exact models already linked to a GrokBuild provider. Ambiguous or
+  user-authored definitions remain untouched and read-only.
+- Emit official `[model_providers.<id>]` definitions and
+  `model_provider = "<id>"` references. Stop copying provider credentials into
+  `[model.<id>].api_key`.
+- Pilot OpenRouter through one dedicated signed helper. The helper accepts one
+  exact provider ID as a direct argument, reads only service
+  `com.grokbuild.provider-credential` from macOS Keychain, writes only the token
+  to stdout, and emits credential-free failures. Grok CLI owns timeout, cache,
+  refresh, and request use.
+- Make Disconnect remove the exact Keychain credential and any recognized legacy
+  inline copies transactionally. An explicit disconnect must never be reimported
+  on reload; provider/model definitions remain visible as credential unavailable.
+- Give `x.ai/models/list` its official method-specific 1.0.4 floor. Consume both
+  `x.ai/models/update` and `_x.ai/models/update` as complete generation-bound
+  catalog replacements. A stale notification cannot change the picker or a
+  historical confirmed model receipt.
+- Once ACP has supplied a catalog, stop unioning locally parsed models into live
+  membership. Unknown official routes disclose provider detail unavailable
+  instead of being labeled native xAI.
+- Replace the paid acceptance path with a v2 allowlisted ledger: no private
+  `~/.grok/sessions` reads or human `grok sessions search`, exactly one Send
+  actuator, attempt-start and terminal-failure rows, observed typed route/model
+  evidence, per-packet token/call allocations, reserve accounting, cost
+  reconciliation, and exact run-created-tab cleanup.
+- Run nonbillable hostile provider/helper/config/catalog fixtures first. The paid
+  packet may plan at most 3,000,000 tokens, retaining a 1,000,000-token emergency
+  reserve beneath Jimmy's absolute 4,000,000-token ceiling. There are no retries;
+  stop early as soon as the contract is settled or any route, receipt, cost,
+  usage, helper, process, or config invariant fails.
+- Update architecture, README, campaign, and canonical outstanding state.
+
+### Exclusions
+
+- No CLI upgrade, second model runtime, direct completion client, app-side
+  provider fallback, persistent control daemon, or generic Swift inference layer.
+- No ACP bearer-token export, secret logging, helper stdout capture, environment
+  credential export, or response-body retention.
+- No automatic adoption or rewrite of arbitrary user-authored official provider,
+  auth-provider, nested model, or partial override structures.
+- No claim that a provider `/models` fetch proves inference, that OpenRouter's
+  downstream serving provider is observed, or that token volume is model quality.
+- No Slice 5 control mutations, task/fork/worktree redesign, coordinator split,
+  tag, GitHub release, notarization, write to `origin`, force push, branch
+  deletion, broad session cleanup, or deletion of protected user history.
+
+### Acceptance and publication
+
+1. Hostile fixtures prove flat keyless routes cannot dispatch, provider-bound
+   keyless/helper failures never receive an xAI sentinel, Disconnect cannot
+   resurrect a key, and helper errors contain no secret material.
+2. TOML fixtures prove lossless preservation of comments, partial overrides,
+   unknown fields, nested tables, quoted/dotted IDs, user providers, concurrent
+   replacement, inspect-warning rollback, and exact app-owned migration.
+3. ACP fixtures prove 1.0.4 model-list availability, both live update spellings,
+   complete add/remove/reorder replacement, stale-generation rejection, hidden
+   model exclusion, and no local membership reinjection.
+4. Harness-v2 fixtures prove reserve refusal, one-attempt Send, failure ledgering,
+   route/model/model-usage mismatch stops, bounded live Stop, cost labels,
+   allowlist redaction, and exact cleanup without private storage.
+5. Focused tests, `make test`, `git diff --check`, exact-path review, and a clean
+   candidate `make ship` pass before any paid Send.
+6. Installed nonbillable acceptance verifies exact identity, official catalog
+   visibility, helper/config presentation, and no secret/config drift. Only then
+   may the frozen paid packet run, under the 3M planned / 4M absolute ceilings.
+7. Capture exact route, effective/provider-facing model, token split, model calls,
+   provider cost or explicit unavailable state, frozen price estimate, tool/worker
+   receipts, config hashes, and attempt/cleanup receipts. Preserve failures.
+8. Push only to `personal`, open a ready PR, verify required CI on the exact head,
+   and merge normally with `--match-head-commit`.
+9. Fast-forward local `main`, run merged-main `make ship`, reconcile installed
+   identity/parity/signing, close only exact run-created local tabs, and take two
+   process-zero samples. Only then may Slice 4 be complete; Slice 5 remains locked.
