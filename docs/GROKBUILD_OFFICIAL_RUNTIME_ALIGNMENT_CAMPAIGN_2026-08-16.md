@@ -277,3 +277,25 @@ distinct failures rather than empty success.
    merge normally with `--match-head-commit`.
 6. Fast-forward local `main`, run merged-main `make ship`, reconcile parity, and
    take two process-zero samples. Only then may Slice 3 be considered.
+
+### Candidate receipt
+
+Code-bearing candidate `950bfc26a5c7b219ea96666917a8d3711f301ff3`
+implements the exact Slice 2 boundary. Focused contracts passed 10/10 typed
+control-plane, 76/76 ACP client, and 5/5 activity-parity tests. Clean `make test`
+and candidate `make ship` each passed **924/924**; `git diff --check` passed.
+
+`make ship` installed the exact clean candidate in `/Applications/GrokBuild.app`.
+The dist and installed executables share SHA-256
+`d67593eba4b16476f529e51ce561fc36890d34989f1eefd12027e735a5e404b2`;
+the bundle carries Team `DD2GCQJVB4`, passes deep/strict signing, and has no
+quarantine attribute. Installed Computer Use verified About identity
+`0.1.22 Personal` on branch `codex/official-runtime-s2-typed-acp-control` at
+`950bfc26`, then ordinary Settings navigation. It did not select Send, Resume,
+provider validation, or CLI update, and no Grok backend/helper process started.
+Installed CLI authority remains `grok 1.0.4 (d846eb93d94d) [stable]`.
+
+Native Quit produced process-zero samples at `2026-08-17T09:12:06-0400` and
+`2026-08-17T09:12:17-0400`. No prompt, provider/model call, billable work,
+credential access, config mutation, session recovery, CLI upgrade, or Slice 3
+implementation occurred. Publication and merged-main closeout remain.

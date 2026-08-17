@@ -74,14 +74,26 @@ Slice 2 is now the exact active scope. It may capture
 generation, and add typed read-only wrappers for `x.ai/models/list`,
 `x.ai/session/usage`, `x.ai/session/info`, and bounded
 `x.ai/session/updates` on the existing per-tab ACP connection. Missing or known
-versions below 1.0.5 must emit no extension request. Update pages are capped at 512 rows;
-child receipt reconciliation is capped at four 256-row tail pages. The official
-updates method becomes preferred, while the private child-ledger reader remains
-an explicit 1.0.4 compatibility fallback until Slice 3 parity/removal.
+versions below 1.0.5 must emit no extension request. Update pages are capped at
+512 rows; child receipt reconciliation is capped at four 256-row tail pages. The
+official updates method becomes preferred, while the private child-ledger reader
+remains an explicit 1.0.4 compatibility fallback until Slice 3 parity/removal.
 
 CLI upgrade, provider/model calls, billable prompts, auth/credential/config
 changes, `session/load` replay recovery, root-history migration, control
 mutations, a second ACP process/daemon, and Slice 3 are out of scope.
+
+Candidate receipt: code-bearing commit
+`950bfc26a5c7b219ea96666917a8d3711f301ff3`. Focused typed-control, ACP-client,
+and parity contracts passed 10/10, 76/76, and 5/5. Clean `make test` and
+candidate `make ship` each passed 924/924. The installed clean candidate matches
+the dist executable at SHA-256 `d67593eb…e404b2`, Team `DD2GCQJVB4`,
+deep/strict signing, and no quarantine. Nonbillable installed Computer Use
+verified exact About identity and ordinary Settings navigation without Send,
+Resume, provider validation, backend/helper launch, or CLI upgrade. Native Quit
+produced process-zero samples at `2026-08-17T09:12:06-0400` and
+`2026-08-17T09:12:17-0400`. Publication and merged-main closeout remain; Slice 3
+stays locked.
 
 ## Visual Quiet — 2026-08-15 (Phase 6 welcome extraction authorized)
 
