@@ -1,14 +1,13 @@
 # GrokBuild Official Runtime Alignment Campaign — 2026-08-16
 
-Status: **Slice 3 active; Slice 4 locked.** Jimmy authorized a rigorous
+Status: **Slices 0–3 complete; Slice 4 locked.** Jimmy authorized a rigorous
 merge-per-slice campaign on 2026-08-16. Every slice gets its own branch,
 explicit commits, ready pull request, exact-head required checks, normal merge,
 merged-main installation, and process-zero closeout before the next slice begins.
 
 Current code-bearing baseline and installed app: clean merge
-`a615fed8f5ffd0173bfd66a306e73ddf4fb419c0` (PR #116). The dist and installed
-executables match byte-for-byte. An accepted docs-only closeout descendant has
-zero code diff from that stamp. Installed CLI authority is
+`d774b365f9281cef6c8d53e6b2746a7f9a9c52e1` (PR #118). The dist and installed
+executables match byte-for-byte. Installed CLI authority is
 `grok 1.0.4 (d846eb93d94d) [stable]`. Official 1.0.5 source informs this
 campaign, but no CLI upgrade is authorized.
 
@@ -400,5 +399,16 @@ without a prompt; its one existing user turn remained singular after typed repla
 the live model confirmed, and About reported
 `0.1.22 Personal • codex/official-runtime-s3-session-truth @ e3b29047` with
 `grok CLI: 1.0.4 [stable]`. Native Quit produced process-zero samples at
-`2026-08-17T11:42:41-0400` and `2026-08-17T11:42:56-0400`. Exact-head CI,
-merge, and merged-main closeout remain pending.
+`2026-08-17T11:42:41-0400` and `2026-08-17T11:42:56-0400`.
+
+PR #118 passed required **Test and Build App** on exact head
+`a88cd9898f1ab386d39649ffae48e7809a613f59` and merged normally with the
+match-head guard as code-bearing baseline
+`d774b365f9281cef6c8d53e6b2746a7f9a9c52e1`. Clean merged-main `make ship`
+passed 929/929 and installed that exact merge with matching dist/install SHA-256
+`2f5f95d8…e03e4`, Team `DD2GCQJVB4`, deep/strict signing, and no quarantine.
+Installed Computer Use verified `0.1.22 Personal • main @ d774b365` with CLI
+`1.0.4 [stable]` without sending or resuming another prompt. Native Quit produced
+process-zero samples at `2026-08-17T11:53:57-0400` and
+`2026-08-17T11:54:14-0400`. Slice 3 is complete; Slice 4 remains locked until
+Jimmy separately authorizes it.
