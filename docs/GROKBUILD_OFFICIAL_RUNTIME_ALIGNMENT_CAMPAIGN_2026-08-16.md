@@ -1,6 +1,6 @@
 # GrokBuild Official Runtime Alignment Campaign — 2026-08-16
 
-Status: **Slices 0–3 complete; Slice 4 active.** Jimmy authorized a rigorous
+Status: **Slices 0–3 complete; Slice 4A active inside Slice 4.** Jimmy authorized a rigorous
 merge-per-slice campaign on 2026-08-16. Every slice gets its own branch,
 explicit commits, ready pull request, exact-head required checks, normal merge,
 merged-main installation, and process-zero closeout before the next slice begins.
@@ -34,11 +34,35 @@ Grok CLI.
 | **2** | **Typed ACP control spine** | Add a version/capability-aware facade over each existing ACP connection; first methods are models, usage, session metadata, and bounded session updates. | **Complete — PR #116** |
 | **3** | **Session truth and recovery** | Consume typed `session/load` replay, reconcile the local presentation cache, and retire private root/child storage reads after a shadow-parity gate. | **Complete — PR #118** |
 | **4** | **Official provider and open-weight lane** | Use official provider definitions, resolve the keyless-endpoint credential hazard, and pilot one Keychain-backed auth helper without bundling a model runtime. | **Active** |
+| **4A** | **Hard pre-provider budget governor** | Define and prove an official-CLI-owned, atomic worst-case reservation boundary shared by parent, child, and retry sampling before any provider request; keep the app and harness projection-only. | **Active — authorized 2026-08-17** |
 | **5** | **Controls behave like controls** | Replace model-prompt control actions where official methods exist; separate cancel, worker cancel, and disconnect semantics. | Locked |
 | **6** | **Coordinator simplification** | Split transport/session/projection owners only after authority correction; evaluate workspace/profile process pooling without a default leader daemon. | Locked |
 
 Locked rows are roadmap, not implementation authority. Their exact scope must be
 re-audited against the then-current CLI, repository, and merged predecessor.
+
+### Slice 4A authority and hard stop
+
+Jimmy authorized Slice 4A on 2026-08-17 after the Slice 4 paid gate correctly
+refused to treat post-response ACP usage polling as an absolute budget. Slice 4A
+may inspect and test the pinned official Grok 1.0.5 source, define the smallest
+upstream-aligned sampler contract, harden GrokBuild's nonbillable handoff and
+typed receipt projection, and add hostile local fixtures. It may not send a
+provider request, read a credential value, mutate live Grok configuration,
+upgrade the installed CLI, add a proxy or second runtime, or begin Slice 5 or 6.
+
+The target invariant is enforced **before network dispatch** by the CLI runtime:
+
+`settled spend + outstanding worst-case reservations <= campaign ceiling`
+
+Every parent request, child request, retry, and concurrent process participating
+in the paid campaign must enter through one atomic durable authority. An
+ambiguous dispatch, cancellation, missing usage response, or crash keeps the
+full reservation charged until authoritative reconciliation. Swift may authorize
+an immutable packet, display typed CLI receipts, and retain Stop as defense in
+depth; it may not infer or manufacture the reservation. Paid execution remains
+locked until the installed CLI advertises this exact capability and hostile
+tests prove the invariant across concurrency, retry, cancellation, and restart.
 
 ## Slice 0 — Restore CLI execution ownership
 

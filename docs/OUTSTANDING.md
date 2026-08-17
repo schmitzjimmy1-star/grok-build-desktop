@@ -32,7 +32,8 @@
 > **Current campaign:** 2026-08-16 Official Runtime Alignment —
 > [`docs/GROKBUILD_OFFICIAL_RUNTIME_ALIGNMENT_CAMPAIGN_2026-08-16.md`](GROKBUILD_OFFICIAL_RUNTIME_ALIGNMENT_CAMPAIGN_2026-08-16.md).
 > Jimmy authorized this merge-per-slice campaign on 2026-08-16. Slices 0–3 are
-> complete through PR #118. Jimmy authorized Slice 4 on 2026-08-17. Slice 4 is
+> complete through PR #118. Jimmy authorized Slice 4 on 2026-08-17 and its
+> hard-budget sub-slice 4A later that day. Slice 4 is
 > limited to official provider projection, the OpenRouter Keychain-helper pilot,
 > official model-catalog authority, the paid-harness v2, and a paid packet with
 > at most 3,000,000 planned tokens plus a 1,000,000-token emergency reserve.
@@ -40,6 +41,13 @@
 > arrives after provider work, so the current reactive Stop guard cannot prove
 > Jimmy's absolute 4,000,000-token ceiling. Paid execution remains locked until a
 > hard official or worst-case bound exists; this is blocked work, not a waiver.
+> Slice 4A is limited to an official-CLI-owned pre-dispatch reservation contract,
+> hostile nonbillable fixtures, and projection-only GrokBuild/harness support.
+> It may not substitute a Swift poller, proxy, second runtime, or aspirational
+> ledger row for a CLI-issued reservation. Every ambiguous dispatch keeps its
+> worst-case reservation charged. Provider Sends remain locked until the exact
+> installed CLI advertises and proves the capability across parent, child,
+> retry, concurrency, cancellation, and restart.
 > CLI upgrade and provider/config/credential mutation remain unauthorized.
 > Slice 5 and later work remain locked.
 >
@@ -47,7 +55,7 @@
 > 2026-08-14 Residual Closeout (Phases 0–6) complete and merged as `4613bde` (PR #94);
 > 2026-08-13 campaign (Slices 0–7) closed at merge `c0895ee` (PR #86).
 
-## Official Runtime Alignment — 2026-08-16 (Slices 0–3 complete; Slice 4 active)
+## Official Runtime Alignment — 2026-08-16 (Slices 0–3 complete; Slice 4A active)
 
 Authorized spec is
 [`docs/GROKBUILD_OFFICIAL_RUNTIME_ALIGNMENT_CAMPAIGN_2026-08-16.md`](GROKBUILD_OFFICIAL_RUNTIME_ALIGNMENT_CAMPAIGN_2026-08-16.md).
@@ -135,6 +143,14 @@ campaign document. Provider/catalog/config implementation commits `b4623d8` and
 under test, but its paid path is explicitly locked because reactive usage polling
 cannot prove the absolute 4M ceiling. Zero paid Slice 4 packets have run. Slice 5
 remains locked.
+
+Jimmy authorized Slice 4A on 2026-08-17 as the exact hard-budget continuation.
+Its authority is deliberately narrower than a CLI upgrade or provider test: pin
+the official 1.0.5 source, locate the common sampler/retry dispatch seam, define
+and nonbillably prove an atomic durable worst-case reservation invariant, then
+project official typed budget state through the existing ACP connection. The
+current paid harness refusal stays first and unconditional until the installed
+CLI advertises that proven capability. Slice 5 and Slice 6 remain locked.
 
 ## Visual Quiet — 2026-08-15 (Phase 6 welcome extraction authorized)
 
