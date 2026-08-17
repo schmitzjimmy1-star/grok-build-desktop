@@ -31,41 +31,35 @@
 >
 > **Current campaign:** 2026-08-16 Official Runtime Alignment —
 > [`docs/GROKBUILD_OFFICIAL_RUNTIME_ALIGNMENT_CAMPAIGN_2026-08-16.md`](GROKBUILD_OFFICIAL_RUNTIME_ALIGNMENT_CAMPAIGN_2026-08-16.md).
-> Jimmy authorized this merge-per-slice campaign on 2026-08-16. Slice 0 is the
-> only active implementation scope: restore Grok CLI ownership of filesystem and
-> terminal execution, fail unexpected reverse-execution requests closed, update
-> exact contracts/docs, and complete the standard commit, installed-app, PR,
-> exact-head CI, merge, merged-main install, and process-zero gates. No later
-> slice may begin before Slice 0 merges and closes.
+> Jimmy authorized this merge-per-slice campaign on 2026-08-16. Slice 0 is
+> complete in PR #114. Slice 1 is the only active implementation scope: contain
+> custom-model config corruption by refusing unsupported advanced TOML rewrites,
+> pin official-shaped fixtures, surface the read-only boundary, and complete the
+> standard commit, installed-app, PR, exact-head CI, merge, merged-main install,
+> and process-zero gates. No later slice may begin before Slice 1 merges and
+> closes.
 >
 > Prior campaigns: 2026-08-15 Visual Quiet complete and merged through `3947136` (PR #113);
 > 2026-08-14 Residual Closeout (Phases 0–6) complete and merged as `4613bde` (PR #94);
 > 2026-08-13 campaign (Slices 0–7) closed at merge `c0895ee` (PR #86).
 
-## Official Runtime Alignment — 2026-08-16 (Slice 0 publication pending)
+## Official Runtime Alignment — 2026-08-16 (Slice 1 active)
 
 Authorized spec is
 [`docs/GROKBUILD_OFFICIAL_RUNTIME_ALIGNMENT_CAMPAIGN_2026-08-16.md`](GROKBUILD_OFFICIAL_RUNTIME_ALIGNMENT_CAMPAIGN_2026-08-16.md).
-Slice 0 is limited to the CLI execution boundary. Its acceptance must prove the
-ACP initialize packet advertises filesystem read/write and terminal capabilities
-as false, hostile reverse requests cannot write a file or launch a process, the
-installed app remains usable without a provider send, required tests and
-`make ship` pass on a clean candidate, and the exact PR head merges before Slice
-1 begins. CLI upgrades, model/provider configuration, credential access, private
-session migration, typed control-plane additions, and billable prompts are out of
-scope.
+Slice 0 is complete: PR #114 merged as
+`e6c0925ff847b5f51ff171b7ccf25aef4eaa97ce`; merged-main `make ship` passed
+903/903 with exact installed identity, matching dist/install executable, and two
+process-zero samples.
 
-Candidate receipt: code-bearing commit
-`0157d1996c9a595d407267908b48bb1c80823885` removes client filesystem and
-terminal execution. The hostile wire test passed with both reverse-execution
-requests rejected as `-32601` and zero side effects; the ACP suite passed 76/76
-and two full runs passed 903/903. Candidate `make ship` installed exact clean
-stamp `0157d199`, matching dist/install SHA-256 `1d8fc740…ad25b`, Team
-`DD2GCQJVB4`, deep/strict signing, and no quarantine. Nonbillable installed
-Computer Use verified the exact About identity, CLI 1.0.4 stable, canonical
-project/sidebar/workbench chrome, disabled Send, native Quit, and two
-process-zero samples without starting or resuming a backend. Publication and
-merged-main closeout remain; Slice 1 is still locked.
+Slice 1 contains the valid official 1.0.5 advanced-model TOML corruption path.
+It may make `CustomModelStore` parse only exact flat model tables, conservatively
+detect nested model/provider structures, fail writes inside the locked atomic
+update, surface a visible read-only notice, and add exact-byte preservation
+fixtures. The ownership decision is fail-closed containment: advanced Grok
+model configuration stays CLI-owned until a semantic representation or official
+mutation contract exists. Live config/credential changes, CLI upgrades, provider
+calls, billable prompts, ACP control work, and Slice 2 are out of scope.
 
 ## Visual Quiet — 2026-08-15 (Phase 6 welcome extraction authorized)
 

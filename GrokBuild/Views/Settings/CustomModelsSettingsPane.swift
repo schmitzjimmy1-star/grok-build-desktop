@@ -79,6 +79,21 @@ struct CustomModelsSettingsPane: View {
         get { viewModel.statusMessage }
         nonmutating set { viewModel.statusMessage = newValue }
     }
+    private var modelConfigWriteSafety: CustomModelStore.WriteSafety {
+        get { viewModel.modelConfigWriteSafety }
+        nonmutating set { viewModel.modelConfigWriteSafety = newValue }
+    }
+    private var hasLoadedModelConfiguration: Bool {
+        get { viewModel.hasLoadedModelConfiguration }
+        nonmutating set { viewModel.hasLoadedModelConfiguration = newValue }
+    }
+    private var modelConfigWriteBlockReason: String? {
+        guard hasLoadedModelConfiguration else {
+            return "Wait for GrokBuild to finish loading config.toml before changing models."
+        }
+        return modelConfigWriteSafety.blockingMessage
+    }
+    private var canWriteModelConfiguration: Bool { modelConfigWriteBlockReason == nil }
     private var migrationIssues: [ProviderCredentialMigrationIssue] {
         get { viewModel.migrationIssues }
         nonmutating set { viewModel.migrationIssues = newValue }
@@ -196,6 +211,9 @@ struct CustomModelsSettingsPane: View {
                     grokAccountCard
                     if !migrationIssues.isEmpty {
                         migrationIssueCard
+                    }
+                    if hasLoadedModelConfiguration, !modelConfigWriteSafety.canWrite {
+                        advancedModelConfigurationCard
                     }
                     defaultModelCard
                     observedPerformanceCard
@@ -383,6 +401,20 @@ struct CustomModelsSettingsPane: View {
         }
     }
 
+    private var advancedModelConfigurationCard: some View {
+        settingsCard(title: "Advanced model configuration", systemImage: "lock.shield") {
+            VStack(alignment: .leading, spacing: 6) {
+                Text(modelConfigWriteSafety.blockingMessage ?? "Model configuration is read-only in GrokBuild.")
+                    .font(.caption)
+                    .foregroundStyle(AppTheme.Palette.warning)
+                    .textSelection(.enabled)
+                Text("You can still inspect models here. Add, edit, remove, provider, and default-model writes stay locked so the official CLI configuration remains intact.")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+            }
+        }
+    }
+
     private var defaultModelCard: some View {
         settingsCard(title: "Default Model", systemImage: "checkmark.circle") {
             VStack(alignment: .leading, spacing: 12) {
@@ -401,13 +433,14 @@ struct CustomModelsSettingsPane: View {
                     }
                     .labelsHidden()
                     .frame(width: 280)
+                    .disabled(!hasLoadedModelConfiguration)
 
                     Spacer()
 
                     Button("Apply Default") { Task { await applyDefaultModel() } }
                     .buttonStyle(GrokProminentButtonStyle())
                     .controlSize(.small)
-                    .disabled(!isDefaultModelDirty)
+                    .disabled(!isDefaultModelDirty || !canWriteModelConfiguration)
                 }
                 Text("Applies to future inherited tabs only; existing tab choices and live process receipts are unchanged.")
                     .font(.caption)
@@ -704,19 +737,22 @@ struct CustomModelsSettingsPane: View {
                     let addModelDisabled = addModelDisabledReason(for: provider) != nil
                     Button("Add model") { beginNewModel(forProvider: provider) }
                         .controlSize(.small)
-                        .disabled(addModelDisabled)
+                        .disabled(addModelDisabled || !canWriteModelConfiguration)
                         .help(addModelDisabledReason(for: provider)
                             ?? "Add a model from the fetched list.")
                     Button("Edit") { beginEditingProvider(provider) }
                         .controlSize(.small)
+                        .disabled(!canWriteModelConfiguration)
                     let inUse = modelsUsing(provider).count
                     Button("Remove", role: .destructive) {
                         providerPendingRemoval = provider
                         showProviderRemovalConfirmation = true
                     }
                         .controlSize(.small)
-                        .disabled(inUse > 0)
-                        .help(inUse > 0
+                        .disabled(inUse > 0 || !canWriteModelConfiguration)
+                        .help(!canWriteModelConfiguration
+                            ? modelConfigWriteBlockReason ?? "Model configuration is read-only."
+                            : inUse > 0
                             ? "Remove its \(inUse) model\(inUse == 1 ? "" : "s") first before removing this provider."
                             : "Remove this provider.")
                 }
@@ -763,6 +799,7 @@ struct CustomModelsSettingsPane: View {
                 .disabled(
                     fetchingProviderID == provider.id
                     || !canFetchProvider
+                    || !canWriteModelConfiguration
                 )
                 .help(fetchHelp(for: provider, highlight: highlightFetch))
 
@@ -967,7 +1004,7 @@ struct CustomModelsSettingsPane: View {
                 HStack(spacing: 10) {
                     Button(isEditingProvider ? "Save Provider" : "Add Provider") { _ = saveProviderDraft() }
                         .buttonStyle(GrokProminentButtonStyle())
-                        .disabled(providerDraft.validationError != nil)
+                        .disabled(providerDraft.validationError != nil || !canWriteModelConfiguration)
                     Button("Cancel") { resetProviderDraft() }
                     Spacer()
                     if let error = providerDraft.validationError, !providerDraft.id.isEmpty {
@@ -998,6 +1035,7 @@ struct CustomModelsSettingsPane: View {
                         }
                         .buttonStyle(GrokProminentButtonStyle())
                         .controlSize(.small)
+                        .disabled(!canWriteModelConfiguration)
 
                         if providerDraft.credentialMetadata.kind == .oauthIssuedKey {
                             badge("OAuth key saved", systemImage: "checkmark.circle.fill")
@@ -1021,6 +1059,7 @@ struct CustomModelsSettingsPane: View {
                             disconnectOpenRouterLocally()
                         }
                         .controlSize(.small)
+                        .disabled(!canWriteModelConfiguration)
                         Link(
                             "Manage or revoke remote keys",
                             destination: URL(string: "https://openrouter.ai/settings/keys")!
@@ -1072,7 +1111,7 @@ struct CustomModelsSettingsPane: View {
                     }
                 }
                 .controlSize(.small)
-                .disabled(!canFetchNow || isFetching)
+                .disabled(!canFetchNow || isFetching || !canWriteModelConfiguration)
 
                 if !fetched.isEmpty {
                     Text("\(fetched.count) model\(fetched.count == 1 ? "" : "s") available")
@@ -1169,11 +1208,13 @@ struct CustomModelsSettingsPane: View {
             HStack(spacing: 6) {
                 Button("Edit") { beginEditing(model) }
                     .controlSize(.small)
+                    .disabled(!canWriteModelConfiguration)
                 Button("Remove", role: .destructive) {
                     modelPendingRemoval = model
                     showModelRemovalConfirmation = true
                 }
                     .controlSize(.small)
+                    .disabled(!canWriteModelConfiguration)
             }
         }
         .padding(.vertical, 4)
@@ -1247,6 +1288,7 @@ struct CustomModelsSettingsPane: View {
                             .controlSize(.small)
                             .disabled(
                                 fetchingProviderID == provider.id
+                                || !canWriteModelConfiguration
                                 || !canFetch(
                                     baseURL: provider.baseURL,
                                     apiKey: provider.apiKey,
@@ -1514,6 +1556,7 @@ struct CustomModelsSettingsPane: View {
 
     /// Validation for the save button, including duplicate-id checks when adding a new model.
     private var draftSaveBlockedReason: String? {
+        if let reason = modelConfigWriteBlockReason { return reason }
         if let error = resolvedDraft.validationError { return error }
         if let provider = draftProvider {
             let appearsInCatalog = selectableModelsForDraft.contains { $0.id == draft.model }
@@ -1591,11 +1634,17 @@ struct CustomModelsSettingsPane: View {
     }
 
     private func reload() async {
+        hasLoadedModelConfiguration = false
         // Keychain reads can wait on securityd. Running them synchronously in this
         // SwiftUI task freezes every click and even the accessibility server.
         let loaded = await GrokBuildPerformance.measure(.providerCredentialMetadataLoad) {
             await SettingsBackgroundLoader.run {
-                (ProviderStore.loadResult(), CustomModelStore.load())
+                let snapshot = CustomModelStore.load()
+                let providers = ProviderStore.loadResult(
+                    migrationModels: snapshot.models,
+                    allowCredentialMigration: snapshot.writeSafety.canWrite
+                )
+                return (providers, snapshot)
             }
         }
         guard !Task.isCancelled else { return }
@@ -1603,6 +1652,8 @@ struct CustomModelsSettingsPane: View {
         let snapshot = loaded.1
         providers = providerLoad.providers
         migrationIssues = providerLoad.migrationIssues
+        modelConfigWriteSafety = snapshot.writeSafety
+        hasLoadedModelConfiguration = true
         let savedDefault = snapshot.defaultModelID ?? ""
         valueState.load(
             persisted: savedDefault,
@@ -1631,7 +1682,9 @@ struct CustomModelsSettingsPane: View {
         let needsCredentialProjection = zip(snapshot.models, resolvedModels).contains { original, resolved in
             original.apiKey != resolved.apiKey || original.baseURL != resolved.baseURL
         }
-        if needsCredentialProjection && !providerLoad.migrationIssues.contains(where: { $0.kind == .storage }) {
+        if needsCredentialProjection,
+           snapshot.writeSafety.canWrite,
+           !providerLoad.migrationIssues.contains(where: { $0.kind == .storage }) {
             do {
                 try CustomModelStore.save(
                     models: resolvedModels,
@@ -1744,8 +1797,11 @@ struct CustomModelsSettingsPane: View {
     @discardableResult
     private func saveProviderDraft() -> Bool {
         guard providerDraft.validationError == nil else { return false }
+        guard canWriteModelConfiguration else {
+            errorMessage = modelConfigWriteBlockReason
+            return false
+        }
         let previousProviders = providers
-        let previousModels = models
         let trimmedCredential = providerDraft.apiKey.trimmingCharacters(in: .whitespacesAndNewlines)
         if trimmedCredential.isEmpty {
             providerDraft.credentialMetadata = .none
@@ -1754,24 +1810,35 @@ struct CustomModelsSettingsPane: View {
             providerDraft.credentialMetadata = .apiKey()
         }
         let affectedModelIDs = Set(modelsUsingProviderID(editingProviderID ?? providerDraft.id).map(\.id))
-        if let editingProviderID, let index = providers.firstIndex(where: { $0.id == editingProviderID }) {
-            providers[index] = providerDraft
+        var updatedProviders = providers
+        var updatedModels = models
+        if let editingProviderID,
+           let index = updatedProviders.firstIndex(where: { $0.id == editingProviderID }) {
+            updatedProviders[index] = providerDraft
             // Propagate endpoint/credential changes to models linked to this provider.
-            models = models.map { $0.providerID == editingProviderID ? $0.resolved(using: providers) : $0 }
-        } else if let index = providers.firstIndex(where: { $0.id == providerDraft.id }) {
-            providers[index] = providerDraft
+            updatedModels = models.map {
+                $0.providerID == editingProviderID ? $0.resolved(using: updatedProviders) : $0
+            }
+        } else if let index = updatedProviders.firstIndex(where: { $0.id == providerDraft.id }) {
+            updatedProviders[index] = providerDraft
         } else {
-            providers.append(providerDraft)
+            updatedProviders.append(providerDraft)
         }
         do {
-            try ProviderStore.save(providers)
+            try ProviderModelConfigurationTransaction.save(
+                previousProviders: previousProviders,
+                updatedProviders: updatedProviders,
+                models: updatedModels.map { $0.resolved(using: updatedProviders) },
+                defaultModelID: persistedDefaultModelIDForConfig
+            )
+            providers = updatedProviders
+            models = updatedModels
             resetProviderDraft()
-            persist(change: .models(affectedModelIDs))
+            recordConfigurationPersistenceSuccess(change: .models(affectedModelIDs))
             return true
         } catch {
-            providers = previousProviders
-            models = previousModels
             errorMessage = error.localizedDescription
+            statusMessage = nil
             return false
         }
     }
@@ -1786,18 +1853,30 @@ struct CustomModelsSettingsPane: View {
     }
 
     private func removeProvider(_ provider: Provider) {
+        guard canWriteModelConfiguration else {
+            errorMessage = modelConfigWriteBlockReason
+            return
+        }
         // A provider can only be removed once none of its models reference it, so the
         // user explicitly removes the models first and we never orphan config.toml tables.
         guard modelsUsing(provider).isEmpty else { return }
-        providers.removeAll { $0.id == provider.id }
+        let previousProviders = providers
+        let updatedProviders = providers.filter { $0.id != provider.id }
         do {
-            try ProviderStore.save(providers)
+            try ProviderModelConfigurationTransaction.save(
+                previousProviders: previousProviders,
+                updatedProviders: updatedProviders,
+                models: models.map { $0.resolved(using: updatedProviders) },
+                defaultModelID: persistedDefaultModelIDForConfig
+            )
+            providers = updatedProviders
             if editingProviderID == provider.id { resetProviderDraft() }
             fetchedModels[provider.id] = nil
             validationResults[provider.id] = nil
-            persist(change: .models([]))
+            recordConfigurationPersistenceSuccess(change: .models([]))
         } catch {
             errorMessage = error.localizedDescription
+            statusMessage = nil
         }
     }
 
@@ -1816,6 +1895,10 @@ struct CustomModelsSettingsPane: View {
     }
 
     private func validateProvider(_ provider: Provider) {
+        guard canWriteModelConfiguration else {
+            errorMessage = modelConfigWriteBlockReason
+            return
+        }
         let key = provider.id.isEmpty ? "__draft__" : provider.id
         fetchingProviderID = key
         fetchErrorProviderID = nil
@@ -2016,40 +2099,90 @@ struct CustomModelsSettingsPane: View {
         } else {
             updated.append(draft)
         }
+        guard persist(
+            models: updated,
+            providers: providers,
+            defaultModelID: persistedDefaultModelIDForConfig,
+            change: .models(changedModelIDs)
+        ) else {
+            return
+        }
         models = updated
         resetDraft()
-        persist(change: .models(changedModelIDs))
     }
 
     private func remove(_ model: CustomModel) {
-        models.removeAll { $0.id == model.id }
-        if defaultModelID == model.id {
-            defaultModelID = ""
+        guard canWriteModelConfiguration else {
+            errorMessage = modelConfigWriteBlockReason
+            return
+        }
+        let removal = CustomModelStore.removalPlan(
+            removing: model.id,
+            from: models,
+            defaultModelID: persistedDefaultModelIDForConfig
+        )
+        guard persist(
+            models: removal.models,
+            providers: providers,
+            defaultModelID: removal.defaultModelID,
+            change: .models([model.id])
+        ) else {
+            return
+        }
+        models = removal.models
+        if removal.defaultModelID == nil, persistedDefaultModelIDForConfig == model.id {
+            valueState.reconcilePersisted(
+                "",
+                preservingDraft: defaultModelID == model.id ? nil : defaultModelID
+            )
         }
         if editingID == model.id { resetDraft() }
-        persist(change: .models([model.id]))
     }
 
-    private func persist(change: ConfigurationChange) {
+    @discardableResult
+    private func persist(
+        models candidateModels: [CustomModel],
+        providers candidateProviders: [Provider],
+        defaultModelID candidateDefaultModelID: String?,
+        change: ConfigurationChange
+    ) -> Bool {
+        guard canWriteModelConfiguration else {
+            errorMessage = modelConfigWriteBlockReason
+            statusMessage = nil
+            return false
+        }
         do {
-            let resolvedModels = models.map { $0.resolved(using: providers) }
-            let selectedDefault = valueState.persisted.trimmingCharacters(in: .whitespacesAndNewlines)
+            let resolvedModels = candidateModels.map { $0.resolved(using: candidateProviders) }
             try CustomModelStore.save(
                 models: resolvedModels,
-                defaultModelID: selectedDefault.isEmpty ? nil : selectedDefault
+                defaultModelID: candidateDefaultModelID
             )
-            statusMessage = "Saved to ~/.grok/config.toml."
-            errorMessage = nil
-            onConfigurationChanged(change)
+            recordConfigurationPersistenceSuccess(change: change)
+            return true
         } catch {
             errorMessage = "Failed to save config.toml: \(error.localizedDescription)"
             statusMessage = nil
+            return false
         }
+    }
+
+    private var persistedDefaultModelIDForConfig: String? {
+        let selected = valueState.persisted.trimmingCharacters(in: .whitespacesAndNewlines)
+        return selected.isEmpty ? nil : selected
+    }
+
+    private func recordConfigurationPersistenceSuccess(change: ConfigurationChange) {
+        statusMessage = "Saved to ~/.grok/config.toml."
+        errorMessage = nil
+        onConfigurationChanged(change)
     }
 
     @MainActor
     private func applyDefaultModel() async {
-        guard valueState.canApply else { return }
+        guard valueState.canApply, canWriteModelConfiguration else {
+            errorMessage = modelConfigWriteBlockReason
+            return
+        }
         let selectedDefault = valueState.draft.trimmingCharacters(in: .whitespacesAndNewlines)
         do {
             try CustomModelStore.save(

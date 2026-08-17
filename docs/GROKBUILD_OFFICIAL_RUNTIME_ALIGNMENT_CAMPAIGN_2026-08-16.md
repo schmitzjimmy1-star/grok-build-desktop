@@ -1,16 +1,16 @@
 # GrokBuild Official Runtime Alignment Campaign — 2026-08-16
 
-Status: **active; Slice 0 publication only.** Jimmy authorized a rigorous merge-per-slice
+Status: **active; Slice 1 authorized.** Jimmy authorized a rigorous merge-per-slice
 campaign on 2026-08-16. Every slice gets its own branch, explicit commits, ready
 pull request, exact-head required checks, normal merge, merged-main installation,
 and process-zero closeout before the next slice begins.
 
-Baseline: clean `main == personal/main` at
-`39471368ec906c1e7bd220af870c4604f0815e3d` (PR #113). The installed app is the
-clean code-bearing ancestor `a437c018911358b87aae9bcc1e520eeeafc7e44f`; the
-dist and installed executables match byte-for-byte. Installed CLI authority is
-`grok 1.0.4 (d846eb93d94d) [stable]`. Official 1.0.5 source informed this
-campaign, but no CLI upgrade is authorized by Slice 0.
+Current baseline: clean `main == personal/main` at
+`e6c0925ff847b5f51ff171b7ccf25aef4eaa97ce` (PR #114). The installed app is
+the same clean merged-main source, and the dist and installed executables match
+byte-for-byte. Installed CLI authority is `grok 1.0.4 (d846eb93d94d) [stable]`.
+Official 1.0.5 source informs this campaign, but no CLI upgrade is authorized by
+Slice 1.
 
 ## Governing decision
 
@@ -30,8 +30,8 @@ Grok CLI.
 
 | Slice | Title | Authorized job | Status |
 |---|---|---|---|
-| **0** | **Restore CLI execution ownership** | Disable ACP client FS/terminal capabilities; remove Swift reverse executors; fail surprise reverse execution closed; retain typed tool receipts. | **Candidate accepted; publication pending** |
-| **1** | **Contain model-config corruption** | Refuse unsafe nested-model rewrites, add official nested-TOML fixtures, then choose a structure-preserving ownership boundary. | Locked |
+| **0** | **Restore CLI execution ownership** | Disable ACP client FS/terminal capabilities; remove Swift reverse executors; fail surprise reverse execution closed; retain typed tool receipts. | **Complete — PR #114** |
+| **1** | **Contain model-config corruption** | Refuse unsafe nested-model rewrites, add official nested-TOML fixtures, then choose a structure-preserving ownership boundary. | **Active** |
 | **2** | **Typed ACP control spine** | Add a version/capability-aware facade over each existing ACP connection; first methods are models, usage, session metadata, and bounded session updates. | Locked |
 | **3** | **Session truth and recovery** | Consume typed `session/load` replay, reconcile the local presentation cache, and retire private root/child storage reads after a shadow-parity gate. | Locked |
 | **4** | **Official provider and open-weight lane** | Use official provider definitions, resolve the keyless-endpoint credential hazard, and pilot one Keychain-backed auth helper without bundling a model runtime. | Locked |
@@ -116,6 +116,72 @@ saved-task choices. Send remained disabled; Resume was not pressed; no provider
 prompt, backend process, test session, credential/config change, or cleanup was
 created. Native Quit produced two process-zero samples.
 
-Publication is still pending. Slice 1 remains locked until the exact PR head is
-CI-green, merged normally, and merged `main` passes install/parity/process-zero
-closeout.
+PR #114 merged normally as `e6c0925ff847b5f51ff171b7ccf25aef4eaa97ce`.
+Merged-main `make ship` passed **903/903**, installed the exact clean merge, and
+produced matching dist/install SHA-256
+`233a35280244870d3db3bcc2a37b95799088cade7d893506ec68ea9e8c6cef5a`.
+Local `main`, `personal/main`, installed identity, signing, and two process-zero
+samples reconciled. Slice 0 is complete.
+
+## Slice 1 — Contain model-config corruption
+
+### Root cause and ownership decision
+
+Official Grok 1.0.5 accepts [nested per-model
+tables](https://github.com/xai-org/grok-build/blob/9fabadea800fa6e2ed8ec91c4f45f02b7e2504f4/crates/codegen/xai-grok-shell/src/agent/config_model_override_parse.rs#L595-L610)
+such as `[model.<id>.extra_headers]` and `[model.<id>.query_params]`, plus
+[provider tables and `model_provider`
+references](https://github.com/xai-org/grok-build/blob/9fabadea800fa6e2ed8ec91c4f45f02b7e2504f4/crates/codegen/xai-grok-shell/src/agent/model_providers.rs#L830-L862).
+GrokBuild's flat text parser previously treated every `model.*` header as a new
+model id, then a save removed all such tables and re-emitted flattened bogus
+entries.
+
+Slice 1 chooses a fail-closed ownership boundary. GrokBuild may continue to
+manage exact flat `[model.<id>]` tables and `[models].default`; advanced model
+and provider structures remain CLI-owned. Supporting those structures later
+requires a semantic TOML representation or an official CLI/ACP mutation
+contract, not more destructive string rewriting.
+
+### Exact scope
+
+- Parse only exact flat model tables as GrokBuild-managed models; nested tables
+  must never appear as bogus model rows.
+- Detect nested model tables, `model_providers` tables, provider references, and
+  unrecognized/alternate table spellings and root dotted model keys
+  conservatively.
+- Recheck write safety inside the locked `GrokConfigRepository.update` closure
+  before any replacement or model-metadata save.
+- Best-effort refuse a stale replacement when an external CLI/TUI writer changes
+  the source bytes before the repository's final pre-rename comparison; this is
+  not claimed to be a cross-process transaction or lock.
+- Make the app-launch legacy config migration stand down before config or
+  sidecar changes when advanced model structures are present.
+- Surface a visible read-only notice and block model, provider, default-model,
+  credential-projection, and removal writes while advanced configuration exists.
+- Hydrate existing provider credentials read-only in that state, and roll back
+  provider/Keychain changes if a late authoritative config check refuses.
+- Pin official 1.0.5-shaped fixtures and prove every refused save preserves the
+  original config bytes exactly; retain writable quoted dotted model ids.
+- Update architecture, README, campaign, and canonical outstanding state.
+
+### Exclusions
+
+- No semantic TOML editor, provider-schema adoption, config migration, CLI
+  upgrade, ACP control method, private-session work, provider call, billable
+  prompt, Keychain access, or mutation of the user's live `~/.grok` config.
+- No Slice 2 implementation, tag, GitHub release, notarization, write to
+  `origin`, force push, or broad cleanup.
+
+### Acceptance and publication
+
+1. Official-shaped focused fixtures pass and blocked saves preserve exact bytes.
+2. `make test`, `git diff --check`, and exact-path review pass.
+3. Commit the code-bearing candidate; run clean `make ship` and reconcile exact
+   installed identity, executable parity, signing, and quarantine.
+4. Installed Computer Use verifies Models remains readable and ordinary flat
+   configuration remains usable without changing config, credentials, or
+   starting a provider session.
+5. Push only to `personal`, open a ready PR, verify exact-head required CI, and
+   merge normally with `--match-head-commit`.
+6. Fast-forward local `main`, run merged-main `make ship`, reconcile parity, and
+   take two process-zero samples. Only then may Slice 2 be considered.

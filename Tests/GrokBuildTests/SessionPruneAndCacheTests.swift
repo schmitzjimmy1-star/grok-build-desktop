@@ -117,6 +117,30 @@ final class SessionPruneAndCacheTests: XCTestCase {
         XCTAssertEqual(repository.read(), external + "# trailing\n")
     }
 
+    func testConfigRepositoryRefusesConcurrentExternalReplacement() throws {
+        let directory = URL(fileURLWithPath: NSTemporaryDirectory())
+            .appendingPathComponent("grokbuild-config-conflict-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let configURL = directory.appendingPathComponent("config.toml")
+        let repository = GrokConfigRepository(configURL: configURL)
+        let original = "[models]\ndefault = \"old\"\n"
+        let external = "[models]\ndefault = \"external-wins\"\n"
+        try original.write(to: configURL, atomically: true, encoding: .utf8)
+
+        XCTAssertThrowsError(try repository.update { contents in
+            XCTAssertEqual(contents, original)
+            try external.write(to: configURL, atomically: true, encoding: .utf8)
+            return "[models]\ndefault = \"stale-grokbuild-write\"\n"
+        }) { error in
+            guard case GrokConfigRepository.UpdateError.changedDuringUpdate = error else {
+                return XCTFail("Unexpected conflict error: \(error)")
+            }
+        }
+
+        XCTAssertEqual(try String(contentsOf: configURL, encoding: .utf8), external)
+    }
+
     func testWorkspaceLayoutCacheTracksSaves() {
         let saved = SessionLayoutStore.loadWorkspaceLayout()
         defer {

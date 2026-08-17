@@ -852,7 +852,8 @@ enum ProviderStore {
         defaults: UserDefaults = .standard,
         credentialStore: any ProviderCredentialStoring = KeychainProviderCredentialStore(),
         migrationModels: [CustomModel]? = nil,
-        enforceConfigPermissions: Bool = true
+        enforceConfigPermissions: Bool = true,
+        allowCredentialMigration: Bool = true
     ) -> LoadResult {
         guard let data = defaults.data(forKey: key),
               let decoded = try? JSONDecoder().decode([Provider].self, from: data) else {
@@ -870,6 +871,25 @@ enum ProviderStore {
                 copy.authScheme = .none
             }
             return copy
+        }
+        if !allowCredentialMigration {
+            var hydrated = normalized
+            var issues: [ProviderCredentialMigrationIssue] = []
+            for index in hydrated.indices {
+                do {
+                    hydrated[index].apiKey = try credentialStore.credential(for: hydrated[index].id) ?? ""
+                } catch {
+                    issues.append(ProviderCredentialMigrationIssue(
+                        kind: .storage,
+                        providerID: hydrated[index].id,
+                        message: error.localizedDescription
+                    ))
+                }
+            }
+            if enforceConfigPermissions {
+                try? GrokConfigRepository.shared.enforceSecurePermissionsIfPresent()
+            }
+            return LoadResult(providers: hydrated, migrationIssues: issues)
         }
         let migration = ProviderCredentialMigrator.migrate(
             providers: normalized,
@@ -952,22 +972,90 @@ enum ProviderStore {
 
 /// Reads and writes custom model entries in `~/.grok/config.toml`.
 ///
-/// The store performs minimal, targeted edits: it manages `[model.<id>]` tables and the
-/// `default` key inside `[models]`, while preserving any other content in the file.
+/// The store manages only flat `[model.<id>]` tables and the `default` key inside `[models]`.
+/// Advanced model/provider structures belong to the Grok CLI; writes fail closed when those
+/// structures are present because this text editor cannot preserve their TOML semantics.
 enum CustomModelStore {
     /// Maximum number of custom models GrokBuild will manage in `~/.grok/config.toml`.
     static let maxModels = 28
+    private static let managedModelKeys: Set<String> = [
+        "model", "base_url", "name", "api_key", "api_backend", "context_window",
+        "grokbuild_context_tokens", "grokbuild_supports_reasoning_effort",
+        "grokbuild_supports_vision", "grokbuild_supports_thinking", "grokbuild_provider_id",
+    ]
 
     static var configURL: URL {
         GrokConfigRepository.shared.configURL
     }
 
+    struct RemovalPlan: Equatable {
+        var models: [CustomModel]
+        var defaultModelID: String?
+    }
+
+    static func removalPlan(
+        removing modelID: String,
+        from models: [CustomModel],
+        defaultModelID: String?
+    ) -> RemovalPlan {
+        RemovalPlan(
+            models: models.filter { $0.id != modelID },
+            defaultModelID: defaultModelID == modelID ? nil : defaultModelID
+        )
+    }
+
     // MARK: - Loading
+
+    struct WriteSafety: Sendable, Equatable {
+        enum Blocker: String, CaseIterable, Sendable {
+            case nestedModelTables
+            case modelProviderTables
+            case modelProviderReferences
+            case unrecognizedModelTable
+
+            var label: String {
+                switch self {
+                case .nestedModelTables:
+                    "nested [model.<id>.*] tables"
+                case .modelProviderTables:
+                    "[model_providers.*] tables"
+                case .modelProviderReferences:
+                    "model_provider references"
+                case .unrecognizedModelTable:
+                    "unrecognized model table headers"
+                }
+            }
+        }
+
+        var blockers: [Blocker]
+
+        static let writable = WriteSafety(blockers: [])
+
+        var canWrite: Bool { blockers.isEmpty }
+
+        var blockingMessage: String? {
+            guard !blockers.isEmpty else { return nil }
+            let details = blockers.map(\.label).joined(separator: ", ")
+            return "GrokBuild left config.toml unchanged because it uses Grok CLI-owned advanced model configuration (\(details)). Manage these entries with the Grok CLI or edit config.toml directly."
+        }
+    }
+
+    enum SaveError: LocalizedError, Equatable {
+        case advancedConfiguration(WriteSafety)
+
+        var errorDescription: String? {
+            switch self {
+            case .advancedConfiguration(let safety):
+                safety.blockingMessage
+            }
+        }
+    }
 
     /// Loaded custom models plus the configured default model id (which may reference a built-in).
     struct Snapshot: Sendable {
         var models: [CustomModel]
         var defaultModelID: String?
+        var writeSafety: WriteSafety
     }
 
     static func load(
@@ -976,7 +1064,7 @@ enum CustomModelStore {
     ) -> Snapshot {
         let contents = repository.read()
         guard !contents.isEmpty else {
-            return Snapshot(models: [], defaultModelID: nil)
+            return Snapshot(models: [], defaultModelID: nil, writeSafety: .writable)
         }
         var snapshot = parse(contents)
         snapshot.models = CustomModelMetadataStore.apply(to: snapshot.models, defaults: defaults)
@@ -1016,10 +1104,10 @@ enum CustomModelStore {
 
             if line.hasPrefix("[") && line.hasSuffix("]") {
                 flushModel()
-                let header = String(line.dropFirst().dropLast()).trimmingCharacters(in: .whitespaces)
-                currentTable = header
-                if header.hasPrefix("model.") {
-                    currentModelID = unquote(String(header.dropFirst("model.".count)))
+                let path = tablePath(from: line)
+                currentTable = path?.count == 1 ? path?.first : nil
+                if let path, path.count == 2, path[0] == "model" {
+                    currentModelID = path[1]
                 }
                 continue
             }
@@ -1036,7 +1124,11 @@ enum CustomModelStore {
         }
         flushModel()
 
-        return Snapshot(models: models, defaultModelID: defaultModelID)
+        return Snapshot(
+            models: models,
+            defaultModelID: defaultModelID,
+            writeSafety: writeSafety(for: contents)
+        )
     }
 
     // MARK: - Saving
@@ -1049,19 +1141,25 @@ enum CustomModelStore {
         defaults: UserDefaults = .standard
     ) throws {
         try repository.update { existing in
-            rewrite(existing, models: models, defaultModelID: defaultModelID)
+            let safety = writeSafety(for: existing)
+            guard safety.canWrite else {
+                throw SaveError.advancedConfiguration(safety)
+            }
+            return rewrite(existing, models: models, defaultModelID: defaultModelID)
         }
         CustomModelMetadataStore.save(models: models, defaults: defaults)
+    }
+
+    static func requireWriteSafety(repository: GrokConfigRepository = .shared) throws {
+        let safety = writeSafety(for: repository.read())
+        guard safety.canWrite else {
+            throw SaveError.advancedConfiguration(safety)
+        }
     }
 
     /// Produces a new config string: drops all existing `[model.*]` tables and the `[models].default`
     /// key, then appends fresh versions while keeping every other section intact.
     static func rewrite(_ contents: String, models: [CustomModel], defaultModelID: String?) -> String {
-        let managedModelKeys: Set<String> = [
-            "model", "base_url", "name", "api_key", "api_backend", "context_window",
-            "grokbuild_context_tokens", "grokbuild_supports_reasoning_effort",
-            "grokbuild_supports_vision", "grokbuild_supports_thinking", "grokbuild_provider_id",
-        ]
         var preservedModelLines: [String: [String]] = [:]
         var preservingModelID: String?
         for rawLine in contents.components(separatedBy: .newlines) {
@@ -1076,7 +1174,7 @@ enum CustomModelStore {
             guard let preservingModelID else { continue }
             if let key = trimmed.split(separator: "=", maxSplits: 1).first?
                 .trimmingCharacters(in: .whitespaces),
-               managedModelKeys.contains(key) {
+               Self.managedModelKeys.contains(key) {
                 continue
             }
             if !trimmed.isEmpty {
@@ -1171,6 +1269,199 @@ enum CustomModelStore {
         TOMLLineParsing.quote(value)
     }
 
+    /// Detects model structures that this flat-table editor cannot preserve. Detection is
+    /// intentionally conservative: a structure we do not understand blocks writes instead of
+    /// gambling with the CLI's configuration.
+    static func writeSafety(for contents: String) -> WriteSafety {
+        var found: Set<WriteSafety.Blocker> = []
+        var currentTablePath: [String]?
+
+        for rawLine in contents.components(separatedBy: .newlines) {
+            let line = stripComment(rawLine).trimmingCharacters(in: .whitespaces)
+            if line.isEmpty { continue }
+
+            if line.hasPrefix("[") && line.hasSuffix("]") {
+                guard let path = tablePath(from: line) else {
+                    currentTablePath = nil
+                    if looksLikeModelConfigurationHeader(line) {
+                        found.insert(.unrecognizedModelTable)
+                    }
+                    continue
+                }
+                currentTablePath = path
+                if path.first == "model", path.count != 2 {
+                    found.insert(.nestedModelTables)
+                }
+                if path.first == "model", path.count == 2,
+                   !isCanonicalFlatModelHeader(line, modelID: path[1]) {
+                    found.insert(.unrecognizedModelTable)
+                }
+                if path == ["models"], line != "[models]" {
+                    found.insert(.unrecognizedModelTable)
+                }
+                if path.first == "model_providers" {
+                    found.insert(.modelProviderTables)
+                }
+                continue
+            }
+
+            guard let equals = line.firstIndex(of: "=") else { continue }
+            let rawKey = String(line[..<equals]).trimmingCharacters(in: .whitespaces)
+            if currentTablePath == nil {
+                if let path = tablePath(from: "[\(rawKey)]") {
+                    if path.first == "model" {
+                        found.insert(.unrecognizedModelTable)
+                    } else if path.first == "models" {
+                        found.insert(.unrecognizedModelTable)
+                    } else if path.first == "model_providers" {
+                        found.insert(.modelProviderTables)
+                    }
+                } else {
+                    let compactKey = rawKey.filter { !$0.isWhitespace }
+                    if compactKey.hasPrefix("model.")
+                        || compactKey.hasPrefix("\"model\".")
+                        || compactKey.hasPrefix("'model'.") {
+                        found.insert(.unrecognizedModelTable)
+                    }
+                }
+            }
+
+            if currentTablePath == ["models"] {
+                guard let keyPath = tablePath(from: "[\(rawKey)]"), keyPath.count == 1 else {
+                    found.insert(.unrecognizedModelTable)
+                    continue
+                }
+                if keyPath[0] == "default", rawKey != "default" {
+                    found.insert(.unrecognizedModelTable)
+                }
+            }
+
+            guard currentTablePath?.count == 2,
+                  currentTablePath?.first == "model" else { continue }
+            guard let keyPath = tablePath(from: "[\(rawKey)]"), keyPath.count == 1 else {
+                found.insert(.unrecognizedModelTable)
+                continue
+            }
+            let key = keyPath[0]
+            if Self.managedModelKeys.contains(key), rawKey != key {
+                found.insert(.unrecognizedModelTable)
+            }
+            if key == "model_provider" {
+                found.insert(.modelProviderReferences)
+            }
+        }
+
+        let ordered = WriteSafety.Blocker.allCases.filter(found.contains)
+        return WriteSafety(blockers: ordered)
+    }
+
+    /// Parses a TOML table path only far enough to distinguish dotted path segments from dots
+    /// inside quoted keys. This is detection, not a TOML rewriter; malformed/array headers return
+    /// nil so the caller can fail closed.
+    private static func tablePath(from line: String) -> [String]? {
+        guard line.hasPrefix("["), line.hasSuffix("]"),
+              !line.hasPrefix("[["), !line.hasSuffix("]]"), line.count >= 2 else { return nil }
+        let body = line.dropFirst().dropLast()
+        var components: [String] = []
+        var component = ""
+        var quote: Character?
+        var escaped = false
+
+        func appendComponent() -> Bool {
+            let value = component.trimmingCharacters(in: .whitespaces)
+            guard let decoded = decodeTablePathComponent(value) else { return false }
+            components.append(decoded)
+            component = ""
+            return true
+        }
+
+        for character in body {
+            if let activeQuote = quote {
+                component.append(character)
+                if activeQuote == "\"" {
+                    if escaped {
+                        escaped = false
+                    } else if character == "\\" {
+                        escaped = true
+                    } else if character == activeQuote {
+                        quote = nil
+                    }
+                } else if character == activeQuote {
+                    quote = nil
+                }
+                continue
+            }
+
+            if character == "\"" || character == "'" {
+                quote = character
+                component.append(character)
+            } else if character == "." {
+                guard appendComponent() else { return nil }
+            } else {
+                component.append(character)
+            }
+        }
+
+        guard quote == nil, appendComponent() else { return nil }
+        return components
+    }
+
+    private static func decodeTablePathComponent(_ value: String) -> String? {
+        guard !value.isEmpty else { return nil }
+        guard let first = value.first else { return nil }
+
+        if first == "'" {
+            guard value.count >= 2, value.last == "'" else { return nil }
+            let inner = value.dropFirst().dropLast()
+            guard !inner.contains("'") else { return nil }
+            return String(inner)
+        }
+
+        if first == "\"" {
+            guard value.count >= 2, value.last == "\"" else { return nil }
+            let inner = value.dropFirst().dropLast()
+            var decoded = ""
+            var iterator = inner.makeIterator()
+            while let character = iterator.next() {
+                guard character == "\\" else {
+                    guard character != "\"" else { return nil }
+                    decoded.append(character)
+                    continue
+                }
+                guard let escaped = iterator.next(), escaped == "\\" || escaped == "\"" else {
+                    // Exotic TOML escapes may be valid, but this flat editor does not decode
+                    // them. Refusing the write is safer than changing the model identity.
+                    return nil
+                }
+                decoded.append(escaped)
+            }
+            return decoded
+        }
+
+        guard value.range(of: #"^[A-Za-z0-9_-]+$"#, options: .regularExpression) != nil else {
+            return nil
+        }
+        return value
+    }
+
+    private static func looksLikeModelConfigurationHeader(_ line: String) -> Bool {
+        let compact = line.filter { !$0.isWhitespace }
+        return compact.hasPrefix("[model.")
+            || compact.hasPrefix("[[model.")
+            || compact.hasPrefix("[\"model\".")
+            || compact.hasPrefix("['model'.")
+            || compact.hasPrefix("[model_providers")
+            || compact.hasPrefix("[[model_providers")
+            || compact.hasPrefix("[\"model_providers\"")
+            || compact.hasPrefix("['model_providers'")
+    }
+
+    private static func isCanonicalFlatModelHeader(_ line: String, modelID: String) -> Bool {
+        let bare = modelID.range(of: #"^[A-Za-z0-9_-]+$"#, options: .regularExpression) != nil
+        let expectedID = bare ? modelID : quote(modelID)
+        return line == "[model.\(expectedID)]"
+    }
+
     private static func parseBool(_ value: String?) -> Bool? {
         guard let value else { return nil }
         switch value.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() {
@@ -1195,6 +1486,60 @@ enum CustomModelStore {
             return key
         }
         return quote(key)
+    }
+}
+
+/// Coordinates provider credentials/metadata with the CLI model projection. ProviderStore is
+/// committed first because it has its own verified rollback; if the final locked config write
+/// refuses a stale/advanced file, the prior provider state is restored before failure returns.
+enum ProviderModelConfigurationTransaction {
+    enum TransactionError: LocalizedError {
+        case providerRollbackFailed
+
+        var errorDescription: String? {
+            "config.toml was not changed, but GrokBuild could not restore the previous provider state. Reload Models before making another change."
+        }
+    }
+
+    static func save(
+        previousProviders: [Provider],
+        updatedProviders: [Provider],
+        models: [CustomModel],
+        defaultModelID: String?,
+        repository: GrokConfigRepository = .shared,
+        providerDefaults: UserDefaults = .standard,
+        modelDefaults: UserDefaults = .standard,
+        credentialStore: any ProviderCredentialStoring = KeychainProviderCredentialStore(),
+        beforeConfigSave: () throws -> Void = {}
+    ) throws {
+        // Avoid touching Keychain/UserDefaults when the latest visible file is already known to
+        // be unsupported. CustomModelStore.save repeats this check inside the locked update.
+        try CustomModelStore.requireWriteSafety(repository: repository)
+        try ProviderStore.save(
+            updatedProviders,
+            defaults: providerDefaults,
+            credentialStore: credentialStore
+        )
+        do {
+            try beforeConfigSave()
+            try CustomModelStore.save(
+                models: models,
+                defaultModelID: defaultModelID,
+                repository: repository,
+                defaults: modelDefaults
+            )
+        } catch {
+            do {
+                try ProviderStore.save(
+                    previousProviders,
+                    defaults: providerDefaults,
+                    credentialStore: credentialStore
+                )
+            } catch {
+                throw TransactionError.providerRollbackFailed
+            }
+            throw error
+        }
     }
 }
 

@@ -9,6 +9,17 @@ final class GrokConfigRepository: @unchecked Sendable {
     static let shared = GrokConfigRepository()
     static let securePermissions = 0o600
 
+    enum UpdateError: LocalizedError {
+        case changedDuringUpdate
+
+        var errorDescription: String? {
+            switch self {
+            case .changedDuringUpdate:
+                "config.toml changed in another process while GrokBuild was preparing an update. Nothing was overwritten; reload and try again."
+            }
+        }
+    }
+
     let configURL: URL
     private let lock = NSLock()
     private let fileManager: FileManager
@@ -65,13 +76,18 @@ final class GrokConfigRepository: @unchecked Sendable {
         // the update — otherwise a transient read error would rewrite the config from
         // empty and silently drop every unrelated section.
         let existing: String
-        if fileManager.fileExists(atPath: configURL.path) {
+        let existedBefore = fileManager.fileExists(atPath: configURL.path)
+        if existedBefore {
             existing = try String(contentsOf: configURL, encoding: .utf8)
         } else {
             existing = ""
         }
         let updated = try transform(existing)
-        try secureAtomicWrite(updated)
+        try secureAtomicWrite(
+            updated,
+            replacing: existing,
+            expectedFileExists: existedBefore
+        )
     }
 
     func enforceSecurePermissionsIfPresent() throws {
@@ -84,7 +100,11 @@ final class GrokConfigRepository: @unchecked Sendable {
         )
     }
 
-    private func secureAtomicWrite(_ contents: String) throws {
+    private func secureAtomicWrite(
+        _ contents: String,
+        replacing expectedContents: String,
+        expectedFileExists: Bool
+    ) throws {
         let directory = configURL.deletingLastPathComponent()
         try fileManager.createDirectory(
             at: directory,
@@ -102,6 +122,20 @@ final class GrokConfigRepository: @unchecked Sendable {
                 attributes: [.posixPermissions: Self.securePermissions]
               ) else {
             throw CocoaError(.fileWriteUnknown)
+        }
+
+        // The process-local lock cannot stop the Grok CLI/TUI from replacing this shared file.
+        // Compare again at the last safe point before rename so a concurrent external write wins
+        // instead of being silently overwritten by our stale transform.
+        let existsNow = fileManager.fileExists(atPath: configURL.path)
+        guard existsNow == expectedFileExists else {
+            throw UpdateError.changedDuringUpdate
+        }
+        if expectedFileExists {
+            let latest = try String(contentsOf: configURL, encoding: .utf8)
+            guard latest == expectedContents else {
+                throw UpdateError.changedDuringUpdate
+            }
         }
 
         let result = temporaryURL.path.withCString { source in

@@ -130,6 +130,289 @@ final class CustomModelTests: XCTestCase {
         XCTAssertTrue(rewritten.contains("stream_tool_calls = false"))
     }
 
+    func testOfficialNestedModelTablesDoNotBecomeBogusModels() {
+        let officialStyleConfig = """
+        [model.via-gateway]
+        model = "m"
+        context_window = 200000
+
+        [model.via-gateway.extra_headers]
+        X-Model = "own"
+
+        [model.via-gateway.query_params]
+        api-version = "model"
+        """
+
+        let snapshot = CustomModelStore.parse(officialStyleConfig)
+
+        XCTAssertEqual(snapshot.models.map(\.id), ["via-gateway"])
+        XCTAssertEqual(snapshot.models.first?.model, "m")
+        XCTAssertEqual(snapshot.writeSafety.blockers, [.nestedModelTables])
+    }
+
+    func testOfficialAdvancedModelStructuresBlockWrites() throws {
+        let fixtures: [(name: String, contents: String, blocker: CustomModelStore.WriteSafety.Blocker)] = [
+            (
+                "nested model headers",
+                """
+                [model.m]
+                model = "m"
+
+                [model.m.extra_headers]
+                x-team = "codegen"
+                """,
+                .nestedModelTables
+            ),
+            (
+                "provider tables",
+                """
+                [model_providers.gateway]
+                base_url = "https://gateway.example/v1"
+
+                [model_providers.gateway.query_params]
+                api-version = "2026-07-22"
+                """,
+                .modelProviderTables
+            ),
+            (
+                "provider reference",
+                """
+                [model.via-gateway]
+                model = "m"
+                model_provider = "gateway"
+                """,
+                .modelProviderReferences
+            ),
+            (
+                "unrecognized model header",
+                """
+                [model.invalid id]
+                model = "m"
+                """,
+                .unrecognizedModelTable
+            ),
+            (
+                "whitespace dotted model header",
+                """
+                [model . foo]
+                model = "m"
+                """,
+                .unrecognizedModelTable
+            ),
+            (
+                "quoted root model header",
+                """
+                ["model".foo]
+                model = "m"
+                """,
+                .unrecognizedModelTable
+            ),
+            (
+                "root dotted model keys",
+                """
+                model.foo.model = "m"
+                model.foo.base_url = "https://example.test/v1"
+                """,
+                .unrecognizedModelTable
+            ),
+            (
+                "root inline model table",
+                """
+                model = { foo = { model = "m", base_url = "https://example.test/v1" } }
+                """,
+                .unrecognizedModelTable
+            ),
+            (
+                "root scalar model value",
+                """
+                model = "not-a-table"
+                """,
+                .unrecognizedModelTable
+            ),
+            (
+                "root array model value",
+                """
+                model = ["not-a-table"]
+                """,
+                .unrecognizedModelTable
+            ),
+            (
+                "root inline provider table",
+                """
+                model_providers = { gateway = { base_url = "https://gateway.example/v1" } }
+                """,
+                .modelProviderTables
+            ),
+            (
+                "quoted managed model field",
+                """
+                [model.foo]
+                "model" = "m"
+                base_url = "https://example.test/v1"
+                """,
+                .unrecognizedModelTable
+            ),
+            (
+                "quoted models header",
+                """
+                ["models"]
+                default = "foo"
+                """,
+                .unrecognizedModelTable
+            ),
+            (
+                "quoted default field",
+                """
+                [models]
+                "default" = "foo"
+                """,
+                .unrecognizedModelTable
+            ),
+            (
+                "root dotted default",
+                """
+                models.default = "foo"
+                """,
+                .unrecognizedModelTable
+            ),
+            (
+                "root inline models table",
+                """
+                models = { default = "foo" }
+                """,
+                .unrecognizedModelTable
+            ),
+        ]
+
+        for fixture in fixtures {
+            let safety = CustomModelStore.writeSafety(for: fixture.contents)
+            XCTAssertEqual(safety.blockers, [fixture.blocker], fixture.name)
+            try assertSaveBlockedWithoutChangingBytes(
+                fixture.contents,
+                expectedBlocker: fixture.blocker,
+                fixtureName: fixture.name
+            )
+        }
+    }
+
+    func testRemovingDefaultCustomModelClearsTableAndDefaultInOneSave() throws {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("grokbuild-remove-default-model-\(UUID().uuidString)")
+        let configURL = directory.appendingPathComponent("config.toml")
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        let suiteName = "GrokBuildTests.removeDefaultModel.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defer {
+            defaults.removePersistentDomain(forName: suiteName)
+            try? FileManager.default.removeItem(at: directory)
+        }
+
+        let removed = CustomModel(id: "remove-me", model: "m", baseURL: "https://example.test/v1")
+        let kept = CustomModel(id: "keep-me", model: "k", baseURL: "https://example.test/v1")
+        let repository = GrokConfigRepository(configURL: configURL)
+        try CustomModelStore.save(
+            models: [removed, kept],
+            defaultModelID: removed.id,
+            repository: repository,
+            defaults: defaults
+        )
+
+        let plan = CustomModelStore.removalPlan(
+            removing: removed.id,
+            from: [removed, kept],
+            defaultModelID: removed.id
+        )
+        try CustomModelStore.save(
+            models: plan.models,
+            defaultModelID: plan.defaultModelID,
+            repository: repository,
+            defaults: defaults
+        )
+
+        let saved = CustomModelStore.parse(repository.read())
+        XCTAssertEqual(saved.models.map(\.id), [kept.id])
+        XCTAssertNil(saved.defaultModelID)
+        XCTAssertFalse(repository.read().contains("[model.remove-me]"))
+    }
+
+    func testRemovingDefaultCustomModelFailurePreservesTableAndDefault() throws {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("grokbuild-remove-default-model-refused-\(UUID().uuidString)")
+        let configURL = directory.appendingPathComponent("config.toml")
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        let suiteName = "GrokBuildTests.removeDefaultModelRefused.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defer {
+            defaults.removePersistentDomain(forName: suiteName)
+            try? FileManager.default.removeItem(at: directory)
+        }
+
+        let original = """
+        [models]
+        default = "remove-me"
+
+        [model.remove-me]
+        model = "m"
+        base_url = "https://example.test/v1"
+
+        [model.remove-me.extra_headers]
+        X-Team = "runtime-owned"
+        """
+        try original.write(to: configURL, atomically: true, encoding: .utf8)
+        let repository = GrokConfigRepository(configURL: configURL)
+        let parsed = CustomModelStore.parse(original)
+        let plan = CustomModelStore.removalPlan(
+            removing: "remove-me",
+            from: parsed.models,
+            defaultModelID: parsed.defaultModelID
+        )
+
+        XCTAssertThrowsError(try CustomModelStore.save(
+            models: plan.models,
+            defaultModelID: plan.defaultModelID,
+            repository: repository,
+            defaults: defaults
+        ))
+        XCTAssertEqual(repository.read(), original)
+        XCTAssertEqual(CustomModelStore.parse(repository.read()).defaultModelID, "remove-me")
+        XCTAssertEqual(CustomModelStore.parse(repository.read()).models.map(\.id), ["remove-me"])
+    }
+
+    func testQuotedDottedModelIDRemainsWritable() throws {
+        let original = """
+        [model."minimax-m2.5"]
+        model = "MiniMax-M2.5"
+        base_url = "https://api.minimax.io/v1"
+        """
+        XCTAssertTrue(CustomModelStore.writeSafety(for: original).canWrite)
+
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("grokbuild-safe-dotted-model-\(UUID().uuidString)")
+        let repository = GrokConfigRepository(configURL: directory.appendingPathComponent("config.toml"))
+        let suiteName = "GrokBuildTests.safeDottedModel.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defer {
+            defaults.removePersistentDomain(forName: suiteName)
+            try? FileManager.default.removeItem(at: directory)
+        }
+        try repository.update { _ in original }
+
+        let model = CustomModel(
+            id: "minimax-m2.5",
+            model: "MiniMax-M2.5",
+            baseURL: "https://api.minimax.io/v1",
+            name: "MiniMax"
+        )
+        try CustomModelStore.save(
+            models: [model],
+            defaultModelID: "minimax-m2.5",
+            repository: repository,
+            defaults: defaults
+        )
+
+        XCTAssertTrue(repository.read().contains(#"[model."minimax-m2.5"]"#))
+    }
+
     func testOpenAIPresetDefaultsNewModelsToResponsesAPI() {
         XCTAssertEqual(ProviderPreset.openai.defaultAPIBackend, .responses)
         XCTAssertEqual(ProviderPreset.kimi.defaultAPIBackend, .chatCompletions)
@@ -190,6 +473,43 @@ final class CustomModelTests: XCTestCase {
         let model = CustomModel(id: "grok-build", model: "grok-build", baseURL: "https://x/v1")
         let rewritten = CustomModelStore.rewrite("", models: [model], defaultModelID: nil)
         XCTAssertTrue(rewritten.contains("[model.grok-build]"))
+    }
+
+    private func assertSaveBlockedWithoutChangingBytes(
+        _ original: String,
+        expectedBlocker: CustomModelStore.WriteSafety.Blocker,
+        fixtureName: String
+    ) throws {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("grokbuild-advanced-model-\(UUID().uuidString)")
+        let configURL = directory.appendingPathComponent("config.toml")
+        let repository = GrokConfigRepository(configURL: configURL)
+        let suiteName = "GrokBuildTests.advancedModel.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defer {
+            defaults.removePersistentDomain(forName: suiteName)
+            try? FileManager.default.removeItem(at: directory)
+        }
+        try repository.update { _ in original }
+        let before = try Data(contentsOf: configURL)
+
+        XCTAssertThrowsError(
+            try CustomModelStore.save(
+                models: [CustomModel(id: "replacement", model: "new", baseURL: "https://new.example/v1")],
+                defaultModelID: "replacement",
+                repository: repository,
+                defaults: defaults
+            ),
+            fixtureName
+        ) { error in
+            guard case CustomModelStore.SaveError.advancedConfiguration(let safety) = error else {
+                return XCTFail("Unexpected error for \(fixtureName): \(error)")
+            }
+            XCTAssertTrue(safety.blockers.contains(expectedBlocker), fixtureName)
+            XCTAssertTrue(error.localizedDescription.contains("left config.toml unchanged"), fixtureName)
+        }
+
+        XCTAssertEqual(try Data(contentsOf: configURL), before, fixtureName)
     }
 
     func testMaskRedactsSecret() {
