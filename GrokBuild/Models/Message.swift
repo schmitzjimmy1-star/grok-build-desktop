@@ -149,6 +149,21 @@ struct AssistantTurnCheckpoint: Codable, Sendable, Hashable {
         let campaignRemainingTokens: Int
         let allocationRemainingTokens: Int
         let allocationRemainingCalls: Int
+        /// New receipts retain the exact containment proof. Optionals preserve
+        /// decoding for checkpoints persisted before the Slice 4A wire added it.
+        let noAutomaticRetry: Bool?
+        let samplerTransportRetriesDisabled: Bool?
+        let authProviderHelpersDisabled: Bool?
+        let terminalDisabled: Bool?
+        let externalMCPDisabled: Bool?
+        let hooksDisabled: Bool?
+        let pluginsDisabled: Bool?
+        let lspDisabled: Bool?
+        let workflowsDisabled: Bool?
+        let schedulerDisabled: Bool?
+        let protectedAuthorityFS: Bool?
+        let workspaceFSConfined: Bool?
+        let allowedToolIDs: [String]?
 
         init?(_ capability: GrokBuildHardTokenBudgetCapability) {
             guard capability.isEnforcing,
@@ -173,6 +188,19 @@ struct AssistantTurnCheckpoint: Codable, Sendable, Hashable {
             campaignRemainingTokens = status.remainingTokens
             allocationRemainingTokens = status.allocationRemainingTokens
             allocationRemainingCalls = status.allocationRemainingCalls
+            noAutomaticRetry = capability.noAutomaticRetry
+            samplerTransportRetriesDisabled = capability.samplerTransportRetriesDisabled
+            authProviderHelpersDisabled = capability.authProviderHelpersDisabled
+            terminalDisabled = capability.terminalDisabled
+            externalMCPDisabled = capability.externalMCPDisabled
+            hooksDisabled = capability.hooksDisabled
+            pluginsDisabled = capability.pluginsDisabled
+            lspDisabled = capability.lspDisabled
+            workflowsDisabled = capability.workflowsDisabled
+            schedulerDisabled = capability.schedulerDisabled
+            protectedAuthorityFS = capability.protectedAuthorityFS
+            workspaceFSConfined = capability.workspaceFSConfined
+            allowedToolIDs = capability.allowedToolIDs
         }
     }
 

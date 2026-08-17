@@ -65,6 +65,13 @@ enum ACPControlCapabilityState: Sendable, Equatable {
 struct GrokBuildHardTokenBudgetCapability: Sendable, Equatable {
     static let metadataKey = "com.grokbuild/hardTokenBudget"
     static let statusMethod = "com.grokbuild/budget/status"
+    static let allowedToolIDs = [
+        "GrokBuild:read_file",
+        "GrokBuild:task",
+        "GrokBuild:get_task_output",
+        "GrokBuild:wait_tasks",
+        "GrokBuild:kill_task",
+    ]
 
     struct Status: Sendable, Equatable {
         let campaignID: String
@@ -108,7 +115,22 @@ struct GrokBuildHardTokenBudgetCapability: Sendable, Equatable {
     let processShared: Bool
     let cancelConservative: Bool
     let crashConservative: Bool
+    /// The fork deliberately does not make the broader, misleading claim that
+    /// every retry in every shell surface is impossible. Its sampler transport
+    /// retries are the relevant fail-closed enforcement point.
     let noAutomaticRetry: Bool
+    let samplerTransportRetriesDisabled: Bool
+    let authProviderHelpersDisabled: Bool
+    let terminalDisabled: Bool
+    let externalMCPDisabled: Bool
+    let hooksDisabled: Bool
+    let pluginsDisabled: Bool
+    let lspDisabled: Bool
+    let workflowsDisabled: Bool
+    let schedulerDisabled: Bool
+    let protectedAuthorityFS: Bool
+    let workspaceFSConfined: Bool
+    let allowedToolIDs: [String]
     let cliBuild: String
     let status: Status?
     let allocation: Allocation?
@@ -130,7 +152,19 @@ struct GrokBuildHardTokenBudgetCapability: Sendable, Equatable {
             && processShared
             && cancelConservative
             && crashConservative
-            && noAutomaticRetry
+            && !noAutomaticRetry
+            && samplerTransportRetriesDisabled
+            && authProviderHelpersDisabled
+            && terminalDisabled
+            && externalMCPDisabled
+            && hooksDisabled
+            && pluginsDisabled
+            && lspDisabled
+            && workflowsDisabled
+            && schedulerDisabled
+            && protectedAuthorityFS
+            && workspaceFSConfined
+            && allowedToolIDs == Self.allowedToolIDs
             && !cliBuild.isEmpty
             && status?.violated == false
             && allocation != nil
@@ -181,6 +215,18 @@ struct GrokBuildHardTokenBudgetCapability: Sendable, Equatable {
               let cancelConservative = object["cancelConservative"] as? Bool,
               let crashConservative = object["crashConservative"] as? Bool,
               let noAutomaticRetry = object["noAutomaticRetry"] as? Bool,
+              let samplerTransportRetriesDisabled = object["samplerTransportRetriesDisabled"] as? Bool,
+              let authProviderHelpersDisabled = object["authProviderHelpersDisabled"] as? Bool,
+              let terminalDisabled = object["terminalDisabled"] as? Bool,
+              let externalMCPDisabled = object["externalMcpDisabled"] as? Bool,
+              let hooksDisabled = object["hooksDisabled"] as? Bool,
+              let pluginsDisabled = object["pluginsDisabled"] as? Bool,
+              let lspDisabled = object["lspDisabled"] as? Bool,
+              let workflowsDisabled = object["workflowsDisabled"] as? Bool,
+              let schedulerDisabled = object["schedulerDisabled"] as? Bool,
+              let protectedAuthorityFS = object["protectedAuthorityFs"] as? Bool,
+              let workspaceFSConfined = object["workspaceFsConfined"] as? Bool,
+              let allowedToolIDs = exactStringArray(object["allowedToolIds"]),
               let cliBuild = ACPControlParsing.nonemptyString(object["cliBuild"]) else { return nil }
         let status = (object["status"] as? [String: Any]).flatMap(parseStatus)
         let allocation = (object["allocation"] as? [String: Any]).flatMap(parseAllocation)
@@ -196,6 +242,18 @@ struct GrokBuildHardTokenBudgetCapability: Sendable, Equatable {
             cancelConservative: cancelConservative,
             crashConservative: crashConservative,
             noAutomaticRetry: noAutomaticRetry,
+            samplerTransportRetriesDisabled: samplerTransportRetriesDisabled,
+            authProviderHelpersDisabled: authProviderHelpersDisabled,
+            terminalDisabled: terminalDisabled,
+            externalMCPDisabled: externalMCPDisabled,
+            hooksDisabled: hooksDisabled,
+            pluginsDisabled: pluginsDisabled,
+            lspDisabled: lspDisabled,
+            workflowsDisabled: workflowsDisabled,
+            schedulerDisabled: schedulerDisabled,
+            protectedAuthorityFS: protectedAuthorityFS,
+            workspaceFSConfined: workspaceFSConfined,
+            allowedToolIDs: allowedToolIDs,
             cliBuild: cliBuild,
             status: status,
             allocation: allocation
@@ -267,6 +325,12 @@ struct GrokBuildHardTokenBudgetCapability: Sendable, Equatable {
     private static func nonnegativeInteger(_ value: Any?) -> Int? {
         guard let value = ACPControlParsing.integer(value), value >= 0 else { return nil }
         return value
+    }
+
+    private static func exactStringArray(_ value: Any?) -> [String]? {
+        guard let values = value as? [Any] else { return nil }
+        let strings = values.compactMap(ACPControlParsing.nonemptyString)
+        return strings.count == values.count ? strings : nil
     }
 
     private static func sha256(_ value: Any?) -> String? {

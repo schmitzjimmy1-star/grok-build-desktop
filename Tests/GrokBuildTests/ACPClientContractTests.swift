@@ -170,7 +170,19 @@ final class ACPClientContractTests: XCTestCase {
             "processShared": true,
             "cancelConservative": true,
             "crashConservative": true,
-            "noAutomaticRetry": true,
+            "noAutomaticRetry": false,
+            "samplerTransportRetriesDisabled": true,
+            "authProviderHelpersDisabled": true,
+            "terminalDisabled": true,
+            "externalMcpDisabled": true,
+            "hooksDisabled": true,
+            "pluginsDisabled": true,
+            "lspDisabled": true,
+            "workflowsDisabled": true,
+            "schedulerDisabled": true,
+            "protectedAuthorityFs": true,
+            "workspaceFsConfined": true,
+            "allowedToolIds": GrokBuildHardTokenBudgetCapability.allowedToolIDs,
             "cliBuild": "grokbuild-fork",
             "status": [
                 "campaignId": "campaign",
@@ -228,6 +240,70 @@ final class ACPClientContractTests: XCTestCase {
         var wrongNamespace = value
         wrongNamespace["enforcementPoint"] = "swift-poller"
         XCTAssertFalse(try XCTUnwrap(GrokBuildHardTokenBudgetCapability.parse(wrongNamespace)).isEnforcing)
+
+        var dishonestRetryClaim = value
+        dishonestRetryClaim["noAutomaticRetry"] = true
+        XCTAssertFalse(try XCTUnwrap(GrokBuildHardTokenBudgetCapability.parse(dishonestRetryClaim)).isEnforcing)
+
+        var missingContainment = value
+        missingContainment.removeValue(forKey: "terminalDisabled")
+        XCTAssertNil(GrokBuildHardTokenBudgetCapability.parse(missingContainment))
+
+        var widenedTools = value
+        widenedTools["allowedToolIds"] = GrokBuildHardTokenBudgetCapability.allowedToolIDs + ["Bash"]
+        XCTAssertFalse(try XCTUnwrap(GrokBuildHardTokenBudgetCapability.parse(widenedTools)).isEnforcing)
+    }
+
+    func testHardBudgetReceiptPreservesHistoricalDecodeButNewEvidenceCarriesContainment() throws {
+        let sha = String(repeating: "a", count: 64)
+        let capability = try XCTUnwrap(GrokBuildHardTokenBudgetCapability.parse([
+            "capabilityVersion": 1, "armed": true, "configurationValid": true,
+            "enforcementPoint": "sampler-pre-dispatch", "ledgerVersion": 3,
+            "boundMethodVersion": 1, "durable": true, "processShared": true,
+            "cancelConservative": true, "crashConservative": true,
+            "noAutomaticRetry": false, "samplerTransportRetriesDisabled": true,
+            "authProviderHelpersDisabled": true, "terminalDisabled": true,
+            "externalMcpDisabled": true, "hooksDisabled": true, "pluginsDisabled": true,
+            "lspDisabled": true, "workflowsDisabled": true, "schedulerDisabled": true,
+            "protectedAuthorityFs": true, "workspaceFsConfined": true,
+            "allowedToolIds": GrokBuildHardTokenBudgetCapability.allowedToolIDs,
+            "cliBuild": "grokbuild-fork",
+            "status": [
+                "campaignId": "campaign", "ceilingTokens": 3_000_000,
+                "settledTokens": 0, "outstandingTokens": 0, "remainingTokens": 3_000_000,
+                "violated": false, "manifestSha256": sha, "allocationId": "packet-a",
+                "allocationRemainingTokens": 100, "allocationRemainingCalls": 1,
+            ],
+            "allocation": [
+                "id": "packet-a", "packetId": "packet-a", "promptSha256": sha,
+                "tokenCeiling": 100, "maxModelCalls": 1,
+                "route": [
+                    "model": "grok-4.6", "endpointSha256": sha, "apiBackend": "responses",
+                    "requestBoundTokens": 100, "maxPayloadBytes": 80, "maxOutputTokens": 20,
+                    "boundProvenanceSha256": sha,
+                ],
+            ],
+        ]))
+        let receipt = try XCTUnwrap(AssistantTurnCheckpoint.HardBudgetReceipt(capability))
+        XCTAssertEqual(receipt.allowedToolIDs, GrokBuildHardTokenBudgetCapability.allowedToolIDs)
+        XCTAssertEqual(receipt.noAutomaticRetry, false)
+        XCTAssertEqual(receipt.samplerTransportRetriesDisabled, true)
+
+        var historical = try XCTUnwrap(
+            JSONSerialization.jsonObject(with: JSONEncoder().encode(receipt)) as? [String: Any]
+        )
+        [
+            "noAutomaticRetry", "samplerTransportRetriesDisabled", "authProviderHelpersDisabled", "terminalDisabled",
+            "externalMCPDisabled", "hooksDisabled", "pluginsDisabled", "lspDisabled",
+            "workflowsDisabled", "schedulerDisabled", "protectedAuthorityFS", "workspaceFSConfined",
+            "allowedToolIDs",
+        ].forEach { historical.removeValue(forKey: $0) }
+        let decoded = try JSONDecoder().decode(
+            AssistantTurnCheckpoint.HardBudgetReceipt.self,
+            from: JSONSerialization.data(withJSONObject: historical)
+        )
+        XCTAssertNil(decoded.allowedToolIDs)
+        XCTAssertNil(decoded.terminalDisabled)
     }
 
     func testChildSessionLedgerRejectsTraversalIdentity() async {
@@ -840,7 +916,7 @@ final class ACPClientContractTests: XCTestCase {
           id=$(printf '%s' "$line" | sed -E 's/.*"id":([0-9]+).*/\\1/')
           case "$line" in
             *'"method":"initialize"'*)
-              printf '{"jsonrpc":"2.0","id":%s,"result":{"_meta":{"agentVersion":"1.0.5","modelState":{"currentModelId":"grok-4.6","availableModels":[{"modelId":"grok-4.6"}]},"com.grokbuild/hardTokenBudget":{"capabilityVersion":1,"armed":true,"configurationValid":true,"enforcementPoint":"sampler-pre-dispatch","ledgerVersion":3,"boundMethodVersion":1,"durable":true,"processShared":true,"cancelConservative":true,"crashConservative":true,"noAutomaticRetry":true,"cliBuild":"grokbuild-test","status":{"campaignId":"test","ceilingTokens":3000000,"settledTokens":0,"outstandingTokens":0,"remainingTokens":3000000,"violated":false,"nextSequence":0,"manifestSha256":"\(zeroSHA)","allocationId":"packet","allocationRemainingTokens":10,"allocationRemainingCalls":1},"allocation":{"id":"packet","packetId":"packet","promptSha256":"\(zeroSHA)","tokenCeiling":10,"maxModelCalls":1,"route":{"model":"grok-4.6","endpointSha256":"\(zeroSHA)","apiBackend":"responses","requestBoundTokens":10,"maxPayloadBytes":5,"maxOutputTokens":5,"boundProvenanceSha256":"\(zeroSHA)"}}}}}}\n' "$id"
+              printf '{"jsonrpc":"2.0","id":%s,"result":{"_meta":{"agentVersion":"1.0.5","modelState":{"currentModelId":"grok-4.6","availableModels":[{"modelId":"grok-4.6"}]},"com.grokbuild/hardTokenBudget":{"capabilityVersion":1,"armed":true,"configurationValid":true,"enforcementPoint":"sampler-pre-dispatch","ledgerVersion":3,"boundMethodVersion":1,"durable":true,"processShared":true,"cancelConservative":true,"crashConservative":true,"noAutomaticRetry":false,"samplerTransportRetriesDisabled":true,"authProviderHelpersDisabled":true,"terminalDisabled":true,"externalMcpDisabled":true,"hooksDisabled":true,"pluginsDisabled":true,"lspDisabled":true,"workflowsDisabled":true,"schedulerDisabled":true,"protectedAuthorityFs":true,"workspaceFsConfined":true,"allowedToolIds":["GrokBuild:read_file","GrokBuild:task","GrokBuild:get_task_output","GrokBuild:wait_tasks","GrokBuild:kill_task"],"cliBuild":"grokbuild-test","status":{"campaignId":"test","ceilingTokens":3000000,"settledTokens":0,"outstandingTokens":0,"remainingTokens":3000000,"violated":false,"nextSequence":0,"manifestSha256":"\(zeroSHA)","allocationId":"packet","allocationRemainingTokens":10,"allocationRemainingCalls":1},"allocation":{"id":"packet","packetId":"packet","promptSha256":"\(zeroSHA)","tokenCeiling":10,"maxModelCalls":1,"route":{"model":"grok-4.6","endpointSha256":"\(zeroSHA)","apiBackend":"responses","requestBoundTokens":10,"maxPayloadBytes":5,"maxOutputTokens":5,"boundProvenanceSha256":"\(zeroSHA)"}}}}}}\n' "$id"
               ;;
             *'"method":"session/new"'*)
               printf '{"jsonrpc":"2.0","id":%s,"result":{"sessionId":"budget-backend","models":{"currentModelId":"grok-4.6","availableModels":[{"modelId":"grok-4.6"}]}}}\n' "$id"
@@ -854,7 +930,7 @@ final class ACPClientContractTests: XCTestCase {
               printf '{"jsonrpc":"2.0","id":%s,"result":{"usage":{"totalTokens":%s,"modelCalls":1,"numTurns":0}}}\n' "$id" "$total"
               ;;
             *'"method":"com.grokbuild/budget/status"'*)
-              printf '{"jsonrpc":"2.0","id":%s,"result":{"capabilityVersion":1,"armed":true,"configurationValid":true,"enforcementPoint":"sampler-pre-dispatch","ledgerVersion":3,"boundMethodVersion":1,"durable":true,"processShared":true,"cancelConservative":true,"crashConservative":true,"noAutomaticRetry":true,"cliBuild":"grokbuild-test","status":{"campaignId":"test","ceilingTokens":3000000,"settledTokens":0,"outstandingTokens":0,"remainingTokens":3000000,"violated":false,"nextSequence":0,"manifestSha256":"\(zeroSHA)","allocationId":"packet","allocationRemainingTokens":10,"allocationRemainingCalls":1},"allocation":{"id":"packet","packetId":"packet","promptSha256":"\(zeroSHA)","tokenCeiling":10,"maxModelCalls":1,"route":{"model":"grok-4.6","endpointSha256":"\(zeroSHA)","apiBackend":"responses","requestBoundTokens":10,"maxPayloadBytes":5,"maxOutputTokens":5,"boundProvenanceSha256":"\(zeroSHA)"}}}}\n' "$id"
+              printf '{"jsonrpc":"2.0","id":%s,"result":{"capabilityVersion":1,"armed":true,"configurationValid":true,"enforcementPoint":"sampler-pre-dispatch","ledgerVersion":3,"boundMethodVersion":1,"durable":true,"processShared":true,"cancelConservative":true,"crashConservative":true,"noAutomaticRetry":false,"samplerTransportRetriesDisabled":true,"authProviderHelpersDisabled":true,"terminalDisabled":true,"externalMcpDisabled":true,"hooksDisabled":true,"pluginsDisabled":true,"lspDisabled":true,"workflowsDisabled":true,"schedulerDisabled":true,"protectedAuthorityFs":true,"workspaceFsConfined":true,"allowedToolIds":["GrokBuild:read_file","GrokBuild:task","GrokBuild:get_task_output","GrokBuild:wait_tasks","GrokBuild:kill_task"],"cliBuild":"grokbuild-test","status":{"campaignId":"test","ceilingTokens":3000000,"settledTokens":0,"outstandingTokens":0,"remainingTokens":3000000,"violated":false,"nextSequence":0,"manifestSha256":"\(zeroSHA)","allocationId":"packet","allocationRemainingTokens":10,"allocationRemainingCalls":1},"allocation":{"id":"packet","packetId":"packet","promptSha256":"\(zeroSHA)","tokenCeiling":10,"maxModelCalls":1,"route":{"model":"grok-4.6","endpointSha256":"\(zeroSHA)","apiBackend":"responses","requestBoundTokens":10,"maxPayloadBytes":5,"maxOutputTokens":5,"boundProvenanceSha256":"\(zeroSHA)"}}}}\n' "$id"
               ;;
             *'"method":"session/prompt"'*)
               ;;
