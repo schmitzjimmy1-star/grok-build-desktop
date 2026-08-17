@@ -747,9 +747,28 @@ final class ChatStore {
     private var modelContextTokens: [String: Int] = ["grok-4.5": 500_000]
     private var builtInModelIDs = Set<String>()
     private var customModelsByID: [String: CustomModel] = [:]
+    private var configuredCustomModelIDs = Set<String>()
+    /// Safety admission is separate from ACP membership. The CLI may advertise a
+    /// flat legacy route, but GrokBuild will not dispatch it until it has a provider boundary.
+    private var quarantinedRuntimeModelIDs = Set<String>()
     /// Credential-free route configuration captured at process launch. Keeping this keyed to
     /// the process generation prevents a later Settings edit from rewriting an older receipt.
     private var routeContractsByProcessGeneration: [UInt64: ModelRouteContract] = [:]
+    private struct SessionMetadataSnapshot {
+        let selectedModelID: String
+        let revision: UInt64
+        let metadata: ACPControlSessionMetadata
+    }
+    private var sessionMetadataByProcessGeneration: [UInt64: SessionMetadataSnapshot] = [:]
+    private var sessionMetadataRevisionByProcessGeneration: [UInt64: UInt64] = [:]
+
+    private struct FrozenRouteObservation {
+        let routeContract: ModelRouteContract
+        let acpAgentVersion: String?
+        let catalogCurrentModelID: String?
+        let catalogContainsSelectedModel: Bool?
+        let sessionMetadata: ACPControlSessionMetadata?
+    }
     private var runtimeReloadQueue = RuntimeConfigurationReloadQueue()
     private var settingsApplyContinuations: [
         UUID: CheckedContinuation<SettingsApplyReceipt, Never>
@@ -1102,10 +1121,16 @@ final class ChatStore {
     /// True only when two parent tool receipts were simultaneously nonterminal.
     /// It classifies a comparable workload; it does not schedule or infer tools.
     private var currentTurnObservedParallelToolExecution = false
+    private let customModelSnapshotLoader: () -> CustomModelStore.Snapshot
 
-    init(process: GrokProcess? = nil, continuityKeyOverride: Data? = nil) {
+    init(
+        process: GrokProcess? = nil,
+        continuityKeyOverride: Data? = nil,
+        customModelSnapshotLoader: @escaping () -> CustomModelStore.Snapshot = { CustomModelStore.load() }
+    ) {
         self.process = process ?? GrokProcess()
         self.continuityKeyOverride = continuityKeyOverride
+        self.customModelSnapshotLoader = customModelSnapshotLoader
         applyBuiltInModelCatalog(GrokModelCatalog.cachedOrFallback())
         loadSessionSelections()
         Task { [weak self] in await self?.consumeOutput() }
@@ -1957,7 +1982,10 @@ final class ChatStore {
 
     /// Applies a typed config change without restarting unrelated live sessions.
     func applyConfigurationChange(_ change: ConfigurationChange) async {
-        mergeCustomModels()
+        // Once the live CLI has spoken, Settings may refresh decorations for IDs the
+        // CLI still advertises, but it may not put a hidden/rejected local row back
+        // on the party list.
+        mergeCustomModels(allowMembership: !process.hasAuthoritativeModelCatalog)
         guard change.impact == .modelRuntime,
               !change.affectedModelIDs.isEmpty,
               change.affectedModelIDs.contains(currentModel),
@@ -2269,10 +2297,16 @@ final class ChatStore {
         applyBuiltInModelCatalog(await GrokModelCatalog.shared.models())
         let settings = loadPermissionSettings()
         let savedSelection = effectiveResumeSessionID.flatMap { sessionSelections[$0] }
-        let modelForLaunch = modelForProcessLaunch(fallbackSelection: savedSelection)
+        guard let modelForLaunch = modelForProcessLaunch(fallbackSelection: savedSelection) else {
+            connectionWatchdogTask?.cancel()
+            connectionState = .failed("No model with a safe provider boundary is available.")
+            lastError = "Grok launch stopped before dispatch because every available custom model uses a legacy flat endpoint. Open Models to attach an explicit provider."
+            return
+        }
         let routeContractForLaunch = ModelRouteContract.resolve(
             selectedModelID: modelForLaunch,
-            customModel: customModelsByID[modelForLaunch]
+            customModel: customModelsByID[modelForLaunch],
+            isKnownNativeModel: !configuredCustomModelIDs.contains(modelForLaunch)
         )
         let expectedEffectiveModelForLaunch = customModelsByID[modelForLaunch]?.model
             .trimmingCharacters(in: .whitespacesAndNewlines)
@@ -2338,7 +2372,7 @@ final class ChatStore {
             experimentalMemory: settings.memoryEnabled,
             permissionMode: settings.permissionMode,
             reasoningEffort: reasoningEffortForLaunch,
-            model: modelForLaunch.isEmpty ? nil : modelForLaunch,
+            model: modelForLaunch,
             expectedEffectiveModelID: expectedEffectiveModelForLaunch?.isEmpty == false
                 ? expectedEffectiveModelForLaunch
                 : nil,
@@ -2378,6 +2412,11 @@ final class ChatStore {
                let oldest = routeContractsByProcessGeneration.keys.min() {
                 routeContractsByProcessGeneration.removeValue(forKey: oldest)
             }
+            refreshSessionMetadata(
+                processGeneration: generation,
+                backendSessionID: process.sessionId,
+                selectedModelID: routeContractForLaunch.selectedModelID
+            )
         }
         mcpServerStatuses = process.mcpServerStatuses
         connectionWatchdogTask?.cancel()
@@ -3005,6 +3044,19 @@ final class ChatStore {
                 lastError = "Grok did not confirm the frozen model and mode before dispatch. The draft was preserved and no provider request was sent."
                 return false
             }
+        }
+
+        let freshQuarantine = CustomModelStore.quarantinedRuntimeModelIDs(from: customModelSnapshotLoader())
+        quarantinedRuntimeModelIDs = freshQuarantine
+        let dispatchModelIDs = [
+            claimedPendingIntent?.modelID,
+            process.hasAuthoritativeModelCatalog ? process.currentModelId : nil,
+            currentModel,
+            Self.modelIDRequestedBySlashCommand(trimmed),
+        ].compactMap { $0 }
+        guard dispatchModelIDs.allSatisfy({ !freshQuarantine.contains($0) }) else {
+            lastError = "Grok dispatch stopped because the selected model uses a legacy flat endpoint. Open Models to attach an explicit provider."
+            return false
         }
 
         if commandHistory.last != trimmed {
@@ -3677,9 +3729,54 @@ final class ChatStore {
         appendSystemNote("Reasoning effort: \(reasoningEffortDisplayName(effort)).")
     }
 
+    private func invalidateSessionMetadata(processGeneration: UInt64) {
+        sessionMetadataRevisionByProcessGeneration[processGeneration, default: 0] &+= 1
+        sessionMetadataByProcessGeneration.removeValue(forKey: processGeneration)
+    }
+
+    private func refreshSessionMetadata(
+        processGeneration: UInt64,
+        backendSessionID: String?,
+        selectedModelID: String
+    ) {
+        invalidateSessionMetadata(processGeneration: processGeneration)
+        guard let backendSessionID,
+              process.acpControlCapabilityState(for: .sessionInfo) != .unsupported else { return }
+        let revision = sessionMetadataRevisionByProcessGeneration[processGeneration, default: 0]
+        Task { [weak self] in
+            guard let self,
+                  let metadata = try? await self.process.fetchACPSessionMetadata(),
+                  self.sessionMetadataRevisionByProcessGeneration[processGeneration] == revision,
+                  self.process.activeProcessGeneration == processGeneration,
+                  self.process.sessionId == backendSessionID,
+                  metadata.sessionID == backendSessionID,
+                  self.routeContractsByProcessGeneration[processGeneration]?.selectedModelID == selectedModelID else {
+                return
+            }
+            self.sessionMetadataByProcessGeneration[processGeneration] = SessionMetadataSnapshot(
+                selectedModelID: selectedModelID,
+                revision: revision,
+                metadata: metadata
+            )
+            if self.sessionMetadataByProcessGeneration.count > 8,
+               let oldest = self.sessionMetadataByProcessGeneration.keys.min() {
+                self.sessionMetadataByProcessGeneration.removeValue(forKey: oldest)
+                self.sessionMetadataRevisionByProcessGeneration.removeValue(forKey: oldest)
+            }
+        }
+    }
+
     func setModel(_ model: String) {
         guard !isPreparingSubmit else { return }
         guard availableModels.contains(model) else { return }
+        let freshQuarantine = CustomModelStore.quarantinedRuntimeModelIDs(from: customModelSnapshotLoader())
+        quarantinedRuntimeModelIDs = freshQuarantine
+        guard !freshQuarantine.contains(model) else {
+            modelSwitchError = "This model uses a legacy flat endpoint. Open Models to attach an explicit provider before selecting it."
+            modelSwitchNeedsNewSession = false
+            pendingModelForNewSession = nil
+            return
+        }
         if model == currentModel {
             guard !tabHasExplicitModel else { return }
             tabHasExplicitModel = true
@@ -3752,13 +3849,20 @@ final class ChatStore {
                     )
                     self.routeContractsByProcessGeneration[identity.processGeneration] = ModelRouteContract.resolve(
                         selectedModelID: model,
-                        customModel: self.customModelsByID[model]
+                        customModel: self.customModelsByID[model],
+                        isKnownNativeModel: !self.configuredCustomModelIDs.contains(model)
+                    )
+                    self.refreshSessionMetadata(
+                        processGeneration: identity.processGeneration,
+                        backendSessionID: identity.backendSessionID,
+                        selectedModelID: model
                     )
                 }
             case .requested:
                 // ACP accepted the request without exposing the effective model.
                 // Preserve intent, but do not paint it as live.
                 self.currentModel = model
+                self.invalidateSessionMetadata(processGeneration: identity.processGeneration)
             case .rejected:
                 self.currentModel = previous
                 self.tabModelIntent = previousIntent
@@ -4002,7 +4106,8 @@ final class ChatStore {
     var currentRouteContract: ModelRouteContract {
         ModelRouteContract.resolve(
             selectedModelID: currentModel,
-            customModel: customModelsByID[currentModel]
+            customModel: customModelsByID[currentModel],
+            isKnownNativeModel: !configuredCustomModelIDs.contains(currentModel)
         )
     }
 
@@ -4376,6 +4481,15 @@ final class ChatStore {
             if latestTurnOutcome == .failed {
                 lastError = completion.redactedError ?? "Grok reported that this turn ended with an error."
             }
+            let completionAssistantID = streamingMessageID ?? closedTurnAssistantID
+            // turn_completed is the lifecycle authority. Finish the transport-owned UI state
+            // before collecting optional evidence so an extension probe can never hold Stop open.
+            if isStreaming,
+               deferredPromptCompletion == nil,
+               streamingTextBuffer.isEmpty,
+               let stuckAssistantID = completionAssistantID {
+                finishPromptNow(assistantID: stuckAssistantID, ok: turnSucceeded)
+            }
             // Slice 6: the authoritative completion receipt is the only usage source.
             sessionUsage.recordTurn(
                 modelID: modelExecutionState.effectiveModelID ?? currentModel,
@@ -4394,19 +4508,34 @@ final class ChatStore {
                 backendSessionID: completion.identity.backendSessionID,
                 backendPromptIndex: completion.backendPromptIndex
             )
-            attachTaskCheckpoint(to: streamingMessageID, snapshot: settledSnapshot)
-            // turn_completed is the lifecycle authority. Observed live 2026-08-03
-            // (gpt-5.6-terra): the usage receipt settled while the prompt's JSON-RPC
-            // response never resolved, leaving a stuck Stop button on a finished turn.
-            // With the display buffer drained and no deferred completion pending, the
-            // turn must finish now; a late response is a no-op via finishPromptNow's
-            // idempotence guard.
-            if isStreaming,
-               deferredPromptCompletion == nil,
-               streamingTextBuffer.isEmpty,
-               let stuckAssistantID = streamingMessageID ?? closedTurnAssistantID {
-                finishPromptNow(assistantID: stuckAssistantID, ok: turnSucceeded)
-            }
+            let frozenRouteContract = settledSnapshot.binding.processGeneration.flatMap {
+                routeContractsByProcessGeneration[$0]
+            } ?? currentRouteContract
+            let frozenObservation = FrozenRouteObservation(
+                routeContract: frozenRouteContract,
+                acpAgentVersion: process.acpAgentVersion?.rawValue,
+                catalogCurrentModelID: process.hasAuthoritativeModelCatalog
+                    ? process.currentModelId
+                    : nil,
+                catalogContainsSelectedModel: process.hasAuthoritativeModelCatalog
+                    ? process.availableModelsInfo.contains { $0.id == frozenRouteContract.selectedModelID }
+                    : nil,
+                sessionMetadata: settledSnapshot.binding.processGeneration.flatMap { generation in
+                    guard let snapshot = sessionMetadataByProcessGeneration[generation],
+                          snapshot.revision == sessionMetadataRevisionByProcessGeneration[generation],
+                          snapshot.selectedModelID == frozenRouteContract.selectedModelID,
+                          snapshot.metadata.sessionID == completion.identity.backendSessionID else {
+                        return nil
+                    }
+                    return snapshot.metadata
+                }
+            )
+            attachTaskCheckpoint(
+                to: completionAssistantID,
+                snapshot: settledSnapshot,
+                completion: completion,
+                frozenObservation: frozenObservation
+            )
             let observationRoute = settledSnapshot.binding.processGeneration.flatMap {
                 routeContractsByProcessGeneration[$0]
             } ?? currentRouteContract
@@ -4821,9 +4950,11 @@ final class ChatStore {
                 inputTokens: completion?.inputTokens,
                 outputTokens: completion?.outputTokens,
                 cachedReadTokens: completion?.cachedReadTokens,
+                cacheCreationTokens: completion?.cacheCreationTokens,
                 reasoningTokens: completion?.reasoningTokens,
                 apiDurationMilliseconds: completion?.apiDurationMilliseconds,
                 costUsdTicks: completion?.costUsdTicks,
+                costIsPartial: completion?.costIsPartial,
                 modelUsage: completion?.modelUsage ?? []
             ),
             outcome: outcome,
@@ -4947,19 +5078,45 @@ final class ChatStore {
 
     private func attachTaskCheckpoint(
         to messageID: UUID?,
-        snapshot: RunEvidenceSnapshot
+        snapshot: RunEvidenceSnapshot,
+        completion: TurnCompletionReceipt? = nil,
+        frozenObservation: FrozenRouteObservation? = nil
     ) {
         guard let messageID,
               let index = messages.firstIndex(where: { $0.id == messageID && $0.role == .assistant }) else {
             return
         }
-        let routeContract = snapshot.binding.processGeneration.flatMap { routeContractsByProcessGeneration[$0] }
+        let routeContract = frozenObservation?.routeContract
+            ?? snapshot.binding.processGeneration.flatMap { routeContractsByProcessGeneration[$0] }
             ?? currentRouteContract
+        let observedSessionMetadata = frozenObservation?.sessionMetadata
+        let usageModelIDs = Array(Set(completion?.modelUsage.map(\.modelID) ?? [])).sorted()
+        let observedRoute = AssistantTurnCheckpoint.ObservedRouteReceipt(
+            processGeneration: snapshot.binding.processGeneration,
+            backendSessionID: snapshot.binding.backendSessionID,
+            requestID: snapshot.binding.requestID,
+            acpAgentVersion: frozenObservation?.acpAgentVersion
+                ?? process.acpAgentVersion?.rawValue,
+            catalogCurrentModelID: frozenObservation.map(\.catalogCurrentModelID)
+                ?? (process.hasAuthoritativeModelCatalog ? process.currentModelId : nil),
+            catalogContainsSelectedModel: frozenObservation.map(\.catalogContainsSelectedModel)
+                ?? (process.hasAuthoritativeModelCatalog
+                    ? process.availableModelsInfo.contains { $0.id == routeContract.selectedModelID }
+                    : nil),
+            sessionModelID: observedSessionMetadata?.modelID,
+            resolvedModelID: observedSessionMetadata?.resolvedModelID,
+            modelFingerprint: observedSessionMetadata?.modelFingerprint,
+            apiBackend: observedSessionMetadata?.apiBackend,
+            turnUsageEffectiveModelID: usageModelIDs.count == 1 ? usageModelIDs.first : nil,
+            modelUsageIDs: usageModelIDs
+        )
         let checkpoint = AssistantTurnCheckpoint(
             snapshot: snapshot,
             requestedToolFamilies: currentTurnRequestedMCPNames,
             attachmentNames: currentTurnAttachmentNames,
-            routeReceipt: routeContract.detailLines.first
+            routeReceipt: routeContract.detailLines.first,
+            routeContract: routeContract,
+            observedRouteReceipt: observedRoute
         )
         if var trace = messages[index].assistantTrace {
             trace.checkpoint = checkpoint
@@ -5280,7 +5437,11 @@ final class ChatStore {
     }
 
     private func applyBuiltInModelCatalog(_ models: [GrokModelInfo]) {
-        guard !models.isEmpty, process.availableModelsInfo.isEmpty else { return }
+        // The bootstrap cache is only a pre-ACP placeholder. An authoritative empty
+        // catalog is still authoritative and must not be replaced by cached defaults.
+        guard !process.hasAuthoritativeModelCatalog,
+              !models.isEmpty,
+              process.availableModelsInfo.isEmpty else { return }
         let previousBuiltInIDs = builtInModelIDs
         builtInModelIDs = Set(models.map(\.id))
 
@@ -5326,7 +5487,15 @@ final class ChatStore {
             modelDisplayNames.removeValue(forKey: removedID)
             modelContextTokens.removeValue(forKey: removedID)
         }
-        let customModels = CustomModelStore.load().models
+        let customSnapshot = customModelSnapshotLoader()
+        configuredCustomModelIDs = Set(customSnapshot.models.map(\.id))
+        // ACP owns the visible party list. Flat legacy models stay visible when
+        // advertised, but a separate last-moment dispatch gate blocks them.
+        quarantinedRuntimeModelIDs = CustomModelStore.quarantinedRuntimeModelIDs(from: customSnapshot)
+        if !process.hasAuthoritativeModelCatalog {
+            availableModels.removeAll { quarantinedRuntimeModelIDs.contains($0) }
+        }
+        let customModels = CustomModelStore.runtimeEligibleModels(from: customSnapshot)
         customModelsByID = [:]
         for model in customModels {
             customModelsByID[model.id] = model
@@ -5394,33 +5563,61 @@ final class ChatStore {
         tabHasExplicitModel = false
     }
 
-    private func modelForProcessLaunch(fallbackSelection: SessionSelection?) -> String {
-        if tabHasExplicitModel,
-           !currentModel.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            return currentModel
+    private func modelForProcessLaunch(fallbackSelection: SessionSelection?) -> String? {
+        // Re-read immediately before launch. Settings, the CLI, or a text editor may
+        // have changed config after the picker was rendered.
+        let freshQuarantine = CustomModelStore.quarantinedRuntimeModelIDs(from: customModelSnapshotLoader())
+        quarantinedRuntimeModelIDs = freshQuarantine
+        let explicitModel = tabHasExplicitModel
+            && !currentModel.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            ? currentModel
+            : nil
+        let legacyModel: String?
+        if case .legacyUnknown(let model) = tabModelIntent {
+            legacyModel = model
+        } else {
+            legacyModel = nil
         }
-        if case .legacyUnknown(let model) = tabModelIntent,
-           availableModels.contains(model) {
-            currentModel = model
-            return model
+        let selected = Self.firstSafeLaunchModel(
+            candidates: [
+                explicitModel,
+                legacyModel,
+                workspaceDefaultModel(),
+                fallbackSelection?.model,
+                currentModel,
+            ],
+            availableModels: availableModels,
+            quarantinedModelIDs: freshQuarantine
+        )
+        if let selected {
+            currentModel = selected
         }
-        if let model = workspaceDefaultModel(), availableModels.contains(model) {
-            currentModel = model
-            return model
+        return selected
+    }
+
+    nonisolated static func firstSafeLaunchModel(
+        candidates: [String?],
+        availableModels: [String],
+        quarantinedModelIDs: Set<String>
+    ) -> String? {
+        func safe(_ model: String) -> Bool {
+            !model.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                && !quarantinedModelIDs.contains(model)
         }
-        if let model = fallbackSelection?.model,
-           availableModels.contains(model) {
-            currentModel = model
-            return model
+        // ACP may report an exact current model while omitting it from an empty or
+        // filtered picker list. Quarantine owns dispatch safety; membership does not.
+        for candidate in candidates.compactMap({ $0 }) where safe(candidate) {
+            return candidate
         }
-        if availableModels.contains(currentModel) {
-            return currentModel
-        }
-        if let first = availableModels.first {
-            currentModel = first
-            return first
-        }
-        return currentModel
+        return availableModels.first(where: safe)
+    }
+
+    nonisolated static func modelIDRequestedBySlashCommand(_ prompt: String) -> String? {
+        let parts = prompt.split(whereSeparator: \Character.isWhitespace)
+        guard parts.count >= 2,
+              parts[0].lowercased() == "/model" else { return nil }
+        let modelID = String(parts[1]).trimmingCharacters(in: .whitespacesAndNewlines)
+        return modelID.isEmpty ? nil : modelID
     }
 
     /// Resolves the effective per-project reasoning effort: an explicitly saved value

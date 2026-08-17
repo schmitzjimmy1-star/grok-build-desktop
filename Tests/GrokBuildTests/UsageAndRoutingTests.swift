@@ -339,8 +339,11 @@ final class UsageAndRoutingTests: XCTestCase {
             "ChatStore keeps one thin delegate so live and settled snapshots share one call"
         )
         let settleAnchor = try XCTUnwrap(chatStoreSource.range(of: "let turnSucceeded = completion.isSuccessful"))
-        let afterSettle = String(chatStoreSource[settleAnchor.upperBound...].prefix(600))
-        XCTAssertTrue(afterSettle.contains("sessionUsage.recordTurn("),
+        let settledSnapshotAnchor = try XCTUnwrap(
+            chatStoreSource.range(of: "let settledSnapshot = makeRunEvidenceSnapshot", range: settleAnchor.upperBound..<chatStoreSource.endIndex)
+        )
+        let authoritativeSettlement = String(chatStoreSource[settleAnchor.upperBound..<settledSnapshotAnchor.lowerBound])
+        XCTAssertTrue(authoritativeSettlement.contains("sessionUsage.recordTurn("),
                       "the ledger records only at the authoritative completion barrier")
         XCTAssertFalse(chatStoreSource.contains("sessionUsage.recordTurn(\n                modelID: nil"),
                       "ledger entries carry the effective model for pricing correlation")

@@ -12,9 +12,18 @@ let package = Package(
         .executable(
             name: "GrokBuildComputerUseMCP",
             targets: ["GrokBuildComputerUseMCP"]
+        ),
+        .executable(
+            name: "GrokBuildProviderAuthHelper",
+            targets: ["GrokBuildProviderAuthHelper"]
         )
     ],
-    dependencies: [],
+    dependencies: [
+        .package(
+            url: "https://github.com/mattt/swift-toml.git",
+            revision: "827506c90475e82d5a7f191f950fb3025cbdc0d6"
+        )
+    ],
     targets: [
         // Pure Computer Use contract (tool table, argv mapping, policy, env
         // keys) shared by the app, the helper executable, and the tests —
@@ -23,9 +32,17 @@ let package = Package(
             name: "GrokBuildComputerUseCore",
             path: "GrokBuildComputerUseCore"
         ),
+        .target(
+            name: "GrokBuildProviderAuthCore",
+            path: "GrokBuildProviderAuthCore"
+        ),
         .executableTarget(
             name: "GrokBuild",
-            dependencies: ["GrokBuildComputerUseCore"],
+            dependencies: [
+                "GrokBuildComputerUseCore",
+                "GrokBuildProviderAuthCore",
+                .product(name: "TOML", package: "swift-toml"),
+            ],
             path: "GrokBuild",
             resources: [
                 .process("Resources/Assets.xcassets"),
@@ -39,9 +56,14 @@ let package = Package(
             dependencies: ["GrokBuildComputerUseCore"],
             path: "GrokBuildComputerUseMCP"
         ),
+        .executableTarget(
+            name: "GrokBuildProviderAuthHelper",
+            dependencies: ["GrokBuildProviderAuthCore"],
+            path: "GrokBuildProviderAuthHelper"
+        ),
         .testTarget(
             name: "GrokBuildTests",
-            dependencies: ["GrokBuild", "GrokBuildComputerUseCore"],
+            dependencies: ["GrokBuild", "GrokBuildComputerUseCore", "GrokBuildProviderAuthCore"],
             resources: [.copy("Fixtures")]
         )
     ]

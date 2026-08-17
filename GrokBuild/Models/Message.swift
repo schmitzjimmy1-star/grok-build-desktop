@@ -105,6 +105,7 @@ struct AssistantTurnCheckpoint: Codable, Sendable, Hashable {
         let outputTokens: Int?
         let totalTokens: Int?
         let cachedReadTokens: Int?
+        let cacheCreationTokens: Int?
         let reasoningTokens: Int?
         let modelCalls: Int?
         let apiDurationMilliseconds: Int?
@@ -118,10 +119,78 @@ struct AssistantTurnCheckpoint: Codable, Sendable, Hashable {
         let inputTokens: Int?
         let outputTokens: Int?
         let cachedReadTokens: Int?
+        let cacheCreationTokens: Int?
         let reasoningTokens: Int?
         let apiDurationMilliseconds: Int?
         let costUsdTicks: Int?
+        let costIsPartial: Bool?
         let modelUsage: [ModelUsage]
+    }
+
+    /// Structured, credential-free route configuration frozen against the exact
+    /// process generation. This proves what GrokBuild configured; ACP model and
+    /// usage receipts separately prove what the CLI actually reported.
+    struct RouteReceipt: Codable, Sendable, Hashable {
+        enum Kind: String, Codable, Sendable {
+            case nativeXAI
+            case directProvider
+            case brokeredOpenRouter
+            case localEndpoint
+            case unavailable
+        }
+
+        let kind: Kind
+        let selectedModelID: String
+        let providerName: String
+        let appProviderID: String?
+        let officialProviderID: String?
+        let endpointIdentity: String?
+        let providerModelID: String
+        let apiBackend: String?
+        let authBoundary: String
+        let modelIsPinned: Bool
+        let servingProviderIsProven: Bool
+        let appFallbackEnabled: Bool
+
+        init(_ route: ModelRouteContract) {
+            switch route.kind {
+            case .nativeXAI: kind = .nativeXAI
+            case .directProvider: kind = .directProvider
+            case .brokeredOpenRouter: kind = .brokeredOpenRouter
+            case .localEndpoint: kind = .localEndpoint
+            case .unavailable: kind = .unavailable
+            }
+            selectedModelID = route.selectedModelID
+            providerName = route.providerName
+            appProviderID = route.appProviderID
+            officialProviderID = route.officialProviderID
+            endpointIdentity = route.endpointRouteIdentity ?? route.endpointHost
+            providerModelID = route.providerModelID
+            apiBackend = route.apiBackend
+            authBoundary = route.authBoundary.rawValue
+            modelIsPinned = route.modelIsPinned
+            servingProviderIsProven = route.servingProviderIsProven
+            appFallbackEnabled = false
+        }
+    }
+
+    /// Generation-bound values reported by the live CLI. Session-info fields are
+    /// optional because 1.0.4 does not expose that extension; their absence is an
+    /// explicit unavailable receipt, never proof of the configured route.
+    struct ObservedRouteReceipt: Codable, Sendable, Hashable {
+        let processGeneration: UInt64?
+        let backendSessionID: String?
+        let requestID: String?
+        let acpAgentVersion: String?
+        let catalogCurrentModelID: String?
+        let catalogContainsSelectedModel: Bool?
+        let sessionModelID: String?
+        let resolvedModelID: String?
+        let modelFingerprint: String?
+        let apiBackend: String?
+        /// Effective model only when the authoritative turn usage names exactly one model.
+        let turnUsageEffectiveModelID: String?
+        let modelUsageIDs: [String]
     }
 
     let objective: String?
@@ -155,12 +224,16 @@ struct AssistantTurnCheckpoint: Codable, Sendable, Hashable {
     /// Credential-free route detail captured from the exact process generation
     /// when this settled checkpoint was written. Absent legacy values stay absent.
     var routeReceipt: String? = nil
+    var structuredRouteReceipt: RouteReceipt? = nil
+    var observedRouteReceipt: ObservedRouteReceipt? = nil
 
     init(
         snapshot: RunEvidenceSnapshot,
         requestedToolFamilies: [String],
         attachmentNames: [String] = [],
-        routeReceipt: String? = nil
+        routeReceipt: String? = nil,
+        routeContract: ModelRouteContract? = nil,
+        observedRouteReceipt: ObservedRouteReceipt? = nil
     ) {
         objective = snapshot.goalSummary
         outcome = snapshot.outcome.displayName
@@ -241,9 +314,11 @@ struct AssistantTurnCheckpoint: Codable, Sendable, Hashable {
             inputTokens: snapshot.usage.inputTokens,
             outputTokens: snapshot.usage.outputTokens,
             cachedReadTokens: snapshot.usage.cachedReadTokens,
+            cacheCreationTokens: snapshot.usage.cacheCreationTokens,
             reasoningTokens: snapshot.usage.reasoningTokens,
             apiDurationMilliseconds: snapshot.usage.apiDurationMilliseconds,
             costUsdTicks: snapshot.usage.costUsdTicks,
+            costIsPartial: snapshot.usage.costIsPartial,
             modelUsage: snapshot.usage.modelUsage.map {
                 ModelUsage(
                     modelID: $0.modelID,
@@ -251,6 +326,7 @@ struct AssistantTurnCheckpoint: Codable, Sendable, Hashable {
                     outputTokens: $0.outputTokens,
                     totalTokens: $0.totalTokens,
                     cachedReadTokens: $0.cachedReadTokens,
+                    cacheCreationTokens: $0.cacheCreationTokens,
                     reasoningTokens: $0.reasoningTokens,
                     modelCalls: $0.modelCalls,
                     apiDurationMilliseconds: $0.apiDurationMilliseconds,
@@ -261,6 +337,8 @@ struct AssistantTurnCheckpoint: Codable, Sendable, Hashable {
         coordinationReceipt = snapshot.coordination
         self.attachmentNames = Array(Set(attachmentNames)).sorted()
         self.routeReceipt = routeReceipt
+        structuredRouteReceipt = routeContract.map(RouteReceipt.init)
+        self.observedRouteReceipt = observedRouteReceipt
     }
 
     /// Reconstitutes the settled Activity projection from the existing local
@@ -310,9 +388,11 @@ struct AssistantTurnCheckpoint: Codable, Sendable, Hashable {
                 inputTokens: $0.inputTokens,
                 outputTokens: $0.outputTokens,
                 cachedReadTokens: $0.cachedReadTokens,
+                cacheCreationTokens: $0.cacheCreationTokens,
                 reasoningTokens: $0.reasoningTokens,
                 apiDurationMilliseconds: $0.apiDurationMilliseconds,
                 costUsdTicks: $0.costUsdTicks,
+                costIsPartial: $0.costIsPartial,
                 modelUsage: $0.modelUsage.map {
                     ModelUsageReceipt(
                         modelID: $0.modelID,
@@ -320,6 +400,7 @@ struct AssistantTurnCheckpoint: Codable, Sendable, Hashable {
                         outputTokens: $0.outputTokens,
                         totalTokens: $0.totalTokens,
                         cachedReadTokens: $0.cachedReadTokens,
+                        cacheCreationTokens: $0.cacheCreationTokens,
                         reasoningTokens: $0.reasoningTokens,
                         modelCalls: $0.modelCalls,
                         apiDurationMilliseconds: $0.apiDurationMilliseconds,

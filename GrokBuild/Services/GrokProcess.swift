@@ -759,10 +759,35 @@ struct ModelUsageReceipt: Sendable, Equatable, Hashable {
     let outputTokens: Int?
     let totalTokens: Int?
     let cachedReadTokens: Int?
+    let cacheCreationTokens: Int?
     let reasoningTokens: Int?
     let modelCalls: Int?
     let apiDurationMilliseconds: Int?
     let costUsdTicks: Int?
+
+    init(
+        modelID: String,
+        inputTokens: Int?,
+        outputTokens: Int?,
+        totalTokens: Int?,
+        cachedReadTokens: Int?,
+        cacheCreationTokens: Int? = nil,
+        reasoningTokens: Int?,
+        modelCalls: Int?,
+        apiDurationMilliseconds: Int?,
+        costUsdTicks: Int?
+    ) {
+        self.modelID = modelID
+        self.inputTokens = inputTokens
+        self.outputTokens = outputTokens
+        self.totalTokens = totalTokens
+        self.cachedReadTokens = cachedReadTokens
+        self.cacheCreationTokens = cacheCreationTokens
+        self.reasoningTokens = reasoningTokens
+        self.modelCalls = modelCalls
+        self.apiDurationMilliseconds = apiDurationMilliseconds
+        self.costUsdTicks = costUsdTicks
+    }
 }
 
 struct TurnCompletionReceipt: Sendable, Equatable {
@@ -780,9 +805,11 @@ struct TurnCompletionReceipt: Sendable, Equatable {
     let inputTokens: Int?
     let outputTokens: Int?
     let cachedReadTokens: Int?
+    let cacheCreationTokens: Int?
     let reasoningTokens: Int?
     let apiDurationMilliseconds: Int?
     let costUsdTicks: Int?
+    let costIsPartial: Bool?
     let modelUsage: [ModelUsageReceipt]
 
     init(
@@ -797,9 +824,11 @@ struct TurnCompletionReceipt: Sendable, Equatable {
         inputTokens: Int? = nil,
         outputTokens: Int? = nil,
         cachedReadTokens: Int? = nil,
+        cacheCreationTokens: Int? = nil,
         reasoningTokens: Int? = nil,
         apiDurationMilliseconds: Int? = nil,
         costUsdTicks: Int? = nil,
+        costIsPartial: Bool? = nil,
         modelUsage: [ModelUsageReceipt] = []
     ) {
         self.identity = identity
@@ -813,9 +842,11 @@ struct TurnCompletionReceipt: Sendable, Equatable {
         self.inputTokens = inputTokens
         self.outputTokens = outputTokens
         self.cachedReadTokens = cachedReadTokens
+        self.cacheCreationTokens = cacheCreationTokens
         self.reasoningTokens = reasoningTokens
         self.apiDurationMilliseconds = apiDurationMilliseconds
         self.costUsdTicks = costUsdTicks
+        self.costIsPartial = costIsPartial
         self.modelUsage = modelUsage
     }
 
@@ -2895,9 +2926,11 @@ final class GrokProcess: @unchecked Sendable {
             inputTokens: Self.integer(usage["inputTokens"]),
             outputTokens: Self.integer(usage["outputTokens"]),
             cachedReadTokens: Self.integer(usage["cachedReadTokens"]),
+            cacheCreationTokens: Self.integer(usage["cacheCreationTokens"]),
             reasoningTokens: Self.integer(usage["reasoningTokens"]),
             apiDurationMilliseconds: Self.integer(usage["apiDurationMs"]),
             costUsdTicks: Self.integer(usage["costUsdTicks"]),
+            costIsPartial: usage["costIsPartial"] as? Bool,
             modelUsage: Self.modelUsageReceipts(from: usage["modelUsage"])
         )
     }
@@ -2914,6 +2947,7 @@ final class GrokProcess: @unchecked Sendable {
                 outputTokens: integer(usage["outputTokens"]),
                 totalTokens: integer(usage["totalTokens"]),
                 cachedReadTokens: integer(usage["cachedReadTokens"]),
+                cacheCreationTokens: integer(usage["cacheCreationTokens"]),
                 reasoningTokens: integer(usage["reasoningTokens"]),
                 modelCalls: integer(usage["modelCalls"]),
                 apiDurationMilliseconds: integer(usage["apiDurationMs"]),

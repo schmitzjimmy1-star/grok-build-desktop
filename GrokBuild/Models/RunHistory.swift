@@ -166,6 +166,8 @@ enum RunHistory {
                 let turnCount: Int?
                 let apiDurationMilliseconds: Int?
                 let costUsdTicks: Int?
+                let costIsPartial: Bool?
+                let cacheCreationTokens: Int?
             }
             struct Worker: Codable {
                 let status: String
@@ -188,6 +190,8 @@ enum RunHistory {
             let outcome: String
             let model: String?
             let route: String
+            let configuredRoute: AssistantTurnCheckpoint.RouteReceipt?
+            let observedRoute: AssistantTurnCheckpoint.ObservedRouteReceipt?
             let toolCounts: ToolCounts?
             let workers: [Worker]
             let workersObserved: Int
@@ -215,7 +219,7 @@ enum RunHistory {
         let turns: [ExportTurn]
 
         init(record: Record) {
-            schemaVersion = 1
+            schemaVersion = 2
             historical = true
             runID = RunHistory.safeText(record.id)
             sourceWindow = RunHistory.sourceWindowLine(record)
@@ -226,7 +230,15 @@ enum RunHistory {
                     ExportTurn.ToolCounts(succeeded: $0.succeeded, failed: $0.failed, cancelled: $0.cancelled, unknown: $0.unknown)
                 }
                 let usage = checkpoint.usageReceipt.map {
-                    ExportTurn.Usage(totalTokens: $0.totalTokens, modelCalls: $0.modelCalls, turnCount: $0.turnCount, apiDurationMilliseconds: $0.apiDurationMilliseconds, costUsdTicks: $0.costUsdTicks)
+                    ExportTurn.Usage(
+                        totalTokens: $0.totalTokens,
+                        modelCalls: $0.modelCalls,
+                        turnCount: $0.turnCount,
+                        apiDurationMilliseconds: $0.apiDurationMilliseconds,
+                        costUsdTicks: $0.costUsdTicks,
+                        costIsPartial: $0.costIsPartial,
+                        cacheCreationTokens: $0.cacheCreationTokens
+                    )
                 }
                 let observedWorkers = checkpoint.workerReceipts ?? []
                 let workers = observedWorkers.prefix(RunHistory.maximumWorkersPerTurn).map {
@@ -255,6 +267,8 @@ enum RunHistory {
                     outcome: RunHistory.safeText(checkpoint.outcome),
                     model: checkpoint.modelID.map(RunHistory.safeText),
                     route: turn.route,
+                    configuredRoute: checkpoint.structuredRouteReceipt,
+                    observedRoute: checkpoint.observedRouteReceipt,
                     toolCounts: tools,
                     workers: workers,
                     workersObserved: observedWorkers.count,

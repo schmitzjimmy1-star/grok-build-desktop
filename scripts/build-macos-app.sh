@@ -85,6 +85,14 @@ if [ -f "$ROOT_DIR/Package.swift" ]; then
         echo "ERROR: Missing GrokBuildComputerUseMCP helper binary"
         exit 1
     fi
+    if [ -f "$BUILD_DIR/release/GrokBuildProviderAuthHelper" ]; then
+        cp "$BUILD_DIR/release/GrokBuildProviderAuthHelper" "$APP_BUNDLE/Contents/MacOS/GrokBuildProviderAuthHelper"
+        chmod +x "$APP_BUNDLE/Contents/MacOS/GrokBuildProviderAuthHelper"
+        echo "==> Copied provider credential helper"
+    else
+        echo "ERROR: Missing GrokBuildProviderAuthHelper binary"
+        exit 1
+    fi
     if [ -f "$ROOT_DIR/scripts/grokbuild-browser-mcp" ]; then
         cp "$ROOT_DIR/scripts/grokbuild-browser-mcp" "$APP_BUNDLE/Contents/Resources/grokbuild-browser-mcp"
         chmod +x "$APP_BUNDLE/Contents/Resources/grokbuild-browser-mcp"
@@ -100,6 +108,7 @@ if [ -f "$ROOT_DIR/Package.swift" ]; then
         cp -R "$ROOT_DIR/GrokBuild/Resources/Skills/." "$APP_BUNDLE/Contents/Resources/Skills/"
         echo "==> Copied bundled skills"
     fi
+    cp "$ROOT_DIR/THIRD_PARTY_NOTICES.md" "$APP_BUNDLE/Contents/Resources/THIRD_PARTY_NOTICES.md"
 
     chmod +x "$SCRIPT_DIR/bundle-agent-desktop.sh" "$SCRIPT_DIR/codesign-app-bundle.sh"
     # Computer Use is a first-class feature: a build without agent-desktop is

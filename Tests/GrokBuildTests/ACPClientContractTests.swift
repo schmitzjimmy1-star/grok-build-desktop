@@ -521,6 +521,80 @@ final class ACPClientContractTests: XCTestCase {
         await store.shutdownPermanently()
     }
 
+    @MainActor
+    func testLiveModelSwitchRefreshesSessionMetadataBeforeNextTurnReceipt() async throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("grokbuild-model-metadata-switch-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let rpcLogURL = root.appendingPathComponent("rpc.log")
+        let scriptURL = root.appendingPathComponent("fake-grok")
+        let script = """
+        #!/bin/sh
+        current_model='model-a'
+        while IFS= read -r line; do
+          printf '%s\n' "$line" >> '\(rpcLogURL.path)'
+          id=$(printf '%s' "$line" | sed -E 's/.*"id":([0-9]+).*/\\1/')
+          case "$line" in
+            *'"method":"initialize"'*)
+              printf '{"jsonrpc":"2.0","id":%s,"result":{"_meta":{"agentVersion":"1.0.5","modelState":{"currentModelId":"model-a","availableModels":[{"modelId":"model-a"},{"modelId":"model-b"}]}}}}\n' "$id"
+              ;;
+            *'"method":"session/new"'*)
+              printf '{"jsonrpc":"2.0","id":%s,"result":{"sessionId":"metadata-switch-backend","models":{"currentModelId":"model-a","availableModels":[{"modelId":"model-a"},{"modelId":"model-b"}]}}}\n' "$id"
+              ;;
+            *'"method":"x.ai/session/info"'*)
+              printf '{"jsonrpc":"2.0","id":%s,"result":{"result":{"sessionId":"metadata-switch-backend","cwd":"\(root.path)","model":"%s","resolvedModelId":"resolved-%s","modelFingerprint":"fingerprint-%s","apiBackend":"responses"}}}\n' "$id" "$current_model" "$current_model" "$current_model"
+              ;;
+            *'"method":"session/set_model"'*)
+              current_model='model-b'
+              printf '{"jsonrpc":"2.0","id":%s,"result":{"_meta":{"model":{"Ok":"model-b"}}}}\n' "$id"
+              ;;
+            *'"method":"session/prompt"'*)
+              printf '{"jsonrpc":"2.0","method":"_x.ai/session_notification","params":{"sessionId":"metadata-switch-backend","update":{"sessionUpdate":"agent_message_chunk","content":{"type":"text","text":"Model B answered."}}}}\n'
+              printf '{"jsonrpc":"2.0","method":"_x.ai/session_notification","params":{"sessionId":"metadata-switch-backend","update":{"sessionUpdate":"turn_completed","stop_reason":"end_turn","usage":{"totalTokens":10,"modelCalls":1,"numTurns":1,"modelUsage":{"model-b":{"totalTokens":10,"modelCalls":1}}}}}}\n'
+              printf '{"jsonrpc":"2.0","id":%s,"result":{"stopReason":"end_turn"}}\n' "$id"
+              ;;
+          esac
+        done
+        """
+        try script.write(to: scriptURL, atomically: true, encoding: .utf8)
+        try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: scriptURL.path)
+
+        GrokProcess.cliOverrideForTests = scriptURL
+        defer { GrokProcess.cliOverrideForTests = nil }
+        let store = ChatStore()
+        store.bindTabSession(UUID(), savedModel: "model-a")
+        await store.start(workspace: Workspace(name: "metadata-switch", path: root))
+
+        for _ in 0..<200 {
+            let rpc = (try? String(contentsOf: rpcLogURL, encoding: .utf8)) ?? ""
+            if rpc.contains("\"method\":\"x.ai/session/info\"") { break }
+            try await Task.sleep(for: .milliseconds(5))
+        }
+        store.setModel("model-b")
+        for _ in 0..<200 where store.modelExecutionState.status != .confirmed {
+            try await Task.sleep(for: .milliseconds(5))
+        }
+        for _ in 0..<200 {
+            let rpc = (try? String(contentsOf: rpcLogURL, encoding: .utf8)) ?? ""
+            if rpc.components(separatedBy: "\"method\":\"x.ai/session/info\"").count - 1 >= 2 { break }
+            try await Task.sleep(for: .milliseconds(5))
+        }
+
+        let sent = await store.sendAndWait("Answer on the confirmed model")
+        XCTAssertTrue(sent)
+        let observed = try XCTUnwrap(
+            store.messages.last(where: { $0.role == .assistant })?
+                .assistantTrace?.checkpoint?.observedRouteReceipt
+        )
+        XCTAssertEqual(observed.sessionModelID, "model-b")
+        XCTAssertEqual(observed.resolvedModelID, "resolved-model-b")
+        XCTAssertEqual(observed.modelFingerprint, "fingerprint-model-b")
+        XCTAssertEqual(observed.turnUsageEffectiveModelID, "model-b")
+        XCTAssertNotEqual(observed.sessionModelID, "model-a")
+        await store.shutdownPermanently()
+    }
+
     func testLastLiveDoesNotAttachToANewerInheritedDefault() {
         XCTAssertEqual(
             ChatStore.modelSelectorStatusLabel(

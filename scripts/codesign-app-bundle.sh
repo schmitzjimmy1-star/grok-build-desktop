@@ -62,6 +62,7 @@ sign_nested() {
 
 sign_nested "GrokBuild"
 sign_nested "GrokBuildComputerUseMCP"
+sign_nested "GrokBuildProviderAuthHelper"
 if [ "$IDENTITY" = "-" ]; then
     sign_nested "agent-desktop"
 else
@@ -74,7 +75,7 @@ if [ "$IDENTITY" = "-" ]; then
 else
     echo "==> Signing app bundle with identity: $IDENTITY"
     # No --deep: nested tools were just signed with --identifier
-    # "$BUNDLE_ID" so one Accessibility grant covers all three, and --deep
+    # "$BUNDLE_ID" so one Accessibility grant covers the bundled tools, and --deep
     # would re-sign them with filename-derived identifiers and break that.
     codesign --force --sign "$IDENTITY" \
         --options runtime \

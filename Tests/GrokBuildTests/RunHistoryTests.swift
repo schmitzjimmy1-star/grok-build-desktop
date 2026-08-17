@@ -51,7 +51,7 @@ final class RunHistoryTests: XCTestCase {
             requestedToolFamilies: []
         )
         var object = try XCTUnwrap(JSONSerialization.jsonObject(with: JSONEncoder().encode(checkpoint)) as? [String: Any])
-        for key in ["toolSummaryReceipt", "processReceipt", "continuityReceipt", "usageReceipt", "coordinationReceipt", "artifacts", "workerReceipts", "routeReceipt"] {
+        for key in ["toolSummaryReceipt", "processReceipt", "continuityReceipt", "usageReceipt", "coordinationReceipt", "artifacts", "workerReceipts", "routeReceipt", "structuredRouteReceipt", "observedRouteReceipt"] {
             object.removeValue(forKey: key)
         }
         let legacy = try JSONDecoder().decode(AssistantTurnCheckpoint.self, from: JSONSerialization.data(withJSONObject: object))

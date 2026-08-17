@@ -172,9 +172,11 @@ struct RunEvidenceSnapshot: Equatable, Sendable {
         let inputTokens: Int?
         let outputTokens: Int?
         let cachedReadTokens: Int?
+        let cacheCreationTokens: Int?
         let reasoningTokens: Int?
         let apiDurationMilliseconds: Int?
         let costUsdTicks: Int?
+        let costIsPartial: Bool?
         let modelUsage: [ModelUsageReceipt]
 
         init(
@@ -184,9 +186,11 @@ struct RunEvidenceSnapshot: Equatable, Sendable {
             inputTokens: Int? = nil,
             outputTokens: Int? = nil,
             cachedReadTokens: Int? = nil,
+            cacheCreationTokens: Int? = nil,
             reasoningTokens: Int? = nil,
             apiDurationMilliseconds: Int? = nil,
             costUsdTicks: Int? = nil,
+            costIsPartial: Bool? = nil,
             modelUsage: [ModelUsageReceipt] = []
         ) {
             self.totalTokens = totalTokens
@@ -195,9 +199,11 @@ struct RunEvidenceSnapshot: Equatable, Sendable {
             self.inputTokens = inputTokens
             self.outputTokens = outputTokens
             self.cachedReadTokens = cachedReadTokens
+            self.cacheCreationTokens = cacheCreationTokens
             self.reasoningTokens = reasoningTokens
             self.apiDurationMilliseconds = apiDurationMilliseconds
             self.costUsdTicks = costUsdTicks
+            self.costIsPartial = costIsPartial
             self.modelUsage = modelUsage
         }
     }

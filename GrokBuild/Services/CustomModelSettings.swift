@@ -1,4 +1,79 @@
 import Foundation
+import GrokBuildProviderAuthCore
+import TOML
+
+/// Post-write validation through the CLI that will actually consume the file.
+/// Output is bounded and only typed warning targets are retained; reasons and raw
+/// stderr never enter a receipt because they may contain user-authored config text.
+enum GrokConfigCandidateInspector {
+    enum InspectionError: LocalizedError {
+        case cliUnavailable
+        case timedOut
+        case failed
+        case invalidResponse
+        case appOwnedWarning
+
+        var errorDescription: String? {
+            switch self {
+            case .cliUnavailable: "The Grok CLI is unavailable, so the candidate configuration was rolled back."
+            case .timedOut: "The Grok CLI configuration check timed out, so the candidate was rolled back."
+            case .failed: "The Grok CLI rejected the candidate configuration, so it was rolled back."
+            case .invalidResponse: "The Grok CLI returned an unreadable configuration receipt, so the candidate was rolled back."
+            case .appOwnedWarning: "The Grok CLI reported a warning for GrokBuild-owned model configuration, so the candidate was rolled back."
+            }
+        }
+    }
+
+    static func validate(modelIDs: Set<String>, officialProviderIDs: Set<String>) throws {
+        guard let cli = GrokCLIService.locateGrokCLI() else { throw InspectionError.cliUnavailable }
+        let process = Process()
+        process.executableURL = cli
+        process.arguments = ["inspect", "--json"]
+        process.environment = ProcessInfo.processInfo.environment
+        let stdout = Pipe()
+        let stderr = Pipe()
+        process.standardOutput = stdout
+        process.standardError = stderr
+        let output = LockedData(maxBytes: 1_048_576)
+        let errors = LockedData(maxBytes: 65_536)
+        stdout.fileHandleForReading.readabilityHandler = { output.append($0.availableData) }
+        stderr.fileHandleForReading.readabilityHandler = { errors.append($0.availableData) }
+        let timedOut = LockedFlag()
+        do {
+            try process.run()
+        } catch {
+            stdout.fileHandleForReading.readabilityHandler = nil
+            stderr.fileHandleForReading.readabilityHandler = nil
+            throw InspectionError.failed
+        }
+        ProcessKillSchedule.schedule(process: process, after: 10, flag: timedOut)
+        process.waitUntilExit()
+        stdout.fileHandleForReading.readabilityHandler = nil
+        stderr.fileHandleForReading.readabilityHandler = nil
+        output.append(stdout.fileHandleForReading.readDataToEndOfFile())
+        errors.append(stderr.fileHandleForReading.readDataToEndOfFile())
+        guard !timedOut.isSet else { throw InspectionError.timedOut }
+        guard process.terminationStatus == 0 else { throw InspectionError.failed }
+        guard !output.wasTruncated,
+              let object = try? JSONSerialization.jsonObject(with: output.snapshot()) as? [String: Any] else {
+            throw InspectionError.invalidResponse
+        }
+        let warnings = object["configWarnings"] as? [[String: Any]] ?? []
+        let hasOwnedWarning = warnings.contains { warning in
+            switch warning["target"] as? String {
+            case "model":
+                guard let key = warning["key"] as? String else { return false }
+                return modelIDs.contains(key)
+            case "modelProvider":
+                guard let id = warning["id"] as? String else { return false }
+                return officialProviderIDs.contains(id)
+            default:
+                return false
+            }
+        }
+        guard !hasOwnedWarning else { throw InspectionError.appOwnedWarning }
+    }
+}
 
 enum ModelAPIBackend: String, CaseIterable, Codable, Sendable {
     case chatCompletions = "chat_completions"
@@ -25,8 +100,9 @@ enum ModelAPIBackend: String, CaseIterable, Codable, Sendable {
 /// api_key = "sk-..."
 /// ```
 ///
-/// Grok resolves credentials per model in this priority order:
-/// `api_key` > active session token > `XAI_API_KEY`.
+/// GrokBuild projects linked providers through the CLI's official
+/// `[model_providers.*]` contract. Remote keyless flat entries are refused so a
+/// custom endpoint can never inherit the signed-in xAI session token.
 struct CustomModel: Identifiable, Hashable, Sendable {
     /// The TOML table key (`[model.<id>]`). Used with `/model <id>` and `grok -m <id>`.
     var id: String
@@ -147,12 +223,10 @@ struct CustomModel: Identifiable, Hashable, Sendable {
         return nil
     }
 
-    /// Returns a copy with endpoint/credentials filled in from a linked provider.
-    ///
-    /// A provider acts as the source of truth for the shared `base_url`. For the credential,
-    /// the provider only overrides the model when it actually carries an inline `api_key`;
-    /// otherwise the model keeps its own. This prevents a provider with no key from wiping a
-    /// key already stored on the model.
+    /// Returns a copy with endpoint/credential state filled in from a linked provider.
+    /// A linked provider is authoritative even when its credential is empty. Keeping an old
+    /// model-level key after Disconnect would make disconnect reversible only in the UI and let
+    /// legacy migration silently resurrect the credential.
     func resolved(using providers: [Provider]) -> CustomModel {
         guard let providerID,
               let provider = providers.first(where: { $0.id == providerID }) else {
@@ -160,9 +234,7 @@ struct CustomModel: Identifiable, Hashable, Sendable {
         }
         var copy = self
         copy.baseURL = provider.baseURL
-        if !provider.apiKey.trimmingCharacters(in: .whitespaces).isEmpty {
-            copy.apiKey = provider.apiKey
-        }
+        copy.apiKey = provider.apiKey
         return copy
     }
 }
@@ -261,6 +333,9 @@ struct Provider: Identifiable, Hashable, Codable, Sendable {
 
     var validationError: String? {
         if id.trimmingCharacters(in: .whitespaces).isEmpty { return "Provider id is required." }
+        if !ProviderAuthContract.isValidProviderID(id) {
+            return "Provider id may only contain letters, numbers, dots, dashes, and underscores."
+        }
         if name.trimmingCharacters(in: .whitespaces).isEmpty { return "Provider name is required." }
         let url = baseURL.trimmingCharacters(in: .whitespaces)
         if url.isEmpty { return "Base URL is required." }
@@ -979,9 +1054,13 @@ enum CustomModelStore {
     /// Maximum number of custom models GrokBuild will manage in `~/.grok/config.toml`.
     static let maxModels = 28
     private static let managedModelKeys: Set<String> = [
-        "model", "base_url", "name", "api_key", "api_backend", "context_window",
+        "model", "base_url", "name", "api_key", "model_provider", "api_backend", "context_window",
         "grokbuild_context_tokens", "grokbuild_supports_reasoning_effort",
         "grokbuild_supports_vision", "grokbuild_supports_thinking", "grokbuild_provider_id",
+    ]
+    private static let managedProviderKeys: Set<String> = ["base_url"]
+    private static let managedProviderAuthKeys: Set<String> = [
+        "command", "args", "token_ttl_secs", "timeout_secs",
     ]
 
     static var configURL: URL {
@@ -991,6 +1070,11 @@ enum CustomModelStore {
     struct RemovalPlan: Equatable {
         var models: [CustomModel]
         var defaultModelID: String?
+    }
+
+    struct ConfigMutationReceipt: Equatable, Sendable {
+        let previousConfig: String
+        let committedConfig: String
     }
 
     static func removalPlan(
@@ -1008,13 +1092,19 @@ enum CustomModelStore {
 
     struct WriteSafety: Sendable, Equatable {
         enum Blocker: String, CaseIterable, Sendable {
+            case invalidTOML
             case nestedModelTables
             case modelProviderTables
             case modelProviderReferences
             case unrecognizedModelTable
+            case unsupportedModelFields
+            case unsafeKeylessRemoteModel
+            case unsafeFlatCredentialModel
 
             var label: String {
                 switch self {
+                case .invalidTOML:
+                    "invalid TOML syntax"
                 case .nestedModelTables:
                     "nested [model.<id>.*] tables"
                 case .modelProviderTables:
@@ -1023,6 +1113,12 @@ enum CustomModelStore {
                     "model_provider references"
                 case .unrecognizedModelTable:
                     "unrecognized model table headers"
+                case .unsupportedModelFields:
+                    "partial or unsupported model fields"
+                case .unsafeKeylessRemoteModel:
+                    "remote custom endpoints without an explicit provider credential boundary"
+                case .unsafeFlatCredentialModel:
+                    "inline credentials without an exact GrokBuild provider link"
                 }
             }
         }
@@ -1031,7 +1127,20 @@ enum CustomModelStore {
 
         static let writable = WriteSafety(blockers: [])
 
-        var canWrite: Bool { blockers.isEmpty }
+        /// A legacy remote keyless flat model may be rewritten only through a validated
+        /// provider projection. Every other unsupported shape remains a hard lock.
+        var canWrite: Bool {
+            blockers.allSatisfy { $0 == .unsafeKeylessRemoteModel }
+        }
+
+        /// The locked file shape may be converted only when the app-owned metadata
+        /// proves every affected model already has an exact provider link. The final
+        /// locked save repeats this check against the latest bytes and staged models.
+        var containsOnlyLegacyProjectionBlockers: Bool {
+            !blockers.isEmpty && blockers.allSatisfy {
+                $0 == .unsafeKeylessRemoteModel || $0 == .unsafeFlatCredentialModel
+            }
+        }
 
         var blockingMessage: String? {
             guard !blockers.isEmpty else { return nil }
@@ -1042,11 +1151,20 @@ enum CustomModelStore {
 
     enum SaveError: LocalizedError, Equatable {
         case advancedConfiguration(WriteSafety)
+        case invalidProjection(String)
+        case candidateRejected(String)
+        case candidateRollbackFailed
 
         var errorDescription: String? {
             switch self {
             case .advancedConfiguration(let safety):
                 safety.blockingMessage
+            case .invalidProjection(let message):
+                message
+            case .candidateRejected(let message):
+                message
+            case .candidateRollbackFailed:
+                "The Grok CLI rejected the candidate, but config.toml changed before GrokBuild could restore its previous bytes. Reload Models before making another change."
             }
         }
     }
@@ -1056,6 +1174,11 @@ enum CustomModelStore {
         var models: [CustomModel]
         var defaultModelID: String?
         var writeSafety: WriteSafety
+        var usesOfficialProviderProjection: Bool
+        var officiallyProjectedModelIDs: Set<String>
+        /// Flat custom endpoints have no provider boundary and may inherit the
+        /// signed-in xAI bearer. This is a dispatch quarantine, not catalog ownership.
+        var unsafeFlatModelIDs: Set<String>
     }
 
     static func load(
@@ -1064,27 +1187,65 @@ enum CustomModelStore {
     ) -> Snapshot {
         let contents = repository.read()
         guard !contents.isEmpty else {
-            return Snapshot(models: [], defaultModelID: nil, writeSafety: .writable)
+            return Snapshot(
+                models: [],
+                defaultModelID: nil,
+                writeSafety: .writable,
+                usesOfficialProviderProjection: false,
+                officiallyProjectedModelIDs: [],
+                unsafeFlatModelIDs: []
+            )
         }
         var snapshot = parse(contents)
         snapshot.models = CustomModelMetadataStore.apply(to: snapshot.models, defaults: defaults)
+        if snapshot.writeSafety.containsOnlyLegacyProjectionBlockers,
+           legacyProjectionIsExact(models: snapshot.models) {
+            snapshot.writeSafety = .writable
+        }
         return snapshot
     }
 
     static func parse(_ contents: String) -> Snapshot {
-        var models: [CustomModel] = []
-        var defaultModelID: String?
+        var tableFields: [[String]: [String: String]] = [:]
+        var currentTablePath: [String]?
+        for rawLine in contents.components(separatedBy: .newlines) {
+            let line = stripComment(rawLine).trimmingCharacters(in: .whitespaces)
+            if line.isEmpty { continue }
 
-        var currentTable: String?
-        var currentModelID: String?
-        var fields: [String: String] = [:]
+            if line.hasPrefix("[") && line.hasSuffix("]") {
+                currentTablePath = tablePath(from: line)
+                continue
+            }
 
-        func flushModel() {
-            guard let id = currentModelID else { return }
-            models.append(CustomModel(
-                id: id,
+            guard let currentTablePath,
+                  let eq = line.firstIndex(of: "=") else { continue }
+            let key = String(line[..<eq].trimmingCharacters(in: .whitespaces))
+            let value = unquote(line[line.index(after: eq)...].trimmingCharacters(in: .whitespaces))
+            tableFields[currentTablePath, default: [:]][key] = value
+        }
+
+        let providerBaseURLs = tableFields.reduce(into: [String: String]()) { result, entry in
+            let (path, fields) = entry
+            guard path.count == 2,
+                  path[0] == "model_providers",
+                  ProviderAuthContract.isManagedOfficialProviderID(path[1]),
+                  let baseURL = fields["base_url"] else { return }
+            result[path[1]] = baseURL
+        }
+
+        let models = tableFields.compactMap { path, fields -> CustomModel? in
+            guard path.count == 2, path[0] == "model" else { return nil }
+            let officialProviderID = fields["model_provider"]
+            let providerID = officialProviderID.flatMap(ProviderAuthContract.appProviderID(from:))
+                ?? fields["grokbuild_provider_id"].flatMap { legacyID in
+                    ProviderAuthContract.isValidProviderID(legacyID) ? legacyID : nil
+                }
+            return CustomModel(
+                id: path[1],
                 model: fields["model"] ?? "",
-                baseURL: fields["base_url"] ?? "",
+                baseURL: fields["base_url"]
+                    ?? officialProviderID.flatMap { providerBaseURLs[$0] }
+                    ?? "",
                 name: fields["name"] ?? "",
                 apiKey: fields["api_key"] ?? "",
                 contextTokens: parseInt(fields["context_window"])
@@ -1092,62 +1253,108 @@ enum CustomModelStore {
                 supportsReasoningEffort: parseBool(fields["grokbuild_supports_reasoning_effort"]) ?? true,
                 supportsVision: parseBool(fields["grokbuild_supports_vision"]) ?? false,
                 supportsThinkingDisplay: parseBool(fields["grokbuild_supports_thinking"]) ?? false,
-                apiBackend: ModelAPIBackend(rawValue: fields["api_backend"] ?? "") ?? .chatCompletions
-            ))
-            currentModelID = nil
-            fields = [:]
-        }
+                apiBackend: ModelAPIBackend(rawValue: fields["api_backend"] ?? "") ?? .chatCompletions,
+                providerID: providerID
+            )
+        }.sorted { $0.id.localizedStandardCompare($1.id) == .orderedAscending }
 
-        for rawLine in contents.components(separatedBy: .newlines) {
-            let line = stripComment(rawLine).trimmingCharacters(in: .whitespaces)
-            if line.isEmpty { continue }
-
-            if line.hasPrefix("[") && line.hasSuffix("]") {
-                flushModel()
-                let path = tablePath(from: line)
-                currentTable = path?.count == 1 ? path?.first : nil
-                if let path, path.count == 2, path[0] == "model" {
-                    currentModelID = path[1]
-                }
-                continue
+        let officiallyProjectedModelIDs = Set(tableFields.compactMap { path, fields -> String? in
+            guard path.count == 2,
+                  path[0] == "model",
+                  let reference = fields["model_provider"],
+                  ProviderAuthContract.isManagedOfficialProviderID(reference) else { return nil }
+            return path[1]
+        })
+        let providerBoundModelIDs = Set(tableFields.compactMap { path, fields -> String? in
+            guard path.count == 2,
+                  path[0] == "model",
+                  fields["model_provider"]?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false else {
+                return nil
             }
-
-            guard let eq = line.firstIndex(of: "=") else { continue }
-            let key = line[..<eq].trimmingCharacters(in: .whitespaces)
-            let value = unquote(line[line.index(after: eq)...].trimmingCharacters(in: .whitespaces))
-
-            if currentModelID != nil {
-                fields[key] = value
-            } else if currentTable == "models", key == "default" {
-                defaultModelID = value
-            }
-        }
-        flushModel()
-
+            return path[1]
+        })
+        let allModelIDs = Set(models.map(\.id))
         return Snapshot(
             models: models,
-            defaultModelID: defaultModelID,
-            writeSafety: writeSafety(for: contents)
+            defaultModelID: tableFields[["models"]]?["default"],
+            writeSafety: writeSafety(for: contents),
+            usesOfficialProviderProjection: !officiallyProjectedModelIDs.isEmpty,
+            officiallyProjectedModelIDs: officiallyProjectedModelIDs,
+            unsafeFlatModelIDs: allModelIDs.subtracting(providerBoundModelIDs)
         )
+    }
+
+    static func runtimeEligibleModels(from snapshot: Snapshot) -> [CustomModel] {
+        snapshot.models.filter { snapshot.officiallyProjectedModelIDs.contains($0.id) }
+    }
+
+    static func quarantinedRuntimeModelIDs(from snapshot: Snapshot) -> Set<String> {
+        snapshot.unsafeFlatModelIDs
     }
 
     // MARK: - Saving
 
     /// Persists `models` and `defaultModelID` into the config file, preserving unrelated content.
+    @discardableResult
     static func save(
         models: [CustomModel],
         defaultModelID: String?,
+        providers: [Provider] = [],
         repository: GrokConfigRepository = .shared,
-        defaults: UserDefaults = .standard
-    ) throws {
+        defaults: UserDefaults = .standard,
+        persistMetadata: Bool = true,
+        candidateValidator: ((Set<String>, Set<String>) throws -> Void)? = nil
+    ) throws -> ConfigMutationReceipt {
+        var previousConfig = ""
+        var committedConfig = ""
         try repository.update { existing in
+            previousConfig = existing
             let safety = writeSafety(for: existing)
-            guard safety.canWrite else {
+            let exactLegacyMigration = safety.containsOnlyLegacyProjectionBlockers
+                && legacyProjectionIsExact(models: models)
+            guard safety.canWrite || exactLegacyMigration else {
                 throw SaveError.advancedConfiguration(safety)
             }
-            return rewrite(existing, models: models, defaultModelID: defaultModelID)
+            try validateProjection(models: models, providers: providers)
+            let candidate = rewrite(
+                existing,
+                models: models,
+                defaultModelID: defaultModelID,
+                providers: providers
+            )
+            committedConfig = candidate
+            return candidate
         }
-        CustomModelMetadataStore.save(models: models, defaults: defaults)
+
+        let isLiveConfig = repository.configURL.standardizedFileURL
+            == GrokConfigRepository.shared.configURL.standardizedFileURL
+        if candidateValidator != nil || isLiveConfig {
+            let validator = candidateValidator ?? GrokConfigCandidateInspector.validate
+            let modelIDs = Set(models.map(\.id))
+            let providerIDs = Set(providerProjections(models: models, providers: providers).map(\.officialID))
+            do {
+                try validator(modelIDs, providerIDs)
+            } catch {
+                do {
+                    try repository.update { current in
+                        guard current == committedConfig else {
+                            throw GrokConfigRepository.UpdateError.changedDuringUpdate
+                        }
+                        return previousConfig
+                    }
+                } catch {
+                    throw SaveError.candidateRollbackFailed
+                }
+                throw SaveError.candidateRejected(error.localizedDescription)
+            }
+        }
+        if persistMetadata {
+            CustomModelMetadataStore.save(models: models, defaults: defaults)
+        }
+        return ConfigMutationReceipt(
+            previousConfig: previousConfig,
+            committedConfig: committedConfig
+        )
     }
 
     static func requireWriteSafety(repository: GrokConfigRepository = .shared) throws {
@@ -1159,7 +1366,12 @@ enum CustomModelStore {
 
     /// Produces a new config string: drops all existing `[model.*]` tables and the `[models].default`
     /// key, then appends fresh versions while keeping every other section intact.
-    static func rewrite(_ contents: String, models: [CustomModel], defaultModelID: String?) -> String {
+    static func rewrite(
+        _ contents: String,
+        models: [CustomModel],
+        defaultModelID: String?,
+        providers: [Provider] = []
+    ) -> String {
         var preservedModelLines: [String: [String]] = [:]
         var preservingModelID: String?
         for rawLine in contents.components(separatedBy: .newlines) {
@@ -1184,21 +1396,24 @@ enum CustomModelStore {
 
         var output: [String] = []
         var skippingModelTable = false
+        var skippingManagedProviderTable = false
         var inModelsTable = false
 
         for rawLine in contents.components(separatedBy: .newlines) {
             let trimmed = stripComment(rawLine).trimmingCharacters(in: .whitespaces)
 
             if trimmed.hasPrefix("[") && trimmed.hasSuffix("]") {
-                let header = String(trimmed.dropFirst().dropLast()).trimmingCharacters(in: .whitespaces)
-                skippingModelTable = header.hasPrefix("model.")
-                inModelsTable = (header == "models")
-                if skippingModelTable { continue }
+                let path = tablePath(from: trimmed)
+                skippingModelTable = path?.count == 2 && path?.first == "model"
+                skippingManagedProviderTable = path?.first == "model_providers"
+                    && path.map { $0.count >= 2 && ProviderAuthContract.isManagedOfficialProviderID($0[1]) } == true
+                inModelsTable = (path == ["models"])
+                if skippingModelTable || skippingManagedProviderTable { continue }
                 output.append(rawLine)
                 continue
             }
 
-            if skippingModelTable { continue }
+            if skippingModelTable || skippingManagedProviderTable { continue }
 
             // Drop only the managed `default` key inside [models]; keep other [models] keys.
             if inModelsTable {
@@ -1218,15 +1433,33 @@ enum CustomModelStore {
 
         var result = output.joined(separator: "\n")
 
+        let projections = providerProjections(models: models, providers: providers)
+        for projection in projections {
+            result += "\n\n[model_providers.\(quoteKeyIfNeeded(projection.officialID))]\n"
+            result += "base_url = \(quote(projection.baseURL))\n"
+            if let helperProviderID = projection.helperProviderID {
+                result += "\n[model_providers.\(quoteKeyIfNeeded(projection.officialID)).auth]\n"
+                result += "command = \(quote(ProviderAuthContract.installedHelperPath))\n"
+                result += "args = [\(quote(helperProviderID))]\n"
+                result += "token_ttl_secs = 300\n"
+                result += "timeout_secs = 10\n"
+            }
+        }
+
         // Append model tables.
         for model in models {
             result += "\n\n[model.\(quoteKeyIfNeeded(model.id))]\n"
             result += "model = \(quote(model.model))\n"
-            result += "base_url = \(quote(model.baseURL))\n"
+            if let projection = projection(for: model, providers: providers) {
+                result += "model_provider = \(quote(projection.officialID))\n"
+            } else {
+                result += "base_url = \(quote(model.baseURL))\n"
+            }
             if !model.name.trimmingCharacters(in: .whitespaces).isEmpty {
                 result += "name = \(quote(model.name))\n"
             }
-            if !model.apiKey.trimmingCharacters(in: .whitespaces).isEmpty {
+            if projection(for: model, providers: providers) == nil,
+               !model.apiKey.trimmingCharacters(in: .whitespaces).isEmpty {
                 result += "api_key = \(quote(model.apiKey))\n"
             }
             result += "api_backend = \(quote(model.apiBackend.rawValue))\n"
@@ -1255,6 +1488,94 @@ enum CustomModelStore {
         return result
     }
 
+    private struct ProviderProjection: Equatable {
+        var officialID: String
+        var baseURL: String
+        var helperProviderID: String?
+    }
+
+    private static func projection(for model: CustomModel, providers: [Provider]) -> ProviderProjection? {
+        if let providerID = model.providerID,
+           let provider = providers.first(where: { $0.id == providerID }),
+           let officialID = ProviderAuthContract.officialProviderID(for: providerID) {
+            return ProviderProjection(
+                officialID: officialID,
+                baseURL: provider.baseURL,
+                helperProviderID: provider.authScheme == .bearer ? providerID : nil
+            )
+        }
+        guard model.isLocalEndpoint,
+              model.apiKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+              let officialID = ProviderAuthContract.officialLocalProviderID(for: model.id) else {
+            return nil
+        }
+        return ProviderProjection(officialID: officialID, baseURL: model.baseURL, helperProviderID: nil)
+    }
+
+    private static func providerProjections(
+        models: [CustomModel],
+        providers: [Provider]
+    ) -> [ProviderProjection] {
+        var seen = Set<String>()
+        return models.compactMap { projection(for: $0, providers: providers) }
+            .filter { seen.insert($0.officialID).inserted }
+            .sorted { $0.officialID.localizedStandardCompare($1.officialID) == .orderedAscending }
+    }
+
+    private static func validateProjection(models: [CustomModel], providers: [Provider]) throws {
+        for model in models {
+            if let providerID = model.providerID {
+                guard let provider = providers.first(where: { $0.id == providerID }) else {
+                    throw SaveError.invalidProjection(
+                        "Model \(model.id) references a provider that is no longer available."
+                    )
+                }
+                guard ProviderAuthContract.isValidProviderID(providerID) else {
+                    throw SaveError.invalidProjection("Provider \(providerID) has an invalid id.")
+                }
+                switch provider.authScheme {
+                case .bearer:
+                    break
+                case .none:
+                    guard provider.isLocalEndpoint else {
+                        throw SaveError.invalidProjection(
+                            "Remote provider \(provider.name) cannot use No credential. Add a credential or use a local endpoint."
+                        )
+                    }
+                case .apiKeyHeader, .bearerAndAPIKey:
+                    throw SaveError.invalidProjection(
+                        "Provider \(provider.name) uses an authentication shape the official Grok provider helper does not support yet. Its configuration was left unchanged."
+                    )
+                }
+                continue
+            }
+
+            if model.isLocalEndpoint {
+                guard model.apiKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+                    throw SaveError.invalidProjection(
+                        "Local model \(model.id) has an inline credential but no exact provider link. Attach it to a provider before saving."
+                    )
+                }
+                guard projection(for: model, providers: providers) != nil else {
+                    throw SaveError.invalidProjection(
+                        "Local model \(model.id) cannot be represented by the official provider boundary. Shorten its id before saving."
+                    )
+                }
+            } else {
+                throw SaveError.invalidProjection(
+                    "Remote model \(model.id) has no exact provider link. Attach it to a provider before saving."
+                )
+            }
+        }
+    }
+
+    /// True only for a legacy file whose credential-bearing or remote rows all
+    /// carry an app-owned, exact sidecar link. Endpoint guessing is deliberately
+    /// excluded: a same-looking URL is not ownership proof.
+    private static func legacyProjectionIsExact(models: [CustomModel]) -> Bool {
+        models.allSatisfy { $0.providerID != nil }
+    }
+
     // MARK: - TOML helpers
 
     private static func stripComment(_ line: String) -> String {
@@ -1275,6 +1596,12 @@ enum CustomModelStore {
     static func writeSafety(for contents: String) -> WriteSafety {
         var found: Set<WriteSafety.Blocker> = []
         var currentTablePath: [String]?
+        var fieldsByModel: [String: [String: String]] = [:]
+
+        if !contents.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+           (try? TOMLDecoder().decode(TOMLValidationDocument.self, from: contents)) == nil {
+            found.insert(.invalidTOML)
+        }
 
         for rawLine in contents.components(separatedBy: .newlines) {
             let line = stripComment(rawLine).trimmingCharacters(in: .whitespaces)
@@ -1300,7 +1627,16 @@ enum CustomModelStore {
                     found.insert(.unrecognizedModelTable)
                 }
                 if path.first == "model_providers" {
-                    found.insert(.modelProviderTables)
+                    let officialID = path.count >= 2 ? path[1] : ""
+                    let isManaged = ProviderAuthContract.isManagedOfficialProviderID(officialID)
+                    let canonicalProvider = path.count == 2
+                        && line == "[model_providers.\(quoteKeyIfNeeded(officialID))]"
+                    let canonicalAuth = path.count == 3
+                        && path[2] == "auth"
+                        && line == "[model_providers.\(quoteKeyIfNeeded(officialID)).auth]"
+                    if !isManaged || (!canonicalProvider && !canonicalAuth) {
+                        found.insert(.modelProviderTables)
+                    }
                 }
                 continue
             }
@@ -1336,8 +1672,25 @@ enum CustomModelStore {
                 }
             }
 
+            if let path = currentTablePath,
+               path.first == "model_providers" {
+                guard path.count == 2 || (path.count == 3 && path[2] == "auth"),
+                      ProviderAuthContract.isManagedOfficialProviderID(path[1]),
+                      let keyPath = tablePath(from: "[\(rawKey)]"), keyPath.count == 1,
+                      rawKey == keyPath[0] else {
+                    found.insert(.modelProviderTables)
+                    continue
+                }
+                let allowed = path.count == 2 ? managedProviderKeys : managedProviderAuthKeys
+                if !allowed.contains(keyPath[0]) {
+                    found.insert(.modelProviderTables)
+                }
+                continue
+            }
+
             guard currentTablePath?.count == 2,
-                  currentTablePath?.first == "model" else { continue }
+                  currentTablePath?.first == "model",
+                  let modelID = currentTablePath?[1] else { continue }
             guard let keyPath = tablePath(from: "[\(rawKey)]"), keyPath.count == 1 else {
                 found.insert(.unrecognizedModelTable)
                 continue
@@ -1346,13 +1699,69 @@ enum CustomModelStore {
             if Self.managedModelKeys.contains(key), rawKey != key {
                 found.insert(.unrecognizedModelTable)
             }
+            if !Self.managedModelKeys.contains(key) {
+                found.insert(.unsupportedModelFields)
+            }
+            fieldsByModel[modelID, default: [:]][key] = unquote(
+                line[line.index(after: equals)...].trimmingCharacters(in: .whitespaces)
+            )
             if key == "model_provider" {
-                found.insert(.modelProviderReferences)
+                let reference = fieldsByModel[modelID]?[key] ?? ""
+                if !ProviderAuthContract.isManagedOfficialProviderID(reference) {
+                    found.insert(.modelProviderReferences)
+                }
+            }
+        }
+
+        let hasStructuralModelBlocker = found.contains(.nestedModelTables)
+            || found.contains(.unrecognizedModelTable)
+            || found.contains(.modelProviderReferences)
+        for fields in fieldsByModel.values where !hasStructuralModelBlocker {
+            if fields["model"]?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty != false {
+                found.insert(.unsupportedModelFields)
+            }
+            let hasManagedProvider = fields["model_provider"]
+                .map(ProviderAuthContract.isManagedOfficialProviderID) == true
+            let baseURL = fields["base_url"]?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            if !hasManagedProvider, baseURL.isEmpty {
+                found.insert(.unsupportedModelFields)
+            }
+            let hasExactLegacyProvider = fields["grokbuild_provider_id"].map {
+                ProviderAuthContract.isValidProviderID($0)
+            } == true
+            if !hasManagedProvider,
+               !hasExactLegacyProvider,
+               !baseURL.isEmpty,
+               !ProviderEndpointPolicy.isLocal(baseURL: baseURL) {
+                if fields["api_key"]?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false {
+                    found.insert(.unsafeFlatCredentialModel)
+                } else {
+                    found.insert(.unsafeKeylessRemoteModel)
+                }
+            }
+            if !hasManagedProvider,
+               !hasExactLegacyProvider,
+               ProviderEndpointPolicy.isLocal(baseURL: baseURL),
+               fields["api_key"]?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false {
+                found.insert(.unsafeFlatCredentialModel)
             }
         }
 
         let ordered = WriteSafety.Blocker.allCases.filter(found.contains)
         return WriteSafety(blockers: ordered)
+    }
+
+    private struct TOMLValidationDocument: Decodable {
+        private struct Key: CodingKey {
+            var stringValue: String
+            var intValue: Int?
+            init?(stringValue: String) { self.stringValue = stringValue; intValue = nil }
+            init?(intValue: Int) { stringValue = String(intValue); self.intValue = intValue }
+        }
+
+        init(from decoder: Decoder) throws {
+            _ = try decoder.container(keyedBy: Key.self)
+        }
     }
 
     /// Parses a TOML table path only far enough to distinguish dotted path segments from dots
@@ -1489,15 +1898,21 @@ enum CustomModelStore {
     }
 }
 
-/// Coordinates provider credentials/metadata with the CLI model projection. ProviderStore is
-/// committed first because it has its own verified rollback; if the final locked config write
-/// refuses a stale/advanced file, the prior provider state is restored before failure returns.
+/// Coordinates provider credentials/metadata with the CLI model projection. Ordinary changes
+/// publish a fail-closed provider projection before metadata; endpoint changes revoke the stable
+/// helper credential first so a crash can never pair an old secret with a new destination.
 enum ProviderModelConfigurationTransaction {
     enum TransactionError: LocalizedError {
-        case providerRollbackFailed
+        case configRollbackFailed
+        case credentialRollbackFailed
 
         var errorDescription: String? {
-            "config.toml was not changed, but GrokBuild could not restore the previous provider state. Reload Models before making another change."
+            switch self {
+            case .configRollbackFailed:
+                "Provider state was not committed, but config.toml changed before GrokBuild could restore its previous bytes. Reload Models before making another change."
+            case .credentialRollbackFailed:
+                "The provider change was not committed, but GrokBuild could not restore the prior credential state. Reconnect the provider before sending another task."
+            }
         }
     }
 
@@ -1512,21 +1927,65 @@ enum ProviderModelConfigurationTransaction {
         credentialStore: any ProviderCredentialStoring = KeychainProviderCredentialStore(),
         beforeConfigSave: () throws -> Void = {}
     ) throws {
-        // Avoid touching Keychain/UserDefaults when the latest visible file is already known to
-        // be unsupported. CustomModelStore.save repeats this check inside the locked update.
-        try CustomModelStore.requireWriteSafety(repository: repository)
-        try ProviderStore.save(
-            updatedProviders,
-            defaults: providerDefaults,
-            credentialStore: credentialStore
-        )
+        try beforeConfigSave()
+        let priorByID = Dictionary(uniqueKeysWithValues: previousProviders.map { ($0.id, $0) })
+        let updatedByID = Dictionary(uniqueKeysWithValues: updatedProviders.map { ($0.id, $0) })
+        let priorIDs = Set(priorByID.keys)
+        let updatedIDs = Set(updatedByID.keys)
+        let changedProviderIDs = priorIDs.intersection(updatedIDs).filter { id in
+            guard let prior = priorByID[id], let updated = updatedByID[id] else { return false }
+            return prior.baseURL.trimmingCharacters(in: .whitespacesAndNewlines)
+                != updated.baseURL.trimmingCharacters(in: .whitespacesAndNewlines)
+                || prior.authScheme != updated.authScheme
+        }
+        // Stable Keychain accounts must not survive a destination/auth-boundary transition.
+        // Added IDs are included to clear credentials orphaned by a prior crashed deletion.
+        let preRevokedProviderIDs = priorIDs
+            .symmetricDifference(updatedIDs)
+            .union(changedProviderIDs)
+        var preRevokedCredentials: [String: String?] = [:]
+        for providerID in preRevokedProviderIDs {
+            preRevokedCredentials[providerID] = try credentialStore.credential(for: providerID)
+        }
+        func restorePreRevokedCredentials() throws {
+            for (providerID, credential) in preRevokedCredentials {
+                if let credential {
+                    try credentialStore.setCredential(credential, for: providerID)
+                    guard try credentialStore.credential(for: providerID) == credential else {
+                        throw ProviderCredentialError.verificationFailed
+                    }
+                } else {
+                    try credentialStore.removeCredential(for: providerID)
+                    guard try credentialStore.credential(for: providerID) == nil else {
+                        throw ProviderCredentialError.verificationFailed
+                    }
+                }
+            }
+        }
+
+        // A stable helper account must never bridge an old secret to a new endpoint.
+        // Revoke first: every crash boundary is then old-pair, no-credential, or new-pair.
         do {
-            try beforeConfigSave()
-            try CustomModelStore.save(
+            for providerID in preRevokedProviderIDs {
+                try credentialStore.removeCredential(for: providerID)
+                guard try credentialStore.credential(for: providerID) == nil else {
+                    throw ProviderCredentialError.verificationFailed
+                }
+            }
+        } catch {
+            try? restorePreRevokedCredentials()
+            throw error
+        }
+
+        let configReceipt: CustomModelStore.ConfigMutationReceipt
+        do {
+            configReceipt = try CustomModelStore.save(
                 models: models,
                 defaultModelID: defaultModelID,
+                providers: updatedProviders,
                 repository: repository,
-                defaults: modelDefaults
+                defaults: modelDefaults,
+                persistMetadata: false
             )
         } catch {
             do {
@@ -1535,11 +1994,42 @@ enum ProviderModelConfigurationTransaction {
                     defaults: providerDefaults,
                     credentialStore: credentialStore
                 )
+                try restorePreRevokedCredentials()
             } catch {
-                throw TransactionError.providerRollbackFailed
+                throw TransactionError.credentialRollbackFailed
             }
             throw error
         }
+        do {
+            try ProviderStore.save(
+                updatedProviders,
+                defaults: providerDefaults,
+                credentialStore: credentialStore
+            )
+        } catch {
+            do {
+                try repository.update { current in
+                    guard current == configReceipt.committedConfig else {
+                        throw GrokConfigRepository.UpdateError.changedDuringUpdate
+                    }
+                    return configReceipt.previousConfig
+                }
+            } catch {
+                throw TransactionError.configRollbackFailed
+            }
+            do {
+                try ProviderStore.save(
+                    previousProviders,
+                    defaults: providerDefaults,
+                    credentialStore: credentialStore
+                )
+                try restorePreRevokedCredentials()
+            } catch {
+                throw TransactionError.credentialRollbackFailed
+            }
+            throw error
+        }
+        CustomModelMetadataStore.save(models: models, defaults: modelDefaults)
     }
 }
 

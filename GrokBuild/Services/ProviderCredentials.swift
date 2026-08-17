@@ -1,4 +1,5 @@
 import Foundation
+import GrokBuildProviderAuthCore
 import Security
 
 enum ProviderAuthScheme: String, Codable, CaseIterable, Sendable {
@@ -50,7 +51,7 @@ protocol ProviderCredentialStoring: Sendable {
 }
 
 struct KeychainProviderCredentialStore: ProviderCredentialStoring {
-    static let service = "com.grokbuild.provider-credential"
+    static let service = ProviderAuthContract.keychainService
 
     func credential(for providerID: String) throws -> String? {
         var query = baseQuery(providerID: providerID)
@@ -176,7 +177,7 @@ enum ProviderCredentialMigrator {
                 let legacyProviderKey = provider.apiKey.trimmingCharacters(in: .whitespacesAndNewlines)
                 let matchingModelKeys = Set(
                     models
-                        .filter { $0.baseURL == provider.baseURL }
+                        .filter { $0.providerID == provider.id }
                         .map { $0.apiKey.trimmingCharacters(in: .whitespacesAndNewlines) }
                         .filter { !$0.isEmpty }
                 )

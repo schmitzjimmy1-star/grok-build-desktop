@@ -1660,42 +1660,32 @@ struct CustomModelsSettingsPane: View {
             applied: savedDefault,
             live: liveReceipt?.freshness == .live ? liveReceipt?.requestedModelID : nil
         )
-        // Repair a missing sidecar provider link only when the endpoint identifies exactly one
-        // provider. Then re-resolve the
-        // endpoint/credential from the provider so a model reflects a key added to its provider
-        // even if its own config.toml table predates that key.
-        let resolvedModels = snapshot.models.map { model in
-            var m = model
-            if m.providerID == nil {
-                let matches = providers.filter { $0.baseURL == model.baseURL }
-                if matches.count == 1 {
-                    m.providerID = matches[0].id
-                }
-            }
-            return m.resolved(using: providers)
-        }
+        // Only an explicit app-owned legacy provider id or an official managed
+        // model_provider reference proves ownership. Matching a URL is not proof:
+        // two users can legitimately configure the same endpoint independently.
+        let resolvedModels = snapshot.models.map { $0.resolved(using: providers) }
         models = resolvedModels
 
-        let inferredProviderLinks = zip(snapshot.models, resolvedModels).contains { original, resolved in
-            original.providerID != resolved.providerID
+        let everyLegacyModelHasExactOwnership = resolvedModels.allSatisfy { model in
+            model.providerID != nil
         }
-        let needsCredentialProjection = zip(snapshot.models, resolvedModels).contains { original, resolved in
-            original.apiKey != resolved.apiKey || original.baseURL != resolved.baseURL
-        }
-        if needsCredentialProjection,
+        let needsOfficialProviderProjection = !resolvedModels.isEmpty
+            && everyLegacyModelHasExactOwnership
+            && resolvedModels.contains { $0.providerID != nil }
+        if !snapshot.usesOfficialProviderProjection,
+           needsOfficialProviderProjection,
            snapshot.writeSafety.canWrite,
            !providerLoad.migrationIssues.contains(where: { $0.kind == .storage }) {
             do {
                 try CustomModelStore.save(
                     models: resolvedModels,
-                    defaultModelID: snapshot.defaultModelID
+                    defaultModelID: snapshot.defaultModelID,
+                    providers: providers
                 )
                 statusMessage = "Provider credentials migrated to Keychain; secured CLI configuration."
             } catch {
                 errorMessage = "Credential migration could not update config.toml: \(error.localizedDescription)"
             }
-        } else if inferredProviderLinks {
-            CustomModelMetadataStore.save(models: resolvedModels)
         }
     }
 
@@ -2155,7 +2145,8 @@ struct CustomModelsSettingsPane: View {
             let resolvedModels = candidateModels.map { $0.resolved(using: candidateProviders) }
             try CustomModelStore.save(
                 models: resolvedModels,
-                defaultModelID: candidateDefaultModelID
+                defaultModelID: candidateDefaultModelID,
+                providers: candidateProviders
             )
             recordConfigurationPersistenceSuccess(change: change)
             return true
@@ -2187,7 +2178,8 @@ struct CustomModelsSettingsPane: View {
         do {
             try CustomModelStore.save(
                 models: models.map { $0.resolved(using: providers) },
-                defaultModelID: selectedDefault.isEmpty ? nil : selectedDefault
+                defaultModelID: selectedDefault.isEmpty ? nil : selectedDefault,
+                providers: providers
             )
             let request = SettingsApplyRequest(
                 configurationGeneration: valueState.configurationGeneration + 1,

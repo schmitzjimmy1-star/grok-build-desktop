@@ -49,6 +49,7 @@ struct ModelPerformanceObservation: Codable, Hashable, Identifiable, Sendable {
         case localEndpoint
         case pinnedOpenRouter
         case openRouterAuto
+        case unavailable
 
         var displayName: String {
             switch self {
@@ -57,6 +58,7 @@ struct ModelPerformanceObservation: Codable, Hashable, Identifiable, Sendable {
             case .localEndpoint: "Local endpoint"
             case .pinnedOpenRouter: "Pinned OpenRouter"
             case .openRouterAuto: "OpenRouter auto"
+            case .unavailable: "Provider unavailable"
             }
         }
 
@@ -67,6 +69,7 @@ struct ModelPerformanceObservation: Codable, Hashable, Identifiable, Sendable {
             case .localEndpoint: .localEndpoint
             case .brokeredOpenRouter:
                 route.modelIsPinned ? .pinnedOpenRouter : .openRouterAuto
+            case .unavailable: .unavailable
             }
         }
     }
