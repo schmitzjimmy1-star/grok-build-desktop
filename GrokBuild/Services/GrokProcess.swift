@@ -509,8 +509,8 @@ struct SubagentFinishedEvent: Sendable, Hashable {
     let tokenCount: Int?
     let redactedError: String?
     /// Terminal tool receipts imported from this exact child's backend session.
-    /// `nil` means the child ledger could not be read; an empty array means the
-    /// ledger was read and contained no terminal tool calls.
+    /// `nil` means the receipt source was unavailable; an empty array means the
+    /// source was read and contained no terminal tool calls.
     var childToolReceipts: [ChildToolReceipt]? = nil
 
     var deduplicationKey: String {
@@ -783,6 +783,11 @@ final class GrokProcess: @unchecked Sendable {
     /// recent receipt is historical rather than a live-process claim.
     private(set) var processGeneration: UInt64 = 0
     private(set) var activeProcessGeneration: UInt64?
+    /// Version and extension capability truth belong to the exact live ACP
+    /// process generation. They are never inferred from the app bundle or an
+    /// updater catalog.
+    private(set) var acpAgentVersion: ACPAgentVersion?
+    private let acpControlCapabilities = ACPControlCapabilityRegistry()
     /// True only while Stop is allowing the captured process generation to deliver
     /// final ACP receipts before identity invalidation and hard teardown.
     private(set) var isStopDraining = false
@@ -1198,6 +1203,8 @@ final class GrokProcess: @unchecked Sendable {
         processGeneration &+= 1
         let launchGeneration = processGeneration
         activeProcessGeneration = launchGeneration
+        acpAgentVersion = nil
+        acpControlCapabilities.reset(generation: launchGeneration, agentVersion: nil)
         configuredMCPServerNames = options.mcpServers.map(\.name)
         observedCLIConfiguredMCPServerNames = []
         mcpServerStatuses = MCPReadinessPolicy.connectingStatuses(for: options.mcpServers)
@@ -1941,6 +1948,118 @@ final class GrokProcess: @unchecked Sendable {
         }
     }
 
+    // MARK: - Typed ACP control plane
+
+    /// Test-visible capability state for the exact live process generation.
+    func acpControlCapabilityState(for method: ACPControlMethod) -> ACPControlCapabilityState {
+        guard let generation = activeProcessGeneration else { return .unsupported }
+        return acpControlCapabilities.state(for: method, generation: generation)
+    }
+
+    func fetchACPModelCatalog() async throws -> ACPControlModelCatalog {
+        try ACPControlModelCatalog.parse(
+            try await sendACPControlRequest(.models, params: [:], seconds: 5)
+        )
+    }
+
+    func fetchACPSessionUsage() async throws -> ACPControlSessionUsage {
+        guard let sessionId else { throw ACPControlError.noActiveConnection }
+        return try ACPControlSessionUsage.parse(
+            try await sendACPControlRequest(
+                .sessionUsage,
+                params: ["sessionId": sessionId],
+                seconds: 3
+            )
+        )
+    }
+
+    func fetchACPSessionMetadata() async throws -> ACPControlSessionMetadata {
+        guard let sessionId else { throw ACPControlError.noActiveConnection }
+        return try ACPControlSessionMetadata.parse(
+            try await sendACPControlRequest(
+                .sessionInfo,
+                params: ["sessionId": sessionId],
+                seconds: 3
+            )
+        )
+    }
+
+    func fetchACPSessionUpdates(
+        sessionID: String,
+        offset: Int,
+        limit: Int
+    ) async throws -> ACPControlSessionUpdatePage {
+        guard !sessionID.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            throw ACPControlError.invalidRequest("sessionID is empty")
+        }
+        guard (1...ACPControlSessionUpdatePage.maximumLimit).contains(limit) else {
+            throw ACPControlError.invalidRequest(
+                "limit must be 1...\(ACPControlSessionUpdatePage.maximumLimit)"
+            )
+        }
+        guard let cwd = currentWorkspace?.path.path else {
+            throw ACPControlError.noActiveConnection
+        }
+        let page = try ACPControlSessionUpdatePage.parse(
+            try await sendACPControlRequest(
+                .sessionUpdates,
+                params: [
+                    "sessionId": sessionID,
+                    "cwd": cwd,
+                    "offset": offset,
+                    "limit": limit,
+                    "stream": false,
+                ],
+                seconds: 3
+            )
+        )
+        guard page.updates.count <= limit else {
+            throw ACPControlError.invalidResponse(
+                method: .sessionUpdates,
+                reason: "page exceeded requested limit"
+            )
+        }
+        return page
+    }
+
+    private func sendACPControlRequest(
+        _ method: ACPControlMethod,
+        params: [String: Any],
+        seconds: Double
+    ) async throws -> Any? {
+        guard let generation = activeProcessGeneration else {
+            throw ACPControlError.noActiveConnection
+        }
+        guard acpControlCapabilities.shouldAttempt(method, generation: generation) else {
+            throw ACPControlError.unavailable(
+                method: method,
+                agentVersion: acpAgentVersion?.rawValue
+            )
+        }
+        do {
+            let result = try await sendRequestWithTimeout(
+                method: method.rawValue,
+                params: params,
+                seconds: seconds
+            )
+            guard activeProcessGeneration == generation else {
+                throw ACPControlError.staleConnection
+            }
+            acpControlCapabilities.record(.supported, for: method, generation: generation)
+            return result
+        } catch {
+            let nsError = error as NSError
+            if (nsError.userInfo["jsonRPCCode"] as? Int) == -32601 {
+                acpControlCapabilities.record(.unsupported, for: method, generation: generation)
+                throw ACPControlError.unavailable(
+                    method: method,
+                    agentVersion: acpAgentVersion?.rawValue
+                )
+            }
+            throw error
+        }
+    }
+
     private func timeoutPendingRequest(id: Int) {
         ioLock.lock()
         guard let pending = pendingRequests.removeValue(forKey: id) else {
@@ -2094,6 +2213,10 @@ final class GrokProcess: @unchecked Sendable {
 
         // Parse real models from modelState (do not make up)
         let meta = res?["_meta"] as? [String: Any]
+        acpAgentVersion = (meta?["agentVersion"] as? String).flatMap(ACPAgentVersion.init)
+        if let generation = activeProcessGeneration {
+            acpControlCapabilities.reset(generation: generation, agentVersion: acpAgentVersion)
+        }
         if let ms = (res?["modelState"] as? [String: Any]) ?? (meta?["modelState"] as? [String: Any]),
            let models = ms["availableModels"] as? [[String: Any]] {
             availableModelsInfo = models.compactMap { m in
@@ -2101,6 +2224,18 @@ final class GrokProcess: @unchecked Sendable {
                 let name = m["name"] as? String ?? id
                 let meta = m["_meta"] as? [String: Any]
                 return (id: id, name: name, contextTokens: meta?["totalContextTokens"] as? Int)
+            }
+        }
+        // Official 1.0.5 waits for the first real catalog on this extension.
+        // Use it only when initialize did not already provide models, and never
+        // make launch depend on a non-standard method.
+        if availableModelsInfo.isEmpty,
+           let acpAgentVersion,
+           acpAgentVersion >= ACPControlMethod.officialExtensionFloor,
+           let catalog = try? await fetchACPModelCatalog() {
+            currentModelId = catalog.currentModelID ?? currentModelId
+            availableModelsInfo = catalog.availableModels.map {
+                (id: $0.id, name: $0.name, contextTokens: $0.contextTokens)
             }
         }
     }
@@ -2339,6 +2474,9 @@ final class GrokProcess: @unchecked Sendable {
                     if let dict = err as? [String: Any] {
                         // Prefer the agent's human-readable message over dumping the raw error object.
                         info[NSLocalizedDescriptionKey] = (dict["message"] as? String) ?? "\(err)"
+                        if let code = dict["code"] as? NSNumber {
+                            info["jsonRPCCode"] = code.intValue
+                        }
                         if let data = dict["data"] as? [String: Any] {
                             if let code = data["code"] as? String { info["acpErrorCode"] = code }
                             if let suggestion = data["suggestion"] as? String { info["acpSuggestion"] = suggestion }
@@ -2634,15 +2772,94 @@ final class GrokProcess: @unchecked Sendable {
             toolCallCount: Self.integer(update["tool_calls"]),
             tokenCount: Self.integer(update["tokens_used"]),
             redactedError: Self.lifecycleError(from: update),
-            childToolReceipts: loadChildToolReceipts(childID: childID)
+            // The async official update-page lookup runs at the ordered parent
+            // completion barrier. Never block the ACP reader on disk or a
+            // nested JSON-RPC request while routing this lifecycle event.
+            childToolReceipts: nil
         )
     }
 
-    /// Imports only typed terminal tool receipts from the exact child session
-    /// named by `subagent_finished`. Child prose and the parent's collected
-    /// output are deliberately excluded. Count reconciliation remains the
-    /// caller's responsibility because a partially flushed ledger is not proof.
-    func loadChildToolReceipts(
+    /// Fetches terminal child tool receipts through the official 1.0.5
+    /// `x.ai/session/updates` extension on this exact per-tab ACP connection.
+    /// The walk is capped at four 256-row pages. Known-old/method-not-found or
+    /// malformed transport falls back to the legacy private reader only until
+    /// Slice 3 completes its parity and recovery migration.
+    func fetchChildToolReceipts(
+        childID: String,
+        expectedToolCallCount: Int? = nil,
+        legacySessionsRoot: URL? = nil
+    ) async -> [ChildToolReceipt]? {
+        guard childID.range(of: #"^[A-Za-z0-9-]+$"#, options: .regularExpression) != nil else {
+            return nil
+        }
+        let requestedGeneration = activeProcessGeneration
+        let pageLimit = 256
+        let maximumPages = 4
+        var pages: [[ACPStoredUpdateEnvelope]] = []
+        do {
+            for pageIndex in 1...maximumPages {
+                let page = try await fetchACPSessionUpdates(
+                    sessionID: childID,
+                    offset: -(pageIndex * pageLimit),
+                    limit: pageLimit
+                )
+                pages.append(page.updates)
+                let receipts = childToolReceipts(
+                    from: pages.reversed().flatMap { $0 },
+                    childID: childID
+                )
+                if let expectedToolCallCount,
+                   receipts.count >= expectedToolCallCount {
+                    return receipts
+                }
+                if page.totalCount <= pageIndex * pageLimit || page.updates.isEmpty {
+                    return receipts
+                }
+            }
+            return childToolReceipts(
+                from: pages.reversed().flatMap { $0 },
+                childID: childID
+            )
+        } catch {
+            // Never attach an old child's fallback evidence after this tab has
+            // crossed into a different ACP process generation.
+            guard activeProcessGeneration == requestedGeneration else { return nil }
+            return loadLegacyChildToolReceipts(
+                childID: childID,
+                sessionsRoot: legacySessionsRoot
+            )
+        }
+    }
+
+    private func childToolReceipts(
+        from envelopes: [ACPStoredUpdateEnvelope],
+        childID: String
+    ) -> [ChildToolReceipt] {
+        var order: [String] = []
+        var receipts: [String: ChildToolReceipt] = [:]
+        for envelope in envelopes {
+            guard envelope.method == "session/update" || envelope.method == "_x.ai/session/update",
+                  envelope.sessionID == childID,
+                  let update = envelope.foundationUpdate,
+                  update["sessionUpdate"] as? String == "tool_call_update",
+                  let tool = parseToolCall(from: update),
+                  let status = tool.terminalStatus else { continue }
+            if receipts[tool.id] == nil { order.append(tool.id) }
+            receipts[tool.id] = ChildToolReceipt(
+                id: tool.id,
+                title: tool.title,
+                status: status,
+                mcpReceiptRole: tool.mcpReceiptRole,
+                qualifiedToolName: tool.qualifiedToolName,
+                discoveredQualifiedToolNames: tool.discoveredQualifiedToolNames
+            )
+        }
+        return order.compactMap { receipts[$0] }
+    }
+
+    /// Compatibility-only private storage reader. New code must use
+    /// `fetchChildToolReceipts`; Slice 3 owns removal after parity acceptance.
+    func loadLegacyChildToolReceipts(
         childID: String,
         workspacePath: URL? = nil,
         sessionsRoot: URL? = nil

@@ -482,9 +482,10 @@ struct BackgroundTaskTracker {
         pendingFinishedEvents[event.childID] = nil
     }
 
-    /// Rechecks an already-bound child ledger at the parent completion barrier.
-    /// This closes the small flush-order window between `subagent_finished` and
-    /// the child's final JSONL write without weakening identity or count checks.
+    /// Rechecks an already-bound child's receipts at the parent completion
+    /// barrier. This closes the small ordering window between
+    /// `subagent_finished` and persisted update availability without weakening
+    /// identity or count checks.
     mutating func reconcileChildToolReceipts(
         childID: String,
         receipts: [ChildToolReceipt]?

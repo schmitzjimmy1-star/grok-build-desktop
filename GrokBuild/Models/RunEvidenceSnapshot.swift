@@ -1,7 +1,8 @@
 import Foundation
 
-/// Typed child-ledger read outcome. `loadChildToolReceipts` returns `nil` when
-/// unreadable and `[]` when the ledger was read but contained no terminal tools.
+/// Typed child-receipt read outcome. The official ACP update source (or the
+/// compatibility ledger fallback) returns `nil` when unavailable and `[]` when
+/// it was read but contained no terminal tools.
 enum ChildLedgerReadOutcome: String, Sendable, Equatable, Codable {
     case unreadable
     case empty
