@@ -1,6 +1,6 @@
 # GrokBuild Official Runtime Alignment Campaign — 2026-08-16
 
-Status: **active; Slice 0 only.** Jimmy authorized a rigorous merge-per-slice
+Status: **active; Slice 0 publication only.** Jimmy authorized a rigorous merge-per-slice
 campaign on 2026-08-16. Every slice gets its own branch, explicit commits, ready
 pull request, exact-head required checks, normal merge, merged-main installation,
 and process-zero closeout before the next slice begins.
@@ -30,7 +30,7 @@ Grok CLI.
 
 | Slice | Title | Authorized job | Status |
 |---|---|---|---|
-| **0** | **Restore CLI execution ownership** | Disable ACP client FS/terminal capabilities; remove Swift reverse executors; fail surprise reverse execution closed; retain typed tool receipts. | **Active** |
+| **0** | **Restore CLI execution ownership** | Disable ACP client FS/terminal capabilities; remove Swift reverse executors; fail surprise reverse execution closed; retain typed tool receipts. | **Candidate accepted; publication pending** |
 | **1** | **Contain model-config corruption** | Refuse unsafe nested-model rewrites, add official nested-TOML fixtures, then choose a structure-preserving ownership boundary. | Locked |
 | **2** | **Typed ACP control spine** | Add a version/capability-aware facade over each existing ACP connection; first methods are models, usage, session metadata, and bounded session updates. | Locked |
 | **3** | **Session truth and recovery** | Consume typed `session/load` replay, reconcile the local presentation cache, and retire private root/child storage reads after a shadow-parity gate. | Locked |
@@ -92,3 +92,30 @@ The implementation contradicted the documented CLI-executor boundary.
 7. Fast-forward local `main`, run merged-main `make ship`, confirm local/main and
    `personal/main` parity, then take two process-zero samples. Only then unlock
    Slice 1.
+
+### Candidate receipt — 2026-08-16
+
+Code-bearing candidate `0157d1996c9a595d407267908b48bb1c80823885`
+removes the Swift reverse filesystem/terminal implementation and its four
+implementation-owned terminal tests. The replacement hostile ACP fixture proves
+the exact initialize wire advertises all three execution capabilities as false,
+then attempts an absolute `fs/write_text_file` and a `/usr/bin/touch` through
+`terminal/create`; both receive JSON-RPC `-32601`, and neither side-effect file
+exists. The focused ACP suite passed **76/76** and two clean full runs passed
+**903/903**; the count is three lower than the 906-test baseline because four
+deleted terminal-manager tests were replaced by the one stronger boundary test.
+
+Candidate `make ship` installed `/Applications/GrokBuild.app` with exact stamp
+`0157d1996c9a595d407267908b48bb1c80823885`, `dirty=false`, executable SHA-256
+`1d8fc74003279db821b692d4b29afc92bae091730051d035023c11b2b82ad25b`
+matching `dist`, Apple Development Team `DD2GCQJVB4`, deep/strict signing, and no
+quarantine. Installed Computer Use opened the real app, verified About reported
+the exact branch/commit and `grok CLI: 1.0.4 [stable]`, opened the project
+sidebar, and retained the canonical `grok-build-desktop` row, composer, and
+saved-task choices. Send remained disabled; Resume was not pressed; no provider
+prompt, backend process, test session, credential/config change, or cleanup was
+created. Native Quit produced two process-zero samples.
+
+Publication is still pending. Slice 1 remains locked until the exact PR head is
+CI-green, merged normally, and merged `main` passes install/parity/process-zero
+closeout.

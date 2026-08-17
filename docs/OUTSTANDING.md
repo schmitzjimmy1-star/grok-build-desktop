@@ -42,7 +42,7 @@
 > 2026-08-14 Residual Closeout (Phases 0–6) complete and merged as `4613bde` (PR #94);
 > 2026-08-13 campaign (Slices 0–7) closed at merge `c0895ee` (PR #86).
 
-## Official Runtime Alignment — 2026-08-16 (Slice 0 active)
+## Official Runtime Alignment — 2026-08-16 (Slice 0 publication pending)
 
 Authorized spec is
 [`docs/GROKBUILD_OFFICIAL_RUNTIME_ALIGNMENT_CAMPAIGN_2026-08-16.md`](GROKBUILD_OFFICIAL_RUNTIME_ALIGNMENT_CAMPAIGN_2026-08-16.md).
@@ -54,6 +54,18 @@ installed app remains usable without a provider send, required tests and
 1 begins. CLI upgrades, model/provider configuration, credential access, private
 session migration, typed control-plane additions, and billable prompts are out of
 scope.
+
+Candidate receipt: code-bearing commit
+`0157d1996c9a595d407267908b48bb1c80823885` removes client filesystem and
+terminal execution. The hostile wire test passed with both reverse-execution
+requests rejected as `-32601` and zero side effects; the ACP suite passed 76/76
+and two full runs passed 903/903. Candidate `make ship` installed exact clean
+stamp `0157d199`, matching dist/install SHA-256 `1d8fc740…ad25b`, Team
+`DD2GCQJVB4`, deep/strict signing, and no quarantine. Nonbillable installed
+Computer Use verified the exact About identity, CLI 1.0.4 stable, canonical
+project/sidebar/workbench chrome, disabled Send, native Quit, and two
+process-zero samples without starting or resuming a backend. Publication and
+merged-main closeout remain; Slice 1 is still locked.
 
 ## Visual Quiet — 2026-08-15 (Phase 6 welcome extraction authorized)
 
