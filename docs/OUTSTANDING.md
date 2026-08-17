@@ -152,6 +152,39 @@ project official typed budget state through the existing ACP connection. The
 current paid harness refusal stays first and unconditional until the installed
 CLI advertises that proven capability. Slice 5 and Slice 6 remain locked.
 
+The first nonbillable Slice 4A checkpoint is committed, but it is not a paid
+unlock or merge candidate yet. The pinned CLI fork commits are `b1ab29e`
+(`add durable hard-token reservations`) and `717b94b` (`enforce campaign
+hard-budget contracts`). App commits `7f7bfad` and `6619bde` fail closed on
+quarantined/restored route substitution and project the exact CLI-owned budget
+authority over the existing ACP connection. The runtime now uses one private,
+durable, process-shared campaign ledger with route-specific packet allocations;
+all six sampler dispatch paths validate the final serialized text-only payload,
+reserve before network, disable automatic retries and redirects, retain
+ambiguous reservations, and refuse hosted search, remote Responses context,
+multimodal inputs, and known direct built-in inference/media egress. The app
+cross-binds the exact 4,000,000 campaign policy, 1,000,000 unreachable reserve,
+3,000,000 spendable CLI ceiling, campaign/manifest/build/allocation/packet,
+prompt digest, route, bound provenance, and remaining token/call authority.
+
+Nonbillable evidence is green: full Swift `968/968`, focused Swift `163/163`,
+Python harness `10/10`, Rust sampler `238` total tests, shell/tools/memory Cargo
+checks, and both repository diff checks. Three independent skeptical reviewers
+returned **COMMIT** for this checkpoint and **NO-GO** for paid execution. No
+provider request, credential read, live config mutation, installed CLI upgrade,
+or app installation occurred.
+
+Paid remains locked for concrete reasons: the harness does not yet generate and
+inject the exact campaign manifest/shared ledger/per-packet allocation; one CLI
+process still selects one immutable allocation while the matrix spans packets
+and a relaunch continuation; the app receipt is pre-dispatch authority rather
+than a terminal reservation/settlement projection; exact committed CLI binary
+identity and route-specific bound provenance are not installed and reconciled;
+and arbitrary same-user terminal or MCP network egress can bypass the sampler,
+unset governor variables, invoke another CLI/provider, or tamper with same-UID
+ledger files. The next 4A checkpoint must solve those boundaries and add real
+kill/restart/cancel/no-retry/side-egress hostile proof. Slice 5 remains locked.
+
 ## Visual Quiet — 2026-08-15 (Phase 6 welcome extraction authorized)
 
 Authorized spec is

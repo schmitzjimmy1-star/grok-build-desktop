@@ -874,15 +874,33 @@ OpenAI-compatible provider URLs; not a replacement for grok-native models. Offic
 
 **Acceptance budget boundary (Official Runtime Alignment Slice 4).**
 `AcceptanceBudgetGuard` is opt-in through one owner-only launch manifest and
-requires the exact SHA-256 of the submitted prompt plus positive packet token/call
-allocations. Missing, malformed, ambiguous, or mismatched manifests block Send.
-The live app polls official `x.ai/session/usage` on the existing tab connection and
-invokes ordinary Stop on drift or allocation reach; this is a reactive safety stop,
-not a hard provider-billing cap. The v2 harness therefore refuses billable launch
-while the absolute 4M ceiling is unprovable. Its allowlisted ledger fsyncs separate
-reservation, typed terminal, and cleanup rows, retains rejected paid evidence, pins
-an app-launch epoch across continuation, and never scrapes private CLI sessions or
-runs a second ACP client.
+requires the exact SHA-256 of the final submitted prompt after MCP/file attachment
+blocks plus positive packet token/call allocations. Missing, malformed, ambiguous,
+or mismatched manifests block Send. The reactive `x.ai/session/usage` Stop remains
+defense in depth, not the hard provider-billing cap.
+
+**Hard-budget fork checkpoint (Slice 4A).** The pinned 1.0.5 CLI fork owns one
+private, durable, process-shared campaign ledger and immutable route-specific
+packet allocations. All sampler dispatches validate the final serialized
+text-only provider payload and reserve a conservative bound before network;
+automatic retries, redirects, hosted search, remote Responses history,
+multimodal/indirect inputs, and known direct built-in inference/media egress fail
+closed while armed. Missing usage, Stop, stream failure, or process death retains
+the full ambiguous reservation. This downstream feature is truthfully advertised
+as `initialize._meta["com.grokbuild/hardTokenBudget"]` and queried on the same
+tab connection with `com.grokbuild/budget/status`; it is never labeled `x.ai/*`.
+GrokBuild authorizes only an exact match on campaign, 4M policy, 1M unreachable
+reserve, 3M spendable CLI ceiling, manifest/build/allocation/packet, prompt, route,
+bound provenance, and remaining token/call state. The stored receipt is explicitly
+pre-dispatch authority, not proof that a reservation dispatched or settled.
+
+The v2 harness still refuses billable launch before runtime discovery. Paid unlock
+requires exact campaign/ledger/allocation injection, typed terminal reservation and
+settlement reconciliation, installed fork identity plus independently verified
+route bounds, and containment of same-user terminal/MCP network or ledger bypass.
+Its allowlisted ledger otherwise retains rejected evidence, pins an app-launch
+epoch across continuation, and never scrapes private CLI sessions or runs a second
+ACP client.
 
 The TOML parser is the one deliberate third-party SwiftPM exception to the lightweight default. Foundation and the Apple SDK expose no TOML 1.0 parser, while the previous line parser demonstrably misclassified valid nested/quoted/partial official Grok configuration and could corrupt it on save. `swift-toml` is pinned to an exact revision, statically linked, performs no I/O or networking, and is used only for parse validation; `THIRD_PARTY_NOTICES.md` ships in the app bundle. Grok CLI remains the sole owner of provider resolution, auth-helper execution/cache/timeout, inference, tools, sessions, and model-catalog membership.
 
