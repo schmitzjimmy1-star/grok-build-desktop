@@ -127,6 +127,55 @@ struct AssistantTurnCheckpoint: Codable, Sendable, Hashable {
         let modelUsage: [ModelUsage]
     }
 
+    /// Pre-dispatch authority reported by the exact GrokBuild CLI fork. It is a
+    /// projection of the runtime-owned ledger, not app-computed budget state.
+    struct HardBudgetReceipt: Codable, Sendable, Hashable {
+        let capabilityVersion: Int
+        let cliBuild: String
+        let campaignID: String
+        let manifestSHA256: String
+        let allocationID: String
+        let packetID: String
+        let promptSHA256: String
+        let allocationTokenCeiling: Int
+        let allocationMaxModelCalls: Int
+        let routeModel: String
+        let endpointSHA256: String
+        let apiBackend: String
+        let requestBoundTokens: Int
+        let maxPayloadBytes: Int
+        let maxOutputTokens: Int
+        let boundProvenanceSHA256: String
+        let campaignRemainingTokens: Int
+        let allocationRemainingTokens: Int
+        let allocationRemainingCalls: Int
+
+        init?(_ capability: GrokBuildHardTokenBudgetCapability) {
+            guard capability.isEnforcing,
+                  let status = capability.status,
+                  let allocation = capability.allocation else { return nil }
+            capabilityVersion = capability.capabilityVersion
+            cliBuild = capability.cliBuild
+            campaignID = status.campaignID
+            manifestSHA256 = status.manifestSHA256
+            allocationID = allocation.id
+            packetID = allocation.packetID
+            promptSHA256 = allocation.promptSHA256
+            allocationTokenCeiling = allocation.tokenCeiling
+            allocationMaxModelCalls = allocation.maxModelCalls
+            routeModel = allocation.route.model
+            endpointSHA256 = allocation.route.endpointSHA256
+            apiBackend = allocation.route.apiBackend
+            requestBoundTokens = allocation.route.requestBoundTokens
+            maxPayloadBytes = allocation.route.maxPayloadBytes
+            maxOutputTokens = allocation.route.maxOutputTokens
+            boundProvenanceSHA256 = allocation.route.boundProvenanceSHA256
+            campaignRemainingTokens = status.remainingTokens
+            allocationRemainingTokens = status.allocationRemainingTokens
+            allocationRemainingCalls = status.allocationRemainingCalls
+        }
+    }
+
     /// Structured, credential-free route configuration frozen against the exact
     /// process generation. This proves what GrokBuild configured; ACP model and
     /// usage receipts separately prove what the CLI actually reported.
@@ -226,6 +275,7 @@ struct AssistantTurnCheckpoint: Codable, Sendable, Hashable {
     var routeReceipt: String? = nil
     var structuredRouteReceipt: RouteReceipt? = nil
     var observedRouteReceipt: ObservedRouteReceipt? = nil
+    var hardBudgetReceipt: HardBudgetReceipt? = nil
 
     init(
         snapshot: RunEvidenceSnapshot,
@@ -233,7 +283,8 @@ struct AssistantTurnCheckpoint: Codable, Sendable, Hashable {
         attachmentNames: [String] = [],
         routeReceipt: String? = nil,
         routeContract: ModelRouteContract? = nil,
-        observedRouteReceipt: ObservedRouteReceipt? = nil
+        observedRouteReceipt: ObservedRouteReceipt? = nil,
+        hardBudgetReceipt: HardBudgetReceipt? = nil
     ) {
         objective = snapshot.goalSummary
         outcome = snapshot.outcome.displayName
@@ -339,6 +390,7 @@ struct AssistantTurnCheckpoint: Codable, Sendable, Hashable {
         self.routeReceipt = routeReceipt
         structuredRouteReceipt = routeContract.map(RouteReceipt.init)
         self.observedRouteReceipt = observedRouteReceipt
+        self.hardBudgetReceipt = hardBudgetReceipt
     }
 
     /// Reconstitutes the settled Activity projection from the existing local

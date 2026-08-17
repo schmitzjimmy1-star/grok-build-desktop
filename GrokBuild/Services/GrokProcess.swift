@@ -994,6 +994,9 @@ final class GrokProcess: @unchecked Sendable {
     /// process generation. They are never inferred from the app bundle or an
     /// updater catalog.
     private(set) var acpAgentVersion: ACPAgentVersion?
+    /// Exact downstream hard-budget authority advertised by the live CLI fork.
+    /// An official xAI version number alone never satisfies this capability.
+    private(set) var hardTokenBudgetCapability: GrokBuildHardTokenBudgetCapability?
     private let acpControlCapabilities = ACPControlCapabilityRegistry()
     /// True only while Stop is allowing the captured process generation to deliver
     /// final ACP receipts before identity invalidation and hard teardown.
@@ -1412,6 +1415,7 @@ final class GrokProcess: @unchecked Sendable {
         let launchGeneration = processGeneration
         activeProcessGeneration = launchGeneration
         acpAgentVersion = nil
+        hardTokenBudgetCapability = nil
         acpControlCapabilities.reset(generation: launchGeneration, agentVersion: nil)
         configuredMCPServerNames = options.mcpServers.map(\.name)
         observedCLIConfiguredMCPServerNames = []
@@ -2183,6 +2187,32 @@ final class GrokProcess: @unchecked Sendable {
         )
     }
 
+    func fetchHardTokenBudgetCapability() async throws -> GrokBuildHardTokenBudgetCapability {
+        guard let generation = activeProcessGeneration,
+              hardTokenBudgetCapability != nil else {
+            throw ACPControlError.invalidStandardResponse(
+                method: GrokBuildHardTokenBudgetCapability.statusMethod,
+                reason: "the live CLI did not advertise the GrokBuild hard-budget capability"
+            )
+        }
+        let raw = try await sendRequestWithTimeout(
+            method: GrokBuildHardTokenBudgetCapability.statusMethod,
+            params: [:],
+            seconds: 3
+        )
+        guard activeProcessGeneration == generation else {
+            throw ACPControlError.staleConnection
+        }
+        guard let capability = GrokBuildHardTokenBudgetCapability.parse(raw) else {
+            throw ACPControlError.invalidStandardResponse(
+                method: GrokBuildHardTokenBudgetCapability.statusMethod,
+                reason: "malformed capability receipt"
+            )
+        }
+        hardTokenBudgetCapability = capability
+        return capability
+    }
+
     func fetchACPSessionMetadata() async throws -> ACPControlSessionMetadata {
         guard let sessionId else { throw ACPControlError.noActiveConnection }
         return try ACPControlSessionMetadata.parse(
@@ -2490,6 +2520,9 @@ final class GrokProcess: @unchecked Sendable {
         // Parse real models from modelState (do not make up)
         let meta = res?["_meta"] as? [String: Any]
         acpAgentVersion = (meta?["agentVersion"] as? String).flatMap(ACPAgentVersion.init)
+        hardTokenBudgetCapability = GrokBuildHardTokenBudgetCapability.parse(
+            meta?[GrokBuildHardTokenBudgetCapability.metadataKey]
+        )
         if let generation = activeProcessGeneration {
             acpControlCapabilities.reset(generation: generation, agentVersion: acpAgentVersion)
         }

@@ -637,6 +637,38 @@ final class CustomModelTests: XCTestCase {
         ))
     }
 
+    func testQuarantinedConfiguredOrRestoredLaunchModelDoesNotBecomeFallbackAdvice() {
+        for required in ["project-default", "restored-selection"] {
+            XCTAssertNil(ChatStore.firstSafeLaunchModel(
+                requiredModel: required,
+                fallbackCandidates: ["grok-4.6"],
+                availableModels: [required, "grok-4.6"],
+                quarantinedModelIDs: [required]
+            ))
+        }
+    }
+
+    func testRestoredTabModelPrecedesProjectDefaultAtLaunch() {
+        XCTAssertEqual(
+            ChatStore.requiredLaunchModel(
+                explicitModel: nil,
+                legacyModel: nil,
+                restoredSelectionModel: "restored-selection",
+                projectDefaultModel: "project-default"
+            ),
+            "restored-selection"
+        )
+        XCTAssertEqual(
+            ChatStore.requiredLaunchModel(
+                explicitModel: "explicit-selection",
+                legacyModel: "legacy-selection",
+                restoredSelectionModel: "restored-selection",
+                projectDefaultModel: "project-default"
+            ),
+            "explicit-selection"
+        )
+    }
+
     func testSafeLaunchSelectionKeepsCLIOwnedProviderModelInThePartyList() {
         let snapshot = CustomModelStore.parse("""
         [model.gateway]

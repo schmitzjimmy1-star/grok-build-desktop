@@ -1124,6 +1124,7 @@ final class ChatStore {
     private let customModelSnapshotLoader: () -> CustomModelStore.Snapshot
     private let acceptanceBudgetResolver: (String) -> AcceptanceBudgetResolution
     private var acceptanceBudgetPollingTask: Task<Void, Never>?
+    private var currentTurnHardBudgetReceipt: AssistantTurnCheckpoint.HardBudgetReceipt?
 
     init(
         process: GrokProcess? = nil,
@@ -3065,23 +3066,48 @@ final class ChatStore {
             return false
         }
 
+        var attachmentBlocks: [String] = []
+        let turnRequestedMCPNames = desiredAllowedMCPServerNames.sorted()
+        if let mcpBlock = PromptMCPAttachmentPromptBuilder.build(from: turnRequestedMCPNames) {
+            attachmentBlocks.append(mcpBlock)
+        }
+        let dispatchAttachments = claimedPendingIntent?.fileAttachments ?? fileAttachments
+        let turnAttachmentNames = dispatchAttachments
+            .filter { !$0.isHidden }
+            .map(\.relativePath)
+        if let fileBlock = AttachmentPromptBuilder.build(from: dispatchAttachments) {
+            attachmentBlocks.append(fileBlock)
+        }
+        if !attachmentBlocks.isEmpty {
+            let attachmentBlock = attachmentBlocks.joined(separator: "\n\n")
+            trimmed = trimmed.isEmpty ? attachmentBlock : "\(attachmentBlock)\n\n\(trimmed)"
+        }
+
         var acceptanceBudgetContext: (
             budget: AcceptanceTurnBudget,
             baseline: ACPControlSessionUsage,
             processGeneration: UInt64,
-            backendSessionID: String
+            backendSessionID: String,
+            hardBudgetReceipt: AssistantTurnCheckpoint.HardBudgetReceipt
         )?
         let acceptanceBudgetResolution = acceptanceBudgetResolver(trimmed)
         if acceptanceBudgetResolution == .blocked {
-            lastError = "Acceptance dispatch stopped because the launch budget is missing, invalid, or does not authorize this exact packet."
+            lastError = "Acceptance dispatch stopped because the launch budget is missing, invalid, or does not authorize this exact final payload."
             return false
         }
-        if case .budget(let budget) = acceptanceBudgetResolution {
+        if case .budget(let authorization) = acceptanceBudgetResolution {
+            let budget = authorization.budget
             guard process.acpControlCapabilityState(for: .sessionUsage) != .unsupported else {
                 lastError = "Acceptance dispatch stopped because this Grok runtime cannot report live official session usage."
                 return false
             }
             do {
+                let hardBudget = try await process.fetchHardTokenBudgetCapability()
+                guard hardBudget.authorizes(authorization),
+                      let hardBudgetReceipt = AssistantTurnCheckpoint.HardBudgetReceipt(hardBudget) else {
+                    lastError = "Acceptance dispatch stopped because the live CLI hard-budget allocation does not authorize this exact packet."
+                    return false
+                }
                 let baseline = try await process.fetchACPSessionUsage()
                 guard baseline.totalTokens != nil, baseline.modelCalls != nil else {
                     lastError = "Acceptance dispatch stopped because the baseline usage receipt is incomplete."
@@ -3092,9 +3118,15 @@ final class ChatStore {
                     lastError = "Acceptance dispatch stopped because the live process/session identity is unavailable."
                     return false
                 }
-                acceptanceBudgetContext = (budget, baseline, processGeneration, backendSessionID)
+                acceptanceBudgetContext = (
+                    budget,
+                    baseline,
+                    processGeneration,
+                    backendSessionID,
+                    hardBudgetReceipt
+                )
             } catch {
-                lastError = "Acceptance dispatch stopped because the baseline usage receipt is unavailable."
+                lastError = "Acceptance dispatch stopped because the live CLI hard-budget receipt is unavailable."
                 return false
             }
         }
@@ -3108,23 +3140,10 @@ final class ChatStore {
         isGrokking = true
         turnStartedAt = Date()
         startStallWatchdog()
+        currentTurnRequestedMCPNames = turnRequestedMCPNames
+        currentTurnAttachmentNames = turnAttachmentNames
+        currentTurnHardBudgetReceipt = acceptanceBudgetContext?.hardBudgetReceipt
 
-        var attachmentBlocks: [String] = []
-        currentTurnRequestedMCPNames = desiredAllowedMCPServerNames.sorted()
-        if let mcpBlock = PromptMCPAttachmentPromptBuilder.build(from: currentTurnRequestedMCPNames) {
-            attachmentBlocks.append(mcpBlock)
-        }
-        let dispatchAttachments = claimedPendingIntent?.fileAttachments ?? fileAttachments
-        currentTurnAttachmentNames = dispatchAttachments
-            .filter { !$0.isHidden }
-            .map(\.relativePath)
-        if let fileBlock = AttachmentPromptBuilder.build(from: dispatchAttachments) {
-            attachmentBlocks.append(fileBlock)
-        }
-        if !attachmentBlocks.isEmpty {
-            let attachmentBlock = attachmentBlocks.joined(separator: "\n\n")
-            trimmed = trimmed.isEmpty ? attachmentBlock : "\(attachmentBlock)\n\n\(trimmed)"
-        }
         if let goalCommand = GoalCommand.parse(from: trimmed) {
             SessionGoalStateMutation.apply(goalCommand, to: &goalState)
         }
@@ -3382,6 +3401,7 @@ final class ChatStore {
         currentTurnDispatchUptimeNanoseconds = nil
         currentTurnFirstChunkLatencyMilliseconds = nil
         currentTurnObservedParallelToolExecution = false
+        currentTurnHardBudgetReceipt = nil
         cancelStreamingTextFlush()
         invalidateTurnSettlement()
         isGrokking = false
@@ -5232,7 +5252,8 @@ final class ChatStore {
             attachmentNames: currentTurnAttachmentNames,
             routeReceipt: routeContract.detailLines.first,
             routeContract: routeContract,
-            observedRouteReceipt: observedRoute
+            observedRouteReceipt: observedRoute,
+            hardBudgetReceipt: currentTurnHardBudgetReceipt
         )
         if var trace = messages[index].assistantTrace {
             trace.checkpoint = checkpoint
@@ -5698,12 +5719,17 @@ final class ChatStore {
         // route is quarantined, fail launch instead of repainting the picker and
         // starting a different model behind the user's back. Only inherited state
         // is eligible for fallback selection.
-        let requiredModel = explicitModel ?? legacyModel
+        let projectDefaultModel = workspaceDefaultModel()
+        let restoredSelectionModel = fallbackSelection?.model
+        let requiredModel = Self.requiredLaunchModel(
+            explicitModel: explicitModel,
+            legacyModel: legacyModel,
+            restoredSelectionModel: restoredSelectionModel,
+            projectDefaultModel: projectDefaultModel
+        )
         let selected = Self.firstSafeLaunchModel(
             requiredModel: requiredModel,
             fallbackCandidates: [
-                workspaceDefaultModel(),
-                fallbackSelection?.model,
                 currentModel,
             ],
             availableModels: availableModels,
@@ -5713,6 +5739,18 @@ final class ChatStore {
             currentModel = selected
         }
         return selected
+    }
+
+    /// A tab/session choice is more specific than the workspace default it was
+    /// created under. Preserve that identity on restore; use the project default
+    /// only when the tab carries no model intent of its own.
+    nonisolated static func requiredLaunchModel(
+        explicitModel: String?,
+        legacyModel: String?,
+        restoredSelectionModel: String?,
+        projectDefaultModel: String?
+    ) -> String? {
+        explicitModel ?? legacyModel ?? restoredSelectionModel ?? projectDefaultModel
     }
 
     nonisolated static func firstSafeLaunchModel(
