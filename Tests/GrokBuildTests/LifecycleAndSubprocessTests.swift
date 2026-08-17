@@ -464,29 +464,11 @@ final class SettingsRuntimeContractTests: XCTestCase {
     func testStreamingSettingsRequestsShareOneExactReconnect() async throws {
         let fixtureRoot = FileManager.default.temporaryDirectory
             .appendingPathComponent("grokbuild-settings-reload-\(UUID().uuidString)", isDirectory: true)
-        let grokHome = fixtureRoot.appendingPathComponent("grok-home", isDirectory: true)
         let workspaceURL = fixtureRoot.appendingPathComponent("workspace", isDirectory: true)
         try FileManager.default.createDirectory(at: workspaceURL, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: fixtureRoot) }
 
-        let previousGrokHome = GrokSessionTranscriptImporter.grokHomeDirectory
-        GrokSessionTranscriptImporter.grokHomeDirectory = grokHome
-        defer { GrokSessionTranscriptImporter.grokHomeDirectory = previousGrokHome }
-
         let backendID = "settings-reload-backend"
-        let historyURL = try XCTUnwrap(GrokSessionTranscriptImporter.chatHistoryURL(
-            workspacePath: workspaceURL,
-            grokSessionID: backendID
-        ))
-        try FileManager.default.createDirectory(
-            at: historyURL.deletingLastPathComponent(),
-            withIntermediateDirectories: true
-        )
-        try """
-        {"type":"user","content":"synthetic settings fixture"}
-        {"type":"assistant","content":"synthetic fixture complete"}
-        """.write(to: historyURL, atomically: true, encoding: .utf8)
-
         let launchLog = fixtureRoot.appendingPathComponent("launches.log")
         let scriptURL = fixtureRoot.appendingPathComponent("fake-grok")
         let script = """
@@ -499,6 +481,8 @@ final class SettingsRuntimeContractTests: XCTestCase {
               printf '{"jsonrpc":"2.0","id":%s,"result":{}}\\n' "$id"
               ;;
             *'"method":"session/load"'*)
+              printf '{"jsonrpc":"2.0","method":"session/update","params":{"sessionId":"settings-reload-backend","_meta":{"isReplay":true},"update":{"sessionUpdate":"user_message_chunk","content":{"type":"text","text":"synthetic settings fixture"}}}}\\n'
+              printf '{"jsonrpc":"2.0","method":"x.ai/session/update","params":{"sessionId":"settings-reload-backend","_meta":{"isReplay":true},"update":{"sessionUpdate":"agent_message_chunk","content":{"type":"text","text":"synthetic fixture complete"}}}}\\n'
               printf '{"jsonrpc":"2.0","id":%s,"result":{}}\\n' "$id"
               ;;
             *'"method":"session/set_model"'*)

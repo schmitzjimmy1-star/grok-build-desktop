@@ -150,7 +150,7 @@ enum SessionSendGate {
     }
 }
 
-/// Reconciles GrokBuild tabs with one known grok CLI `chat_history.jsonl`.
+/// Reconciles GrokBuild's app-owned presentation cache with one typed ACP replay.
 ///
 /// Imported message UUIDs are intentionally not treated as identity: grok history does
 /// not store GrokBuild's streaming UUIDs. Stable identity is the normalized user prompt,
@@ -168,7 +168,59 @@ enum SessionTranscriptRecovery {
         identityMessages(messages).count
     }
 
-    /// Explicit, bounded recovery review. The returned candidates are evidence only;
+    /// Builds one recovery-review row from official ACP transcript evidence.
+    /// Typed replay has already been root-session scoped and rewind filtered by
+    /// the CLI, so there are no private-parser quarantine rows to reinterpret.
+    static func recoveryCandidate(
+        backendID: String,
+        workspaceName: String,
+        modelID: String?,
+        lastActivity: Date,
+        localMessages: [Message],
+        backendMessages: [Message],
+        key: Data
+    ) -> SessionRecoveryCandidate? {
+        guard !key.isEmpty else { return nil }
+        let localIdentity = identityMessages(localMessages)
+        let backendIdentity = identityMessages(backendMessages)
+        guard !backendIdentity.isEmpty else { return nil }
+        let receipt = verifyContinuity(
+            localMessages: localIdentity,
+            backendMessages: backendIdentity,
+            key: key
+        )
+        let sharedPrompts = matchingUserPromptCount(
+            local: localIdentity,
+            backend: backendIdentity
+        )
+        let matchingTurns = matchingCompleteTurnCount(
+            local: localIdentity,
+            backend: backendIdentity
+        )
+        let relinkable = receipt.status == .verified && matchingTurns > 0
+        guard sharedPrompts > 0 || relinkable else { return nil }
+        return SessionRecoveryCandidate(
+            backendID: backendID,
+            workspaceName: workspaceName,
+            modelID: modelID,
+            lastActivity: lastActivity,
+            matchingTurnCount: matchingTurns,
+            mismatchCount: max(
+                0,
+                receipt.localMessageCount + receipt.backendMessageCount
+                    - (2 * receipt.matchingPrefixCount)
+            ),
+            localMessageCount: receipt.localMessageCount,
+            backendMessageCount: receipt.backendMessageCount,
+            relationship: receipt.status,
+            reason: receipt.reason,
+            quarantinedRowCount: 0
+        )
+    }
+
+    #if DEBUG
+    /// Legacy shadow-parity fixture only. Shipped recovery review uses official ACP.
+    /// The returned candidates are evidence only;
     /// this function never mutates a binding and ordinary startup never invokes it.
     static func recoveryCandidates(
         workspacePath: URL,
@@ -324,6 +376,7 @@ enum SessionTranscriptRecovery {
             )
         }
     }
+    #endif
 
     static func verifyContinuity(
         localMessages: [Message],
@@ -438,7 +491,7 @@ enum SessionTranscriptRecovery {
         )
     }
 
-    private static func failedContinuityVerification(
+    static func failedContinuityVerification(
         localMessages: [Message],
         status: SessionContinuityStatus,
         reason: SessionContinuityReason,
@@ -636,6 +689,8 @@ enum SessionTranscriptRecovery {
         }
     }
 
+    #if DEBUG
+    /// Legacy shadow-parity fixture only. Shipped reconciliation consumes ACP replay.
     /// Returns reconciled messages when recovery changed the transcript; `nil` otherwise.
     /// This is safe for empty, partial, and already-complete transcripts and is idempotent.
     static func recoverIfNeeded(
@@ -713,6 +768,7 @@ enum SessionTranscriptRecovery {
             )
         }
     }
+    #endif
 }
 
 enum SessionTranscriptReconciler {

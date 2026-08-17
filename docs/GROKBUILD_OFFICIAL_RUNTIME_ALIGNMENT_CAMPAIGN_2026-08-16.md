@@ -1,6 +1,6 @@
 # GrokBuild Official Runtime Alignment Campaign — 2026-08-16
 
-Status: **Slice 2 complete; Slice 3 locked.** Jimmy authorized a rigorous
+Status: **Slice 3 active; Slice 4 locked.** Jimmy authorized a rigorous
 merge-per-slice campaign on 2026-08-16. Every slice gets its own branch,
 explicit commits, ready pull request, exact-head required checks, normal merge,
 merged-main installation, and process-zero closeout before the next slice begins.
@@ -33,7 +33,7 @@ Grok CLI.
 | **0** | **Restore CLI execution ownership** | Disable ACP client FS/terminal capabilities; remove Swift reverse executors; fail surprise reverse execution closed; retain typed tool receipts. | **Complete — PR #114** |
 | **1** | **Contain model-config corruption** | Refuse unsafe nested-model rewrites, add official nested-TOML fixtures, then choose a structure-preserving ownership boundary. | **Complete — PR #115** |
 | **2** | **Typed ACP control spine** | Add a version/capability-aware facade over each existing ACP connection; first methods are models, usage, session metadata, and bounded session updates. | **Complete — PR #116** |
-| **3** | **Session truth and recovery** | Consume typed `session/load` replay, reconcile the local presentation cache, and retire private root/child storage reads after a shadow-parity gate. | Locked |
+| **3** | **Session truth and recovery** | Consume typed `session/load` replay, reconcile the local presentation cache, and retire private root/child storage reads after a shadow-parity gate. | **Active** |
 | **4** | **Official provider and open-weight lane** | Use official provider definitions, resolve the keyless-endpoint credential hazard, and pilot one Keychain-backed auth helper without bundling a model runtime. | Locked |
 | **5** | **Controls behave like controls** | Replace model-prompt control actions where official methods exist; separate cancel, worker cancel, and disconnect semantics. | Locked |
 | **6** | **Coordinator simplification** | Split transport/session/projection owners only after authority correction; evaluate workspace/profile process pooling without a default leader daemon. | Locked |
@@ -311,5 +311,94 @@ Computer Use verified About identity `0.1.22 Personal • main @ a615fed8` witho
 starting or resuming a backend. Native Quit produced process-zero samples at
 `2026-08-17T09:26:32-0400` and `2026-08-17T09:26:41-0400`.
 
-Slice 2 is complete. Slice 3 remains locked pending explicit authorization and
-a fresh scope audit against the then-current CLI and merged repository.
+Slice 2 is complete. Jimmy explicitly authorized Slice 3 on 2026-08-17; its
+fresh scope audit and execution contract follow. Slice 4 remains locked.
+
+## Slice 3 — Session truth and recovery
+
+### Ownership decision
+
+Jimmy authorized Slice 3 on 2026-08-17. Grok CLI replay is backend-history
+authority; GrokBuild's owner-only transcript remains the durable offline
+presentation cache. A resumed backend is usable only after typed `session/load`
+replay is bound to the exact local tab, backend ID, and process generation and
+passes the existing keyed root-conversation comparison. Historical replay never
+re-drives live thinking, tools, workers, permissions, or completion state.
+
+The Release app owns no private CLI session reader. The former
+`chat_history.jsonl` importer remains DEBUG-only for the one shadow-parity gate,
+and the child `updates.jsonl` fallback is deleted. Installed 1.0.4 therefore
+keeps authoritative parent lifecycle summaries but reports detailed child
+receipts and official candidate review unavailable.
+
+### Exact scope
+
+- Capture standard and official xAI replay notifications only while one exact
+  `session/load` is in flight; consume the buffer once after the response.
+- Project only root user and assistant message chunks. Exclude host-turn context,
+  thought, tools, subagents, permissions, terminal state, and completion updates.
+- Verify exact/prefix/divergent relationships after load, then reconcile only a
+  verified local presentation cache. A mismatch leaves the exact connection
+  unsendable and available only for official read-only review; Continue as New
+  and Relink tear it down before rebinding.
+- Preserve one-submit behavior: when Send discovers a replay mismatch, that same
+  frozen intent records Continue as New, creates a successor, and dispatches only
+  to the successor.
+- Make selection/offline browsing app-local only. Remove restore-time and
+  completion-time private backend-tail reads.
+- Use standard `session/list` plus bounded official `x.ai/session/updates` for
+  explicit candidate review/relink on supporting CLIs. Candidate review is capped
+  at 50 entries, five inventory pages, one 512-update page per candidate, and a
+  five-second candidate-start window. Relink re-fetches under a 4,096-update
+  fail-closed cap.
+- Delete the private child-ledger compatibility reader. Unsupported, malformed,
+  timed-out, stale, or known-old official methods yield unavailable evidence.
+- Keep the legacy private root parser only under `#if DEBUG`, prove typed replay
+  shadow parity on a pinned fixture, and prove the Release binary contains neither
+  private reader symbol nor private session path string.
+- Update architecture, README, campaign, and canonical outstanding state.
+
+### Exclusions
+
+- No CLI upgrade, provider/model call, prompt dispatch for acceptance,
+  authentication, Keychain/config mutation, session deletion, or user-state
+  cleanup.
+- No control mutations, provider/open-weight work, task/fork/worktree redesign,
+  second ACP process, persistent control daemon, or coordinator split.
+- No Slice 4 implementation, tag, GitHub release, notarization, write to
+  `origin`, force push, branch deletion, or broad cleanup.
+
+### Acceptance and publication
+
+1. Fake-agent contracts prove typed replay capture, live-stream isolation,
+   exact/prefix reconciliation, divergence refusal, and same-submit safe fork.
+2. Shadow parity, standard list, bounded update, known-old, method-not-found, and
+   child-detail-unavailable contracts pass. Release compilation proves the
+   private readers are absent.
+3. `make test`, `git diff --check`, and exact-path review pass.
+4. Commit the code-bearing candidate; run clean `make ship` and reconcile exact
+   installed identity, executable parity, signing, and quarantine.
+5. Installed Computer Use loads one existing saved backend without a prompt,
+   verifies the local transcript is not duplicated, and closes with process zero.
+6. Push only to `personal`, open a ready PR, verify exact-head required CI, and
+   merge normally with `--match-head-commit`.
+7. Fast-forward local `main`, run merged-main `make ship`, reconcile parity, and
+   take two process-zero samples. Only then may Slice 3 be complete; Slice 4
+   remains locked until separately authorized.
+
+### Candidate receipt
+
+Focused typed replay/control/recovery/reconnect contracts pass 25/25. Full
+`make test` passes 929/929. Production `swift build -c release` passes; symbol
+and string inspection finds no `GrokSessionTranscriptImporter`, private child
+reader, `chat_history.jsonl`, `updates.jsonl`, or `.grok/sessions` in the
+Release binary. Code-bearing candidate `e3b290475de83a1dd3f95b810307d4b5e3fa691f`
+completed clean `make ship` at 929/929. The installed executable matches dist at
+SHA-256 `b984f66d…619ee`, Team `DD2GCQJVB4`, deep/strict signing, and no
+quarantine. Nonbillable installed Computer Use resumed one existing saved backend
+without a prompt; its one existing user turn remained singular after typed replay,
+the live model confirmed, and About reported
+`0.1.22 Personal • codex/official-runtime-s3-session-truth @ e3b29047` with
+`grok CLI: 1.0.4 [stable]`. Native Quit produced process-zero samples at
+`2026-08-17T11:42:41-0400` and `2026-08-17T11:42:56-0400`. Exact-head CI,
+merge, and merged-main closeout remain pending.

@@ -32,16 +32,16 @@
 > **Current campaign:** 2026-08-16 Official Runtime Alignment —
 > [`docs/GROKBUILD_OFFICIAL_RUNTIME_ALIGNMENT_CAMPAIGN_2026-08-16.md`](GROKBUILD_OFFICIAL_RUNTIME_ALIGNMENT_CAMPAIGN_2026-08-16.md).
 > Jimmy authorized this merge-per-slice campaign on 2026-08-16. Slices 0, 1,
-> and 2 are complete in PRs #114, #115, and #116. Slice 3 remains locked pending
-> explicit authorization and a fresh audit against the then-current CLI and
-> merged repository. No new runtime, CLI upgrade, provider call, config mutation,
-> replay recovery, or later-slice work is authorized by this closeout.
+> and 2 are complete in PRs #114, #115, and #116. Jimmy authorized Slice 3
+> session truth and recovery on 2026-08-17. Slice 4 remains locked. No new
+> runtime, CLI upgrade, provider call, config mutation, provider/open-weight
+> work, control mutation, or later-slice work is authorized.
 >
 > Prior campaigns: 2026-08-15 Visual Quiet complete and merged through `3947136` (PR #113);
 > 2026-08-14 Residual Closeout (Phases 0–6) complete and merged as `4613bde` (PR #94);
 > 2026-08-13 campaign (Slices 0–7) closed at merge `c0895ee` (PR #86).
 
-## Official Runtime Alignment — 2026-08-16 (Slice 2 complete; Slice 3 locked)
+## Official Runtime Alignment — 2026-08-16 (Slice 3 active; Slice 4 locked)
 
 Authorized spec is
 [`docs/GROKBUILD_OFFICIAL_RUNTIME_ALIGNMENT_CAMPAIGN_2026-08-16.md`](GROKBUILD_OFFICIAL_RUNTIME_ALIGNMENT_CAMPAIGN_2026-08-16.md).
@@ -67,19 +67,17 @@ App identity without a provider check, prompt, backend start, credential access,
 live config mutation, or CLI upgrade. Native Quit produced two process-zero
 samples.
 
-Slice 2 is now the exact active scope. It may capture
-`initialize._meta.agentVersion`, cache support per exact method/process
-generation, and add typed read-only wrappers for `x.ai/models/list`,
-`x.ai/session/usage`, `x.ai/session/info`, and bounded
-`x.ai/session/updates` on the existing per-tab ACP connection. Missing or known
-versions below 1.0.5 must emit no extension request. Update pages are capped at
-512 rows; child receipt reconciliation is capped at four 256-row tail pages. The
-official updates method becomes preferred, while the private child-ledger reader
-remains an explicit 1.0.4 compatibility fallback until Slice 3 parity/removal.
+Slice 3 is the exact active scope. It captures typed `session/load` replay on the
+existing per-tab connection, verifies the exact tab/backend/process generation,
+reconciles only verified root user/assistant history into the app-local cache,
+and removes shipped private root/child session reads. Standard `session/list`
+plus bounded official `x.ai/session/updates` own explicit review/relink on
+supporting CLIs; installed 1.0.4 reports unsupported detail honestly. The legacy
+root parser is DEBUG-only for one shadow-parity fixture and absent from Release.
 
 CLI upgrade, provider/model calls, billable prompts, auth/credential/config
-changes, `session/load` replay recovery, root-history migration, control
-mutations, a second ACP process/daemon, and Slice 3 are out of scope.
+changes, session deletion, control mutations, a second ACP process/daemon,
+provider/open-weight work, and Slice 4 are out of scope.
 
 Candidate receipt: code-bearing commit
 `950bfc26a5c7b219ea96666917a8d3711f301ff3`. Focused typed-control, ACP-client,
@@ -99,8 +97,23 @@ passed 924/924 and installed that exact merge with matching dist/install SHA-256
 `afb0437c…fde9ab`, Team `DD2GCQJVB4`, deep/strict signing, and no quarantine.
 Installed Computer Use verified `0.1.22 Personal • main @ a615fed8` without
 starting or resuming a backend. Native Quit produced process-zero samples at
-`2026-08-17T09:26:32-0400` and `2026-08-17T09:26:41-0400`. Slice 2 is complete;
-Slice 3 stays locked pending explicit authorization.
+`2026-08-17T09:26:32-0400` and `2026-08-17T09:26:41-0400`. Slice 2 is complete.
+
+Slice 3 candidate work is active on
+`codex/official-runtime-s3-session-truth`. Focused typed replay/control/parity
+and reconnect contracts pass 25/25. Full `make test` passes 929/929. Production
+`swift build -c release` passes, and symbol/string
+inspection finds no `GrokSessionTranscriptImporter`, private child reader,
+`chat_history.jsonl`, `updates.jsonl`, or `.grok/sessions` in the Release binary.
+Code-bearing candidate `e3b290475de83a1dd3f95b810307d4b5e3fa691f` completed
+clean `make ship` at 929/929. The installed candidate matches dist at SHA-256
+`b984f66d…619ee`, Team `DD2GCQJVB4`, deep/strict signing, and no quarantine.
+Nonbillable installed Computer Use resumed one saved backend without a prompt;
+its one existing user turn remained singular after typed replay, the live model
+confirmed, and About reported branch `codex/official-runtime-s3-session-truth`,
+commit `e3b29047`, and CLI `1.0.4 [stable]`. Native Quit produced process-zero
+samples at `2026-08-17T11:42:41-0400` and `2026-08-17T11:42:56-0400`.
+Exact-head PR/CI/merge and merged-main closeout remain pending. Slice 4 stays locked.
 
 ## Visual Quiet — 2026-08-15 (Phase 6 welcome extraction authorized)
 

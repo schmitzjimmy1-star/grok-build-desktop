@@ -2,6 +2,42 @@ import XCTest
 @testable import GrokBuild
 
 final class GrokSessionTranscriptImporterTests: XCTestCase {
+    func testTypedACPReplayMatchesLegacyRootTranscriptFixtureBeforeRetirement() throws {
+        let history = try writeTempJSONL("""
+        {"type":"user","content":"first prompt"}
+        {"type":"assistant","content":"first answer"}
+        {"type":"user","content":"second prompt"}
+        {"type":"assistant","content":"second answer"}
+        """)
+        let legacy = GrokSessionTranscriptImporter.importTranscript(
+            from: history,
+            backendSessionID: "shadow-session"
+        ).identityMessages
+        let updates: [[String: Any]] = [
+            ["sessionUpdate": "user_message_chunk", "content": ["type": "text", "text": "first prompt"]],
+            ["sessionUpdate": "agent_message_chunk", "content": ["type": "text", "text": "first answer"]],
+            ["sessionUpdate": "tool_call", "title": "ignored historical tool"],
+            ["sessionUpdate": "user_message_chunk", "content": ["type": "text", "text": "second prompt"]],
+            ["sessionUpdate": "agent_message_chunk", "content": ["type": "text", "text": "second answer"]],
+        ]
+        let envelopes = updates.map { update in
+            ACPStoredUpdateEnvelope(foundation: [
+                "method": "session/update",
+                "params": ["sessionId": "shadow-session", "update": update],
+            ])!
+        }
+        let replay = GrokSessionReplay.transcript(
+            backendSessionID: "shadow-session",
+            processGeneration: 1,
+            envelopes: envelopes
+        )
+
+        XCTAssertEqual(
+            SessionTranscriptReconciler.contentSignature(replay.messages),
+            SessionTranscriptReconciler.contentSignature(legacy)
+        )
+    }
+
     func testWorkspaceEncodingMatchesGrokForSpacesAndReservedCharacters() {
         let workspace = URL(fileURLWithPath: "/Users/test/MCP Servers/Grok Build/100% ready")
         XCTAssertEqual(
@@ -423,16 +459,44 @@ final class GrokSessionTranscriptImporterTests: XCTestCase {
 
     @MainActor
     func testContinueAsNewPersistsIntentWithoutStartingBackend() async throws {
+        let fixtureRoot = FileManager.default.temporaryDirectory
+            .appendingPathComponent("grokbuild-continue-replay-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: fixtureRoot, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: fixtureRoot) }
+        let scriptURL = fixtureRoot.appendingPathComponent("fake-grok")
+        let script = """
+        #!/bin/sh
+        while IFS= read -r line; do
+          id=$(printf '%s' "$line" | sed -E 's/.*"id":([0-9]+).*/\\1/')
+          case "$line" in
+            *'"method":"initialize"'*)
+              printf '{"jsonrpc":"2.0","id":%s,"result":{"_meta":{"agentVersion":"1.0.5"}}}\n' "$id"
+              ;;
+            *'"method":"session/load"'*)
+              printf '{"jsonrpc":"2.0","method":"session/update","params":{"sessionId":"missing-backend","_meta":{"isReplay":true},"update":{"sessionUpdate":"user_message_chunk","content":{"type":"text","text":"different backend work"}}}}\n'
+              printf '{"jsonrpc":"2.0","id":%s,"result":{"models":{"currentModelId":"grok-4.5","availableModels":[]}}}\n' "$id"
+              ;;
+            *'"method":"session/set_model"'*)
+              printf '{"jsonrpc":"2.0","id":%s,"result":{"_meta":{"model":{"Ok":"grok-4.5"}}}}\n' "$id"
+              ;;
+          esac
+        done
+        """
+        try script.write(to: scriptURL, atomically: true, encoding: .utf8)
+        try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: scriptURL.path)
+        GrokProcess.cliOverrideForTests = scriptURL
+        defer { GrokProcess.cliOverrideForTests = nil }
+
         let workspace = Workspace(
             name: "Continue fixture",
-            path: URL(fileURLWithPath: "/tmp/continue-as-new")
+            path: fixtureRoot
         )
         let store = ChatStore(continuityKeyOverride: Data(0..<32))
         let tabID = UUID()
         store.prepare(workspace: workspace, savedGrokSessionID: "missing-backend")
         store.bindTabSession(
             tabID,
-            modelIntent: .inheritProjectDefault,
+            modelIntent: .explicit("grok-4.5"),
             savedGrokSessionID: "missing-backend",
             savedBackendBinding: SessionBackendBinding(
                 backendID: "missing-backend",
@@ -445,11 +509,12 @@ final class GrokSessionTranscriptImporterTests: XCTestCase {
             Message(role: .user, content: "Preserve this local work"),
             Message(role: .assistant, content: "Preserved local answer"),
         ])
-        let missingStatus = await store.verifyContinuityBeforeResume()
-        XCTAssertEqual(missingStatus, .backendMissing)
+        await store.start(workspace: workspace, preserveMessages: true)
+        XCTAssertEqual(store.continuityStatus, .diverged)
         XCTAssertEqual(store.continuityReceipt.localTabID, tabID)
         XCTAssertEqual(store.continuityReceipt.backendID, "missing-backend")
-        XCTAssertNil(store.continuityReceipt.processGeneration)
+        XCTAssertNotNil(store.continuityReceipt.processGeneration)
+        XCTAssertEqual(store.connectionState, .ready)
 
         let continued = await store.continueAsNew()
         XCTAssertTrue(continued)
@@ -483,30 +548,50 @@ final class GrokSessionTranscriptImporterTests: XCTestCase {
 
     @MainActor
     func testExplicitRelinkReverifiesAndRecordsLedgerWithoutStartingBackend() async throws {
-        let grokHome = FileManager.default.temporaryDirectory
-            .appendingPathComponent("grokbuild-relink-\(UUID().uuidString)", isDirectory: true)
-        GrokSessionTranscriptImporter.grokHomeDirectory = grokHome
-        defer { try? FileManager.default.removeItem(at: grokHome) }
+        let fixtureRoot = FileManager.default.temporaryDirectory
+            .appendingPathComponent("grokbuild-relink-acp-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: fixtureRoot, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: fixtureRoot) }
+        let scriptURL = fixtureRoot.appendingPathComponent("fake-grok")
+        let script = """
+        #!/bin/sh
+        while IFS= read -r line; do
+          id=$(printf '%s' "$line" | sed -E 's/.*"id":([0-9]+).*/\\1/')
+          case "$line" in
+            *'"method":"initialize"'*)
+              printf '{"jsonrpc":"2.0","id":%s,"result":{"_meta":{"agentVersion":"1.0.5"}}}\n' "$id"
+              ;;
+            *'"method":"session/load"'*)
+              printf '{"jsonrpc":"2.0","method":"session/update","params":{"sessionId":"wrong-backend","_meta":{"isReplay":true},"update":{"sessionUpdate":"user_message_chunk","content":{"type":"text","text":"wrong backend prompt"}}}}\n'
+              printf '{"jsonrpc":"2.0","id":%s,"result":{"models":{"currentModelId":"grok-4.5","availableModels":[]}}}\n' "$id"
+              ;;
+            *'"method":"session/set_model"'*)
+              printf '{"jsonrpc":"2.0","id":%s,"result":{"_meta":{"model":{"Ok":"grok-4.5"}}}}\n' "$id"
+              ;;
+            *'"method":"session/list"'*)
+              printf '{"jsonrpc":"2.0","id":%s,"result":{"sessions":[{"sessionId":"verified-candidate","cwd":"\(fixtureRoot.path)","modelId":"grok-4.5","updatedAt":"2026-08-17T12:34:56Z"}]}}\n' "$id"
+              ;;
+            *'"method":"x.ai/session/updates"'*)
+              printf '{"jsonrpc":"2.0","id":%s,"result":{"updates":[{"timestamp":1,"method":"session/update","params":{"sessionId":"verified-candidate","update":{"sessionUpdate":"user_message_chunk","content":{"type":"text","text":"Relink this exact turn"}}}},{"timestamp":2,"method":"x.ai/session/update","params":{"sessionId":"verified-candidate","update":{"sessionUpdate":"agent_message_chunk","content":{"type":"text","text":"Exact relink answer"}}}}],"totalCount":2,"hasMore":false,"promptStarts":[0]}}\n' "$id"
+              ;;
+          esac
+        done
+        """
+        try script.write(to: scriptURL, atomically: true, encoding: .utf8)
+        try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: scriptURL.path)
+        GrokProcess.cliOverrideForTests = scriptURL
+        defer { GrokProcess.cliOverrideForTests = nil }
+
         let workspace = Workspace(
             name: "Relink fixture",
-            path: URL(fileURLWithPath: "/tmp/relink-fixture")
+            path: fixtureRoot
         )
-        let history = grokHome
-            .appendingPathComponent("sessions/%2Fprivate%2Ftmp%2Frelink-fixture/verified-candidate/chat_history.jsonl")
-        try FileManager.default.createDirectory(
-            at: history.deletingLastPathComponent(),
-            withIntermediateDirectories: true
-        )
-        try """
-        {"type":"user","content":"Relink this exact turn"}
-        {"type":"assistant","content":"Exact relink answer","model_id":"grok-4.5"}
-        """.write(to: history, atomically: true, encoding: .utf8)
 
         let store = ChatStore(continuityKeyOverride: Data(0..<32))
         store.prepare(workspace: workspace, savedGrokSessionID: "wrong-backend")
         store.bindTabSession(
             UUID(),
-            modelIntent: .inheritProjectDefault,
+            modelIntent: .explicit("grok-4.5"),
             savedGrokSessionID: "wrong-backend",
             savedBackendBinding: SessionBackendBinding(
                 backendID: "wrong-backend",
@@ -519,8 +604,9 @@ final class GrokSessionTranscriptImporterTests: XCTestCase {
             Message(role: .user, content: "Relink this exact turn"),
             Message(role: .assistant, content: "Exact relink answer"),
         ])
-        let missingStatus = await store.verifyContinuityBeforeResume()
-        XCTAssertEqual(missingStatus, .backendMissing)
+        await store.start(workspace: workspace, preserveMessages: true)
+        XCTAssertEqual(store.continuityStatus, .diverged)
+        XCTAssertEqual(store.connectionState, .ready)
         await store.reviewRecoveryCandidates()
         let candidate = try XCTUnwrap(store.recoveryCandidates.first)
         XCTAssertTrue(candidate.isRelinkable)
@@ -765,7 +851,7 @@ final class GrokSessionTranscriptImporterTests: XCTestCase {
     }
 
     @MainActor
-    func testSelectingPopulatedTabReconcilesPrivateTmpBackendTail() throws {
+    func testSelectingPopulatedTabUsesOnlyAppOwnedTranscriptUntilTypedLoad() throws {
         let sessionID = UUID()
         defer { SessionMessageStore.remove(for: sessionID) }
         let grokHome = FileManager.default.temporaryDirectory
@@ -800,7 +886,11 @@ final class GrokSessionTranscriptImporterTests: XCTestCase {
             workspace: workspace
         )
 
-        XCTAssertEqual(store.messages.last?.content, "partial plus RESTORED-FINAL-OK")
+        XCTAssertEqual(
+            store.messages.last?.content,
+            "partial",
+            "tab selection must not read or merge the CLI's private backend tail"
+        )
     }
 
     func testRecoverIfNeededImportsWhenLocalTranscriptEmpty() throws {

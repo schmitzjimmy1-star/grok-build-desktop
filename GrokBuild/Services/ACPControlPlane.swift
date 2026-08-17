@@ -111,6 +111,7 @@ enum ACPControlError: LocalizedError, Equatable {
     case staleConnection
     case invalidRequest(String)
     case invalidResponse(method: ACPControlMethod, reason: String)
+    case invalidStandardResponse(method: String, reason: String)
 
     var errorDescription: String? {
         switch self {
@@ -125,6 +126,8 @@ enum ACPControlError: LocalizedError, Equatable {
             return "Invalid ACP control request: \(reason)"
         case .invalidResponse(let method, let reason):
             return "Invalid \(method.rawValue) response: \(reason)"
+        case .invalidStandardResponse(let method, let reason):
+            return "Invalid \(method) response: \(reason)"
         }
     }
 }
@@ -358,6 +361,60 @@ struct ACPControlSessionMetadata: Sendable, Equatable {
     }
 }
 
+struct ACPStandardSessionListEntry: Sendable, Equatable {
+    let sessionID: String
+    let cwd: String?
+    let title: String?
+    let modelID: String?
+    let updatedAt: Date?
+}
+
+struct ACPStandardSessionListPage: Sendable, Equatable {
+    let sessions: [ACPStandardSessionListEntry]
+    let nextCursor: String?
+
+    static func parse(_ value: Any?) throws -> ACPStandardSessionListPage {
+        guard let object = value as? [String: Any],
+              let rawSessions = object["sessions"] as? [Any] else {
+            throw ACPControlError.invalidStandardResponse(
+                method: "session/list",
+                reason: "missing sessions array"
+            )
+        }
+        var sessions: [ACPStandardSessionListEntry] = []
+        sessions.reserveCapacity(rawSessions.count)
+        for raw in rawSessions {
+            guard let item = raw as? [String: Any],
+                  let sessionID = ACPControlParsing.nonemptyString(item["sessionId"])
+                    ?? ACPControlParsing.nonemptyString(item["session_id"])
+                    ?? ACPControlParsing.nonemptyString(item["id"]) else {
+                throw ACPControlError.invalidStandardResponse(
+                    method: "session/list",
+                    reason: "malformed session entry"
+                )
+            }
+            let metadata = item["_meta"] as? [String: Any]
+            let updatedText = ACPControlParsing.nonemptyString(item["updatedAt"])
+                ?? ACPControlParsing.nonemptyString(item["updated_at"])
+                ?? ACPControlParsing.nonemptyString(metadata?["updatedAt"])
+            sessions.append(ACPStandardSessionListEntry(
+                sessionID: sessionID,
+                cwd: ACPControlParsing.nonemptyString(item["cwd"]),
+                title: ACPControlParsing.nonemptyString(item["title"])
+                    ?? ACPControlParsing.nonemptyString(item["name"]),
+                modelID: ACPControlParsing.nonemptyString(item["modelId"])
+                    ?? ACPControlParsing.nonemptyString(metadata?["modelId"]),
+                updatedAt: updatedText.flatMap(ACPControlParsing.date)
+            ))
+        }
+        return ACPStandardSessionListPage(
+            sessions: sessions,
+            nextCursor: ACPControlParsing.nonemptyString(object["nextCursor"])
+                ?? ACPControlParsing.nonemptyString(object["next_cursor"])
+        )
+    }
+}
+
 struct ACPStoredUpdateEnvelope: Sendable, Equatable {
     let timestamp: Double?
     let method: String
@@ -420,6 +477,14 @@ struct ACPControlSessionUpdatePage: Sendable, Equatable {
 }
 
 enum ACPControlParsing {
+    private static let internetDateFormatter: ISO8601DateFormatter = {
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        return formatter
+    }()
+
+    private static let internetDateFormatterWithoutFractions = ISO8601DateFormatter()
+
     static func extensionPayload(_ value: Any?, method: ACPControlMethod) throws -> Any {
         guard let object = value as? [String: Any] else {
             throw ACPControlError.invalidResponse(method: method, reason: "expected an extension result object")
@@ -440,6 +505,11 @@ enum ACPControlParsing {
         guard let value = value as? String else { return nil }
         let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
         return trimmed.isEmpty ? nil : trimmed
+    }
+
+    static func date(_ value: String) -> Date? {
+        internetDateFormatter.date(from: value)
+            ?? internetDateFormatterWithoutFractions.date(from: value)
     }
 
     static func integer(_ value: Any?) -> Int? {
