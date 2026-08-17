@@ -575,6 +575,18 @@ struct SettingsValueState<Value: Equatable & Sendable>: Equatable, Sendable {
         lastOperationReceipt = receipt
     }
 
+    /// Reconciles a value changed by another successful persistence action in the same pane.
+    /// Used when deleting an object also clears a reference to it in the same atomic write.
+    mutating func reconcilePersisted(_ value: Value, preservingDraft draftValue: Value? = nil) {
+        configurationGeneration &+= 1
+        persisted = value
+        applied = value
+        draft = draftValue ?? value
+        validation = .valid
+        requiresRestart = live.map { $0 != value } ?? false
+        lastOperationReceipt = nil
+    }
+
     mutating func complete(receipt: SettingsApplyReceipt, live: Value?) {
         lastOperationReceipt = receipt
         self.live = live

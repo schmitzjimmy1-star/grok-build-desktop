@@ -61,8 +61,26 @@ enum CustomModelMetadataStore {
         defaults: UserDefaults = .standard
     ) {
         let metadata = Dictionary(uniqueKeysWithValues: models.map { ($0.id, CustomModelMetadata(model: $0)) })
+        save(metadata: metadata, defaults: defaults)
+    }
+
+    static func save(
+        metadata: [String: CustomModelMetadata],
+        defaults: UserDefaults = .standard
+    ) {
         guard let data = try? JSONEncoder().encode(metadata) else { return }
         defaults.set(data, forKey: defaultsKey)
+    }
+
+    static func mergingLegacy(
+        models: [CustomModel],
+        into existing: [String: CustomModelMetadata]
+    ) -> [String: CustomModelMetadata] {
+        var metadata = existing
+        for model in models where metadata[model.id] == nil {
+            metadata[model.id] = CustomModelMetadata(model: model)
+        }
+        return metadata
     }
 
     /// Imports legacy TOML hints once without overwriting newer sidecar values.
@@ -70,13 +88,9 @@ enum CustomModelMetadataStore {
         models: [CustomModel],
         defaults: UserDefaults = .standard
     ) {
-        var metadata = load(defaults: defaults)
-        var changed = false
-        for model in models where metadata[model.id] == nil {
-            metadata[model.id] = CustomModelMetadata(model: model)
-            changed = true
-        }
-        guard changed, let data = try? JSONEncoder().encode(metadata) else { return }
-        defaults.set(data, forKey: defaultsKey)
+        let existing = load(defaults: defaults)
+        let metadata = mergingLegacy(models: models, into: existing)
+        guard metadata != existing else { return }
+        save(metadata: metadata, defaults: defaults)
     }
 }

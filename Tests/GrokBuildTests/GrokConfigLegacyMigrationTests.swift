@@ -2,6 +2,92 @@ import XCTest
 @testable import GrokBuild
 
 final class GrokConfigLegacyMigrationTests: XCTestCase {
+    func testMigrationRefusesAdvancedReplacementBeforeUpdateWithoutSideEffects() throws {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("grokbuild-migration-late-advanced-\(UUID().uuidString)")
+        let configURL = directory.appendingPathComponent("config.toml")
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        let suiteName = "GrokBuildTests.lateAdvancedMigration.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defer {
+            defaults.removePersistentDomain(forName: suiteName)
+            try? FileManager.default.removeItem(at: directory)
+        }
+
+        let legacy = """
+        [plugins]
+        disabled_mcp_servers = ["legacy"]
+
+        [model.old]
+        model = "old"
+        base_url = "https://example.test/v1"
+        grokbuild_context_tokens = 200000
+        """
+        let advanced = """
+        [model.via-gateway]
+        model = "m"
+        model_provider = "gateway"
+
+        [model.via-gateway.extra_headers]
+        X-Team = "runtime-owned"
+
+        [model_providers.gateway]
+        base_url = "https://gateway.example/v1"
+        """
+        try legacy.write(to: configURL, atomically: true, encoding: .utf8)
+        let repository = GrokConfigRepository(configURL: configURL)
+
+        XCTAssertThrowsError(try GrokConfigLegacyMigration.run(
+            repository: repository,
+            defaults: defaults,
+            beforeUpdate: {
+                try advanced.write(to: configURL, atomically: true, encoding: .utf8)
+            }
+        ))
+
+        XCTAssertEqual(repository.read(), advanced)
+        XCTAssertTrue(CustomModelMetadataStore.load(defaults: defaults).isEmpty)
+        XCTAssertNil(defaults.object(forKey: GrokConfigLegacyMigration.removedPluginSettingBackupKey))
+    }
+
+    func testMigrationLeavesAdvancedModelConfigurationBytesUnchanged() throws {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("grokbuild-advanced-config-migration-\(UUID().uuidString)")
+        let configURL = directory.appendingPathComponent("config.toml")
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        let suiteName = "GrokBuildTests.advancedConfigMigration.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defer {
+            defaults.removePersistentDomain(forName: suiteName)
+            try? FileManager.default.removeItem(at: directory)
+        }
+
+        let original = """
+        [plugins]
+        disabled_mcp_servers = ["do-not-touch"]
+
+        [model.via-gateway]
+        model = "m"
+        model_provider = "gateway"
+        grokbuild_context_tokens = 200000
+
+        [model.via-gateway.extra_headers]
+        X-Model = "own"
+
+        [model_providers.gateway]
+        base_url = "https://gateway.example/v1"
+        """
+        try original.write(to: configURL, atomically: true, encoding: .utf8)
+        let repository = GrokConfigRepository(configURL: configURL)
+        let before = try Data(contentsOf: configURL)
+
+        try GrokConfigLegacyMigration.run(repository: repository, defaults: defaults)
+
+        XCTAssertEqual(try Data(contentsOf: configURL), before)
+        XCTAssertTrue(CustomModelMetadataStore.load(defaults: defaults).isEmpty)
+        XCTAssertNil(defaults.object(forKey: GrokConfigLegacyMigration.removedPluginSettingBackupKey))
+    }
+
     func testMigrationRemovesOnlyInvalidFieldsAndPreservesIntent() throws {
         let directory = FileManager.default.temporaryDirectory
             .appendingPathComponent("grokbuild-config-migration-\(UUID().uuidString)")

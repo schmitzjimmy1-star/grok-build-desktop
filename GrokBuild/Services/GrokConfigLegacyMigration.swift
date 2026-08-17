@@ -5,23 +5,55 @@ import Foundation
 enum GrokConfigLegacyMigration {
     static let removedPluginSettingBackupKey = "grokbuild.legacyDisabledMCPServersBackup.v1"
 
+    private struct Plan {
+        var contents: String
+        var metadata: [String: CustomModelMetadata]
+        var removedPluginSetting: [String]
+    }
+
     static func run(
         repository: GrokConfigRepository = .shared,
-        defaults: UserDefaults = .standard
+        defaults: UserDefaults = .standard,
+        beforeUpdate: () throws -> Void = {}
     ) throws {
         let existing = repository.read()
 
-        if containsLegacyModelMetadata(existing) {
-            CustomModelMetadataStore.mergeLegacy(
-                models: CustomModelStore.parse(existing).models,
-                defaults: defaults
-            )
+        // Advanced model/provider structures are Grok CLI-owned. Even this one-time migration
+        // must stand down: applying line-based model cleanup around nested TOML would violate the
+        // same ownership boundary as an interactive Settings save.
+        guard CustomModelStore.writeSafety(for: existing).canWrite else {
+            try repository.enforceSecurePermissionsIfPresent()
+            return
         }
 
-        let sanitized = sanitize(existing, defaults: defaults)
-        if sanitized != existing {
+        let currentMetadata = CustomModelMetadataStore.load(defaults: defaults)
+        let initialPlan = plan(for: existing, existingMetadata: currentMetadata)
+        if initialPlan.contents != existing {
+            try beforeUpdate()
+            var committedPlan: Plan?
             try repository.update { latest in
-                sanitize(latest, defaults: defaults)
+                let safety = CustomModelStore.writeSafety(for: latest)
+                guard safety.canWrite else {
+                    throw CustomModelStore.SaveError.advancedConfiguration(safety)
+                }
+                let plan = plan(for: latest, existingMetadata: currentMetadata)
+                committedPlan = plan
+                return plan.contents
+            }
+
+            // Sidecars follow the authoritative config write. A late CLI replacement or
+            // rejected advanced snapshot therefore cannot leave half-migrated metadata behind.
+            if let committedPlan {
+                if committedPlan.metadata != currentMetadata {
+                    CustomModelMetadataStore.save(metadata: committedPlan.metadata, defaults: defaults)
+                }
+                if !committedPlan.removedPluginSetting.isEmpty,
+                   defaults.object(forKey: removedPluginSettingBackupKey) == nil {
+                    defaults.set(
+                        committedPlan.removedPluginSetting.joined(separator: "\n"),
+                        forKey: removedPluginSettingBackupKey
+                    )
+                }
             }
         } else {
             try repository.enforceSecurePermissionsIfPresent()
@@ -29,6 +61,37 @@ enum GrokConfigLegacyMigration {
     }
 
     static func sanitize(_ contents: String, defaults: UserDefaults? = nil) -> String {
+        let existingMetadata = defaults.map { CustomModelMetadataStore.load(defaults: $0) } ?? [:]
+        let migration = plan(for: contents, existingMetadata: existingMetadata)
+        if let defaults {
+            if migration.metadata != existingMetadata {
+                CustomModelMetadataStore.save(metadata: migration.metadata, defaults: defaults)
+            }
+            if !migration.removedPluginSetting.isEmpty,
+               defaults.object(forKey: removedPluginSettingBackupKey) == nil {
+                defaults.set(
+                    migration.removedPluginSetting.joined(separator: "\n"),
+                    forKey: removedPluginSettingBackupKey
+                )
+            }
+        }
+        return migration.contents
+    }
+
+    private static func plan(
+        for contents: String,
+        existingMetadata: [String: CustomModelMetadata]
+    ) -> Plan {
+        let metadata: [String: CustomModelMetadata]
+        if containsLegacyModelMetadata(contents) {
+            metadata = CustomModelMetadataStore.mergingLegacy(
+                models: CustomModelStore.parse(contents).models,
+                into: existingMetadata
+            )
+        } else {
+            metadata = existingMetadata
+        }
+
         var migrated = contents
         for flavor in CompatFlavor.allCases {
             if let enabled = CompatConfigStore.legacyEnabled(flavor, contents: migrated) {
@@ -37,13 +100,12 @@ enum GrokConfigLegacyMigration {
         }
 
         let pluginCleanup = removingLegacyPluginSetting(from: migrated)
-        if let defaults,
-           !pluginCleanup.removed.isEmpty,
-           defaults.object(forKey: removedPluginSettingBackupKey) == nil {
-            defaults.set(pluginCleanup.removed.joined(separator: "\n"), forKey: removedPluginSettingBackupKey)
-        }
         let withoutLegacyMetadata = removingLegacyModelMetadata(from: pluginCleanup.contents)
-        return projectingNativeModelFields(into: withoutLegacyMetadata, defaults: defaults)
+        return Plan(
+            contents: projectingNativeModelFields(into: withoutLegacyMetadata, metadata: metadata),
+            metadata: metadata,
+            removedPluginSetting: pluginCleanup.removed
+        )
     }
 
     private static func containsLegacyModelMetadata(_ contents: String) -> Bool {
@@ -120,9 +182,8 @@ enum GrokConfigLegacyMigration {
     /// Responses backend for the known OpenAI model that rejects the default chat endpoint.
     private static func projectingNativeModelFields(
         into contents: String,
-        defaults: UserDefaults?
+        metadata: [String: CustomModelMetadata]
     ) -> String {
-        let metadata = defaults.map { CustomModelMetadataStore.load(defaults: $0) } ?? [:]
         var output: [String] = []
         var currentModelID: String?
         var fields: [String: String] = [:]

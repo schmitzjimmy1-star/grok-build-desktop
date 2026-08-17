@@ -45,6 +45,8 @@ final class CustomModelsSettingsViewModel {
     var persistedDefaultModelID = ""
     var errorMessage: String?
     var statusMessage: String?
+    var modelConfigWriteSafety: CustomModelStore.WriteSafety = .writable
+    var hasLoadedModelConfiguration = false
     var migrationIssues: [ProviderCredentialMigrationIssue] = []
     var validationResults: [String: ProviderValidationResult] = [:]
     var fetchedModels: [String: [FetchedModel]] = [:]

@@ -424,6 +424,20 @@ final class SettingsTabTests: XCTestCase {
         XCTAssertFalse(state.persisted.cursorIntegrationEnabled)
     }
 
+    func testPersistenceReconciliationCanPreserveADifferentDraft() {
+        var state = SettingsValueState<String>.unloaded(default: "removed-model")
+        state.load(persisted: "removed-model", applied: "removed-model", live: nil)
+        state.updateDraft("replacement-model")
+
+        state.reconcilePersisted("", preservingDraft: "replacement-model")
+
+        XCTAssertEqual(state.persisted, "")
+        XCTAssertEqual(state.applied, "")
+        XCTAssertEqual(state.draft, "replacement-model")
+        XCTAssertTrue(state.isDirty)
+        XCTAssertEqual(state.configurationGeneration, 1)
+    }
+
     func testSliceSevenPanesUseSharedStateExplicitScopesAndRowReceipts() throws {
         let repositoryRoot = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent()

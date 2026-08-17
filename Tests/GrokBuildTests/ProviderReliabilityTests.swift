@@ -154,6 +154,94 @@ final class ProviderReliabilityTests: XCTestCase {
         XCTAssertNil(try store.credential(for: "second"))
     }
 
+    func testReadOnlyProviderLoadDoesNotMigrateModelCredential() throws {
+        let suiteName = "GrokBuildTests.readOnlyProviderLoad.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        let store = InMemoryProviderCredentialStore()
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let provider = Provider(id: "gateway", name: "Gateway", baseURL: "https://gateway.test/v1")
+        // Provider encoding intentionally contains no credential; this seeds metadata only.
+        defaults.set(try JSONEncoder().encode([provider]), forKey: "grokbuild.customModelProviders")
+        let model = CustomModel(
+            id: "via-gateway",
+            model: "m",
+            baseURL: provider.baseURL,
+            apiKey: "legacy-model-key"
+        )
+
+        let result = ProviderStore.loadResult(
+            defaults: defaults,
+            credentialStore: store,
+            migrationModels: [model],
+            enforceConfigPermissions: false,
+            allowCredentialMigration: false
+        )
+
+        XCTAssertEqual(result.providers.map(\.id), ["gateway"])
+        XCTAssertNil(try store.credential(for: "gateway"))
+    }
+
+    func testProviderModelTransactionRollsBackWhenConfigBecomesAdvanced() throws {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("grokbuild-provider-config-transaction-\(UUID().uuidString)")
+        let configURL = directory.appendingPathComponent("config.toml")
+        let repository = GrokConfigRepository(configURL: configURL)
+        let suiteName = "GrokBuildTests.providerConfigTransaction.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        let credentialStore = InMemoryProviderCredentialStore()
+        defer {
+            defaults.removePersistentDomain(forName: suiteName)
+            try? FileManager.default.removeItem(at: directory)
+        }
+
+        let previous = Provider(
+            id: "gateway",
+            name: "Gateway",
+            baseURL: "https://old.example/v1",
+            apiKey: "old-key"
+        )
+        let updated = Provider(
+            id: "gateway",
+            name: "Gateway",
+            baseURL: "https://new.example/v1",
+            apiKey: "new-key"
+        )
+        try ProviderStore.save([previous], defaults: defaults, credentialStore: credentialStore)
+        try repository.update { _ in "[models]\ndefault = \"grok-build\"\n" }
+        let externalAdvancedConfig = """
+        [model.via-gateway]
+        model = "m"
+        model_provider = "gateway"
+
+        [model_providers.gateway]
+        base_url = "https://gateway.example/v1"
+        """
+
+        XCTAssertThrowsError(try ProviderModelConfigurationTransaction.save(
+            previousProviders: [previous],
+            updatedProviders: [updated],
+            models: [],
+            defaultModelID: "grok-build",
+            repository: repository,
+            providerDefaults: defaults,
+            modelDefaults: defaults,
+            credentialStore: credentialStore,
+            beforeConfigSave: {
+                try externalAdvancedConfig.write(to: configURL, atomically: true, encoding: .utf8)
+            }
+        ))
+
+        XCTAssertEqual(try credentialStore.credential(for: "gateway"), "old-key")
+        let restored = ProviderStore.loadResult(
+            defaults: defaults,
+            credentialStore: credentialStore,
+            migrationModels: [],
+            enforceConfigPermissions: false
+        ).providers
+        XCTAssertEqual(restored.map(\.baseURL), ["https://old.example/v1"])
+        XCTAssertEqual(try String(contentsOf: configURL, encoding: .utf8), externalAdvancedConfig)
+    }
+
     func testProviderRequestUsesOnlyConfiguredAuthenticationHeaders() throws {
         let bearer = Provider(
             id: "bearer",
