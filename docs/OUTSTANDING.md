@@ -61,6 +61,16 @@ model configuration stays CLI-owned until a semantic representation or official
 mutation contract exists. Live config/credential changes, CLI upgrades, provider
 calls, billable prompts, ACP control work, and Slice 2 are out of scope.
 
+Candidate receipt: code-bearing commit `53328c1d5559002e06afc909cecd415de6cc9999`.
+Two independent Sol Medium reviewers returned **COMMIT**; focused contracts
+passed 101/101, and both the clean full suite and candidate `make ship` passed
+914/914. The installed candidate carries exact clean stamp `53328c1d`, matching
+dist/install SHA-256 `3289d021…d4fe8c`, Team `DD2GCQJVB4`, deep/strict signing,
+and no quarantine. Nonbillable installed Computer Use verified Models and exact
+App identity without a provider check, prompt, backend start, credential access,
+live config mutation, or CLI upgrade. Native Quit produced two process-zero
+samples. Publication and merged-main closeout remain; Slice 2 stays locked.
+
 ## Visual Quiet — 2026-08-15 (Phase 6 welcome extraction authorized)
 
 Authorized spec is

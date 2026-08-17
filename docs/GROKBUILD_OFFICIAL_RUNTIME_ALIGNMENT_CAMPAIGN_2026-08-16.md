@@ -185,3 +185,25 @@ contract, not more destructive string rewriting.
    merge normally with `--match-head-commit`.
 6. Fast-forward local `main`, run merged-main `make ship`, reconcile parity, and
    take two process-zero samples. Only then may Slice 2 be considered.
+
+### Candidate receipt — 2026-08-17
+
+Code-bearing candidate `53328c1d5559002e06afc909cecd415de6cc9999`
+contains Slice 1. Two independent Sol Medium reviewers returned **COMMIT** after
+the final exact-diff pass. Focused config/settings contracts passed **101/101**;
+the clean full suite and candidate `make ship` each passed **914/914**.
+
+Candidate `make ship` installed exact clean stamp `53328c1d`, with matching
+dist/install executable SHA-256
+`3289d021dee6075ba6119adc55272b91a03b4e83b60871b47f7caed749d4fe8c`,
+Team `DD2GCQJVB4`, deep/strict signing, and no quarantine. Installed Computer
+Use verified the real `/Applications/GrokBuild.app` Models pane, ordinary flat
+configuration presentation, disabled unchanged Apply, and App identity
+`codex/official-runtime-s1-model-config-safety @ 53328c1d`. Native Quit produced
+process-zero samples at `2026-08-17T04:05:06-0400` and
+`2026-08-17T04:05:14-0400`.
+
+No prompt, provider validation/fetch, backend process, credential read/write,
+live `~/.grok/config.toml` mutation, or CLI upgrade occurred. Installed CLI
+authority remains `grok 1.0.4 (d846eb93d94d) [stable]`. Publication and
+merged-main closeout remain; Slice 2 is still locked.
