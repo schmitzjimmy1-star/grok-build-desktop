@@ -29,35 +29,31 @@
 > User conversations, historical acceptance evidence, unnamed sessions that were not
 > created by the current slice, and unrelated browser/app state are protected.
 >
-> **Current campaign:** 2026-08-15 Visual Quiet —
-> [`docs/GROKBUILD_VISUAL_QUIET_CAMPAIGN_2026-08-15.md`](GROKBUILD_VISUAL_QUIET_CAMPAIGN_2026-08-15.md).
-> Phases 1–3 (cool tokens, Path A welcome chips, and Codex-style overlay/
-> quiet chrome) are verified and merged. Phase 3 merged as `bb01c58` (PR
-> #104) and its clean merged-main install, bounded packet, exact cleanup,
-> and process-zero closeout are recorded below. **P3C composer/task-strip
-> density is merged. P3D live activity composition is accepted and merged as
-> `1e11be2` in PR #107; required CI, merged-main install, and installed UI
-> closeout passed. Phase 4's semantic accent sweep is accepted and merged as
-> `d62a396` in PR #109; required CI, merged-main install, billable acceptance,
-> exact cleanup, and process-zero closeout passed. Phase 5 icon/bundle honesty is
-> accepted on code-bearing candidate `ade5794`; its single final publication PR
-> closes the original Visual Quiet campaign as `b03f2f6` in PR #111. Jimmy
-> authorized **P5F verification closeout** on 2026-08-15. P5F is accepted on
-> code-bearing candidate `b410a80`: the transient running task-contract bar is
-> gone, the four-worker receipt-layout hang found by paid stress is fixed, and
-> fresh paid acceptance used 2,139,970 settled parent tokens. Its single final
-> publication PR merged as `bb2b395` in PR #112. Jimmy authorized optional
-> **Phase 6 welcome extraction** on 2026-08-15; it is limited to moving the
-> already-quiet welcome and its private intent chip into their own view file,
-> updating source-location tests/docs, nonbillable installed parity, and the
-> standard exact-head publication closeout. The broad `ChatView` split remains
-> deferred and unauthorized.
-> Leftover closeout Phases 1–2 are merged on `main` as `7a3006d`
-> (PR #102). Leftover Phase 3 (`ChatView` split) stays deferred.
-> Install path is `make ship` on this Mac.
+> **Current campaign:** 2026-08-16 Official Runtime Alignment —
+> [`docs/GROKBUILD_OFFICIAL_RUNTIME_ALIGNMENT_CAMPAIGN_2026-08-16.md`](GROKBUILD_OFFICIAL_RUNTIME_ALIGNMENT_CAMPAIGN_2026-08-16.md).
+> Jimmy authorized this merge-per-slice campaign on 2026-08-16. Slice 0 is the
+> only active implementation scope: restore Grok CLI ownership of filesystem and
+> terminal execution, fail unexpected reverse-execution requests closed, update
+> exact contracts/docs, and complete the standard commit, installed-app, PR,
+> exact-head CI, merge, merged-main install, and process-zero gates. No later
+> slice may begin before Slice 0 merges and closes.
 >
-> Prior campaigns: 2026-08-14 Residual Closeout (Phases 0–6) complete and merged as `4613bde` (PR #94);
+> Prior campaigns: 2026-08-15 Visual Quiet complete and merged through `3947136` (PR #113);
+> 2026-08-14 Residual Closeout (Phases 0–6) complete and merged as `4613bde` (PR #94);
 > 2026-08-13 campaign (Slices 0–7) closed at merge `c0895ee` (PR #86).
+
+## Official Runtime Alignment — 2026-08-16 (Slice 0 active)
+
+Authorized spec is
+[`docs/GROKBUILD_OFFICIAL_RUNTIME_ALIGNMENT_CAMPAIGN_2026-08-16.md`](GROKBUILD_OFFICIAL_RUNTIME_ALIGNMENT_CAMPAIGN_2026-08-16.md).
+Slice 0 is limited to the CLI execution boundary. Its acceptance must prove the
+ACP initialize packet advertises filesystem read/write and terminal capabilities
+as false, hostile reverse requests cannot write a file or launch a process, the
+installed app remains usable without a provider send, required tests and
+`make ship` pass on a clean candidate, and the exact PR head merges before Slice
+1 begins. CLI upgrades, model/provider configuration, credential access, private
+session migration, typed control-plane additions, and billable prompts are out of
+scope.
 
 ## Visual Quiet — 2026-08-15 (Phase 6 welcome extraction authorized)
 

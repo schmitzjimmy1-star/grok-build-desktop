@@ -551,7 +551,6 @@ enum AcpEvent: @unchecked Sendable {
     case subagentSpawned(SubagentSpawnedEvent)
     case subagentFinished(SubagentFinishedEvent)
     case plan(payload: [String: Any])
-    case planFileContent(String)
     case exitPlanRequest(ExitPlanRequest)
     case questionRequest(QuestionRequest)
     case permissionRequest(PermissionRequest)
@@ -720,7 +719,6 @@ final class GrokProcess: @unchecked Sendable {
     private let writeLock = NSLock()
     private let turnCompletionLock = NSLock()
     private let cancellationWriteQueue = DispatchQueue(label: "com.grokbuild.acp-cancellation-write")
-    private let terminalManager = ACPClientTerminalManager()
     private(set) var state: GrokProcessState = .idle
     private(set) var currentWorkspace: Workspace?
 
@@ -748,10 +746,12 @@ final class GrokProcess: @unchecked Sendable {
     /// failure; capping prevents a chatty long-lived CLI from growing memory.
     private static let startupStderrLimit = 64 * 1024
 
-    /// Kept test-visible so capability claims cannot drift away from request handlers again.
+    /// GrokBuild is a same-host ACP client. The Grok CLI must retain filesystem and terminal
+    /// execution so its process sandbox, deny rules, and hooks surround the actual operation.
+    /// Kept test-visible so the wire claim cannot drift back toward client-side execution.
     static let clientCapabilities: [String: Any] = [
-        "fs": ["readTextFile": true, "writeTextFile": true],
-        "terminal": true
+        "fs": ["readTextFile": false, "writeTextFile": false],
+        "terminal": false
     ]
 
     private var nextRequestId = 1
@@ -810,8 +810,6 @@ final class GrokProcess: @unchecked Sendable {
     // Populated from initialize modelState so we use real models from grok CLI
     private(set) var availableModelsInfo: [(id: String, name: String, contextTokens: Int?)] = []
     private(set) var availableSlashCommands: [SlashCommand] = []
-    private var latestPlanFileContent = ""
-
     // MARK: - Parsing helpers (instance for access to state if needed)
 
     /// Internal for contract tests: tool status/output must survive ACP parsing into the UI model.
@@ -1454,7 +1452,6 @@ final class GrokProcess: @unchecked Sendable {
         readerTask = nil
         stdout?.fileHandleForReading.readabilityHandler = nil
         stderr?.fileHandleForReading.readabilityHandler = nil
-        await terminalManager.releaseAllAndEscalate()
         finishTurnCompletionWait()
         try? closingStdin?.close()
 
@@ -2299,7 +2296,7 @@ final class GrokProcess: @unchecked Sendable {
                 let req = ExitPlanRequest(
                     id: requestIdHash(rid),
                     sessionId: requestSessionID,
-                    planText: planText.isEmpty ? latestPlanFileContent : planText,
+                    planText: planText,
                     isResolved: false,
                     verdict: nil
                 )
@@ -2326,26 +2323,7 @@ final class GrokProcess: @unchecked Sendable {
                 return
             }
 
-            switch method {
-            case "fs/read_text_file":
-                if let p = params["path"] as? String { handleFsRead(rid: rid, path: p) }
-            case "fs/write_text_file":
-                if let p = params["path"] as? String, let c = params["content"] as? String {
-                    handleFsWrite(rid: rid, path: p, content: c)
-                }
-            case "terminal/create":
-                handleTerminalCreate(rid: rid, params: params)
-            case "terminal/output":
-                handleTerminalOutput(rid: rid, params: params)
-            case "terminal/wait_for_exit":
-                handleTerminalWaitForExit(rid: rid, params: params)
-            case "terminal/kill":
-                handleTerminalKill(rid: rid, params: params)
-            case "terminal/release":
-                handleTerminalRelease(rid: rid, params: params)
-            default:
-                if let r = rid { _ = writeJson(["jsonrpc": "2.0", "id": r, "result": [:]]) }
-            }
+            rejectUnsupportedClientMethod(rid: rid, method: method)
             return
         }
 
@@ -2833,112 +2811,16 @@ final class GrokProcess: @unchecked Sendable {
         )
     }
 
-    private func handleFsRead(rid: Any?, path: String) {
-        do {
-            let c = try String(contentsOf: resolvedProjectURL(path), encoding: .utf8)
-            respond(rid: rid, result: ["content": c])
-        } catch {
-            _ = writeJson(["jsonrpc": "2.0", "id": rid as Any, "error": ["code": -32001, "message": error.localizedDescription]])
-        }
-    }
-
-    private func handleFsWrite(rid: Any?, path: String, content: String) {
-        if isPlanFileWrite(path) {
-            latestPlanFileContent = content
-            acpEventContinuation?.yield(.planFileContent(content))
-        }
-        do {
-            let url = resolvedProjectURL(path)
-            try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
-            try content.write(to: url, atomically: true, encoding: .utf8)
-            respond(rid: rid)
-        } catch {
-            _ = writeJson(["jsonrpc": "2.0", "id": rid as Any, "error": ["code": -32001, "message": error.localizedDescription]])
-        }
-    }
-
-    private func handleTerminalCreate(rid: Any?, params: [String: Any]) {
-        do {
-            guard let command = params["command"] as? String else {
-                throw ACPClientTerminalManager.TerminalError.invalidCommand
-            }
-            let arguments = params["args"] as? [String] ?? []
-            let environment = (params["env"] as? [[String: Any]] ?? []).reduce(into: [String: String]()) {
-                result, entry in
-                if let name = entry["name"] as? String,
-                   let value = entry["value"] as? String,
-                   !name.isEmpty {
-                    result[name] = value
-                }
-            }
-            let requestedLimit = (params["outputByteLimit"] as? NSNumber)?.intValue
-            let terminalID = try terminalManager.create(
-                command: command,
-                arguments: arguments,
-                environment: environment,
-                workingDirectory: params["cwd"] as? String ?? currentWorkspace?.path.path,
-                outputByteLimit: requestedLimit
-            )
-            respond(rid: rid, result: ["terminalId": terminalID])
-        } catch {
-            respond(rid: rid, error: error)
-        }
-    }
-
-    private func handleTerminalOutput(rid: Any?, params: [String: Any]) {
-        do {
-            let terminalID = try terminalID(from: params)
-            respond(rid: rid, result: try terminalManager.snapshot(terminalID: terminalID).jsonObject)
-        } catch {
-            respond(rid: rid, error: error)
-        }
-    }
-
-    private func handleTerminalWaitForExit(rid: Any?, params: [String: Any]) {
-        do {
-            let terminalID = try terminalID(from: params)
-            Task { [weak self] in
-                guard let self else { return }
-                do {
-                    let status = try await self.terminalManager.waitForExit(terminalID: terminalID)
-                    self.respond(rid: rid, result: status.jsonObject)
-                } catch {
-                    self.respond(rid: rid, error: error)
-                }
-            }
-        } catch {
-            respond(rid: rid, error: error)
-        }
-    }
-
-    private func handleTerminalKill(rid: Any?, params: [String: Any]) {
-        do {
-            try terminalManager.kill(terminalID: try terminalID(from: params))
-            respond(rid: rid)
-        } catch {
-            respond(rid: rid, error: error)
-        }
-    }
-
-    private func handleTerminalRelease(rid: Any?, params: [String: Any]) {
-        do {
-            try terminalManager.release(terminalID: try terminalID(from: params))
-            respond(rid: rid)
-        } catch {
-            respond(rid: rid, error: error)
-        }
-    }
-
-    private func terminalID(from params: [String: Any]) throws -> String {
-        guard let terminalID = params["terminalId"] as? String, !terminalID.isEmpty else {
-            throw ACPClientTerminalManager.TerminalError.unknownTerminal("missing terminalId")
-        }
-        return terminalID
-    }
-
-    private func isPlanFileWrite(_ path: String) -> Bool {
-        let normalized = path.replacingOccurrences(of: "\\", with: "/").lowercased()
-        return normalized.hasSuffix("/plan.md") || normalized.contains("/sessions/") && normalized.hasSuffix("plan.md")
+    private func rejectUnsupportedClientMethod(rid: Any?, method: String) {
+        respond(
+            rid: rid,
+            error: NSError(
+                domain: "GrokBuild.ACPClient",
+                code: -32601,
+                userInfo: [NSLocalizedDescriptionKey: "Method not found: \(method)"]
+            ),
+            code: -32601
+        )
     }
 
     private func exitPlanText(from params: [String: Any]) -> String {
@@ -2946,15 +2828,6 @@ final class GrokProcess: @unchecked Sendable {
         if let plan = params["plan"] as? String, !plan.isEmpty { return plan }
         if let input = params["input"] as? [String: Any], let plan = input["plan"] as? String { return plan }
         return ""
-    }
-
-    private func resolvedProjectURL(_ path: String) -> URL {
-        if path.hasPrefix("/") {
-            return URL(fileURLWithPath: path)
-        }
-        return (currentWorkspace?.path ?? URL(fileURLWithPath: FileManager.default.currentDirectoryPath))
-            .appendingPathComponent(path)
-            .standardizedFileURL
     }
 
     // MARK: - Utils
