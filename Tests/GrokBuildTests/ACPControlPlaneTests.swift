@@ -198,20 +198,6 @@ final class ACPControlPlaneTests: XCTestCase {
     func testKnown104RefusesExtensionWithoutPuttingItOnTheWire() async throws {
         let fixture = try makeFakeAgent(version: "1.0.4", behavior: .official)
         defer { try? FileManager.default.removeItem(at: fixture.root) }
-        let legacyRoot = fixture.root.appendingPathComponent("legacy-sessions", isDirectory: true)
-        let childDirectory = legacyRoot
-            .appendingPathComponent(
-                GrokSessionTranscriptImporter.encodeWorkspacePath(fixture.root),
-                isDirectory: true
-            )
-            .appendingPathComponent("child-old", isDirectory: true)
-        try FileManager.default.createDirectory(at: childDirectory, withIntermediateDirectories: true)
-        try #"{"method":"session/update","params":{"sessionId":"child-old","update":{"sessionUpdate":"tool_call_update","toolCallId":"legacy-tool","status":"completed","rawInput":{"toolName":"legacy_tool"}}}}"#
-            .write(
-                to: childDirectory.appendingPathComponent("updates.jsonl"),
-                atomically: true,
-                encoding: .utf8
-            )
         GrokProcess.cliOverrideForTests = fixture.script
         defer { GrokProcess.cliOverrideForTests = nil }
 
@@ -225,12 +211,11 @@ final class ACPControlPlaneTests: XCTestCase {
                 )
             }
             XCTAssertEqual(process.acpControlCapabilityState(for: .sessionUsage), .unsupported)
-            let legacyReceipts = await process.fetchChildToolReceipts(
+            let unsupportedReceipts = await process.fetchChildToolReceipts(
                 childID: "child-old",
-                expectedToolCallCount: 1,
-                legacySessionsRoot: legacyRoot
+                expectedToolCallCount: 1
             )
-            XCTAssertEqual(legacyReceipts?.map(\.id), ["legacy-tool"])
+            XCTAssertNil(unsupportedReceipts)
         }
         await process.shutdown()
 
@@ -277,6 +262,34 @@ final class ACPControlPlaneTests: XCTestCase {
                 .invalidRequest("limit must be 1...512")
             )
         }
+    }
+
+    func testStandardSessionListParsesTypedInventoryAndCursor() throws {
+        let page = try ACPStandardSessionListPage.parse([
+            "sessions": [
+                [
+                    "sessionId": "session-1",
+                    "cwd": "/tmp/project",
+                    "title": "Repair replay",
+                    "modelId": "grok-4.5",
+                    "updatedAt": "2026-08-17T12:34:56Z",
+                ],
+                [
+                    "id": "session-2",
+                    "_meta": [
+                        "modelId": "open-model",
+                        "updatedAt": "2026-08-17T12:35:56.123Z",
+                    ],
+                ],
+            ],
+            "nextCursor": "page-2",
+        ])
+
+        XCTAssertEqual(page.sessions.map(\.sessionID), ["session-1", "session-2"])
+        XCTAssertEqual(page.sessions.map(\.modelID), ["grok-4.5", "open-model"])
+        XCTAssertNotNil(page.sessions[0].updatedAt)
+        XCTAssertNotNil(page.sessions[1].updatedAt)
+        XCTAssertEqual(page.nextCursor, "page-2")
     }
 
     private enum FakeBehavior {

@@ -1,5 +1,8 @@
 import Foundation
 
+// Debug-only shadow parser retained for Slice 3 parity fixtures. The shipped app
+// has no private root-session storage reader; production truth comes from ACP.
+#if DEBUG
 /// Imports user/assistant text from grok CLI on-disk `chat_history.jsonl` files.
 enum GrokSessionTranscriptImporter {
     static let parserSchemaVersion = 1
@@ -638,3 +641,4 @@ enum GrokSessionTranscriptImporter {
         return result.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 }
+#endif

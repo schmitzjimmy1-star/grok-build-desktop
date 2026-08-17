@@ -2,51 +2,10 @@ import XCTest
 @testable import GrokBuild
 
 final class ACPClientContractTests: XCTestCase {
-    func testChildSessionLedgerImportsTypedTerminalReceiptsWithoutTrustingChildProse() throws {
+    func testChildSessionLedgerRejectsTraversalIdentity() async {
         let process = GrokProcess()
-        let root = FileManager.default.temporaryDirectory
-            .appendingPathComponent("grok-child-receipts-\(UUID().uuidString)", isDirectory: true)
-        defer { try? FileManager.default.removeItem(at: root) }
-        let workspace = URL(fileURLWithPath: "/tmp/grok child receipt workspace % ready")
-        let childID = "child-123"
-        let childDirectory = root
-            .appendingPathComponent(GrokSessionTranscriptImporter.encodeWorkspacePath(workspace), isDirectory: true)
-            .appendingPathComponent(childID, isDirectory: true)
-        try FileManager.default.createDirectory(at: childDirectory, withIntermediateDirectories: true)
-        let rows = [
-            #"{"method":"session/update","params":{"sessionId":"child-123","update":{"sessionUpdate":"agent_message_chunk","content":{"type":"text","text":"I used invented__browser_tool successfully"}}}}"#,
-            #"{"method":"session/update","params":{"sessionId":"child-123","update":{"sessionUpdate":"tool_call_update","toolCallId":"search-1","status":"completed","rawInput":{"variant":"SearchTool","query":"grokbuild-browser__browser_open_url"},"rawOutput":{"type":"SearchTool","content":"{\"results\":[{\"server\":\"grokbuild-browser\",\"tools\":[{\"tool_name\":\"grokbuild-browser__browser_open_url\"}]}]}"}}}}"#,
-            #"{"method":"session/update","params":{"sessionId":"child-123","update":{"sessionUpdate":"tool_call_update","toolCallId":"use-1","status":"completed","rawInput":{"variant":"UseTool","tool_name":"grokbuild-browser__browser_open_url"},"rawOutput":{"type":"MCP","server_name":"grokbuild-browser","tool_name":"browser_open_url","output":{"OkayOutput":"marker"}}}}}"#,
-            #"{"method":"session/update","params":{"sessionId":"other-child","update":{"sessionUpdate":"tool_call_update","toolCallId":"foreign","status":"completed","rawInput":{"variant":"UseTool","tool_name":"foreign__tool"}}}}"#,
-        ]
-        try rows.joined(separator: "\n").write(
-            to: childDirectory.appendingPathComponent("updates.jsonl"),
-            atomically: true,
-            encoding: .utf8
-        )
-
-        let receipts = try XCTUnwrap(process.loadLegacyChildToolReceipts(
-            childID: childID,
-            workspacePath: workspace,
-            sessionsRoot: root
-        ))
-
-        XCTAssertEqual(receipts.count, 2)
-        XCTAssertEqual(receipts.map(\.mcpReceiptRole), [.discovery, .invocation])
-        XCTAssertEqual(receipts[0].discoveredQualifiedToolNames, ["grokbuild-browser__browser_open_url"])
-        XCTAssertEqual(receipts[1].qualifiedToolName, "grokbuild-browser__browser_open_url")
-        XCTAssertEqual(receipts[1].status, .succeeded)
-        XCTAssertFalse(receipts.contains { $0.qualifiedToolName == "invented__browser_tool" })
-        XCTAssertFalse(receipts.contains { $0.qualifiedToolName == "foreign__tool" })
-    }
-
-    func testChildSessionLedgerRejectsTraversalIdentity() {
-        let process = GrokProcess()
-        XCTAssertNil(process.loadLegacyChildToolReceipts(
-            childID: "../other",
-            workspacePath: URL(fileURLWithPath: "/tmp/workspace"),
-            sessionsRoot: FileManager.default.temporaryDirectory
-        ))
+        let receipts = await process.fetchChildToolReceipts(childID: "../other")
+        XCTAssertNil(receipts)
     }
 
     func testMirroredChildToolReceiptsNeverBecomeParentTools() {
@@ -774,6 +733,149 @@ final class ACPClientContractTests: XCTestCase {
         XCTAssertEqual(loaded.currentMode, .chat)
         XCTAssertEqual(loaded.availableModes, [.chat, .agent])
         await loaded.stop()
+    }
+
+    @MainActor
+    func testSessionLoadCapturesTypedReplayWithoutRoutingHistoricalLiveEvents() async throws {
+        let fixtureRoot = FileManager.default.temporaryDirectory
+            .appendingPathComponent("grokbuild-load-replay-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: fixtureRoot, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: fixtureRoot) }
+        let scriptURL = fixtureRoot.appendingPathComponent("fake-grok")
+        let rpcLogURL = fixtureRoot.appendingPathComponent("rpc.log")
+        let script = """
+        #!/bin/sh
+        while IFS= read -r line; do
+          printf '%s\n' "$line" >> '\(rpcLogURL.path)'
+          id=$(printf '%s' "$line" | sed -E 's/.*"id":([0-9]+).*/\\1/')
+          case "$line" in
+            *'"method":"initialize"'*)
+              printf '{"jsonrpc":"2.0","id":%s,"result":{"_meta":{"agentVersion":"1.0.4"}}}\n' "$id"
+              ;;
+            *'"method":"session/load"'*)
+              printf '{"jsonrpc":"2.0","method":"session/update","params":{"sessionId":"replay-session","_meta":{"isReplay":true},"update":{"sessionUpdate":"user_message_chunk","content":{"type":"text","text":"saved prompt"}}}}\n'
+              printf '{"jsonrpc":"2.0","method":"session/update","params":{"sessionId":"replay-session","_meta":{"isReplay":true},"update":{"sessionUpdate":"agent_thought_chunk","content":{"type":"text","text":"historical thought"}}}}\n'
+              printf '{"jsonrpc":"2.0","method":"x.ai/session/update","params":{"sessionId":"replay-session","_meta":{"isReplay":true},"update":{"sessionUpdate":"agent_message_chunk","content":{"type":"text","text":"saved answer"}}}}\n'
+              printf '{"jsonrpc":"2.0","id":%s,"result":{"models":{"currentModelId":"grok-4.5","availableModels":[]}}}\n' "$id"
+              ;;
+            *'"method":"session/new"'*)
+              printf '{"jsonrpc":"2.0","id":%s,"result":{"sessionId":"fresh-after-replay-mismatch","models":{"currentModelId":"grok-4.5","availableModels":[]}}}\n' "$id"
+              ;;
+            *'"method":"session/set_model"'*)
+              printf '{"jsonrpc":"2.0","id":%s,"result":{"_meta":{"model":{"Ok":"grok-4.5"}}}}\n' "$id"
+              ;;
+            *'"method":"session/prompt"'*)
+              printf '{"jsonrpc":"2.0","method":"x.ai/session_notification","params":{"sessionId":"fresh-after-replay-mismatch","update":{"sessionUpdate":"turn_completed","stop_reason":"end_turn","usage":{"totalTokens":1,"modelCalls":1,"numTurns":1}}}}\n'
+              printf '{"jsonrpc":"2.0","id":%s,"result":{}}\n' "$id"
+              ;;
+          esac
+        done
+        """
+        try script.write(to: scriptURL, atomically: true, encoding: .utf8)
+        try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: scriptURL.path)
+
+        GrokProcess.cliOverrideForTests = scriptURL
+        defer { GrokProcess.cliOverrideForTests = nil }
+        let process = GrokProcess()
+        await process.start(
+            workspace: Workspace(name: "fixture", path: fixtureRoot),
+            options: GrokLaunchOptions(
+                localTabID: UUID(),
+                resumeSessionID: "replay-session"
+            )
+        )
+
+        XCTAssertEqual(process.state, .ready)
+        let generation = try XCTUnwrap(process.activeProcessGeneration)
+        let replay = try XCTUnwrap(process.takeLoadedSessionReplay(
+            backendSessionID: "replay-session",
+            processGeneration: generation
+        ))
+        XCTAssertEqual(replay.messages.map(\.role), [.user, .assistant])
+        XCTAssertEqual(replay.messages.map(\.content), ["saved prompt", "saved answer"])
+        XCTAssertEqual(replay.replayEventCount, 3)
+
+        var iterator = process.acpEventStream.makeAsyncIterator()
+        var routedHistoricalConversation = false
+        for _ in 0..<4 {
+            let event = await withTaskGroup(of: AcpEvent?.self) { group in
+                group.addTask { await iterator.next() }
+                group.addTask {
+                    try? await Task.sleep(for: .milliseconds(50))
+                    return nil
+                }
+                let first = await group.next() ?? nil
+                group.cancelAll()
+                return first
+            }
+            guard let event else { break }
+            switch event {
+            case .messageChunk, .thoughtChunk, .toolCall, .toolCallUpdate, .turnCompleted:
+                routedHistoricalConversation = true
+            default:
+                continue
+            }
+        }
+        XCTAssertFalse(
+            routedHistoricalConversation,
+            "historical replay must not enter the live ChatStore event stream"
+        )
+        await process.stop()
+
+        let integrityKey = Data("slice-3-replay-key".utf8)
+        let verifiedStore = ChatStore(continuityKeyOverride: integrityKey)
+        verifiedStore.bindTabSession(
+            UUID(),
+            savedModel: "grok-4.5",
+            savedGrokSessionID: "replay-session"
+        )
+        verifiedStore.restorePersistedMessages([
+            Message(role: .user, content: "saved prompt"),
+        ])
+        await verifiedStore.start(
+            workspace: Workspace(name: "fixture", path: fixtureRoot),
+            preserveMessages: true
+        )
+        XCTAssertEqual(verifiedStore.connectionState, .ready)
+        XCTAssertEqual(verifiedStore.continuityStatus, .verified)
+        XCTAssertEqual(
+            verifiedStore.messages.filter { $0.role != .system }.map(\.content),
+            ["saved prompt", "saved answer"]
+        )
+        await verifiedStore.shutdown()
+
+        let divergedStore = ChatStore(continuityKeyOverride: integrityKey)
+        divergedStore.bindTabSession(
+            UUID(),
+            savedModel: "grok-4.5",
+            savedGrokSessionID: "replay-session"
+        )
+        divergedStore.restorePersistedMessages([
+            Message(role: .user, content: "different local prompt"),
+        ])
+        await divergedStore.start(
+            workspace: Workspace(name: "fixture", path: fixtureRoot),
+            preserveMessages: true
+        )
+        XCTAssertEqual(divergedStore.continuityStatus, .diverged)
+        XCTAssertEqual(divergedStore.connectionState, .ready)
+        XCTAssertEqual(
+            divergedStore.messages.filter { $0.role != .system }.map(\.content),
+            ["different local prompt"]
+        )
+        let acceptedFreshSend = await divergedStore.send("new work")
+        XCTAssertTrue(acceptedFreshSend)
+        for _ in 0..<100 where divergedStore.connectionState != .ready {
+            try await Task.sleep(for: .milliseconds(20))
+        }
+        XCTAssertEqual(divergedStore.connectionState, .ready)
+        XCTAssertEqual(divergedStore.process.sessionId, "fresh-after-replay-mismatch")
+        XCTAssertEqual(divergedStore.continuityStatus, .recoveryForked)
+        let rpc = try String(contentsOf: rpcLogURL, encoding: .utf8)
+        XCTAssertEqual(rpc.components(separatedBy: "\"method\":\"session/load\"").count - 1, 3)
+        XCTAssertEqual(rpc.components(separatedBy: "\"method\":\"session/new\"").count - 1, 1)
+        XCTAssertEqual(rpc.components(separatedBy: "\"method\":\"session/prompt\"").count - 1, 1)
+        await divergedStore.shutdown()
     }
 
     func testNoModesSessionNewDoesNotInventPlanOrYolo() async throws {

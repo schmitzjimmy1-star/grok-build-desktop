@@ -198,6 +198,139 @@ enum GrokSessionReplay {
         }
         return false
     }
+
+    static func transcript(
+        backendSessionID: String,
+        processGeneration: UInt64,
+        envelopes: [ACPStoredUpdateEnvelope]
+    ) -> ACPSessionReplayTranscript {
+        var accumulator = ACPSessionReplayAccumulator(
+            backendSessionID: backendSessionID,
+            processGeneration: processGeneration
+        )
+        for envelope in envelopes {
+            guard ["session/update", "x.ai/session/update", "_x.ai/session/update"]
+                    .contains(envelope.method),
+                  envelope.sessionID == backendSessionID,
+                  let update = envelope.foundationUpdate else { continue }
+            accumulator.consume(update: update)
+        }
+        return accumulator.snapshot()
+    }
+}
+
+/// A bounded, presentation-only transcript captured from the typed replay that
+/// `session/load` delivers before its response. It is never routed through the
+/// live event stream, so historical tool/thinking/completion events cannot
+/// re-drive ChatStore state.
+struct ACPSessionReplayTranscript: Sendable, Equatable {
+    let backendSessionID: String
+    let processGeneration: UInt64
+    let messages: [Message]
+    let replayEventCount: Int
+}
+
+private struct ACPSessionReplayAccumulator {
+    let backendSessionID: String
+    let processGeneration: UInt64
+    private(set) var messages: [Message] = []
+    private(set) var replayEventCount = 0
+    private var lastUpdateWasUserChunk = false
+    private var currentUserPromptIndex: Int?
+
+    init(backendSessionID: String, processGeneration: UInt64) {
+        self.backendSessionID = backendSessionID
+        self.processGeneration = processGeneration
+    }
+
+    mutating func consume(update: [String: Any]) {
+        replayEventCount += 1
+        guard let kind = update["sessionUpdate"] as? String else { return }
+        switch kind {
+        case "user_message_chunk":
+            guard !Self.isHostTurn(update), let text = Self.text(update), !text.isEmpty else {
+                lastUpdateWasUserChunk = false
+                return
+            }
+            let promptIndex = Self.promptIndex(update)
+            let opensNewPrompt = !lastUpdateWasUserChunk
+                || (promptIndex != nil && promptIndex != currentUserPromptIndex)
+            append(text: text, role: .user, forceNewMessage: opensNewPrompt)
+            lastUpdateWasUserChunk = true
+            currentUserPromptIndex = opensNewPrompt
+                ? promptIndex
+                : (promptIndex ?? currentUserPromptIndex)
+        case "agent_message_chunk":
+            guard !Self.isHostTurn(update), let text = Self.text(update), !text.isEmpty else {
+                lastUpdateWasUserChunk = false
+                return
+            }
+            append(text: text, role: .assistant)
+            lastUpdateWasUserChunk = false
+            currentUserPromptIndex = nil
+        default:
+            lastUpdateWasUserChunk = false
+            return
+        }
+    }
+
+    func snapshot() -> ACPSessionReplayTranscript {
+        ACPSessionReplayTranscript(
+            backendSessionID: backendSessionID,
+            processGeneration: processGeneration,
+            messages: messages.filter {
+                !$0.content.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            },
+            replayEventCount: replayEventCount
+        )
+    }
+
+    private mutating func append(
+        text: String,
+        role: MessageRole,
+        forceNewMessage: Bool = false
+    ) {
+        if !forceNewMessage,
+           let last = messages.indices.last,
+           messages[last].role == role {
+            messages[last].content += text
+            return
+        }
+        messages.append(Message(
+            role: role,
+            content: text,
+            provenance: TranscriptMessageProvenance(
+                source: .backendRoot,
+                backendSessionID: backendSessionID,
+                rowIndex: messages.count,
+                agent: "root",
+                opaqueContentTag: nil
+            )
+        ))
+    }
+
+    private static func text(_ update: [String: Any]) -> String? {
+        (update["content"] as? [String: Any])?["text"] as? String
+    }
+
+    private static func isHostTurn(_ update: [String: Any]) -> Bool {
+        let contentMeta = ((update["content"] as? [String: Any])?["_meta"] as? [String: Any])
+        let updateMeta = update["_meta"] as? [String: Any]
+        return contentMeta?["hostTurn"] as? Bool == true
+            || updateMeta?["hostTurn"] as? Bool == true
+    }
+
+    private static func promptIndex(_ update: [String: Any]) -> Int? {
+        let contentMeta = (update["content"] as? [String: Any])?["_meta"] as? [String: Any]
+        let updateMeta = update["_meta"] as? [String: Any]
+        return strictInteger(contentMeta?["promptIndex"] ?? updateMeta?["promptIndex"])
+    }
+
+    private static func strictInteger(_ value: Any?) -> Int? {
+        guard let number = value as? NSNumber,
+              CFGetTypeID(number) != CFBooleanGetTypeID() else { return nil }
+        return Int(number.stringValue)
+    }
 }
 
 /// Classifies ACP `session/load` failures from the grok CLI.
@@ -718,6 +851,7 @@ final class GrokProcess: @unchecked Sendable {
     private let ioLock = NSLock()
     private let writeLock = NSLock()
     private let turnCompletionLock = NSLock()
+    private let replayLock = NSLock()
     private let cancellationWriteQueue = DispatchQueue(label: "com.grokbuild.acp-cancellation-write")
     private(set) var state: GrokProcessState = .idle
     private(set) var currentWorkspace: Workspace?
@@ -774,6 +908,8 @@ final class GrokProcess: @unchecked Sendable {
     /// captured from a live user-message receipt and consumed by turn completion;
     /// replayed load events never populate it.
     private var activeBackendPromptIndex: Int?
+    private var activeSessionReplay: ACPSessionReplayAccumulator?
+    private var completedSessionReplay: ACPSessionReplayTranscript?
     private(set) var sessionId: String?
     private(set) var launchReceipt: GrokLaunchReceipt?
     private(set) var mcpServerStatuses: [MCPServerStatus] = []
@@ -1219,6 +1355,7 @@ final class GrokProcess: @unchecked Sendable {
         currentWorkspace = workspace
         sessionId = nil
         activeBackendPromptIndex = nil
+        resetSessionReplayCapture()
         launchReceipt = nil
         sessionLoadStartedFreshFallback = false
         staleResumeSessionID = nil
@@ -2022,6 +2159,72 @@ final class GrokProcess: @unchecked Sendable {
         return page
     }
 
+    func fetchACPStandardSessionList(
+        cwd: URL,
+        cursor: String? = nil
+    ) async throws -> ACPStandardSessionListPage {
+        guard let generation = activeProcessGeneration else {
+            throw ACPControlError.noActiveConnection
+        }
+        var params: [String: Any] = [
+            "cwd": cwd.path,
+            "additionalDirectories": [],
+        ]
+        if let cursor, !cursor.isEmpty { params["cursor"] = cursor }
+        let page = try ACPStandardSessionListPage.parse(
+            try await sendRequestWithTimeout(
+                method: "session/list",
+                params: params,
+                seconds: 3
+            )
+        )
+        guard activeProcessGeneration == generation else {
+            throw ACPControlError.staleConnection
+        }
+        return page
+    }
+
+    /// Bounded official history for recovery review/relink. The xAI extension
+    /// filters rewound branches before returning envelopes. Oversized histories
+    /// fail closed instead of returning a misleading prefix.
+    func fetchOfficialSessionReplayTranscript(
+        sessionID: String,
+        maximumUpdates: Int = 4_096
+    ) async throws -> ACPSessionReplayTranscript {
+        guard let generation = activeProcessGeneration else {
+            throw ACPControlError.noActiveConnection
+        }
+        let pageLimit = ACPControlSessionUpdatePage.maximumLimit
+        var offset = 0
+        var envelopes: [ACPStoredUpdateEnvelope] = []
+        var hasMore = true
+        while offset < maximumUpdates {
+            let page = try await fetchACPSessionUpdates(
+                sessionID: sessionID,
+                offset: offset,
+                limit: min(pageLimit, maximumUpdates - offset)
+            )
+            envelopes.append(contentsOf: page.updates)
+            offset += page.updates.count
+            hasMore = page.hasMore
+            if !hasMore || page.updates.isEmpty { break }
+        }
+        guard activeProcessGeneration == generation else {
+            throw ACPControlError.staleConnection
+        }
+        guard !hasMore else {
+            throw ACPControlError.invalidResponse(
+                method: .sessionUpdates,
+                reason: "recovery history exceeded the 4096-update safety bound"
+            )
+        }
+        return GrokSessionReplay.transcript(
+            backendSessionID: sessionID,
+            processGeneration: generation,
+            envelopes: envelopes
+        )
+    }
+
     private func sendACPControlRequest(
         _ method: ACPControlMethod,
         params: [String: Any],
@@ -2251,14 +2454,93 @@ final class GrokProcess: @unchecked Sendable {
     }
 
     private func loadSession(id: String, workspace: Workspace, mcpServers: [MCPServerConfig]) async throws {
-        let res = try await sendRequestWithTimeout(method: "session/load", params: [
-            "sessionId": id,
-            "cwd": workspace.path.path,
-            "mcpServers": mcpServers.map(\.jsonObject)
-        ]) as? [String: Any]
         sessionId = id
+        guard let generation = activeProcessGeneration else {
+            throw ACPControlError.noActiveConnection
+        }
+        beginSessionReplayCapture(backendSessionID: id, processGeneration: generation)
+        let res: [String: Any]?
+        do {
+            res = try await sendRequestWithTimeout(method: "session/load", params: [
+                "sessionId": id,
+                "cwd": workspace.path.path,
+                "mcpServers": mcpServers.map(\.jsonObject)
+            ]) as? [String: Any]
+        } catch {
+            cancelSessionReplayCapture(backendSessionID: id, processGeneration: generation)
+            sessionId = nil
+            throw error
+        }
+        finishSessionReplayCapture(backendSessionID: id, processGeneration: generation)
         updateModels(from: res?["models"] as? [String: Any])
         applySessionModes(from: res)
+    }
+
+    private func beginSessionReplayCapture(backendSessionID: String, processGeneration: UInt64) {
+        replayLock.lock()
+        completedSessionReplay = nil
+        activeSessionReplay = ACPSessionReplayAccumulator(
+            backendSessionID: backendSessionID,
+            processGeneration: processGeneration
+        )
+        replayLock.unlock()
+    }
+
+    private func resetSessionReplayCapture() {
+        replayLock.lock()
+        activeSessionReplay = nil
+        completedSessionReplay = nil
+        replayLock.unlock()
+    }
+
+    private func recordSessionReplay(
+        update: [String: Any],
+        eventSessionID: String?,
+        processGeneration: UInt64
+    ) {
+        replayLock.lock()
+        defer { replayLock.unlock() }
+        guard var capture = activeSessionReplay,
+              capture.processGeneration == processGeneration,
+              eventSessionID == capture.backendSessionID else { return }
+        capture.consume(update: update)
+        activeSessionReplay = capture
+    }
+
+    private func finishSessionReplayCapture(backendSessionID: String, processGeneration: UInt64) {
+        replayLock.lock()
+        defer { replayLock.unlock() }
+        guard let capture = activeSessionReplay,
+              capture.backendSessionID == backendSessionID,
+              capture.processGeneration == processGeneration else { return }
+        completedSessionReplay = capture.snapshot()
+        activeSessionReplay = nil
+    }
+
+    private func cancelSessionReplayCapture(backendSessionID: String, processGeneration: UInt64) {
+        replayLock.lock()
+        if activeSessionReplay?.backendSessionID == backendSessionID,
+           activeSessionReplay?.processGeneration == processGeneration {
+            activeSessionReplay = nil
+        }
+        completedSessionReplay = nil
+        replayLock.unlock()
+    }
+
+    /// Consumes only the replay captured for this exact loaded backend and live
+    /// process generation. A stale tab/process can never borrow another load's
+    /// transcript candidate.
+    func takeLoadedSessionReplay(
+        backendSessionID: String,
+        processGeneration: UInt64
+    ) -> ACPSessionReplayTranscript? {
+        replayLock.lock()
+        defer { replayLock.unlock() }
+        guard let replay = completedSessionReplay,
+              replay.backendSessionID == backendSessionID,
+              replay.processGeneration == processGeneration else { return nil }
+        completedSessionReplay = nil
+        return replay
     }
 
     private func applySessionModes(from result: [String: Any]?) {
@@ -2358,7 +2640,9 @@ final class GrokProcess: @unchecked Sendable {
             }
 
             if method == "session/update"
+                || method == "x.ai/session/update"
                 || method == "_x.ai/session/update"
+                || method == "x.ai/session_notification"
                 || method == "_x.ai/session_notification" {
                 let update = params["update"] as? [String: Any]
                 let updateSessionID = Self.eventSessionID(from: params, update: update)
@@ -2367,6 +2651,13 @@ final class GrokProcess: @unchecked Sendable {
                     currentSessionID: sessionId
                 )
                 let isReplay = GrokSessionReplay.isReplaySessionUpdate(params: params, update: update)
+                if isReplay, let update {
+                    recordSessionReplay(
+                        update: update,
+                        eventSessionID: updateSessionID,
+                        processGeneration: processGeneration
+                    )
+                }
                 if let promptIndex = Self.backendPromptIndex(
                     eventSessionID: updateSessionID,
                     currentSessionID: sessionId,
@@ -2782,12 +3073,11 @@ final class GrokProcess: @unchecked Sendable {
     /// Fetches terminal child tool receipts through the official 1.0.5
     /// `x.ai/session/updates` extension on this exact per-tab ACP connection.
     /// The walk is capped at four 256-row pages. Known-old/method-not-found or
-    /// malformed transport falls back to the legacy private reader only until
-    /// Slice 3 completes its parity and recovery migration.
+    /// malformed transport returns unavailable instead of scraping the CLI's
+    /// private session directory.
     func fetchChildToolReceipts(
         childID: String,
-        expectedToolCallCount: Int? = nil,
-        legacySessionsRoot: URL? = nil
+        expectedToolCallCount: Int? = nil
     ) async -> [ChildToolReceipt]? {
         guard childID.range(of: #"^[A-Za-z0-9-]+$"#, options: .regularExpression) != nil else {
             return nil
@@ -2821,13 +3111,11 @@ final class GrokProcess: @unchecked Sendable {
                 childID: childID
             )
         } catch {
-            // Never attach an old child's fallback evidence after this tab has
-            // crossed into a different ACP process generation.
+            // Never attach evidence after this tab has crossed into a different
+            // ACP process generation. Unsupported official history is honestly
+            // unavailable; GrokBuild does not reach around ACP into CLI storage.
             guard activeProcessGeneration == requestedGeneration else { return nil }
-            return loadLegacyChildToolReceipts(
-                childID: childID,
-                sessionsRoot: legacySessionsRoot
-            )
+            return nil
         }
     }
 
@@ -2841,47 +3129,6 @@ final class GrokProcess: @unchecked Sendable {
             guard envelope.method == "session/update" || envelope.method == "_x.ai/session/update",
                   envelope.sessionID == childID,
                   let update = envelope.foundationUpdate,
-                  update["sessionUpdate"] as? String == "tool_call_update",
-                  let tool = parseToolCall(from: update),
-                  let status = tool.terminalStatus else { continue }
-            if receipts[tool.id] == nil { order.append(tool.id) }
-            receipts[tool.id] = ChildToolReceipt(
-                id: tool.id,
-                title: tool.title,
-                status: status,
-                mcpReceiptRole: tool.mcpReceiptRole,
-                qualifiedToolName: tool.qualifiedToolName,
-                discoveredQualifiedToolNames: tool.discoveredQualifiedToolNames
-            )
-        }
-        return order.compactMap { receipts[$0] }
-    }
-
-    /// Compatibility-only private storage reader. New code must use
-    /// `fetchChildToolReceipts`; Slice 3 owns removal after parity acceptance.
-    func loadLegacyChildToolReceipts(
-        childID: String,
-        workspacePath: URL? = nil,
-        sessionsRoot: URL? = nil
-    ) -> [ChildToolReceipt]? {
-        guard childID.range(of: #"^[A-Za-z0-9-]+$"#, options: .regularExpression) != nil,
-              let workspacePath = workspacePath ?? currentWorkspace?.path else { return nil }
-        let root = sessionsRoot ?? FileManager.default.homeDirectoryForCurrentUser
-            .appendingPathComponent(".grok/sessions", isDirectory: true)
-        let updatesURL = root
-            .appendingPathComponent(GrokSessionTranscriptImporter.encodeWorkspacePath(workspacePath), isDirectory: true)
-            .appendingPathComponent(childID, isDirectory: true)
-            .appendingPathComponent("updates.jsonl")
-        guard let text = try? String(contentsOf: updatesURL, encoding: .utf8) else { return nil }
-
-        var order: [String] = []
-        var receipts: [String: ChildToolReceipt] = [:]
-        for line in text.split(whereSeparator: \.isNewline) {
-            guard let data = String(line).data(using: .utf8),
-                  let row = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-                  let params = row["params"] as? [String: Any],
-                  (params["sessionId"] as? String ?? params["session_id"] as? String) == childID,
-                  let update = params["update"] as? [String: Any],
                   update["sessionUpdate"] as? String == "tool_call_update",
                   let tool = parseToolCall(from: update),
                   let status = tool.terminalStatus else { continue }

@@ -1092,10 +1092,8 @@ final class ChatStore {
     private var closedTurnAssistantID: UUID?
     private var closedTurnHasAuthoritativeHistory = false
     private var pendingLateChunkPersistence = false
-    /// Successful completion is authoritative immediately, but backend-tail
-    /// reconciliation waits until already-received text has visibly drained.
-    /// Otherwise one large final ACP chunk bypasses the paced reveal and snaps in.
-    private var pendingCompletionReconciliation = false
+    /// Successful completion is authoritative immediately; paced presentation
+    /// still waits for already-received text to drain before settling the turn.
     private var firstChunkInterval: GrokBuildPerformanceInterval?
     /// Local monotonic latency paired with the exact authoritative completion
     /// receipt before it enters the bounded model-observation store.
@@ -1259,7 +1257,7 @@ final class ChatStore {
 
     @discardableResult
     func verifyContinuityBeforeResume(backendID: String? = nil) async -> SessionContinuityStatus {
-        guard let workspace = currentWorkspace else {
+        guard currentWorkspace != nil else {
             continuityReceipt = Self.localOnlyContinuityReceipt(localMessageCount: messages.count)
             persistedContinuityReceipt = continuityReceipt
             continuityBackendID = nil
@@ -1274,82 +1272,61 @@ final class ChatStore {
         }
 
         let expectedTabID = tabSessionID
-        let expectedWorkspaceID = workspace.id
+        let expectedWorkspaceID = currentWorkspace?.id
         let completeLocalSnapshot = messages
         let localSnapshot = boundForkLedgerEntry?.localMessagesForBackendVerification(messages)
             ?? completeLocalSnapshot
         let continuityKeyOverride = continuityKeyOverride
         continuityBackendID = targetBackendID
         continuityReceipt = Self.verifyingContinuityReceipt(localMessageCount: localSnapshot.count)
-
-        let verification = await Task.detached(priority: .userInitiated) {
-            let historyURL = GrokSessionTranscriptImporter.chatHistoryURL(
-                workspacePath: workspace.path,
-                grokSessionID: targetBackendID
+        let processGeneration = process.activeProcessGeneration
+        let replay = processGeneration.flatMap {
+            process.takeLoadedSessionReplay(
+                backendSessionID: targetBackendID,
+                processGeneration: $0
             )
-            guard let historyURL else {
-                return SessionContinuityVerification(
-                    receipt: SessionContinuityReceipt(
-                        status: .backendMissing,
-                        reason: .backendHistoryMissing,
-                        normalizationVersion: VersionedOpaqueTag.transcriptNormalizationVersion,
-                        authenticationSchemaVersion: VersionedOpaqueTag.transcriptAuthenticationSchemaVersion,
-                        localMessageCount: localSnapshot.count,
-                        backendMessageCount: 0,
-                        matchingPrefixCount: 0,
-                        localTranscriptTag: nil,
-                        backendTranscriptTag: nil,
-                        verifiedAt: Date()
-                    ),
-                    backendMessages: []
+        }
+        let verification = await Task.detached(priority: .userInitiated) {
+            guard let replay else {
+                return SessionTranscriptRecovery.failedContinuityVerification(
+                    localMessages: localSnapshot,
+                    status: .verificationIncomplete,
+                    reason: .boundedReadIncomplete
                 )
             }
             do {
                 guard let key = try (continuityKeyOverride
                     ?? KeychainSessionLifecycleIntegrityKeyProvider().existingKey()) else {
-                    return SessionContinuityVerification(
-                        receipt: SessionContinuityReceipt(
-                            status: .verificationIncomplete,
-                            reason: .integrityKeyUnavailable,
-                            normalizationVersion: VersionedOpaqueTag.transcriptNormalizationVersion,
-                            authenticationSchemaVersion: VersionedOpaqueTag.transcriptAuthenticationSchemaVersion,
-                            localMessageCount: localSnapshot.count,
-                            backendMessageCount: 0,
-                            matchingPrefixCount: 0,
-                            localTranscriptTag: nil,
-                            backendTranscriptTag: nil,
-                            verifiedAt: Date()
-                        ),
-                        backendMessages: []
-                    )
-                }
-                return SessionTranscriptRecovery.verifyContinuity(
-                    localMessages: localSnapshot,
-                    backendHistoryURL: historyURL,
-                    key: key
-                )
-            } catch {
-                return SessionContinuityVerification(
-                    receipt: SessionContinuityReceipt(
+                    return SessionTranscriptRecovery.failedContinuityVerification(
+                        localMessages: localSnapshot,
                         status: .verificationIncomplete,
                         reason: .integrityKeyUnavailable,
-                        normalizationVersion: VersionedOpaqueTag.transcriptNormalizationVersion,
-                        authenticationSchemaVersion: VersionedOpaqueTag.transcriptAuthenticationSchemaVersion,
-                        localMessageCount: localSnapshot.count,
-                        backendMessageCount: 0,
-                        matchingPrefixCount: 0,
-                        localTranscriptTag: nil,
-                        backendTranscriptTag: nil,
-                        verifiedAt: Date()
+                        backendMessages: replay.messages
+                    )
+                }
+                return SessionContinuityVerification(
+                    receipt: SessionTranscriptRecovery.verifyContinuity(
+                        localMessages: localSnapshot,
+                        backendMessages: replay.messages,
+                        key: key
                     ),
-                    backendMessages: []
+                    backendMessages: replay.messages
+                )
+            } catch {
+                return SessionTranscriptRecovery.failedContinuityVerification(
+                    localMessages: localSnapshot,
+                    status: .verificationIncomplete,
+                    reason: .integrityKeyUnavailable,
+                    backendMessages: replay.messages
                 )
             }
         }.value
 
         guard tabSessionID == expectedTabID,
               currentWorkspace?.id == expectedWorkspaceID,
-              continuityBackendID == targetBackendID else {
+              continuityBackendID == targetBackendID,
+              process.activeProcessGeneration == processGeneration,
+              process.sessionId == targetBackendID else {
             return continuityStatus
         }
 
@@ -1357,7 +1334,7 @@ final class ChatStore {
             verification.receipt,
             localTabID: expectedTabID,
             backendID: targetBackendID,
-            processGeneration: nil
+            processGeneration: processGeneration
         )
         continuityReceipt = identifiedReceipt
         persistedContinuityReceipt = identifiedReceipt
@@ -1394,8 +1371,8 @@ final class ChatStore {
         return verification.receipt.status
     }
 
-    /// Load review-only candidates after an explicit Relink action. This bounded scan
-    /// never runs during startup and never mutates the current binding.
+    /// Load review-only candidates through standard ACP inventory plus the official
+    /// xAI update extension. This never scans the CLI's private session directory.
     func reviewRecoveryCandidates() async {
         guard let workspace = currentWorkspace else {
             recoveryCandidateError = "Select a project before reviewing histories."
@@ -1405,37 +1382,106 @@ final class ChatStore {
         let expectedWorkspaceID = workspace.id
         let localSnapshot = messages
         let continuityKeyOverride = continuityKeyOverride
+        guard let expectedGeneration = process.activeProcessGeneration else {
+            recoveryCandidateError = "Connect Grok before reviewing recovery histories. No private session files were scanned."
+            return
+        }
         isLoadingRecoveryCandidates = true
         recoveryCandidateError = nil
         recoveryCandidates = []
 
-        let result = await Task.detached(priority: .userInitiated) {
+        let key: Data? = await Task.detached(priority: .userInitiated) {
             do {
-                guard let key = try (continuityKeyOverride
-                    ?? KeychainSessionLifecycleIntegrityKeyProvider().existingKey()) else {
-                    return Result<[SessionRecoveryCandidate], Error>.failure(
-                        SessionRecoveryReviewError.integrityKeyUnavailable
-                    )
-                }
-                return .success(SessionTranscriptRecovery.recoveryCandidates(
-                    workspacePath: workspace.path,
-                    workspaceName: workspace.displayName,
-                    localMessages: localSnapshot,
-                    key: key
-                ))
+                return try (continuityKeyOverride
+                    ?? KeychainSessionLifecycleIntegrityKeyProvider().existingKey())
             } catch {
-                return .failure(error)
+                return nil
             }
         }.value
+        var result: Result<[SessionRecoveryCandidate], Error>
+        if let key {
+            do {
+                var entries: [ACPStandardSessionListEntry] = []
+                var cursor: String?
+                var seenCursors: Set<String> = []
+                var pageCount = 0
+                repeat {
+                    let page = try await process.fetchACPStandardSessionList(
+                        cwd: workspace.path,
+                        cursor: cursor
+                    )
+                    pageCount += 1
+                    entries.append(contentsOf: page.sessions)
+                    if let nextCursor = page.nextCursor {
+                        guard seenCursors.insert(nextCursor).inserted else {
+                            throw ACPControlError.invalidStandardResponse(
+                                method: "session/list",
+                                reason: "cursor repeated before the bounded review completed"
+                            )
+                        }
+                    }
+                    cursor = page.nextCursor
+                } while cursor != nil && entries.count < 50 && pageCount < 5
+                if cursor != nil && entries.count < 50 {
+                    throw ACPControlError.invalidStandardResponse(
+                        method: "session/list",
+                        reason: "review exceeded the five-page inventory bound"
+                    )
+                }
+
+                var candidates: [SessionRecoveryCandidate] = []
+                let deadline = Date().addingTimeInterval(5)
+                for entry in entries.prefix(50) {
+                    guard Date() < deadline,
+                          process.activeProcessGeneration == expectedGeneration else { break }
+                    guard let replay = try? await process.fetchOfficialSessionReplayTranscript(
+                        sessionID: entry.sessionID,
+                        maximumUpdates: ACPControlSessionUpdatePage.maximumLimit
+                    ), let candidate = SessionTranscriptRecovery.recoveryCandidate(
+                        backendID: entry.sessionID,
+                        workspaceName: workspace.displayName,
+                        modelID: entry.modelID,
+                        lastActivity: entry.updatedAt ?? .distantPast,
+                        localMessages: localSnapshot,
+                        backendMessages: replay.messages,
+                        key: key
+                    ) else { continue }
+                    candidates.append(candidate)
+                }
+                result = .success(candidates.sorted { lhs, rhs in
+                    if lhs.isRelinkable != rhs.isRelinkable { return lhs.isRelinkable }
+                    if lhs.matchingTurnCount != rhs.matchingTurnCount {
+                        return lhs.matchingTurnCount > rhs.matchingTurnCount
+                    }
+                    if lhs.mismatchCount != rhs.mismatchCount {
+                        return lhs.mismatchCount < rhs.mismatchCount
+                    }
+                    if lhs.lastActivity != rhs.lastActivity { return lhs.lastActivity > rhs.lastActivity }
+                    return lhs.backendID < rhs.backendID
+                })
+            } catch {
+                result = .failure(error)
+            }
+        } else {
+            result = .failure(SessionRecoveryReviewError.integrityKeyUnavailable)
+        }
 
         guard tabSessionID == expectedTabID,
-              currentWorkspace?.id == expectedWorkspaceID else { return }
+              currentWorkspace?.id == expectedWorkspaceID else {
+            isLoadingRecoveryCandidates = false
+            return
+        }
+        guard process.activeProcessGeneration == expectedGeneration else {
+            isLoadingRecoveryCandidates = false
+            recoveryCandidateError = "The recovery connection changed before review completed. Retry on the current session."
+            return
+        }
         isLoadingRecoveryCandidates = false
         switch result {
         case .success(let candidates):
             recoveryCandidates = candidates
-        case .failure:
-            recoveryCandidateError = "Recovery histories could not be reviewed safely."
+        case .failure(let error):
+            recoveryCandidateError = "Official ACP recovery review is unavailable: \(error.localizedDescription)"
         }
     }
 
@@ -1456,6 +1502,15 @@ final class ChatStore {
             }
             return SessionTranscriptRecovery.transcriptSequenceTag(localSnapshot, key: key)
         }.value
+        guard SessionSendGate.decision(for: continuityStatus) == .block,
+              (continuityBackendID ?? savedGrokSessionID) == predecessor else {
+            return false
+        }
+        // A replay mismatch may deliberately keep the exact loaded process alive
+        // for official read-only recovery review. Detach it before clearing the
+        // binding so Continue as New can never dispatch to the rejected backend.
+        await process.stop()
+        connectionState = .idle
         pendingRecoveryIntent = SessionPendingRecoveryIntent(
             action: .continueAsNew,
             predecessorBackendID: predecessor,
@@ -1485,38 +1540,58 @@ final class ChatStore {
     @discardableResult
     func relink(to candidate: SessionRecoveryCandidate) async -> Bool {
         guard candidate.isRelinkable,
-              let workspace = currentWorkspace,
-              let historyURL = GrokSessionTranscriptImporter.chatHistoryURL(
-                  workspacePath: workspace.path,
-                  grokSessionID: candidate.backendID
-              ) else { return false }
+              let workspace = currentWorkspace else { return false }
         let expectedTabID = tabSessionID
         let expectedWorkspaceID = workspace.id
         let predecessor = continuityBackendID ?? savedGrokSessionID
         let localSnapshot = messages
         let continuityKeyOverride = continuityKeyOverride
-        let verification = await Task.detached(priority: .userInitiated) {
+        guard let reviewGeneration = process.activeProcessGeneration,
+              let reviewBackendID = process.sessionId else { return false }
+        guard let replay = try? await process.fetchOfficialSessionReplayTranscript(
+            sessionID: candidate.backendID
+        ) else {
+            recoveryCandidateError = "That history could not be re-fetched through the current ACP connection. No binding changed."
+            return false
+        }
+        let verification: SessionContinuityVerification? = await Task.detached(priority: .userInitiated) {
+            () -> SessionContinuityVerification? in
+            let key: Data
             do {
-                guard let key = try (continuityKeyOverride
+                guard let resolved = try (continuityKeyOverride
                     ?? KeychainSessionLifecycleIntegrityKeyProvider().existingKey()) else {
-                    return nil as SessionContinuityVerification?
+                    return nil
                 }
-                return SessionTranscriptRecovery.verifyContinuity(
-                    localMessages: localSnapshot,
-                    backendHistoryURL: historyURL,
-                    key: key
-                )
+                key = resolved
             } catch {
                 return nil
             }
+            return SessionContinuityVerification(
+                receipt: SessionTranscriptRecovery.verifyContinuity(
+                    localMessages: localSnapshot,
+                    backendMessages: replay.messages,
+                    key: key
+                ),
+                backendMessages: replay.messages
+            )
         }.value
         guard tabSessionID == expectedTabID,
               currentWorkspace?.id == expectedWorkspaceID,
+              process.activeProcessGeneration == reviewGeneration,
+              process.sessionId == reviewBackendID,
               let verification,
               [.verified, .backendOnly].contains(verification.receipt.status) else {
             recoveryCandidateError = "That history no longer verifies against this tab. No binding changed."
             return false
         }
+
+        // The review connection is still bound to the rejected predecessor.
+        // Tear it down before saving the candidate so the next Send must load
+        // and verify the newly selected backend instead of reusing stale state.
+        await process.stop()
+        connectionState = .idle
+        guard tabSessionID == expectedTabID,
+              currentWorkspace?.id == expectedWorkspaceID else { return false }
 
         if !verification.backendMessages.isEmpty {
             let reconciled = SessionTranscriptReconciler.reconcile(
@@ -1804,20 +1879,16 @@ final class ChatStore {
         }
     }
 
-    /// Load persisted (and optionally grok on-disk) transcript for a tab.
+    /// Load the app-owned durable transcript for a tab. Backend truth enters only
+    /// through the typed replay captured by a later `session/load`.
     func restorePersistedMessages(
         for sessionID: UUID,
         grokSessionID: String?,
         workspace: Workspace
     ) {
         let saved = SessionMessageStore.messages(for: sessionID)
-        let recovered = SessionTranscriptRecovery.recoverIfNeeded(
-            sessionID: sessionID,
-            grokSessionID: grokSessionID,
-            workspacePath: workspace.path,
-            currentMessages: saved
-        )
-        restorePersistedMessages(recovered ?? saved)
+        _ = (grokSessionID, workspace)
+        restorePersistedMessages(saved)
     }
 
     /// A lazy `session/load` can finish after tab selection and, for some provider
@@ -1842,23 +1913,15 @@ final class ChatStore {
         return !messages.isEmpty
     }
 
-    /// Re-run the bounded exact-history reconciliation when selecting an already-loaded
-    /// tab. This closes the window where the tab was restored before a late backend final
-    /// was durable, without scanning or polling any unrelated session directory.
+    /// Merge the app-owned durable transcript when selecting an already-loaded tab.
+    /// Backend reconciliation occurs only at the next exact `session/load` replay.
     func reconcilePersistedMessages(
         for sessionID: UUID,
         grokSessionID: String?,
         workspace: Workspace
     ) {
+        _ = (grokSessionID, workspace)
         mergePersistedMessages(SessionMessageStore.messages(for: sessionID))
-        if let recovered = SessionTranscriptRecovery.recoverIfNeeded(
-            sessionID: sessionID,
-            grokSessionID: grokSessionID,
-            workspacePath: workspace.path,
-            currentMessages: messages
-        ) {
-            restorePersistedMessages(recovered)
-        }
     }
 
     /// Merge disk transcript into memory without dropping messages already loaded.
@@ -2180,13 +2243,8 @@ final class ChatStore {
                 hasUserMessages: hasUserMessages
             )
         if let effectiveResumeSessionID {
-            let status = await verifyContinuityBeforeResume(backendID: effectiveResumeSessionID)
-            guard SessionSendGate.decision(for: status) != .block else {
-                connectionWatchdogTask?.cancel()
-                connectionState = .idle
-                lastError = nil
-                return
-            }
+            continuityBackendID = effectiveResumeSessionID
+            continuityReceipt = Self.verifyingContinuityReceipt(localMessageCount: messages.count)
         } else {
             continuityReceipt = Self.localOnlyContinuityReceipt(localMessageCount: messages.count)
             persistedContinuityReceipt = continuityReceipt
@@ -2329,18 +2387,16 @@ final class ChatStore {
             return
         }
         let resumedBackendID = effectiveResumeSessionID
-        if process.sessionLoadStartedFreshFallback,
-           let oldBackendID = resumedBackendID,
-           let sessionID = tabSessionID,
-           let reconciliation = SessionTranscriptRecovery.reconcile(
-               sessionID: sessionID,
-               grokSessionID: oldBackendID,
-               workspacePath: ws.path,
-               currentMessages: messages
-           ) {
-            if reconciliation.changed {
-                messages = filteredPersistedMessages(reconciliation.messages)
-                streamRevision &+= 1
+        if let resumedBackendID, !process.sessionLoadStartedFreshFallback {
+            let status = await verifyContinuityBeforeResume(backendID: resumedBackendID)
+            guard SessionSendGate.decision(for: status) != .block else {
+                connectionWatchdogTask?.cancel()
+                // Keep this exact no-prompt connection available for official,
+                // read-only candidate review. The continuity gate makes it
+                // unsendable; Continue as New and Relink tear it down first.
+                connectionState = process.state
+                lastError = nil
+                return
             }
         }
         guard let successorBackendID = process.sessionId,
@@ -2404,7 +2460,7 @@ final class ChatStore {
             let newID = savedGrokSessionID ?? "unknown"
             if hasLocalTranscript {
                 appendSystemNote(
-                    "Session recovery fork: \(oldID) could not resume, so GrokBuild reconciled its available transcript and continued as \(newID)."
+                    "Session recovery fork: \(oldID) could not resume, so GrokBuild preserved its app-local transcript and continued as \(newID)."
                 )
             } else {
                 appendSystemNote(
@@ -2856,6 +2912,7 @@ final class ChatStore {
                     try? await Task.sleep(for: .milliseconds(50))
                 }
             }
+            await continueFrozenSendAfterReplayMismatchIfNeeded()
             guard pendingSubmitIntent?.id == intent.id else { return false }
             guard connectionState == .ready else {
                 pendingSubmitIntent = nil
@@ -2886,6 +2943,7 @@ final class ChatStore {
                     freshStartPredecessorBackendID: predecessorBackendID
                 )
             }
+            await continueFrozenSendAfterReplayMismatchIfNeeded()
             guard connectionState == .ready else {
                 if lastError == nil {
                     lastError = connectionState == .starting
@@ -3025,6 +3083,17 @@ final class ChatStore {
         }
 
         return true
+    }
+
+    /// `session/load` replay can prove a mismatch only after the user's Send has
+    /// already started the lazy resume. Keep that exact frozen intent moving:
+    /// detach the rejected backend, preserve the local transcript, and create a
+    /// fresh successor before any prompt dispatch. `continueAsNew` tears down
+    /// the loaded review-only connection before clearing its binding.
+    private func continueFrozenSendAfterReplayMismatchIfNeeded() async {
+        guard continuityRequiresRecovery else { return }
+        guard await continueAsNew() else { return }
+        await restartProcess()
     }
 
     private func finishPrompt(assistantID: UUID, ok: Bool) {
@@ -4283,11 +4352,8 @@ final class ChatStore {
             // This event shares the same AsyncStream queue as text/tool updates. By
             // acknowledging only here, `process.send` cannot outrun already-yielded
             // synthesis chunks and detach them from their assistant message. Keep
-            // those accepted chunks in the display buffer: reconciliation after the
-            // paced reveal verifies the same backend tail without replacing the
-            // growing answer with one instantaneous full-message snap.
-            pendingCompletionReconciliation = true
-            reconcileCompletedTurnIfDisplayBufferIsSettled()
+            // those accepted chunks in the display buffer. Live ACP ordering owns the
+            // completed turn; historical reconciliation happens only on a later load.
             refreshBoundContinuityCountsAfterSettlement()
             // The event queue is ordered: all worker receipts yielded before this
             // barrier have already crossed ChatStore. Any worker still active here
@@ -4363,11 +4429,10 @@ final class ChatStore {
         case .turnCompletionReceiptMissing(let failure):
             guard ownsActiveCompletionEvent(failure.identity) else { break }
             // The watchdog is a failure boundary, never a synthetic completion.
-            // Preserve every already-observed receipt, reconcile the backend tail
-            // read-only, and make unresolved state explicit without claiming usage,
+            // Preserve every already-observed receipt and make unresolved state
+            // explicit without claiming usage,
             // worker success, or settled continuity.
             flushAllPendingAssistantText()
-            reconcileActiveTurnFromBackend()
             backgroundTaskTracker.markUnsettledSubagents(only: currentTurnWorkerActivityIDs)
             backgroundActivities = backgroundTaskTracker.activities
             settleToolCallsAtTurnBarrier()
@@ -4991,29 +5056,6 @@ final class ChatStore {
         return normalized.isEmpty || normalized == "unknown"
     }
 
-    private func reconcileActiveTurnFromBackend() {
-        guard let sessionID = tabSessionID,
-              let backendID = activeTurnBackendSessionID,
-              let workspace = currentWorkspace,
-              let result = SessionTranscriptRecovery.reconcile(
-                  sessionID: sessionID,
-                  grokSessionID: backendID,
-                  workspacePath: workspace.path,
-                  currentMessages: messages
-              ) else {
-            return
-        }
-        if result.changed {
-            messages = filteredPersistedMessages(result.messages)
-            streamRevision &+= 1
-        }
-        if let authoritativeID = result.authoritativeTailAssistantID {
-            authoritativeTailAssistantID = authoritativeID
-            streamingMessageID = authoritativeID
-            closedTurnHasAuthoritativeHistory = true
-        }
-    }
-
     private func appendAssistantText(_ text: String, allowClosedTurn: Bool = true) {
         if closedTurnHasAuthoritativeHistory {
             // Completion reconciliation already committed the terminal backend answer.
@@ -5131,7 +5173,6 @@ final class ChatStore {
 
     private func finishDeferredPromptIfNeeded() {
         guard streamingTextBuffer.isEmpty else { return }
-        reconcileCompletedTurnIfDisplayBufferIsSettled()
         guard let deferredPromptCompletion else { return }
         self.deferredPromptCompletion = nil
         finishPromptNow(
@@ -5159,14 +5200,6 @@ final class ChatStore {
         clearStreamingPresentation()
         deferredPromptCompletion = nil
         pendingLateChunkPersistence = false
-        pendingCompletionReconciliation = false
-    }
-
-    private func reconcileCompletedTurnIfDisplayBufferIsSettled() {
-        guard pendingCompletionReconciliation,
-              streamingTextBuffer.isEmpty else { return }
-        pendingCompletionReconciliation = false
-        reconcileActiveTurnFromBackend()
     }
 
     private func appendSystem(_ text: String) {

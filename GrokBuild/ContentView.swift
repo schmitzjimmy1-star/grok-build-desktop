@@ -1700,28 +1700,9 @@ struct ContentView: View {
                     // after its keyed comparison permits the relationship.
                     session.store.restorePersistedMessages(localMessages)
                 } else if needsReconciliation {
-                    // Preserve the v3 selection path's ordering: disk is merged into the
-                    // already-live transcript before authenticated continuity reconciliation.
-                    // Only the file read and recovery parser leave the main actor.
+                    // Selection restores only app-owned durable presentation. The exact
+                    // backend is reconciled later from typed ACP `session/load` replay.
                     session.store.mergePersistedMessages(localMessages)
-                    let reconciliationMessages = session.store.messages
-                    let recovered = await GrokBuildBackgroundWork.run({
-                        SessionTranscriptRecovery.recoverIfNeeded(
-                            sessionID: id,
-                            grokSessionID: session.grokSessionID,
-                            workspacePath: session.workspace.path,
-                            currentMessages: reconciliationMessages
-                        )
-                    }, priority: .utility)
-                    guard !Task.isCancelled,
-                          selectedSessionID == id,
-                          sessionSelectionGeneration == selectionGeneration else {
-                        switchInterval.end()
-                        return
-                    }
-                    if let recovered {
-                        session.store.restorePersistedMessages(recovered)
-                    }
                 }
                 refreshGitReviewFromTranscriptBoundary()
             }
