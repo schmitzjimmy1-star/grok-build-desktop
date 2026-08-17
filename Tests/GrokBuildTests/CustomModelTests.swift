@@ -622,9 +622,18 @@ final class CustomModelTests: XCTestCase {
 
     func testSafeLaunchSelectionFailsClosedWhenEveryAdvertisedModelIsQuarantined() {
         XCTAssertNil(ChatStore.firstSafeLaunchModel(
-            candidates: ["grok-4.6", "grok-4.5"],
+            fallbackCandidates: ["grok-4.6", "grok-4.5"],
             availableModels: ["grok-4.6", "grok-4.5"],
             quarantinedModelIDs: ["grok-4.6", "grok-4.5"]
+        ))
+    }
+
+    func testQuarantinedExplicitLaunchModelDoesNotFallBackToSafeNativeModel() {
+        XCTAssertNil(ChatStore.firstSafeLaunchModel(
+            requiredModel: "legacy-flat",
+            fallbackCandidates: ["grok-4.6"],
+            availableModels: ["legacy-flat", "grok-4.6"],
+            quarantinedModelIDs: ["legacy-flat"]
         ))
     }
 
@@ -636,7 +645,8 @@ final class CustomModelTests: XCTestCase {
         """)
         XCTAssertTrue(CustomModelStore.quarantinedRuntimeModelIDs(from: snapshot).isEmpty)
         XCTAssertEqual(ChatStore.firstSafeLaunchModel(
-            candidates: ["gateway"],
+            requiredModel: "gateway",
+            fallbackCandidates: [],
             availableModels: ["gateway"],
             quarantinedModelIDs: CustomModelStore.quarantinedRuntimeModelIDs(from: snapshot)
         ), "gateway")

@@ -5694,10 +5694,14 @@ final class ChatStore {
         } else {
             legacyModel = nil
         }
+        // An explicit/restored route is authority, not a suggestion. If that exact
+        // route is quarantined, fail launch instead of repainting the picker and
+        // starting a different model behind the user's back. Only inherited state
+        // is eligible for fallback selection.
+        let requiredModel = explicitModel ?? legacyModel
         let selected = Self.firstSafeLaunchModel(
-            candidates: [
-                explicitModel,
-                legacyModel,
+            requiredModel: requiredModel,
+            fallbackCandidates: [
                 workspaceDefaultModel(),
                 fallbackSelection?.model,
                 currentModel,
@@ -5712,7 +5716,8 @@ final class ChatStore {
     }
 
     nonisolated static func firstSafeLaunchModel(
-        candidates: [String?],
+        requiredModel: String? = nil,
+        fallbackCandidates: [String?],
         availableModels: [String],
         quarantinedModelIDs: Set<String>
     ) -> String? {
@@ -5720,9 +5725,12 @@ final class ChatStore {
             !model.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
                 && !quarantinedModelIDs.contains(model)
         }
+        if let requiredModel {
+            return safe(requiredModel) ? requiredModel : nil
+        }
         // ACP may report an exact current model while omitting it from an empty or
         // filtered picker list. Quarantine owns dispatch safety; membership does not.
-        for candidate in candidates.compactMap({ $0 }) where safe(candidate) {
+        for candidate in fallbackCandidates.compactMap({ $0 }) where safe(candidate) {
             return candidate
         }
         return availableModels.first(where: safe)

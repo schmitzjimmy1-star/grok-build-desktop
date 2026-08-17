@@ -97,7 +97,7 @@ enum ModelAPIBackend: String, CaseIterable, Codable, Sendable {
 /// model = "glm-5.2"
 /// base_url = "https://api.z.ai/api/coding/paas/v4"
 /// name = "Z.ai GLM-5.2"
-/// api_key = "sk-..."
+/// model_provider = "grokbuild.saved.zai"
 /// ```
 ///
 /// GrokBuild projects linked providers through the CLI's official
@@ -112,7 +112,8 @@ struct CustomModel: Identifiable, Hashable, Sendable {
     var baseURL: String
     /// Human-friendly display name. Optional.
     var name: String
-    /// API key stored inline in config.toml. Empty for local/open servers.
+    /// Transient editor or legacy-import credential. Managed linked providers keep the
+    /// secret in Keychain and project only an official CLI auth-helper reference.
     var apiKey: String
     /// Optional context-window size GrokBuild uses when the CLI does not advertise one.
     var contextTokens: Int?
@@ -126,8 +127,8 @@ struct CustomModel: Identifiable, Hashable, Sendable {
     var supportsThinkingDisplay: Bool
     /// Grok's native request protocol for this model.
     var apiBackend: ModelAPIBackend
-    /// Optional link to a saved `Provider`. GrokBuild-only; the endpoint/credential are still
-    /// written into this model's own `[model.<id>]` table so the Grok CLI can read them.
+    /// Optional link to a saved `Provider`. GrokBuild projects the model through the
+    /// CLI's official `model_provider` reference and auth-helper contract.
     var providerID: String?
 
     init(
@@ -242,9 +243,10 @@ struct CustomModel: Identifiable, Hashable, Sendable {
 /// A reusable OpenAI-compatible provider: a base URL plus a shared credential.
 ///
 /// Providers are a GrokBuild-side convenience so several models can share one endpoint and
-/// API key (e.g. `glm-5.2` and `glm-4.7` both via Z.ai). They are persisted in `UserDefaults`,
-/// not in config.toml — when a model is saved, the resolved endpoint/credential are copied into
-/// that model's own `[model.<id>]` table.
+/// API key (e.g. `glm-5.2` and `glm-4.7` both via Z.ai). Non-secret metadata is persisted in
+/// `UserDefaults`; the credential stays in Keychain. Managed models use the CLI's official
+/// `[model_providers.*]` plus `auth.command` projection, so config.toml contains no linked
+/// credential copy.
 struct Provider: Identifiable, Hashable, Codable, Sendable {
     var id: String
     var name: String

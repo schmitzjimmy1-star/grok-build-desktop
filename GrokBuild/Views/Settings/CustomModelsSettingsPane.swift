@@ -995,7 +995,7 @@ struct CustomModelsSettingsPane: View {
                     }
                 }
 
-                Text("Credentials are stored in macOS Keychain with device-only accessibility. GrokBuild projects only the CLI-required copy into the owner-only ~/.grok/config.toml file. Local/open servers don't need a key.")
+                Text("Credentials stay in macOS Keychain with device-only accessibility. GrokBuild writes only the CLI's official auth-helper reference to ~/.grok/config.toml; the helper returns the credential directly to Grok at runtime. Local/open servers don't need a key.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
 
@@ -1413,14 +1413,14 @@ struct CustomModelsSettingsPane: View {
                             .accessibilityLabel(revealKey ? "Hide API key" : "Show API key")
                         }
                     }
-                    Text("Advanced manual models write the CLI-required api_key only to the owner-readable ~/.grok/config.toml file. Prefer a saved provider so its credential is also backed by Keychain. Local/open servers don't need a key.")
+                    Text("Authenticated remote models must use a saved provider so the credential stays in Keychain behind the CLI auth helper. GrokBuild refuses new inline remote credentials. Local/open servers don't need a key.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 } else if let provider = providers.first(where: { $0.id == draft.providerID }) {
                     HStack(spacing: 8) {
                         Image(systemName: "link")
                             .foregroundStyle(.secondary)
-                        Text("Endpoint and key come from \(provider.name) (\(provider.baseURL)).")
+                        Text("Endpoint and Keychain-backed CLI auth come from \(provider.name) (\(provider.baseURL)).")
                             .font(.caption)
                             .foregroundStyle(.secondary)
                             .lineLimit(2)
