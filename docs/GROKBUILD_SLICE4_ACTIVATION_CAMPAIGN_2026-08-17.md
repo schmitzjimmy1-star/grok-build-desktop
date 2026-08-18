@@ -301,10 +301,17 @@ overwriting, deleting, or silently downgrading the official installation.
   request, or paid packet occurred.
 
 PR [#124](https://github.com/schmitzjimmy1-star/grok-build-desktop/pull/124)
-is the 4B.1 publication vehicle. Its final head must pass the required app test
-and bundle check before a normal match-head merge; merged-main parity, ordinary
-installed-app rollback acceptance, and final process-zero close the slice.
-Slice 4B.2 must not begin before those receipts settle.
+passed required exact-head run `32123735441` on
+`1e918c55bde519e67b41d7716c64c2085b915362` and merged normally as
+`a8fb17fbfbc6bc5656148d7475bfff5a153eda11`. `make ship` reran the full
+**984/984** suite, installed that exact clean code-bearing merge, and proved
+stamp equality, dist/installed byte parity, Team `DD2GCQJVB4`, deep/strict
+signing, and no quarantine. A focused installed-app smoke opened the ordinary
+unarmed workbench without starting an ACP process, then quit normally. The
+immediate process-zero gate truthfully refused while shutdown children drained;
+final samples at `2026-08-18T06:03:58-0400` and
+`2026-08-18T06:04:03-0400` were empty. The official CLI remained unchanged at
+the version and SHA recorded above. Slice 4B.1 is closed; Slice 4B.2 is next.
 
 ### `HardBudgetCredentialMaterializationV1`
 
