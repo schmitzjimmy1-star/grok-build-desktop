@@ -164,6 +164,10 @@ struct AssistantTurnCheckpoint: Codable, Sendable, Hashable {
         let protectedAuthorityFS: Bool?
         let workspaceFSConfined: Bool?
         let allowedToolIDs: [String]?
+        /// Cursor captured immediately before the governed provider dispatch.
+        /// Optional so historical checkpoints remain decodable.
+        let preDispatchNextSequence: Int?
+        let preDispatchLedgerRevision: Int?
 
         init?(_ capability: GrokBuildHardTokenBudgetCapability) {
             guard capability.isEnforcing,
@@ -201,7 +205,35 @@ struct AssistantTurnCheckpoint: Codable, Sendable, Hashable {
             protectedAuthorityFS = capability.protectedAuthorityFS
             workspaceFSConfined = capability.workspaceFSConfined
             allowedToolIDs = capability.allowedToolIDs
+            preDispatchNextSequence = status.nextSequence
+            preDispatchLedgerRevision = status.ledgerRevision
         }
+    }
+
+    /// Terminal ledger evidence is separate from pre-dispatch authority. Older
+    /// checkpoints decode without it; absent is never upgraded to settled.
+    struct HardBudgetTerminalProjection: Codable, Sendable, Hashable {
+        enum Status: String, Codable, Sendable { case settled, ambiguous, unavailable, rejected }
+        struct Request: Codable, Sendable, Hashable {
+            let reservationID: String
+            let sequence: Int
+            let providerRequestID: String
+            let model: String
+            let endpointSHA256: String
+            let apiBackend: String
+            let payloadBytes: Int
+            let maxOutputTokens: Int
+            let reservedTokens: Int
+            let actualTokens: Int?
+            let chargedTokens: Int
+            let lifecycle: String
+        }
+        let status: Status
+        let ledgerRevision: Int?
+        let nextSequence: Int?
+        let reservationCount: Int?
+        let reason: String?
+        let requests: [Request]?
     }
 
     /// Structured, credential-free route configuration frozen against the exact
@@ -304,6 +336,7 @@ struct AssistantTurnCheckpoint: Codable, Sendable, Hashable {
     var structuredRouteReceipt: RouteReceipt? = nil
     var observedRouteReceipt: ObservedRouteReceipt? = nil
     var hardBudgetReceipt: HardBudgetReceipt? = nil
+    var hardBudgetTerminalProjection: HardBudgetTerminalProjection? = nil
 
     init(
         snapshot: RunEvidenceSnapshot,
@@ -312,7 +345,8 @@ struct AssistantTurnCheckpoint: Codable, Sendable, Hashable {
         routeReceipt: String? = nil,
         routeContract: ModelRouteContract? = nil,
         observedRouteReceipt: ObservedRouteReceipt? = nil,
-        hardBudgetReceipt: HardBudgetReceipt? = nil
+        hardBudgetReceipt: HardBudgetReceipt? = nil,
+        hardBudgetTerminalProjection: HardBudgetTerminalProjection? = nil
     ) {
         objective = snapshot.goalSummary
         outcome = snapshot.outcome.displayName
@@ -419,6 +453,7 @@ struct AssistantTurnCheckpoint: Codable, Sendable, Hashable {
         structuredRouteReceipt = routeContract.map(RouteReceipt.init)
         self.observedRouteReceipt = observedRouteReceipt
         self.hardBudgetReceipt = hardBudgetReceipt
+        self.hardBudgetTerminalProjection = hardBudgetTerminalProjection
     }
 
     /// Reconstitutes the settled Activity projection from the existing local

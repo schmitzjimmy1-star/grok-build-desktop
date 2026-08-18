@@ -3,6 +3,57 @@ import Observation
 import SwiftUI
 import AppKit
 
+enum HardBudgetTerminalVerdict: Equatable {
+    case settled, ambiguous, rejected
+
+    static func evaluate(
+        snapshot: HardTokenReceiptSnapshot,
+        authority: AssistantTurnCheckpoint.HardBudgetReceipt,
+        completion: TurnCompletionReceipt?
+    ) -> Self {
+        let records = snapshot.receipts
+        guard !records.isEmpty else { return .rejected }
+        guard let baselineSequence = authority.preDispatchNextSequence,
+              let baselineRevision = authority.preDispatchLedgerRevision,
+              snapshot.ledgerRevision > baselineRevision else { return .rejected }
+        let (expectedNextSequence, sequenceOverflow) = baselineSequence.addingReportingOverflow(records.count)
+        guard !sequenceOverflow,
+              snapshot.nextSequence == expectedNextSequence,
+              Set(records.map(\.sequence)) == Set(baselineSequence..<expectedNextSequence) else {
+            return .rejected
+        }
+        guard Set(records.map(\.reservationID)).count == records.count,
+              records.count <= authority.allocationMaxModelCalls else { return .rejected }
+        guard records.allSatisfy({ record in
+            record.model == authority.routeModel
+                && record.endpointSHA256 == authority.endpointSHA256
+                && record.apiBackend == authority.apiBackend
+                && record.payloadBytes <= authority.maxPayloadBytes
+                && record.maxOutputTokens <= authority.maxOutputTokens
+                && record.reservedTokens > 0
+                && record.reservedTokens <= authority.requestBoundTokens
+        }) else { return .rejected }
+        if records.contains(where: { $0.lifecycle == .reserved || $0.lifecycle == .ambiguousFullReservationCharged }) { return .ambiguous }
+        guard records.allSatisfy({
+            $0.lifecycle == .settledUsageReported
+                && $0.actualTokens != nil
+                && ($0.actualTokens ?? Int.max) <= $0.reservedTokens
+                && $0.chargedTokens == $0.actualTokens
+        }) else { return .rejected }
+        var actualTokens = 0
+        for record in records {
+            let (sum, overflow) = actualTokens.addingReportingOverflow(record.actualTokens ?? 0)
+            guard !overflow else { return .rejected }
+            actualTokens = sum
+        }
+        guard actualTokens <= authority.allocationTokenCeiling else { return .rejected }
+        if let calls = completion?.modelCalls, calls != records.count { return .rejected }
+        if let total = completion?.totalTokens,
+           actualTokens != total { return .rejected }
+        return .settled
+    }
+}
+
 enum BuiltInToolConnection: String, CaseIterable, Sendable {
     case browser = "grokbuild-browser"
     case computerUse = "grokbuild-computer-use"
@@ -1126,6 +1177,7 @@ final class ChatStore {
     private let acceptanceBudgetIsConfigured: () -> Bool
     private var acceptanceBudgetPollingTask: Task<Void, Never>?
     private var currentTurnHardBudgetReceipt: AssistantTurnCheckpoint.HardBudgetReceipt?
+    private var currentTurnHardBudgetTerminalProjection: AssistantTurnCheckpoint.HardBudgetTerminalProjection?
 
     init(
         process: GrokProcess? = nil,
@@ -3249,6 +3301,7 @@ final class ChatStore {
         currentTurnRequestedMCPNames = turnRequestedMCPNames
         currentTurnAttachmentNames = turnAttachmentNames
         currentTurnHardBudgetReceipt = acceptanceBudgetContext?.hardBudgetReceipt
+        currentTurnHardBudgetTerminalProjection = nil
 
         if let goalCommand = GoalCommand.parse(from: trimmed) {
             SessionGoalStateMutation.apply(goalCommand, to: &goalState)
@@ -3508,6 +3561,7 @@ final class ChatStore {
         currentTurnFirstChunkLatencyMilliseconds = nil
         currentTurnObservedParallelToolExecution = false
         currentTurnHardBudgetReceipt = nil
+        currentTurnHardBudgetTerminalProjection = nil
         cancelStreamingTextFlush()
         invalidateTurnSettlement()
         isGrokking = false
@@ -3579,7 +3633,25 @@ final class ChatStore {
         // markActiveSubagentsStoppedByUser then orphans/cancels only workers
         // that never finished.
         let stopStartedAt = ContinuousClock.now
-        await process.stop()
+        if wasActiveTurn, let authority = currentTurnHardBudgetReceipt {
+            if let sequence = authority.preDispatchNextSequence,
+               let revision = authority.preDispatchLedgerRevision {
+                let query = HardTokenReceiptQuery(campaignID: authority.campaignID, manifestSHA256: authority.manifestSHA256, allocationID: authority.allocationID, packetID: authority.packetID, baselineSequence: sequence, baselineRevision: revision)
+                switch await process.stopAndFetchHardTokenReceipts(query) {
+                case .success(let snapshot):
+                    let requests: [AssistantTurnCheckpoint.HardBudgetTerminalProjection.Request] = snapshot.receipts.map { .init(reservationID: $0.reservationID, sequence: $0.sequence, providerRequestID: $0.providerRequestID, model: $0.model, endpointSHA256: $0.endpointSHA256, apiBackend: $0.apiBackend, payloadBytes: $0.payloadBytes, maxOutputTokens: $0.maxOutputTokens, reservedTokens: $0.reservedTokens, actualTokens: $0.actualTokens, chargedTokens: $0.chargedTokens, lifecycle: $0.lifecycle.rawValue) }
+                    let verdict = HardBudgetTerminalVerdict.evaluate(snapshot: snapshot, authority: authority, completion: nil)
+                    currentTurnHardBudgetTerminalProjection = .init(status: verdict == .settled ? .settled : (verdict == .ambiguous ? .ambiguous : .rejected), ledgerRevision: snapshot.ledgerRevision, nextSequence: snapshot.nextSequence, reservationCount: requests.count, reason: verdict == .settled ? nil : "terminal receipt did not settle cleanly before Stop", requests: requests)
+                case .failure:
+                    currentTurnHardBudgetTerminalProjection = .init(status: .unavailable, ledgerRevision: nil, nextSequence: nil, reservationCount: nil, reason: "terminal hard-budget receipt unavailable after Stop drain", requests: nil)
+                }
+            } else {
+                currentTurnHardBudgetTerminalProjection = .init(status: .unavailable, ledgerRevision: nil, nextSequence: nil, reservationCount: nil, reason: "pre-dispatch hard-budget cursor unavailable at Stop", requests: nil)
+                await process.stop()
+            }
+        } else {
+            await process.stop()
+        }
         let stopDuration = stopStartedAt.duration(to: .now).components
         backgroundTaskTracker.recordStopToSettle(
             milliseconds: Int(stopDuration.seconds * 1_000)
@@ -4710,8 +4782,12 @@ final class ChatStore {
             backgroundTaskTracker.markUnsettledSubagents(only: currentTurnWorkerActivityIDs)
             backgroundActivities = backgroundTaskTracker.activities
             settleToolCallsAtTurnBarrier()
+            let receiptSettled = await captureHardBudgetTerminalProjection(
+                requireSettled: completion.isSuccessful,
+                completion: completion
+            )
             attachCurrentTurnTrace(to: streamingMessageID)
-            let turnSucceeded = completion.isSuccessful
+            let turnSucceeded = completion.isSuccessful && receiptSettled
             latestTurnOutcome = if turnSucceeded {
                 .completed
             } else if completion.isCancelled {
@@ -5318,6 +5394,53 @@ final class ChatStore {
         }
     }
 
+    private func captureHardBudgetTerminalProjection(requireSettled: Bool, completion: TurnCompletionReceipt? = nil) async -> Bool {
+        guard let authority = currentTurnHardBudgetReceipt else { return true }
+        guard let sequence = authority.preDispatchNextSequence,
+              let revision = authority.preDispatchLedgerRevision else {
+            currentTurnHardBudgetTerminalProjection = .init(status: .unavailable, ledgerRevision: nil, nextSequence: nil, reservationCount: nil, reason: "pre-dispatch hard-budget cursor unavailable", requests: nil)
+            if requireSettled {
+                lastError = "Acceptance completion needs review because the pre-dispatch hard-budget cursor is unavailable."
+            }
+            return !requireSettled
+        }
+        let query = HardTokenReceiptQuery(
+            campaignID: authority.campaignID,
+            manifestSHA256: authority.manifestSHA256,
+            allocationID: authority.allocationID,
+            packetID: authority.packetID,
+            baselineSequence: sequence,
+            baselineRevision: revision
+        )
+        do {
+            let snapshot = try await process.fetchHardTokenReceipts(query)
+            let requests: [AssistantTurnCheckpoint.HardBudgetTerminalProjection.Request] = snapshot.receipts.map { .init(reservationID: $0.reservationID, sequence: $0.sequence, providerRequestID: $0.providerRequestID, model: $0.model, endpointSHA256: $0.endpointSHA256, apiBackend: $0.apiBackend, payloadBytes: $0.payloadBytes, maxOutputTokens: $0.maxOutputTokens, reservedTokens: $0.reservedTokens, actualTokens: $0.actualTokens, chargedTokens: $0.chargedTokens, lifecycle: $0.lifecycle.rawValue) }
+            let verdict = HardBudgetTerminalVerdict.evaluate(snapshot: snapshot, authority: authority, completion: completion)
+            let status: AssistantTurnCheckpoint.HardBudgetTerminalProjection.Status =
+                verdict == .settled ? .settled : (verdict == .ambiguous ? .ambiguous : .rejected)
+            currentTurnHardBudgetTerminalProjection = .init(
+                status: status,
+                ledgerRevision: snapshot.ledgerRevision,
+                nextSequence: snapshot.nextSequence,
+                reservationCount: snapshot.receipts.count,
+                reason: verdict == .settled ? nil : "terminal hard-budget receipts did not satisfy the governed completion contract",
+                requests: requests
+            )
+            if requireSettled && status != .settled {
+                lastError = "Acceptance completion needs review because hard-budget reservations did not settle cleanly."
+                return false
+            }
+            return true
+        } catch {
+            currentTurnHardBudgetTerminalProjection = .init(status: .unavailable, ledgerRevision: nil, nextSequence: nil, reservationCount: nil, reason: "terminal hard-budget receipt unavailable", requests: nil)
+            if requireSettled {
+                lastError = "Acceptance completion needs review because the terminal hard-budget receipt is unavailable."
+                return false
+            }
+            return true
+        }
+    }
+
     private func attachTaskCheckpoint(
         to messageID: UUID?,
         snapshot: RunEvidenceSnapshot,
@@ -5359,7 +5482,8 @@ final class ChatStore {
             routeReceipt: routeContract.detailLines.first,
             routeContract: routeContract,
             observedRouteReceipt: observedRoute,
-            hardBudgetReceipt: currentTurnHardBudgetReceipt
+            hardBudgetReceipt: currentTurnHardBudgetReceipt,
+            hardBudgetTerminalProjection: currentTurnHardBudgetTerminalProjection
         )
         if var trace = messages[index].assistantTrace {
             trace.checkpoint = checkpoint

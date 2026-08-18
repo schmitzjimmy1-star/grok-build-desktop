@@ -34,6 +34,70 @@ struct ACPAgentVersion: Sendable, Equatable, Comparable, CustomStringConvertible
     var description: String { rawValue }
 }
 
+/// Typed, contract-bound receipt query. It contains no filesystem selector.
+struct HardTokenReceiptQuery: Sendable, Equatable {
+    let campaignID: String
+    let manifestSHA256: String
+    let allocationID: String
+    let packetID: String
+    let baselineSequence: Int
+    let baselineRevision: Int
+
+    var parameters: [String: Any] {
+        ["campaignId": campaignID, "manifestSha256": manifestSHA256,
+         "allocationId": allocationID, "packetId": packetID,
+         "baselineSequence": baselineSequence, "baselineRevision": baselineRevision]
+    }
+}
+
+struct HardTokenReceiptSnapshot: Sendable, Equatable {
+    enum Lifecycle: String, Sendable, Equatable { case reserved, settledUsageReported = "settled_usage_reported", ambiguousFullReservationCharged = "ambiguous_full_reservation_charged" }
+    struct Record: Sendable, Equatable {
+        let reservationID: String; let sequence: Int; let providerRequestID: String
+        let model: String; let endpointSHA256: String; let apiBackend: String
+        let payloadBytes: Int; let maxOutputTokens: Int; let reservedTokens: Int
+        let actualTokens: Int?; let chargedTokens: Int; let lifecycle: Lifecycle
+    }
+    let campaignID: String; let manifestSHA256: String; let allocationID: String; let packetID: String
+    let ledgerRevision: Int; let nextSequence: Int; let receipts: [Record]
+
+    static func parse(_ value: Any?) -> HardTokenReceiptSnapshot? {
+        guard let o = value as? [String: Any],
+              let campaignID = ACPControlParsing.nonemptyString(o["campaignId"]),
+              let manifestSHA256 = GrokBuildHardTokenBudgetCapability.sha256(o["manifestSha256"]),
+              let allocationID = ACPControlParsing.nonemptyString(o["allocationId"]),
+              let packetID = ACPControlParsing.nonemptyString(o["packetId"]),
+              let ledgerRevision = ACPControlParsing.integer(o["ledgerRevision"]), ledgerRevision >= 0,
+              let nextSequence = ACPControlParsing.integer(o["nextSequence"]), nextSequence >= 0,
+              let rows = o["receipts"] as? [[String: Any]] else { return nil }
+        let receipts = rows.compactMap { row -> Record? in
+            guard let reservationID = ACPControlParsing.nonemptyString(row["reservationId"]),
+                  let sequence = ACPControlParsing.integer(row["sequence"]), sequence >= 0,
+                  let providerRequestID = ACPControlParsing.nonemptyString(row["providerRequestId"]),
+                  let model = ACPControlParsing.nonemptyString(row["model"]),
+                  let endpointSHA256 = GrokBuildHardTokenBudgetCapability.sha256(row["endpointSha256"]),
+                  let apiBackend = ACPControlParsing.nonemptyString(row["apiBackend"]),
+                  let payloadBytes = ACPControlParsing.integer(row["payloadBytes"]), payloadBytes >= 0,
+                  let maxOutputTokens = ACPControlParsing.integer(row["maxOutputTokens"]), maxOutputTokens >= 0,
+                  let reservedTokens = ACPControlParsing.integer(row["reservedTokens"]), reservedTokens >= 0,
+                  let chargedTokens = ACPControlParsing.integer(row["chargedTokens"]), chargedTokens >= 0,
+                  let rawState = ACPControlParsing.nonemptyString(row["terminalState"]),
+                  let lifecycle = Lifecycle(rawValue: rawState) else { return nil }
+            let actualTokens: Int?
+            if let rawActualTokens = row["actualTokens"], !(rawActualTokens is NSNull) {
+                guard let parsedActualTokens = ACPControlParsing.integer(rawActualTokens),
+                      parsedActualTokens >= 0 else { return nil }
+                actualTokens = parsedActualTokens
+            } else {
+                actualTokens = nil
+            }
+            return Record(reservationID: reservationID, sequence: sequence, providerRequestID: providerRequestID, model: model, endpointSHA256: endpointSHA256, apiBackend: apiBackend, payloadBytes: payloadBytes, maxOutputTokens: maxOutputTokens, reservedTokens: reservedTokens, actualTokens: actualTokens, chargedTokens: chargedTokens, lifecycle: lifecycle)
+        }
+        guard receipts.count == rows.count else { return nil }
+        return .init(campaignID: campaignID, manifestSHA256: manifestSHA256, allocationID: allocationID, packetID: packetID, ledgerRevision: ledgerRevision, nextSequence: nextSequence, receipts: receipts)
+    }
+}
+
 enum ACPControlMethod: String, CaseIterable, Sendable {
     case models = "x.ai/models/list"
     case sessionUsage = "x.ai/session/usage"
@@ -65,6 +129,7 @@ enum ACPControlCapabilityState: Sendable, Equatable {
 struct GrokBuildHardTokenBudgetCapability: Sendable, Equatable {
     static let metadataKey = "com.grokbuild/hardTokenBudget"
     static let statusMethod = "com.grokbuild/budget/status"
+    static let receiptsMethod = "com.grokbuild/budget/receipts"
     static let allowedToolIDs = [
         "GrokBuild:read_file",
         "GrokBuild:task",
@@ -84,6 +149,8 @@ struct GrokBuildHardTokenBudgetCapability: Sendable, Equatable {
         let allocationID: String
         let allocationRemainingTokens: Int
         let allocationRemainingCalls: Int
+        let nextSequence: Int
+        let ledgerRevision: Int
     }
 
     struct Route: Sendable, Equatable {
@@ -113,6 +180,7 @@ struct GrokBuildHardTokenBudgetCapability: Sendable, Equatable {
     let boundMethodVersion: Int
     let durable: Bool
     let processShared: Bool
+    let receiptProjection: Bool
     let cancelConservative: Bool
     let crashConservative: Bool
     /// The fork deliberately does not make the broader, misleading claim that
@@ -142,7 +210,7 @@ struct GrokBuildHardTokenBudgetCapability: Sendable, Equatable {
             )
             return !overflow && bound <= allocation.route.requestBoundTokens
         } ?? false
-        return capabilityVersion == 1
+        return capabilityVersion == 2
             && armed
             && configurationValid
             && enforcementPoint == "sampler-pre-dispatch"
@@ -150,6 +218,7 @@ struct GrokBuildHardTokenBudgetCapability: Sendable, Equatable {
             && boundMethodVersion == 1
             && durable
             && processShared
+            && receiptProjection
             && cancelConservative
             && crashConservative
             && !noAutomaticRetry
@@ -212,6 +281,7 @@ struct GrokBuildHardTokenBudgetCapability: Sendable, Equatable {
               let boundMethodVersion = nonnegativeInteger(object["boundMethodVersion"]),
               let durable = object["durable"] as? Bool,
               let processShared = object["processShared"] as? Bool,
+              let receiptProjection = object["receiptProjection"] as? Bool,
               let cancelConservative = object["cancelConservative"] as? Bool,
               let crashConservative = object["crashConservative"] as? Bool,
               let noAutomaticRetry = object["noAutomaticRetry"] as? Bool,
@@ -239,6 +309,7 @@ struct GrokBuildHardTokenBudgetCapability: Sendable, Equatable {
             boundMethodVersion: boundMethodVersion,
             durable: durable,
             processShared: processShared,
+            receiptProjection: receiptProjection,
             cancelConservative: cancelConservative,
             crashConservative: crashConservative,
             noAutomaticRetry: noAutomaticRetry,
@@ -270,7 +341,9 @@ struct GrokBuildHardTokenBudgetCapability: Sendable, Equatable {
               let manifestSHA256 = sha256(object["manifestSha256"]),
               let allocationID = ACPControlParsing.nonemptyString(object["allocationId"]),
               let allocationRemainingTokens = nonnegativeInteger(object["allocationRemainingTokens"]),
-              let allocationRemainingCalls = nonnegativeInteger(object["allocationRemainingCalls"]) else { return nil }
+              let allocationRemainingCalls = nonnegativeInteger(object["allocationRemainingCalls"]),
+              let nextSequence = nonnegativeInteger(object["nextSequence"]),
+              let ledgerRevision = nonnegativeInteger(object["ledgerRevision"]) else { return nil }
         return Status(
             campaignID: campaignID,
             ceilingTokens: ceilingTokens,
@@ -281,7 +354,9 @@ struct GrokBuildHardTokenBudgetCapability: Sendable, Equatable {
             manifestSHA256: manifestSHA256,
             allocationID: allocationID,
             allocationRemainingTokens: allocationRemainingTokens,
-            allocationRemainingCalls: allocationRemainingCalls
+            allocationRemainingCalls: allocationRemainingCalls,
+            nextSequence: nextSequence,
+            ledgerRevision: ledgerRevision
         )
     }
 
@@ -333,7 +408,7 @@ struct GrokBuildHardTokenBudgetCapability: Sendable, Equatable {
         return strings.count == values.count ? strings : nil
     }
 
-    private static func sha256(_ value: Any?) -> String? {
+    fileprivate static func sha256(_ value: Any?) -> String? {
         guard let value = ACPControlParsing.nonemptyString(value),
               value.range(of: #"^[0-9a-f]{64}$"#, options: .regularExpression) != nil else { return nil }
         return value

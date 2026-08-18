@@ -1739,6 +1739,26 @@ final class GrokProcess: @unchecked Sendable {
         await cleanupProcess(setIdle: true)
     }
 
+    /// Stop a governed turn without losing the only live ACP generation that can
+    /// answer its terminal receipt query. Ordinary Stop remains unchanged.
+    func stopAndFetchHardTokenReceipts(_ query: HardTokenReceiptQuery) async -> Result<HardTokenReceiptSnapshot, Error> {
+        guard let sid = sessionId, let handle = stdin else {
+            await cleanupProcess(setIdle: true)
+            return .failure(ACPControlError.noActiveConnection)
+        }
+        isStopDraining = true
+        writeCancellationAsynchronously(sessionID: sid, to: handle)
+        try? await Task.sleep(for: Self.stopReceiptDrainWindow)
+        let result: Result<HardTokenReceiptSnapshot, Error>
+        do { result = .success(try await fetchHardTokenReceipts(query)) }
+        catch { result = .failure(error) }
+        // Keep the completion bridge closed until cleanup invalidates this
+        // generation. Otherwise a late turn_completed could briefly reopen the
+        // UI between the receipt query and process teardown.
+        await cleanupProcess(setIdle: true, sendCancel: false)
+        return result
+    }
+
     /// Terminal teardown: stops the process AND finishes the ACP event stream so the
     /// owning ChatStore's consume loop ends and the store/process pair can deallocate.
     /// `stop()` deliberately leaves the stream open because the same instance restarts
@@ -2336,6 +2356,29 @@ final class GrokProcess: @unchecked Sendable {
         }
         hardTokenBudgetCapability = capability
         return capability
+    }
+
+    func fetchHardTokenReceipts(_ query: HardTokenReceiptQuery) async throws -> HardTokenReceiptSnapshot {
+        guard let generation = activeProcessGeneration else { throw ACPControlError.noActiveConnection }
+        let raw = try await sendRequestWithTimeout(
+            method: GrokBuildHardTokenBudgetCapability.receiptsMethod,
+            params: query.parameters,
+            seconds: 3
+        )
+        guard activeProcessGeneration == generation else { throw ACPControlError.staleConnection }
+        guard let snapshot = HardTokenReceiptSnapshot.parse(raw),
+              snapshot.campaignID == query.campaignID,
+              snapshot.manifestSHA256 == query.manifestSHA256,
+              snapshot.allocationID == query.allocationID,
+              snapshot.packetID == query.packetID,
+              snapshot.ledgerRevision >= query.baselineRevision,
+              snapshot.nextSequence >= query.baselineSequence else {
+            throw ACPControlError.invalidStandardResponse(
+                method: GrokBuildHardTokenBudgetCapability.receiptsMethod,
+                reason: "malformed or mismatched hard-token receipt snapshot"
+            )
+        }
+        return snapshot
     }
 
     func fetchACPSessionMetadata() async throws -> ACPControlSessionMetadata {

@@ -68,6 +68,112 @@ final class ACPClientContractTests: XCTestCase {
         )
     }
 
+    private func hardBudgetTerminalRecord(
+        reservationID: String = "reservation-1",
+        sequence: Int = 1,
+        providerRequestID: String = "provider-request",
+        actualTokens: Int? = 10,
+        lifecycle: HardTokenReceiptSnapshot.Lifecycle = .settledUsageReported,
+        model: String = "grok-4.6",
+        endpointSHA256: String? = nil,
+        apiBackend: String = "responses",
+        payloadBytes: Int = 12,
+        maxOutputTokens: Int = 20,
+        reservedTokens: Int = 20,
+        chargedTokens: Int? = nil
+    ) -> HardTokenReceiptSnapshot.Record {
+        .init(
+            reservationID: reservationID,
+            sequence: sequence,
+            providerRequestID: providerRequestID,
+            model: model,
+            endpointSHA256: endpointSHA256 ?? hardBudgetSHA,
+            apiBackend: apiBackend,
+            payloadBytes: payloadBytes,
+            maxOutputTokens: maxOutputTokens,
+            reservedTokens: reservedTokens,
+            actualTokens: actualTokens,
+            chargedTokens: chargedTokens ?? actualTokens ?? reservedTokens,
+            lifecycle: lifecycle
+        )
+    }
+
+    private func hardBudgetTerminalSnapshot(
+        _ receipts: [HardTokenReceiptSnapshot.Record]
+    ) -> HardTokenReceiptSnapshot {
+        .init(
+            campaignID: "campaign",
+            manifestSHA256: hardBudgetSHA,
+            allocationID: "allocation",
+            packetID: "packet",
+            ledgerRevision: 4,
+            nextSequence: 1 + receipts.count,
+            receipts: receipts
+        )
+    }
+
+    private func hardBudgetTerminalCompletion(
+        modelCalls: Int? = nil,
+        totalTokens: Int? = nil
+    ) -> TurnCompletionReceipt {
+        .init(
+            identity: .init(localTabID: UUID(), backendSessionID: "backend", processGeneration: 1, backendEventID: "event"),
+            promptID: "prompt",
+            stopReason: "end_turn",
+            redactedError: nil,
+            totalTokens: totalTokens,
+            modelCalls: modelCalls,
+            turnCount: 1
+        )
+    }
+
+    private func hardBudgetTerminalAuthority() throws -> AssistantTurnCheckpoint.HardBudgetReceipt {
+        let capability = try XCTUnwrap(GrokBuildHardTokenBudgetCapability.parse([
+            "capabilityVersion": 2, "armed": true, "configurationValid": true,
+            "enforcementPoint": "sampler-pre-dispatch", "ledgerVersion": 3,
+            "boundMethodVersion": 1, "durable": true, "processShared": true,
+            "receiptProjection": true, "cancelConservative": true, "crashConservative": true,
+            "noAutomaticRetry": false, "samplerTransportRetriesDisabled": true,
+            "authProviderHelpersDisabled": true, "terminalDisabled": true,
+            "externalMcpDisabled": true, "hooksDisabled": true, "pluginsDisabled": true,
+            "lspDisabled": true, "workflowsDisabled": true, "schedulerDisabled": true,
+            "protectedAuthorityFs": true, "workspaceFsConfined": true,
+            "allowedToolIds": GrokBuildHardTokenBudgetCapability.allowedToolIDs,
+            "cliBuild": "grokbuild-test",
+            "status": [
+                "campaignId": "campaign", "ceilingTokens": 3_000_000,
+                "settledTokens": 0, "outstandingTokens": 0, "remainingTokens": 3_000_000,
+                "violated": false, "manifestSha256": hardBudgetSHA, "allocationId": "allocation",
+                "allocationRemainingTokens": 100, "allocationRemainingCalls": 2,
+                "nextSequence": 1, "ledgerRevision": 0,
+            ],
+            "allocation": [
+                "id": "allocation", "packetId": "packet", "promptSha256": hardBudgetSHA,
+                "tokenCeiling": 100, "maxModelCalls": 2,
+                "route": [
+                    "model": "grok-4.6", "endpointSha256": hardBudgetSHA, "apiBackend": "responses",
+                    "requestBoundTokens": 100, "maxPayloadBytes": 80, "maxOutputTokens": 20,
+                    "boundProvenanceSha256": hardBudgetSHA,
+                ],
+            ],
+        ]))
+        return try XCTUnwrap(AssistantTurnCheckpoint.HardBudgetReceipt(capability))
+    }
+
+    private func hardBudgetReceiptResponse(actualTokens: Any = 10) -> [String: Any] {
+        [
+            "campaignId": "campaign", "manifestSha256": hardBudgetSHA,
+            "allocationId": "allocation", "packetId": "packet",
+            "ledgerRevision": 1, "nextSequence": 2,
+            "receipts": [[
+                "reservationId": "reservation-1", "sequence": 1, "providerRequestId": "provider-request",
+                "model": "grok-4.6", "endpointSha256": hardBudgetSHA, "apiBackend": "responses",
+                "payloadBytes": 12, "maxOutputTokens": 20, "reservedTokens": 20,
+                "actualTokens": actualTokens, "chargedTokens": 10, "terminalState": "settled_usage_reported",
+            ]],
+        ]
+    }
+
     func testAcceptanceBudgetManifestRejectsReserveConsumptionAndAmbiguousMarkers() {
         let manifest = AcceptanceBudgetManifest(
             schemaVersion: 2,
@@ -248,7 +354,7 @@ final class ACPClientContractTests: XCTestCase {
     func testGrokBuildHardBudgetCapabilityRequiresExactForkContract() throws {
         let sha = String(repeating: "a", count: 64)
         let value: [String: Any] = [
-            "capabilityVersion": 1,
+            "capabilityVersion": 2,
             "armed": true,
             "configurationValid": true,
             "enforcementPoint": "sampler-pre-dispatch",
@@ -256,6 +362,7 @@ final class ACPClientContractTests: XCTestCase {
             "boundMethodVersion": 1,
             "durable": true,
             "processShared": true,
+            "receiptProjection": true,
             "cancelConservative": true,
             "crashConservative": true,
             "noAutomaticRetry": false,
@@ -283,6 +390,8 @@ final class ACPClientContractTests: XCTestCase {
                 "allocationId": "packet-a",
                 "allocationRemainingTokens": 100,
                 "allocationRemainingCalls": 1,
+                "nextSequence": 1,
+                "ledgerRevision": 0,
             ],
             "allocation": [
                 "id": "packet-a",
@@ -345,9 +454,10 @@ final class ACPClientContractTests: XCTestCase {
     func testHardBudgetReceiptPreservesHistoricalDecodeButNewEvidenceCarriesContainment() throws {
         let sha = String(repeating: "a", count: 64)
         let capability = try XCTUnwrap(GrokBuildHardTokenBudgetCapability.parse([
-            "capabilityVersion": 1, "armed": true, "configurationValid": true,
+            "capabilityVersion": 2, "armed": true, "configurationValid": true,
             "enforcementPoint": "sampler-pre-dispatch", "ledgerVersion": 3,
             "boundMethodVersion": 1, "durable": true, "processShared": true,
+            "receiptProjection": true,
             "cancelConservative": true, "crashConservative": true,
             "noAutomaticRetry": false, "samplerTransportRetriesDisabled": true,
             "authProviderHelpersDisabled": true, "terminalDisabled": true,
@@ -361,6 +471,7 @@ final class ACPClientContractTests: XCTestCase {
                 "settledTokens": 0, "outstandingTokens": 0, "remainingTokens": 3_000_000,
                 "violated": false, "manifestSha256": sha, "allocationId": "packet-a",
                 "allocationRemainingTokens": 100, "allocationRemainingCalls": 1,
+                "nextSequence": 0, "ledgerRevision": 0,
             ],
             "allocation": [
                 "id": "packet-a", "packetId": "packet-a", "promptSha256": sha,
@@ -1015,7 +1126,7 @@ final class ACPClientContractTests: XCTestCase {
           id=$(printf '%s' "$line" | sed -E 's/.*"id":([0-9]+).*/\\1/')
           case "$line" in
             *'"method":"initialize"'*)
-              printf '{"jsonrpc":"2.0","id":%s,"result":{"_meta":{"agentVersion":"1.0.5","modelState":{"currentModelId":"grok-4.6","availableModels":[{"modelId":"grok-4.6"}]},"com.grokbuild/hardTokenBudget":{"capabilityVersion":1,"armed":true,"configurationValid":true,"enforcementPoint":"sampler-pre-dispatch","ledgerVersion":3,"boundMethodVersion":1,"durable":true,"processShared":true,"cancelConservative":true,"crashConservative":true,"noAutomaticRetry":false,"samplerTransportRetriesDisabled":true,"authProviderHelpersDisabled":true,"terminalDisabled":true,"externalMcpDisabled":true,"hooksDisabled":true,"pluginsDisabled":true,"lspDisabled":true,"workflowsDisabled":true,"schedulerDisabled":true,"protectedAuthorityFs":true,"workspaceFsConfined":true,"allowedToolIds":["GrokBuild:read_file","GrokBuild:task","GrokBuild:get_task_output","GrokBuild:wait_tasks","GrokBuild:kill_task"],"cliBuild":"grokbuild-test","status":{"campaignId":"test","ceilingTokens":3000000,"settledTokens":0,"outstandingTokens":0,"remainingTokens":3000000,"violated":false,"nextSequence":0,"manifestSha256":"\(manifestSHA)","allocationId":"packet","allocationRemainingTokens":10,"allocationRemainingCalls":1},"allocation":{"id":"packet","packetId":"packet","promptSha256":"\(zeroSHA)","tokenCeiling":10,"maxModelCalls":1,"route":{"model":"grok-4.6","endpointSha256":"\(zeroSHA)","apiBackend":"responses","requestBoundTokens":10,"maxPayloadBytes":5,"maxOutputTokens":5,"boundProvenanceSha256":"\(zeroSHA)"}}}}}}\n' "$id"
+              printf '{"jsonrpc":"2.0","id":%s,"result":{"_meta":{"agentVersion":"1.0.5","modelState":{"currentModelId":"grok-4.6","availableModels":[{"modelId":"grok-4.6"}]},"com.grokbuild/hardTokenBudget":{"capabilityVersion":2,"armed":true,"configurationValid":true,"enforcementPoint":"sampler-pre-dispatch","ledgerVersion":3,"boundMethodVersion":1,"durable":true,"processShared":true,"receiptProjection":true,"cancelConservative":true,"crashConservative":true,"noAutomaticRetry":false,"samplerTransportRetriesDisabled":true,"authProviderHelpersDisabled":true,"terminalDisabled":true,"externalMcpDisabled":true,"hooksDisabled":true,"pluginsDisabled":true,"lspDisabled":true,"workflowsDisabled":true,"schedulerDisabled":true,"protectedAuthorityFs":true,"workspaceFsConfined":true,"allowedToolIds":["GrokBuild:read_file","GrokBuild:task","GrokBuild:get_task_output","GrokBuild:wait_tasks","GrokBuild:kill_task"],"cliBuild":"grokbuild-test","status":{"campaignId":"test","ceilingTokens":3000000,"settledTokens":0,"outstandingTokens":0,"remainingTokens":3000000,"violated":false,"nextSequence":0,"ledgerRevision":0,"manifestSha256":"\(manifestSHA)","allocationId":"packet","allocationRemainingTokens":10,"allocationRemainingCalls":1},"allocation":{"id":"packet","packetId":"packet","promptSha256":"\(zeroSHA)","tokenCeiling":10,"maxModelCalls":1,"route":{"model":"grok-4.6","endpointSha256":"\(zeroSHA)","apiBackend":"responses","requestBoundTokens":10,"maxPayloadBytes":5,"maxOutputTokens":5,"boundProvenanceSha256":"\(zeroSHA)"}}}}}}\n' "$id"
               ;;
             *'"method":"session/new"'*)
               printf '{"jsonrpc":"2.0","id":%s,"result":{"sessionId":"budget-backend","models":{"currentModelId":"grok-4.6","availableModels":[{"modelId":"grok-4.6"}]}}}\n' "$id"
@@ -1032,7 +1143,10 @@ final class ACPClientContractTests: XCTestCase {
               printf '{"jsonrpc":"2.0","id":%s,"result":{"usage":{"totalTokens":%s,"modelCalls":1,"numTurns":0}}}\n' "$id" "$total"
               ;;
             *'"method":"com.grokbuild/budget/status"'*)
-              printf '{"jsonrpc":"2.0","id":%s,"result":{"capabilityVersion":1,"armed":true,"configurationValid":true,"enforcementPoint":"sampler-pre-dispatch","ledgerVersion":3,"boundMethodVersion":1,"durable":true,"processShared":true,"cancelConservative":true,"crashConservative":true,"noAutomaticRetry":false,"samplerTransportRetriesDisabled":true,"authProviderHelpersDisabled":true,"terminalDisabled":true,"externalMcpDisabled":true,"hooksDisabled":true,"pluginsDisabled":true,"lspDisabled":true,"workflowsDisabled":true,"schedulerDisabled":true,"protectedAuthorityFs":true,"workspaceFsConfined":true,"allowedToolIds":["GrokBuild:read_file","GrokBuild:task","GrokBuild:get_task_output","GrokBuild:wait_tasks","GrokBuild:kill_task"],"cliBuild":"grokbuild-test","status":{"campaignId":"test","ceilingTokens":3000000,"settledTokens":0,"outstandingTokens":0,"remainingTokens":3000000,"violated":false,"nextSequence":0,"manifestSha256":"\(manifestSHA)","allocationId":"packet","allocationRemainingTokens":10,"allocationRemainingCalls":1},"allocation":{"id":"packet","packetId":"packet","promptSha256":"\(zeroSHA)","tokenCeiling":10,"maxModelCalls":1,"route":{"model":"grok-4.6","endpointSha256":"\(zeroSHA)","apiBackend":"responses","requestBoundTokens":10,"maxPayloadBytes":5,"maxOutputTokens":5,"boundProvenanceSha256":"\(zeroSHA)"}}}}\n' "$id"
+              printf '{"jsonrpc":"2.0","id":%s,"result":{"capabilityVersion":2,"armed":true,"configurationValid":true,"enforcementPoint":"sampler-pre-dispatch","ledgerVersion":3,"boundMethodVersion":1,"durable":true,"processShared":true,"receiptProjection":true,"cancelConservative":true,"crashConservative":true,"noAutomaticRetry":false,"samplerTransportRetriesDisabled":true,"authProviderHelpersDisabled":true,"terminalDisabled":true,"externalMcpDisabled":true,"hooksDisabled":true,"pluginsDisabled":true,"lspDisabled":true,"workflowsDisabled":true,"schedulerDisabled":true,"protectedAuthorityFs":true,"workspaceFsConfined":true,"allowedToolIds":["GrokBuild:read_file","GrokBuild:task","GrokBuild:get_task_output","GrokBuild:wait_tasks","GrokBuild:kill_task"],"cliBuild":"grokbuild-test","status":{"campaignId":"test","ceilingTokens":3000000,"settledTokens":0,"outstandingTokens":0,"remainingTokens":3000000,"violated":false,"nextSequence":0,"ledgerRevision":0,"manifestSha256":"\(manifestSHA)","allocationId":"packet","allocationRemainingTokens":10,"allocationRemainingCalls":1},"allocation":{"id":"packet","packetId":"packet","promptSha256":"\(zeroSHA)","tokenCeiling":10,"maxModelCalls":1,"route":{"model":"grok-4.6","endpointSha256":"\(zeroSHA)","apiBackend":"responses","requestBoundTokens":10,"maxPayloadBytes":5,"maxOutputTokens":5,"boundProvenanceSha256":"\(zeroSHA)"}}}}\n' "$id"
+              ;;
+            *'"method":"com.grokbuild/budget/receipts"'*)
+              printf '{"jsonrpc":"2.0","id":%s,"result":{"campaignId":"test","manifestSha256":"\(manifestSHA)","allocationId":"packet","packetId":"packet","ledgerRevision":1,"nextSequence":1,"receipts":[{"reservationId":"reservation-stop","sequence":0,"providerRequestId":"provider-stop","model":"grok-4.6","endpointSha256":"\(zeroSHA)","apiBackend":"responses","payloadBytes":1,"maxOutputTokens":5,"reservedTokens":10,"actualTokens":null,"chargedTokens":10,"terminalState":"reserved"}]}}\n' "$id"
               ;;
             *'"method":"session/prompt"'*)
               ;;
@@ -1105,6 +1219,14 @@ final class ACPClientContractTests: XCTestCase {
         XCTAssertEqual(hardBudgetReceipt.allocationID, "packet")
         XCTAssertEqual(hardBudgetReceipt.promptSHA256, zeroSHA)
         XCTAssertEqual(hardBudgetReceipt.requestBoundTokens, 10)
+        let terminalProjection = try XCTUnwrap(
+            store.messages.last(where: { $0.role == .assistant })?
+                .assistantTrace?.checkpoint?.hardBudgetTerminalProjection
+        )
+        XCTAssertEqual(terminalProjection.status, .ambiguous)
+        XCTAssertEqual(terminalProjection.reservationCount, 1)
+        XCTAssertEqual(terminalProjection.requests?.first?.lifecycle, "reserved")
+        XCTAssertEqual(terminalProjection.requests?.first?.chargedTokens, 10)
         await store.shutdownPermanently()
     }
 
@@ -3061,5 +3183,189 @@ final class ACPClientContractTests: XCTestCase {
         XCTAssertEqual(ComposerDensityPolicy.minimumLineCount, 1)
         XCTAssertEqual(ComposerDensityPolicy.maximumLineCount, 8)
         XCTAssertEqual(ComposerDensityPolicy.editorMinimumHeight, ComposerControlMetrics.minimumHitTarget)
+    }
+
+    func testHardBudgetTerminalVerdictRejectsHostileReceiptShapes() throws {
+        let authority = try hardBudgetTerminalAuthority()
+        XCTAssertEqual(
+            HardBudgetTerminalVerdict.evaluate(snapshot: hardBudgetTerminalSnapshot([]), authority: authority, completion: nil),
+            .rejected,
+            "A governed success cannot settle without a receipt."
+        )
+        XCTAssertEqual(
+            HardBudgetTerminalVerdict.evaluate(
+                snapshot: hardBudgetTerminalSnapshot([
+                    hardBudgetTerminalRecord(lifecycle: .reserved),
+                ]),
+                authority: authority,
+                completion: nil
+            ),
+            .ambiguous
+        )
+        XCTAssertEqual(
+            HardBudgetTerminalVerdict.evaluate(
+                snapshot: hardBudgetTerminalSnapshot([
+                    hardBudgetTerminalRecord(lifecycle: .ambiguousFullReservationCharged),
+                ]),
+                authority: authority,
+                completion: nil
+            ),
+            .ambiguous
+        )
+        XCTAssertEqual(
+            HardBudgetTerminalVerdict.evaluate(
+                snapshot: hardBudgetTerminalSnapshot([
+                    hardBudgetTerminalRecord(reservationID: "same", sequence: 1),
+                    hardBudgetTerminalRecord(reservationID: "same", sequence: 2),
+                ]),
+                authority: authority,
+                completion: nil
+            ),
+            .rejected
+        )
+        XCTAssertEqual(
+            HardBudgetTerminalVerdict.evaluate(
+                snapshot: hardBudgetTerminalSnapshot([
+                    hardBudgetTerminalRecord(reservationID: "one", sequence: 1),
+                    hardBudgetTerminalRecord(reservationID: "two", sequence: 1),
+                ]),
+                authority: authority,
+                completion: nil
+            ),
+            .rejected
+        )
+        XCTAssertEqual(
+            HardBudgetTerminalVerdict.evaluate(
+                snapshot: hardBudgetTerminalSnapshot([
+                    hardBudgetTerminalRecord(actualTokens: nil),
+                ]),
+                authority: authority,
+                completion: nil
+            ),
+            .rejected
+        )
+    }
+
+    func testHardBudgetTerminalVerdictBindsCompletionAccountingButAllowsRepeatedProviderRequestID() throws {
+        let authority = try hardBudgetTerminalAuthority()
+        let settled = hardBudgetTerminalSnapshot([
+            hardBudgetTerminalRecord(reservationID: "one", sequence: 1, providerRequestID: "shared", actualTokens: 4),
+            hardBudgetTerminalRecord(reservationID: "two", sequence: 2, providerRequestID: "shared", actualTokens: 6),
+        ])
+        XCTAssertEqual(
+            HardBudgetTerminalVerdict.evaluate(
+                snapshot: settled,
+                authority: authority,
+                completion: hardBudgetTerminalCompletion(modelCalls: 2, totalTokens: 10)
+            ),
+            .settled,
+            "Provider request IDs are not a unique ledger key."
+        )
+        XCTAssertEqual(
+            HardBudgetTerminalVerdict.evaluate(
+                snapshot: settled,
+                authority: authority,
+                completion: hardBudgetTerminalCompletion(modelCalls: 1, totalTokens: 10)
+            ),
+            .rejected
+        )
+        XCTAssertEqual(
+            HardBudgetTerminalVerdict.evaluate(
+                snapshot: settled,
+                authority: authority,
+                completion: hardBudgetTerminalCompletion(modelCalls: 2, totalTokens: 9)
+            ),
+            .rejected
+        )
+    }
+
+    func testHardBudgetTerminalVerdictRejectsAuthorityBoundRecordDrift() throws {
+        let authority = try hardBudgetTerminalAuthority()
+        let rejected: (HardTokenReceiptSnapshot.Record) -> Void = { record in
+            XCTAssertEqual(
+                HardBudgetTerminalVerdict.evaluate(
+                    snapshot: self.hardBudgetTerminalSnapshot([record]),
+                    authority: authority,
+                    completion: nil
+                ),
+                .rejected
+            )
+        }
+        rejected(hardBudgetTerminalRecord(chargedTokens: 9))
+        rejected(hardBudgetTerminalRecord(model: "wrong-model"))
+        rejected(hardBudgetTerminalRecord(endpointSHA256: String(repeating: "b", count: 64)))
+        rejected(hardBudgetTerminalRecord(apiBackend: "messages"))
+        rejected(hardBudgetTerminalRecord(reservedTokens: 0))
+        rejected(hardBudgetTerminalRecord(reservedTokens: 101))
+        rejected(hardBudgetTerminalRecord(payloadBytes: 81))
+        rejected(hardBudgetTerminalRecord(maxOutputTokens: 21))
+        rejected(hardBudgetTerminalRecord(actualTokens: 21, reservedTokens: 20, chargedTokens: 21))
+        rejected(hardBudgetTerminalRecord(actualTokens: 101, chargedTokens: 101))
+        XCTAssertEqual(
+            HardBudgetTerminalVerdict.evaluate(
+                snapshot: hardBudgetTerminalSnapshot([
+                    hardBudgetTerminalRecord(reservationID: "one", sequence: 1),
+                    hardBudgetTerminalRecord(reservationID: "two", sequence: 99),
+                ]),
+                authority: authority,
+                completion: nil
+            ),
+            .rejected
+        )
+
+        XCTAssertEqual(
+            HardBudgetTerminalVerdict.evaluate(
+                snapshot: hardBudgetTerminalSnapshot([
+                    hardBudgetTerminalRecord(reservationID: "one", sequence: 1, actualTokens: 10),
+                    hardBudgetTerminalRecord(reservationID: "two", sequence: 2, actualTokens: 10),
+                    hardBudgetTerminalRecord(reservationID: "three", sequence: 3, actualTokens: 10),
+                ]),
+                authority: authority,
+                completion: nil
+            ),
+            .rejected
+        )
+    }
+
+    func testHardBudgetReceiptSnapshotRejectsMalformedNonNullActualTokens() {
+        XCTAssertNil(HardTokenReceiptSnapshot.parse(hardBudgetReceiptResponse(actualTokens: "ten")))
+        XCTAssertNil(HardTokenReceiptSnapshot.parse(hardBudgetReceiptResponse(actualTokens: -1)))
+        XCTAssertNotNil(HardTokenReceiptSnapshot.parse(hardBudgetReceiptResponse(actualTokens: NSNull())))
+    }
+
+    func testHardBudgetTerminalProjectionDecodesHistoricalPayloadWithoutRequests() throws {
+        let projection = AssistantTurnCheckpoint.HardBudgetTerminalProjection(
+            status: .settled,
+            ledgerRevision: 4,
+            nextSequence: 5,
+            reservationCount: 1,
+            reason: nil,
+            requests: [
+                .init(
+                    reservationID: "reservation-1",
+                    sequence: 1,
+                    providerRequestID: "provider-request",
+                    model: "grok-4.6",
+                    endpointSHA256: hardBudgetSHA,
+                    apiBackend: "responses",
+                    payloadBytes: 12,
+                    maxOutputTokens: 20,
+                    reservedTokens: 20,
+                    actualTokens: 10,
+                    chargedTokens: 10,
+                    lifecycle: "settled_usage_reported"
+                ),
+            ]
+        )
+        var historical = try XCTUnwrap(
+            JSONSerialization.jsonObject(with: JSONEncoder().encode(projection)) as? [String: Any]
+        )
+        historical.removeValue(forKey: "requests")
+        let decoded = try JSONDecoder().decode(
+            AssistantTurnCheckpoint.HardBudgetTerminalProjection.self,
+            from: JSONSerialization.data(withJSONObject: historical)
+        )
+        XCTAssertEqual(decoded.status, .settled)
+        XCTAssertNil(decoded.requests)
     }
 }
