@@ -1,6 +1,6 @@
 # GrokBuild Slice 4 Activation Campaign — 2026-08-17
 
-Status: **Slices 4B.0 and 4B.1 accepted; Slice 4B.2 is next; paid activation locked.** This document is the authority for completing
+Status: **Slices 4B.0 through 4B.2 accepted; Slice 4B.3 is next; paid activation locked.** This document is the authority for completing
 the official-provider and open-weight lane after the nonbillable Slice 4A hard-budget checkpoint. It
 does not authorize a provider request, credential-value read, live Grok config
 mutation, installed-CLI replacement, tag, release, or Slice 5 work.
@@ -14,8 +14,8 @@ ceiling does not unlock the paid branch today.
 
 ## Starting truth
 
-The app repository is clean at merge `1660ee5e45fca7b1d7146ffc19d0714de866f501`
-(PR #121). The installed app matches that merged-main build. Its installed
+The app repository is clean at merge `2559a43d74e4b1f8453edcaca6692f4016a39b4c`
+(PR #126). The installed app matches that merged-main build. Its installed
 runtime remains official `grok 1.0.4 (d846eb93d94d) [stable]`.
 
 The hard-budget CLI fork is published and merged on Jimmy's `personal/main` at
@@ -120,8 +120,7 @@ evidence from a predecessor or begin while its predecessor remains unmerged.
 
 Slice 4B.0 is accepted. Jimmy explicitly authorized sequential execution of
 4B.1, then 4B.2, then 4B.3 on 2026-08-18. Merge-per-slice remains mandatory:
-4B.1 is accepted, 4B.2 is next, and 4B.3 remains locked until 4B.2 is reviewed
-and merged.
+4B.1 and 4B.2 are accepted, and 4B.3 is next. Paid activation remains locked.
 
 ### Scope
 
@@ -311,7 +310,7 @@ unarmed workbench without starting an ACP process, then quit normally. The
 immediate process-zero gate truthfully refused while shutdown children drained;
 final samples at `2026-08-18T06:03:58-0400` and
 `2026-08-18T06:04:03-0400` were empty. The official CLI remained unchanged at
-the version and SHA recorded above. Slice 4B.1 is closed; Slice 4B.2 is next.
+the version and SHA recorded above. Slice 4B.1 is closed; Slice 4B.2 is accepted.
 
 ### `HardBudgetCredentialMaterializationV1`
 
@@ -341,6 +340,48 @@ FD before any fork, use consuming zeroizing storage, and re-prove the exact
 candidate/tool tree. A macOS-native CLI Keychain consumer may be evaluated as a
 new design; environment secrets, temporary secret files, and an allowlisted
 executable helper are not acceptable fallbacks.
+
+#### Slice 4B.2 acceptance
+
+PR [#126](https://github.com/schmitzjimmy1-star/grok-build-desktop/pull/126)
+passed required exact-head run `32128471671` on
+`b52855cda19b3701044f693430d90e81d050d436` and merged normally as
+`2559a43d74e4b1f8453edcaca6692f4016a39b4c`. The exact committed range received
+three independent skeptical COMMIT verdicts. The implementation remains a
+cooperative fake-payload feasibility proof: no production caller supplies the
+transport, and no Keychain value, provider credential, live config, auth helper,
+official CLI replacement, or provider request entered the slice.
+
+The real armed `posix_spawn` candidate path proved bounded binary framing on
+fixed FD 198, an app-wide spawn gate across Darwin's non-atomic `socketpair`
+close-on-exec window, positive environment allowlisting, payload refusal in
+argv or environment before spawn, one aggregate deadline, collision-safe
+descriptor normalization, nested-exec descriptor closure, generic errors, and
+same-process-group rollback. Hostile coverage proves malformed, oversized,
+truncated, duplicated, trailing, slow-drip, bad-peer, high-FD canary,
+concurrent-spawn, root, descendant, and process-group cleanup cases. A stale
+test-owned hostile-fixture process group from the uncommitted development run
+was identified by its deleted fixture path, PGID, and FD 198 and removed
+narrowly; the final code then tightened cleanup proof and passed the complete
+**991/991** suite followed immediately by two empty process-zero samples.
+
+Merged-main `make ship` reran **991/991**, built and installed the exact clean
+merge, and proved stamp equality, dist/installed binary SHA-256
+`310044e4e383f6fe1bb8c31115393007d5ae991657ce4e6becb2ffcc510d3415`, Team
+`DD2GCQJVB4`, deep/strict signing, and no quarantine. The installed app opened
+on the ordinary unarmed workbench without sending or starting a backend, quit
+normally, and reached empty process-zero samples at
+`2026-08-18T07:00:41-0400` and `2026-08-18T07:00:46-0400`. Python V2 contracts
+passed 25/25, the focused candidate/transport suite passed 15/15, release build
+passed, and the billable command still exited 2 at the absolute-ceiling lock
+before runtime discovery. The official CLI remains unchanged at
+`grok 1.0.4 (d846eb93d94d) [stable]`, SHA-256
+`39366f7756a090b735cc1df8c93a8c0c3c7871555cf6cbb28f9351ca82936485`.
+
+Slice 4B.3 is next and remains nonbillable. It owns the real Rust consumer
+before any fork, consuming zeroizing storage, actual Keychain/provider binding,
+route provenance, policy v3, and real tool-tree containment. Raw-fork/`setsid`
+escape and real credential behavior are not 4B.2 claims.
 
 ### `HardTokenBoundProvenanceV1`
 

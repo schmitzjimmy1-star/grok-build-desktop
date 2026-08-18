@@ -230,8 +230,10 @@ candidate was installed or activated; the official CLI remains untouched.
 
 Jimmy explicitly authorized sequential execution of 4B.1, then 4B.2, then
 4B.3 on 2026-08-18. **4B.1 pinned runtime selection and rollback is accepted
-through PR [#124](https://github.com/schmitzjimmy1-star/grok-build-desktop/pull/124).**
-4B.2 is next; 4B.3 remains locked until 4B.2 merges. 4B.1 uses disposable signed fixture
+through PR [#124](https://github.com/schmitzjimmy1-star/grok-build-desktop/pull/124),
+and 4B.2 cooperative credential-transport feasibility is accepted through PR
+[#126](https://github.com/schmitzjimmy1-star/grok-build-desktop/pull/126).**
+4B.3 is next and remains nonbillable. 4B.1 uses disposable signed fixture
 candidates, a byte-identical one-shot execution copy held by FD, and
 suspended-child live CodeDirectory verification before user code as the Darwin
 inspected-equals-launched proof; the real ad-hoc 4B.0 artifacts remain
@@ -244,6 +246,31 @@ unchanged at `grok 1.0.4 (d846eb93d94d) [stable]`, SHA-256
 `39366f7756a090b735cc1df8c93a8c0c3c7871555cf6cbb28f9351ca82936485`.
 No credential-value read, provider Send, paid unlock, candidate install, or
 Slice 5 work is authorized by this closeout.
+
+4B.2 exact head `b52855cda19b3701044f693430d90e81d050d436` passed required
+run `32128471671` and merged normally as
+`2559a43d74e4b1f8453edcaca6692f4016a39b4c`. The fake-only transport exercises
+the real candidate `posix_spawn` path with fixed FD 198, bounded framing, an
+app-wide spawn gate, aggregate deadline, pre-spawn argv/environment refusal,
+descriptor hygiene, and fail-closed same-group rollback. It has no production
+credential caller and proves neither real Keychain/provider behavior nor
+raw-fork/`setsid` containment. Focused tests passed 15/15, Python V2 contracts
+25/25, the full suite 991/991, and three skeptical reviewers returned COMMIT.
+Merged-main `make ship` reran 991/991 and installed exact clean merge
+`2559a43d74e4b1f8453edcaca6692f4016a39b4c`; dist/installed SHA-256 is
+`310044e4e383f6fe1bb8c31115393007d5ae991657ce4e6becb2ffcc510d3415`, Team is
+`DD2GCQJVB4`, deep/strict signing passed, and quarantine is absent. The real
+installed app opened unarmed without a Send or backend launch, quit normally,
+and reached empty process-zero samples at `2026-08-18T07:00:41-0400` and
+`2026-08-18T07:00:46-0400`. The paid command still refuses before runtime
+discovery. The official CLI remains unchanged at `grok 1.0.4
+(d846eb93d94d) [stable]`, SHA-256
+`39366f7756a090b735cc1df8c93a8c0c3c7871555cf6cbb28f9351ca82936485`.
+
+The exact next slice is 4B.3: the real Rust credential consumer, consuming
+zeroization, Keychain/provider binding, canonical route-bound provenance,
+campaign-policy v3, and hostile nonbillable tool-tree proof. Paid activation
+and Slice 4B.4 remain locked.
 
 PR [#124](https://github.com/schmitzjimmy1-star/grok-build-desktop/pull/124)
 passed required exact-head run `32123735441` and merged normally as
