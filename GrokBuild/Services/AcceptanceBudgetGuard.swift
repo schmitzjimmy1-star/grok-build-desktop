@@ -104,6 +104,9 @@ struct AcceptanceBudgetAuthorization: Equatable, Sendable {
     let hardBudgetCLIManifestPath: String
     let hardBudgetLedgerPath: String
     let candidateExecutionLease: GrokCandidateExecutionLease?
+    /// Schema-3-only, non-secret Keychain selector. Schema-2 resolution never
+    /// supplies it, so legacy acceptance packets cannot materialize a secret.
+    let credentialAuthorizationV3: GrokArmedCredentialAuthorizationV3? = nil
 
     var spendableTokenCeiling: Int? {
         let (value, overflow) = campaignTokenCeiling.subtractingReportingOverflow(emergencyReserveTokens)

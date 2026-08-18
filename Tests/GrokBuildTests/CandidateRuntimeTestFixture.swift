@@ -116,12 +116,13 @@ struct CandidateRuntimeTestFixture {
             #include <stdlib.h>
             #include <string.h>
             #include <sys/socket.h>
+            #include <sys/stat.h>
             #include <sys/types.h>
             #include <sys/wait.h>
             #include <unistd.h>
 
             extern char **environ;
-            enum { receiver_fd = 198, header_size = 48, max_payload = 4096 };
+            enum { receiver_fd = 198, identity_fd = 197, header_size = 48, max_payload = 4096 };
             static const unsigned char magic[8] = {'G','B','C','T',0,0,0,1};
 
             static int wait_readable(int fd) {
@@ -176,19 +177,44 @@ struct CandidateRuntimeTestFixture {
                 errno = 0;
                 return fcntl(receiver_fd, F_GETFD) == -1 && errno == EBADF ? 0 : 91;
             }
+            static int identity_descriptor_is_private_readonly_regular(void) {
+                int flags = fcntl(identity_fd, F_GETFL);
+                if (flags < 0 || (flags & O_ACCMODE) != O_RDONLY) return 0;
+                struct stat st;
+                if (fstat(identity_fd, &st) != 0) return 0;
+                if ((st.st_mode & S_IFMT) != S_IFREG) return 0;
+                if (st.st_uid != geteuid()) return 0;
+                if ((st.st_mode & 077) != 0) return 0;
+                if (st.st_nlink != 1) return 0;
+                return 1;
+            }
             static int fail(int code, unsigned char *payload, size_t count) {
                 if (payload) { memset(payload, 0, count); free(payload); }
+                close(identity_fd);
                 close(receiver_fd);
                 return code;
             }
 
             int main(int argc, char **argv) {
                 if (argc == 2 && strcmp(argv[1], "--probe-fd") == 0) return probe_mode();
+                int expect_identity = 0;
+                for (int i = 1; i < argc; i++) {
+                    if (strcmp(argv[i], "stdio") == 0) { expect_identity = 1; break; }
+                }
                 if (fcntl(receiver_fd, F_SETFD, FD_CLOEXEC) != 0) return 10;
                 int descriptor_limit = getdtablesize();
                 if (descriptor_limit > 1024) descriptor_limit = 1024;
                 for (int fd = 3; fd < descriptor_limit; fd++) {
                     if (fd == receiver_fd) continue;
+                    if (fd == identity_fd) {
+                        errno = 0;
+                        if (expect_identity) {
+                            if (!identity_descriptor_is_private_readonly_regular()) return 11;
+                        } else if (fcntl(identity_fd, F_GETFD) != -1 || errno != EBADF) {
+                            return 11;
+                        }
+                        continue;
+                    }
                     if (fcntl(fd, F_GETFD) != -1 || errno != EBADF) return 11;
                 }
                 if (getenv("XAI_API_KEY") || getenv("OPENAI_API_KEY")
@@ -245,6 +271,7 @@ struct CandidateRuntimeTestFixture {
                 if (leaking_child > 0) { for (;;) pause(); }
                 shutdown(receiver_fd, SHUT_WR);
                 close(receiver_fd);
+                close(identity_fd);
 
                 pid_t probe = fork();
                 if (probe == 0) {

@@ -6,11 +6,12 @@ does not authorize a provider request, credential-value read, live Grok config
 mutation, installed-CLI replacement, tag, release, or Slice 5 work.
 
 Jimmy raised the eventual testing authority on 2026-08-17 to an absolute
-**10,000,000-token ceiling**. That is a ceiling, not a target. The final immutable
-campaign may plan at most 9,000,000 tokens and must retain 1,000,000 tokens as
-unreachable reserve. The current 4M/3M/1M implementation remains authoritative
-until a later 4B slice versions, tests, and merges the larger policy; the new
-ceiling does not unlock the paid branch today.
+**10,000,000-token ceiling**. On 2026-08-18 he raised that ceiling to
+**20,000,000 tokens**. That is a ceiling, not a target. The versioned v3 policy
+is 20M/19M/1M: the final immutable campaign may plan at most 19,000,000 tokens
+and must retain 1,000,000 tokens as unreachable reserve. The current 4M/3M/1M
+implementation remains authoritative until a later 4B slice versions, tests, and
+merges the larger policy; the new ceiling does not unlock the paid branch today.
 
 ## Starting truth
 
@@ -68,11 +69,11 @@ bounded.
 3. Every provider dispatch reserves from one immutable campaign ledger before
    network. The target activation equation is:
 
-   `settled tokens + outstanding worst-case reservations <= 9,000,000`
+   `settled tokens + outstanding worst-case reservations <= 19,000,000`
 
-   The remaining 1,000,000 tokens beneath Jimmy's absolute 10,000,000-token
+   The remaining 1,000,000 tokens beneath Jimmy's absolute 20,000,000-token
    ceiling are unreachable reserve. The current checkpoint's exact 4M/3M/1M
-   contract must fail closed until the versioned 10M/9M/1M authority is present
+   contract must fail closed until the versioned 20M/19M/1M authority is present
    end to end.
 4. One packet owns one immutable allocation and one fresh CLI process. A later
    continuation turn uses a different allocation and fresh process, then loads
@@ -109,11 +110,11 @@ evidence from a predecessor or begin while its predecessor remains unmerged.
 | **4B.0** | **Fork provenance and reproducible candidate contract** | CLI publication metadata/build tooling and campaign docs only | `origin` fetch remains upstream while its push URL is deliberately invalid; Jimmy-owned `personal` is the only publication remote; upstream range-diff reviewed; source/base/toolchain/lockfile/build/binary/signature manifest schema proven; no install |
 | **4B.1** | **Pinned runtime selection and rollback** | App launch contract, unified resolver, harness/preflight candidate identity | Hostile tests prove `PATH`, ambient `GROK_CLI_PATH`, path swap, hash drift, wrong signature, and inspected/launched divergence all fail before ACP spawn; official CLI untouched |
 | **4B.2** | **Credential materialization feasibility and contract** | Fake-sentinel transport spike and non-secret shared schema only | The real armed `posix_spawn` path proves one bounded fake transfer to a compiled cooperative receiver; receiver FD is closed before its nested exec and fake bytes are absent from argv/env/fixture files/stdout/stderr. This is not official-CLI, raw-fork, zeroization, provider, or Keychain proof; those remain 4B.3 gates. |
-| **4B.3** | **Native armed credential, bound provenance, and campaign-policy v3** | CLI credential consumer, Swift materializer, canonical provenance producer/verifiers, typed capability, versioned 10M/9M/1M authority | Exact managed-provider/config binding, route TOCTOU refusal, helper paths still disabled, fake credential loopback, canonical route/bound equality in Rust/Swift/Python, old/new policy mismatch refusal; ordinary unarmed helper behavior unchanged |
+| **4B.3** | **Native armed credential, bound provenance, and campaign-policy v3** | CLI credential consumer, Swift materializer, canonical provenance producer/verifiers, typed capability, versioned 20M/19M/1M authority | Exact managed-provider/config binding, route TOCTOU refusal, helper paths still disabled, fake credential loopback, canonical route/bound equality in Rust/Swift/Python, old/new policy mismatch refusal; ordinary unarmed helper behavior unchanged |
 | **4B.4** | **Fresh-process continuation contract** | Harness schema/evaluator/driver and app lazy-load choreography | Legacy continuation rejected at schema level; T1 new plus T2/T3 fresh-process `session/load` use three allocations, one backend, one ledger, no `session/resume`, no load-time prompt, no stale fallback, cleanup only after the group |
 | **4B.5** | **Nonbillable staged-candidate lifecycle and containment** | Test-only loopback provider, process driver, receipt/cleanup fixtures | Exact staged, noninstalled candidate survives normal, Stop, cancel, kill, restart, stream failure, missing usage, repeated provider correlation, redirect, and call-ceiling tests; foreign egress/helper/retry count is zero; authority retained honestly |
 | **4B.6** | **Signed candidate install and installed nonbillable acceptance** | Digest-addressed owner-private candidate runtime and rollback receipt | Build/sign/copy atomicity, architecture/quarantine/signature/hash parity, installed app launches that exact candidate, then reruns the complete 4B.5 hostile matrix; clean rollback, full suites, two process-zero samples |
-| **4C** | **Bounded paid matrix** | Provider Sends and exact run-created acceptance artifacts only | Separately unlocked after three skeptical reviewers approve 4B.6; stop on first mismatch or sufficiency; planned spend never exceeds 9M and absolute authority remains 10M |
+| **4C** | **Bounded paid matrix** | Provider Sends and exact run-created acceptance artifacts only | Separately unlocked after three skeptical reviewers approve 4B.6; stop on first mismatch or sufficiency; planned spend never exceeds 19M and absolute authority remains 20M |
 | **4D** | **Slice 4 closeout** | Evidence docs, app publication, narrowly owned cleanup | Exact-head CI, normal merge, merged-main ship/install, paid reconciliation or explicit retained failure, exact tab cleanup, two process-zero samples; Slice 5 still locked |
 
 ## Slice 4B.0 — exact first authority
@@ -383,6 +384,43 @@ before any fork, consuming zeroizing storage, actual Keychain/provider binding,
 route provenance, policy v3, and real tool-tree containment. Raw-fork/`setsid`
 escape and real credential behavior are not 4B.2 claims.
 
+A 2026-08-18 in-progress checkpoint on `codex/official-runtime-s4b3-native-credential`
+and `codex/official-runtime-s4b3-materializer` made `SamplingClient::new_with_armed_v3`
+require a registered `ActiveHardTokenV3Authority` and that object's real budget,
+tied credential claim to active registration, refused legacy v1 env arming, and
+kept capability unarmed until registration. Independent Swift and Python
+verifiers share the Rust golden canonical digest
+`5052a5285a35ea96151340259475a69351ed162c8308a8f2166b453a5720f950`. The Darwin
+pager now installs the FD-198 payload into the one-shot owner and wipes it
+before `process::exit`. `bind_and_install_v3_authority` plus the armed
+constructor are the authorized fake-loopback consumer: Chat/Responses/Messages
+send the one-shot sentinel only to an exact loopback URL whose endpoint SHA-256
+matches the bound route. Remote hosts and route drift refuse before any
+connection. ACP spawn still fail-closes without a live candidate/config/route
+identity. The live v2 capability decoder will not treat a v3 projection as
+enforcing. The CLI `open_private_file` path now refuses hard-linked manifest,
+ledger, and lock artifacts (`nlink == 1`), matching the app sidecar contract.
+Armed v3 `posix_spawn` now duplicates the held lease descriptor onto child FD
+197. After GBCT READY the pager measures that descriptor plus compiled
+`SOURCE_COMMIT_SHA` into `CandidateIdentityV1` and still does not call
+`bind_actual` with an invented config or route. Hashing `current_exe()` remains
+out of bounds. Fail-closed `ArmedV3ResolvedSnapshot` types refuse empty
+defaults, remote hosts, and secret-bearing sampler configs. ACP spawn now
+requires already-active v3 authority and does not reopen `from_env()`. Armed
+mode omits the summary `OaiCompatClient`. Resolved models keep `model_provider`.
+`ResolvedConfigIdentityTracker` bumps generation only when the credential-free
+catalog projection changes. Live route observation now measures loopback
+endpoint SHA, a deterministic `v3.<sha256>` route id, Darwin `fd_v1`,
+selected-model `resolved-managed-provider`, the live 64KiB serializer ceiling,
+and the five lexical `GrokBuild:` isolation IDs. Conservative request bound is
+derived as live payload + observed output cap. Allocation ceiling and max model
+calls must come from the frozen packet envelope. Golden 8192/route-1/two-tool
+packet numbers are refused as actual. Production startup still does not call `bind_actual`. The live ACP capability now nests a strict three-field
+`v3Authority` object instead of top-level provenance/policy fields. Swift
+re-canonicalizes the typed provenance, derives headers from `authScheme`, and
+still refuses to treat a v3 projection as historical v2 enforcement. Paid
+activation remains locked.
+
 ### `HardTokenBoundProvenanceV1`
 
 The canonical credential-free document includes schema and serializer versions,
@@ -459,7 +497,7 @@ testable predicate for that exact campaign; it may not weaken any lower guard.
 
 The paid manifest freezes exact catalog-confirmed models, routes, prices,
 allocations, prompts, tools, and expected receipts. Its allocation sum is at
-most 9M beneath the 10M absolute ceiling; the 1M remainder is structurally
+most 19M beneath the 20M absolute ceiling; the 1M remainder is structurally
 unallocatable. Native control runs first, then the smallest direct-provider
 packet, then the smallest brokered packet. Later tool, worker, continuation, or
 additional depth packets run only while every predecessor is green and

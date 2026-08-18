@@ -125,6 +125,23 @@ final class CandidateRuntimeAuthorityTests: XCTestCase {
         XCTAssertEqual(errno, ESRCH)
     }
 
+    func testHeldLeaseDescriptorDuplicatesWithoutChangingInspectedDigest() throws {
+        let fixture = try CandidateRuntimeTestFixture.makeCredentialReceiverExecutable()
+        defer { try? FileManager.default.removeItem(at: fixture.container) }
+        CandidateRuntimeTestFixture.installSignatureOverride()
+        let lease = try XCTUnwrap(GrokCandidateRuntimeAuthority.acquireLease(
+            selectionPath: fixture.selection.path,
+            expectedCLIBuild: fixture.cliBuild
+        ))
+        let duplicate = lease.duplicateHeldReadOnlyDescriptor()
+        XCTAssertGreaterThanOrEqual(duplicate, GrokCredentialTransportV1.receiverFileDescriptor + 1)
+        defer { Darwin.close(duplicate) }
+        let snapshot = try XCTUnwrap(GrokCandidateRuntimeAuthority.fileSnapshot(descriptor: duplicate))
+        XCTAssertEqual(snapshot.sha256, lease.identity.binarySHA256)
+        XCTAssertEqual(snapshot.size, lease.identity.binarySize)
+        XCTAssertTrue(lease.heldFileRemainsValid)
+    }
+
     func testFakeCredentialTransportRejectsBoundsBadPeerAndTimeoutWithoutZombie() throws {
         XCTAssertNil(GrokCredentialTransportPayload([]))
         XCTAssertNil(GrokCredentialTransportPayload(
