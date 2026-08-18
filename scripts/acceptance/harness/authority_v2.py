@@ -12,6 +12,7 @@ from pathlib import Path
 from typing import Any
 
 from .errors import HarnessError
+from .candidate_runtime import CandidateRuntimeSelection, SignatureProbe, validate_runtime_selection
 
 
 @dataclass(frozen=True)
@@ -20,28 +21,84 @@ class CampaignAuthority:
     cli_manifest: Path
     ledger: Path
     authorization: Path
+    runtime_selection: Path
+    candidate: CandidateRuntimeSelection
 
 
-def retain_campaign_authority(authority: CampaignAuthority, *, remove_authorization: bool) -> dict[str, Any]:
+def retain_campaign_authority(
+    authority: CampaignAuthority,
+    *,
+    process_zero_samples: list[dict[str, Any]] | None,
+) -> dict[str, Any]:
     """Retain sampler spend evidence; only retire the app-only sidecar after process-zero."""
-    if remove_authorization:
+    process_zero_confirmed = _valid_process_zero_samples(process_zero_samples)
+    retirement_safe = process_zero_confirmed and all(
+        _private_single_link(path) for path in (authority.authorization, authority.runtime_selection)
+    )
+    if retirement_safe:
         authority.authorization.unlink(missing_ok=True)
+        authority.runtime_selection.unlink(missing_ok=True)
     return {
         "authorityDirectory": str(authority.directory),
         "cliManifestSHA256": hashlib.sha256(authority.cli_manifest.read_bytes()).hexdigest(),
         "ledgerSHA256": hashlib.sha256(authority.ledger.read_bytes()).hexdigest(),
         "cliManifestRetained": authority.cli_manifest.exists(),
         "ledgerRetained": authority.ledger.exists(),
-        "authorizationSidecarRemoved": remove_authorization and not authority.authorization.exists(),
+        "candidateBinarySHA256": authority.candidate.binary_sha256,
+        "candidateProvenanceSHA256": authority.candidate.provenance_sha256,
+        "authorizationSidecarRemoved": retirement_safe and not authority.authorization.exists(),
+        "runtimeSelectionRemoved": retirement_safe and not authority.runtime_selection.exists(),
+        "processZeroSamples": process_zero_samples if process_zero_confirmed else None,
+        "retirementRefused": process_zero_confirmed and not retirement_safe,
     }
 
 
-def prepare_campaign_authority(manifest: dict[str, Any], *, root: Path | None = None) -> CampaignAuthority:
+def _valid_process_zero_samples(samples: list[dict[str, Any]] | None) -> bool:
+    if not isinstance(samples, list) or len(samples) != 2:
+        return False
+    for sample in samples:
+        if not isinstance(sample, dict) or not isinstance(sample.get("at"), str):
+            return False
+        pids = sample.get("pids")
+        if not isinstance(pids, dict) or not pids:
+            return False
+        if any(not isinstance(values, list) or values for values in pids.values()):
+            return False
+    return True
+
+
+def _private_single_link(path: Path) -> bool:
+    try:
+        metadata = path.lstat()
+    except OSError:
+        return False
+    return (
+        stat.S_ISREG(metadata.st_mode)
+        and metadata.st_uid == os.getuid()
+        and stat.S_IMODE(metadata.st_mode) & 0o077 == 0
+        and metadata.st_nlink == 1
+    )
+
+
+def prepare_campaign_authority(
+    manifest: dict[str, Any],
+    *,
+    candidate_selection: Path,
+    root: Path | None = None,
+    signature_probe: SignatureProbe | None = None,
+) -> CampaignAuthority:
     """Create the Rust sampler authority and Swift sidecar without launching anything."""
     base = root or Path(tempfile.gettempdir())
     directory = Path(tempfile.mkdtemp(prefix="grokbuild-s4-", dir=base))
     os.chmod(directory, 0o700)
     try:
+        candidate = validate_runtime_selection(
+            candidate_selection,
+            expected_cli_build=manifest["expectedCLIBuild"],
+            signature_probe=signature_probe,
+        )
+        runtime_selection = directory / "runtime-selection.json"
+        _write_private_exclusive(runtime_selection, _canonical_json(candidate.document))
         cli_payload = canonical_cli_manifest(manifest)
         cli_manifest = directory / "hard-token-campaign.json"
         _write_private_exclusive(cli_manifest, _canonical_json(cli_payload))
@@ -52,7 +109,7 @@ def prepare_campaign_authority(manifest: dict[str, Any], *, root: Path | None = 
             authorization,
             _canonical_json(swift_authorization_sidecar(manifest, cli_manifest, ledger)),
         )
-        return CampaignAuthority(directory, cli_manifest, ledger, authorization)
+        return CampaignAuthority(directory, cli_manifest, ledger, authorization, runtime_selection, candidate)
     except Exception:
         for path in directory.iterdir():
             path.unlink(missing_ok=True)

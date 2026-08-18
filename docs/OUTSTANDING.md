@@ -229,12 +229,21 @@ settlement and armed folder-trust reload defects before publication. No
 candidate was installed or activated; the official CLI remains untouched.
 
 Jimmy explicitly authorized sequential execution of 4B.1, then 4B.2, then
-4B.3 on 2026-08-18. Only **4B.1 pinned runtime selection and rollback** is
-active now. 4B.2 and 4B.3 remain locked until their immediate predecessors
-merge. 4B.1 uses disposable signed fixture candidates and FD-anchored
-inspected-equals-launched proof; the real ad-hoc 4B.0 artifacts must remain
-non-armable and uninstalled. No credential-value read, provider Send, paid
-unlock, candidate install, or Slice 5 work is authorized by this closeout.
+4B.3 on 2026-08-18. **4B.1 pinned runtime selection and rollback has passed its
+local exit gate; publication is pending.** 4B.2 and 4B.3 remain locked until
+their immediate predecessors merge. 4B.1 uses disposable signed fixture
+candidates, a byte-identical one-shot execution copy held by FD, and
+suspended-child live CodeDirectory verification before user code as the Darwin
+inspected-equals-launched proof; the real ad-hoc 4B.0 artifacts remain
+non-armable and uninstalled. Python authority/evaluator tests passed 25/25,
+candidate runtime hostile tests passed 8/8, the complete Swift suite passed
+984/984, and two independent skeptical reviews found no remaining blocker. The paid entry
+still refuses before runtime discovery, and two process-zero samples settled at
+`2026-08-18T05:38:53-0400` and `2026-08-18T05:38:54-0400`. The official CLI is
+unchanged at `grok 1.0.4 (d846eb93d94d) [stable]`, SHA-256
+`39366f7756a090b735cc1df8c93a8c0c3c7871555cf6cbb28f9351ca82936485`.
+No credential-value read, provider Send, paid unlock, candidate install, or
+Slice 5 work is authorized by this closeout.
 Jimmy authorized an eventual 10,000,000-token absolute testing ceiling on
 2026-08-17. The activation design permits at most 9,000,000 planned tokens and
 retains 1,000,000 as unreachable reserve. This supersedes the old ceiling only

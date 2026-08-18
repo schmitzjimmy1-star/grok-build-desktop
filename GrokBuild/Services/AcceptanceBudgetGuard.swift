@@ -103,6 +103,7 @@ struct AcceptanceBudgetAuthorization: Equatable, Sendable {
     /// The independently validated CLI HardTokenCampaignManifest used by the sampler.
     let hardBudgetCLIManifestPath: String
     let hardBudgetLedgerPath: String
+    let candidateExecutionLease: GrokCandidateExecutionLease?
 
     var spendableTokenCeiling: Int? {
         let (value, overflow) = campaignTokenCeiling.subtractingReportingOverflow(emergencyReserveTokens)
@@ -122,7 +123,13 @@ enum AcceptanceBudgetGuard {
     static let ledgerArgumentPrefix = "--grokbuild-acceptance-budget-ledger-file="
 
     static func isConfigured(arguments: [String] = ProcessInfo.processInfo.arguments) -> Bool {
-        arguments.contains { $0.hasPrefix(argumentPrefix) }
+        let prefixes = [
+            argumentPrefix,
+            cliManifestArgumentPrefix,
+            ledgerArgumentPrefix,
+            GrokCandidateRuntimeAuthority.selectionArgumentPrefix,
+        ]
+        return arguments.contains { argument in prefixes.contains { argument.hasPrefix($0) } }
     }
 
     static func resolve(
@@ -133,7 +140,9 @@ enum AcceptanceBudgetGuard {
             guard argument.hasPrefix(argumentPrefix) else { return nil }
             return String(argument.dropFirst(argumentPrefix.count))
         }
-        guard !manifestPaths.isEmpty else { return .inactive }
+        guard !manifestPaths.isEmpty else {
+            return isConfigured(arguments: arguments) ? .blocked : .inactive
+        }
         let ledgerPaths = arguments.compactMap { argument -> String? in
             guard argument.hasPrefix(ledgerArgumentPrefix) else { return nil }
             return String(argument.dropFirst(ledgerArgumentPrefix.count))
@@ -142,16 +151,25 @@ enum AcceptanceBudgetGuard {
             guard argument.hasPrefix(cliManifestArgumentPrefix) else { return nil }
             return String(argument.dropFirst(cliManifestArgumentPrefix.count))
         }
+        let runtimeSelectionPaths = arguments.compactMap { argument -> String? in
+            guard argument.hasPrefix(GrokCandidateRuntimeAuthority.selectionArgumentPrefix) else { return nil }
+            return String(argument.dropFirst(GrokCandidateRuntimeAuthority.selectionArgumentPrefix.count))
+        }
         guard manifestPaths.count == 1,
               cliManifestPaths.count == 1,
               ledgerPaths.count == 1,
+              runtimeSelectionPaths.count == 1,
               !manifestPaths[0].isEmpty,
               let data = secureRead(path: manifestPaths[0]),
               let cliManifest = secureRead(path: cliManifestPaths[0]),
               securePrivateRegularPath(ledgerPaths[0]),
               let manifest = try? JSONDecoder().decode(AcceptanceBudgetManifest.self, from: data),
               sha256(cliManifest) == manifest.hardBudgetManifestSHA256,
-              manifest.isValid else {
+              manifest.isValid,
+              let candidateExecutionLease = GrokCandidateRuntimeAuthority.acquireLease(
+                selectionPath: runtimeSelectionPaths[0],
+                expectedCLIBuild: manifest.expectedCLIBuild
+              ) else {
             return .blocked
         }
         guard let budget = manifest.budget(for: prompt) else { return .blocked }
@@ -164,7 +182,8 @@ enum AcceptanceBudgetGuard {
             budget: budget,
             authorizationManifestPath: manifestPaths[0],
             hardBudgetCLIManifestPath: cliManifestPaths[0],
-            hardBudgetLedgerPath: ledgerPaths[0]
+            hardBudgetLedgerPath: ledgerPaths[0],
+            candidateExecutionLease: candidateExecutionLease
         ))
     }
 
@@ -178,6 +197,7 @@ enum AcceptanceBudgetGuard {
               metadata.st_uid == getuid(),
               metadata.st_mode & mode_t(S_IFMT) == mode_t(S_IFREG),
               metadata.st_mode & mode_t(S_IRWXG | S_IRWXO) == 0,
+              metadata.st_nlink == 1,
               metadata.st_size >= 0,
               metadata.st_size <= 1_048_576 else { return nil }
         let expectedSize = Int(metadata.st_size)
@@ -198,6 +218,7 @@ enum AcceptanceBudgetGuard {
             && metadata.st_uid == getuid()
             && metadata.st_mode & mode_t(S_IFMT) == mode_t(S_IFREG)
             && metadata.st_mode & mode_t(S_IRWXG | S_IRWXO) == 0
+            && metadata.st_nlink == 1
     }
 
     private static func sha256(_ data: Data) -> String {

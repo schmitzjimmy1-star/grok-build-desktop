@@ -9,7 +9,7 @@ import unittest
 from pathlib import Path
 import stat
 
-from scripts.acceptance.harness.errors import ReceiptError, SchemaError
+from scripts.acceptance.harness.errors import HarnessError, ReceiptError, SchemaError
 from scripts.acceptance.harness.errors import PreflightError
 from scripts.acceptance.harness.preflight_v2 import require_runtime_floor
 from scripts.acceptance.harness.receipts_v2 import _validate_row, append_row, evaluate
@@ -27,6 +27,7 @@ from scripts.acceptance.harness.authority_v2 import (
     retain_campaign_authority,
     swift_authorization_sidecar,
 )
+from scripts.acceptance.harness.candidate_runtime import EXPECTED_TEAM, validate_runtime_selection
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -169,9 +170,15 @@ class Slice4V2Contracts(unittest.TestCase):
 
     def test_private_cli_authority_is_canonical_and_sidecar_matches_it(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
-            authority = prepare_campaign_authority(self.manifest, root=Path(directory))
+            selection, signature_probe = self._candidate_selection(Path(directory))
+            authority = prepare_campaign_authority(
+                self.manifest,
+                candidate_selection=selection,
+                root=Path(directory),
+                signature_probe=signature_probe,
+            )
             self.assertEqual(stat.S_IMODE(authority.directory.stat().st_mode), 0o700)
-            for path in (authority.cli_manifest, authority.ledger, authority.authorization):
+            for path in (authority.cli_manifest, authority.ledger, authority.authorization, authority.runtime_selection):
                 self.assertEqual(stat.S_IMODE(path.stat().st_mode), 0o600)
             cli = json.loads(authority.cli_manifest.read_text(encoding="utf-8"))
             self.assertEqual(cli, canonical_cli_manifest(self.manifest))
@@ -185,11 +192,159 @@ class Slice4V2Contracts(unittest.TestCase):
             self.assertEqual(sidecar["schemaVersion"], 2)
             self.assertEqual(sidecar["expectedCLIBuild"], self.manifest["expectedCLIBuild"])
             self.assertEqual(sidecar["packets"][0]["route"], cli["allocations"][0]["route"])
-            retained = retain_campaign_authority(authority, remove_authorization=True)
+            retained_before_zero = retain_campaign_authority(authority, process_zero_samples=None)
+            self.assertFalse(retained_before_zero["authorizationSidecarRemoved"])
+            self.assertFalse(retained_before_zero["runtimeSelectionRemoved"])
+            zero_samples = [
+                {"at": "2026-08-18T00:00:00-0400", "pids": {"GrokBuild": [], "grok": []}},
+                {"at": "2026-08-18T00:00:05-0400", "pids": {"GrokBuild": [], "grok": []}},
+            ]
+            retained = retain_campaign_authority(authority, process_zero_samples=zero_samples)
             self.assertTrue(retained["cliManifestRetained"])
             self.assertTrue(retained["ledgerRetained"])
             self.assertTrue(retained["authorizationSidecarRemoved"])
+            self.assertTrue(retained["runtimeSelectionRemoved"])
             self.assertFalse(authority.authorization.exists())
+            self.assertFalse(authority.runtime_selection.exists())
+            self.assertTrue(authority.candidate.provenance_path.exists())
+            self.assertEqual(retained["processZeroSamples"], zero_samples)
+
+    def test_runtime_selection_rejects_build_hash_signature_and_path_drift(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            selection, signature_probe = self._candidate_selection(root)
+            accepted = validate_runtime_selection(
+                selection,
+                expected_cli_build=self.manifest["expectedCLIBuild"],
+                signature_probe=signature_probe,
+            )
+            self.assertEqual(accepted.cli_build, self.manifest["expectedCLIBuild"])
+
+            selection_symlink = root / "candidate-selection-link.json"
+            os.symlink(selection, selection_symlink)
+            with self.assertRaises(HarnessError):
+                validate_runtime_selection(
+                    selection_symlink,
+                    expected_cli_build=self.manifest["expectedCLIBuild"],
+                    signature_probe=signature_probe,
+                )
+
+            selection_document = json.loads(selection.read_text(encoding="utf-8"))
+            runtime_root = Path(selection_document["runtimeRoot"])
+            runtime_link = root / "runtime-link"
+            os.symlink(runtime_root, runtime_link)
+            linked_document = copy.deepcopy(selection_document)
+            linked_document["runtimeRoot"] = str(runtime_link)
+            linked_document["candidatePath"] = str(
+                runtime_link / Path(selection_document["candidatePath"]).relative_to(runtime_root)
+            )
+            linked_document["provenancePath"] = str(
+                runtime_link / Path(selection_document["provenancePath"]).relative_to(runtime_root)
+            )
+            linked_selection = root / "candidate-selection-linked-root.json"
+            linked_selection.write_text(
+                json.dumps(linked_document, sort_keys=True, separators=(",", ":")), encoding="utf-8"
+            )
+            linked_selection.chmod(0o600)
+            with self.assertRaises(HarnessError):
+                validate_runtime_selection(
+                    linked_selection,
+                    expected_cli_build=self.manifest["expectedCLIBuild"],
+                    signature_probe=signature_probe,
+                )
+
+            digest_directory = Path(selection_document["candidatePath"]).parent
+            digest_link = runtime_root / "digest-link"
+            os.symlink(digest_directory, digest_link)
+            digest_linked_document = copy.deepcopy(selection_document)
+            digest_linked_document["candidatePath"] = str(digest_link / Path(selection_document["candidatePath"]).name)
+            digest_linked_document["provenancePath"] = str(digest_link / Path(selection_document["provenancePath"]).name)
+            digest_linked_selection = root / "candidate-selection-linked-digest.json"
+            digest_linked_selection.write_text(
+                json.dumps(digest_linked_document, sort_keys=True, separators=(",", ":")), encoding="utf-8"
+            )
+            digest_linked_selection.chmod(0o600)
+            with self.assertRaises(HarnessError):
+                validate_runtime_selection(
+                    digest_linked_selection,
+                    expected_cli_build=self.manifest["expectedCLIBuild"],
+                    signature_probe=signature_probe,
+                )
+
+            with self.assertRaises(HarnessError):
+                validate_runtime_selection(
+                    selection,
+                    expected_cli_build="1.0.5 (fffffff)",
+                    signature_probe=signature_probe,
+                )
+            with self.assertRaises(HarnessError):
+                validate_runtime_selection(
+                    selection,
+                    expected_cli_build=self.manifest["expectedCLIBuild"],
+                    signature_probe=lambda _: ("WRONGTEAM", "requirement", "arm64"),
+                )
+            document = json.loads(selection.read_text(encoding="utf-8"))
+            Path(document["candidatePath"]).write_bytes(b"replacement")
+            os.chmod(document["candidatePath"], 0o700)
+            with self.assertRaises(HarnessError):
+                validate_runtime_selection(
+                    selection,
+                    expected_cli_build=self.manifest["expectedCLIBuild"],
+                    signature_probe=signature_probe,
+                )
+
+    def test_authority_retirement_refuses_hardlinked_sidecars(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            selection, signature_probe = self._candidate_selection(Path(directory))
+            authority = prepare_campaign_authority(
+                self.manifest,
+                candidate_selection=selection,
+                root=Path(directory),
+                signature_probe=signature_probe,
+            )
+            retained_link = authority.directory / "retained-runtime-selection.json"
+            os.link(authority.runtime_selection, retained_link)
+            zero_samples = [
+                {"at": "2026-08-18T00:00:00-0400", "pids": {"GrokBuild": [], "grok": []}},
+                {"at": "2026-08-18T00:00:05-0400", "pids": {"GrokBuild": [], "grok": []}},
+            ]
+            refused = retain_campaign_authority(authority, process_zero_samples=zero_samples)
+            self.assertTrue(refused["retirementRefused"])
+            self.assertFalse(refused["runtimeSelectionRemoved"])
+            self.assertTrue(authority.runtime_selection.exists())
+            self.assertTrue(retained_link.exists())
+            retained_link.unlink()
+            retired = retain_campaign_authority(authority, process_zero_samples=zero_samples)
+            self.assertFalse(retired["retirementRefused"])
+            self.assertTrue(retired["runtimeSelectionRemoved"])
+
+    def test_runtime_selection_rejects_source_toolchain_and_build_contract_drift(self) -> None:
+        for section, key, replacement in (
+            ("source", "forkSourceSHA", "f" * 40),
+            ("toolchain", "dotslashVersion", "DotSlash 0.6.0"),
+            ("build", "profile", "release"),
+        ):
+            with tempfile.TemporaryDirectory() as directory:
+                selection, signature_probe = self._candidate_selection(Path(directory))
+                selection_document = json.loads(selection.read_text(encoding="utf-8"))
+                provenance = Path(selection_document["provenancePath"])
+                document = json.loads(provenance.read_text(encoding="utf-8"))
+                document[section][key] = replacement
+                provenance.write_text(
+                    json.dumps(document, sort_keys=True, separators=(",", ":")), encoding="utf-8"
+                )
+                provenance.chmod(0o600)
+                selection_document["provenanceSHA256"] = hashlib.sha256(provenance.read_bytes()).hexdigest()
+                selection.write_text(
+                    json.dumps(selection_document, sort_keys=True, separators=(",", ":")), encoding="utf-8"
+                )
+                selection.chmod(0o600)
+                with self.assertRaises(HarnessError):
+                    validate_runtime_selection(
+                        selection,
+                        expected_cli_build=self.manifest["expectedCLIBuild"],
+                        signature_probe=signature_probe,
+                    )
 
     def test_hard_budget_route_and_allocation_invariants_are_schema_enforced(self) -> None:
         raw = json.loads(MANIFEST.read_text(encoding="utf-8"))
@@ -204,6 +359,92 @@ class Slice4V2Contracts(unittest.TestCase):
         raw["expectedCLIBuild"] = "grokbuild-fork"
         with self.assertRaises(SchemaError):
             _load_temp(raw)
+
+    def _candidate_selection(self, root: Path):
+        runtime_root = root / "runtime"
+        runtime_root.mkdir(mode=0o700)
+        candidate_bytes = b"signed-candidate-fixture"
+        binary_sha = hashlib.sha256(candidate_bytes).hexdigest()
+        digest = runtime_root / binary_sha
+        digest.mkdir(mode=0o700)
+        candidate = digest / "grok"
+        candidate.write_bytes(candidate_bytes)
+        candidate.chmod(0o700)
+        requirement = 'identifier "com.grokbuild.fixture" and anchor apple generic'
+        provenance = digest / "candidate-provenance.json"
+        source_sha = self.manifest["expectedCLIBuild"].split("(", 1)[1].split(")", 1)[0]
+        source_sha = source_sha + "0" * (40 - len(source_sha))
+        provenance.write_text(json.dumps({
+            "schemaVersion": 1,
+            "source": {
+                "officialBaseSHA": "1" * 40,
+                "upstreamReplayBaseSHA": "2" * 40,
+                "forkSourceSHA": source_sha,
+                "sourceRev": "3" * 40,
+                "cargoLockSHA256": "4" * 64,
+            },
+            "toolchain": {
+                "rustVersion": "rustc 1.94.0 (fixture)",
+                "cargoVersion": "cargo 1.94.0 (fixture)",
+                "dotslashVersion": "DotSlash 0.5.7",
+                "rustcSHA256": "5" * 64,
+                "cargoSHA256": "6" * 64,
+                "dotslashSHA256": "7" * 64,
+                "targetTriple": "aarch64-apple-darwin",
+                "architecture": "arm64",
+            },
+            "build": {
+                "preBuildCommand": [
+                    "cargo", "clean", "--target-dir", "<candidate-target>", "--profile",
+                    "release-dist", "-p", "xai-grok-pager-bin",
+                ],
+                "command": [
+                    "cargo", "build", "--locked", "--profile", "release-dist", "-p",
+                    "xai-grok-pager-bin", "--features", "release-dist",
+                ],
+                "environment": {
+                    "clearEnvironment": True,
+                    "home": "<account-home>",
+                    "path": ["/usr/bin", "/bin", "/usr/sbin", "/sbin", "<dotslash-directory>"],
+                    "cargoHome": "<account-home>/.cargo",
+                    "rustupHome": "<account-home>/.rustup",
+                    "rustc": "<pinned-rustc>",
+                    "cargoTargetDir": "<candidate-target>",
+                    "cargoIncremental": False,
+                    "locale": "C",
+                    "temporaryDirectory": "/private/tmp",
+                },
+                "profile": "release-dist",
+                "package": "xai-grok-pager-bin",
+                "features": ["release-dist"],
+            },
+            "binary": {
+                "artifactName": "xai-grok-pager",
+                "sha256": binary_sha,
+                "sizeBytes": len(candidate_bytes),
+                "architecture": "arm64",
+                "expectedVersionWithCommit": self.manifest["expectedCLIBuild"],
+                "expectedACPCLIBuild": self.manifest["expectedCLIBuild"],
+                "observedVersionWithCommit": self.manifest["expectedCLIBuild"],
+            },
+            "signing": {
+                "state": "signed",
+                "strictVerification": True,
+                "teamIdentifier": EXPECTED_TEAM,
+                "designatedRequirement": requirement,
+            },
+        }, sort_keys=True, separators=(",", ":")), encoding="utf-8")
+        provenance.chmod(0o600)
+        selection = root / "candidate-selection.json"
+        selection.write_text(json.dumps({
+            "schemaVersion": 1,
+            "runtimeRoot": str(runtime_root),
+            "candidatePath": str(candidate),
+            "provenancePath": str(provenance),
+            "provenanceSHA256": hashlib.sha256(provenance.read_bytes()).hexdigest(),
+        }, sort_keys=True, separators=(",", ":")), encoding="utf-8")
+        selection.chmod(0o600)
+        return selection, lambda _: (EXPECTED_TEAM, requirement, "arm64")
 
     def test_completed_packet_requires_a_full_settled_hard_budget_projection(self) -> None:
         for mutation in (
@@ -399,6 +640,7 @@ class Slice4V2Contracts(unittest.TestCase):
         self.assertIn("convert them to fresh,", billable_v2)
         self.assertIn("cli_manifest_file=authority.cli_manifest", billable_v2)
         self.assertIn("budget_ledger_file=authority.ledger", billable_v2)
+        self.assertIn("runtime_selection_file=authority.runtime_selection", billable_v2)
         self.assertNotIn("resume_saved_task()", billable_v2)
         self.assertIn("retain_campaign_authority", billable_v2)
         stop_recovery = billable_v2[billable_v2.index("except Exception as exc:"):]
@@ -529,6 +771,12 @@ def _hard_budget_authority(packet: dict, manifest: dict | None = None) -> dict:
         "boundProvenanceSHA256": route["boundProvenanceSha256"],
         "preDispatchNextSequence": 0,
         "preDispatchLedgerRevision": 0,
+        "candidateBinarySHA256": "c" * 64,
+        "candidateProvenanceSHA256": "d" * 64,
+        "candidateSourceSHA": "e" * 40,
+        "candidateTeamIdentifier": EXPECTED_TEAM,
+        "candidateDesignatedRequirement": 'identifier "com.grokbuild.fixture" and anchor apple generic',
+        "candidateCodeDirectoryHash": "f" * 40,
     }
 
 
