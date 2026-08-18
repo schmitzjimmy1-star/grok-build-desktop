@@ -904,6 +904,35 @@ within every reservation with exact charges, and reconcile to ACP model-call and
 token usage. Stop cancels, drains, queries the still-live generation, and retains
 reserved, ambiguous, or unavailable evidence before teardown.
 
+**Pinned candidate runtime and rollback (Slice 4B.1).**
+`Services/GrokCLIRuntimeAuthority.swift` is the single armed runtime owner used
+by both `GrokProcess` and `GrokCLIService`. A strict runtime-selection sidecar
+binds one owner-private digest directory, candidate, provenance manifest, and
+provenance hash. Swift validates the complete source/toolchain/build/binary
+contract, architecture, build string, Team `DD2GCQJVB4`, strict signature, and
+designated requirement. Any acceptance-authority argument arms fail-closed
+resolution: partial, duplicate, stale, symlinked, hard-linked, or malformed
+authority blocks ordinary CLI lookup, and ambient `PATH`, `GROK_CLI_PATH`, or
+test overrides cannot replace the candidate.
+
+`GrokCLICandidateLease` opens and hashes the no-follow candidate, copies those
+held bytes into a random owner-private one-use executable, reopens and
+revalidates the copy, and retains its descriptor. `GrokCandidateProcessLauncher`
+starts only that copy suspended and compares the live process CodeDirectory hash
+to the inspected copy before `SIGCONT`; mismatch is killed and synchronously
+reaped before ACP user code. The lease is single-use and removes its execution
+copy on release. This is the Darwin inspected-equals-launched boundary because
+the platform has no usable `fexecve` and direct `/dev/fd` spawning is not an
+executable path.
+
+Rollback never overwrites or deletes the official CLI. After two typed
+process-zero samples, the harness may unlink only single-link ephemeral Swift
+authorization and runtime-selection sidecars. It retains the canonical CLI
+manifest, durable ledger, candidate, and provenance for reconciliation; a
+hard-linked sidecar refuses retirement. The retained Slice 4B.0 artifacts are
+ad-hoc and therefore remain non-armable and uninstalled until the separately
+authorized signed-candidate slice.
+
 The v2 harness still refuses billable launch before runtime discovery. It creates
 one canonical private campaign manifest and ledger, a separate app authorization
 sidecar, and one fresh allocation/process per packet; the manifest and ledger are

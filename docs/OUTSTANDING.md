@@ -244,6 +244,18 @@ unchanged at `grok 1.0.4 (d846eb93d94d) [stable]`, SHA-256
 `39366f7756a090b735cc1df8c93a8c0c3c7871555cf6cbb28f9351ca82936485`.
 No credential-value read, provider Send, paid unlock, candidate install, or
 Slice 5 work is authorized by this closeout.
+
+PR [#124](https://github.com/schmitzjimmy1-star/grok-build-desktop/pull/124)
+passed required exact-head run `32123735441` and merged normally as
+`a8fb17fbfbc6bc5656148d7475bfff5a153eda11`. Merged-main `make ship` passed
+984/984, installed that exact clean code-bearing merge, and proved
+dist/installed parity, Team `DD2GCQJVB4`, deep/strict signing, and no quarantine.
+The installed app opened on the ordinary unarmed path without starting ACP,
+quit normally, and reached final process-zero at
+`2026-08-18T06:03:58-0400` and `2026-08-18T06:04:03-0400`. The official CLI
+version and SHA remained unchanged. The required architecture receipt is a
+docs-only successor and deliberately does not trigger another ship merely to
+chase its documentation stamp.
 Jimmy authorized an eventual 10,000,000-token absolute testing ceiling on
 2026-08-17. The activation design permits at most 9,000,000 planned tokens and
 retains 1,000,000 as unreachable reserve. This supersedes the old ceiling only
