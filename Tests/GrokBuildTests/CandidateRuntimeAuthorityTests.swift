@@ -280,6 +280,10 @@ final class CandidateRuntimeAuthorityTests: XCTestCase {
             expectedCLIBuild: fixture.cliBuild
         ))
         let descendantReceipt = fixture.container.appendingPathComponent("descendant.pid")
+        final class PIDBox: @unchecked Sendable { var value: pid_t = 0 }
+        let observedRoot = PIDBox()
+        GrokCandidateProcessLauncher.spawnedProcessObserverForTests = { observedRoot.value = $0 }
+        defer { GrokCandidateProcessLauncher.spawnedProcessObserverForTests = nil }
         let payload = try XCTUnwrap(GrokCredentialTransportPayload(Array("group-cleanup-fake".utf8)))
         XCTAssertThrowsError(try GrokCandidateProcessLauncher.spawn(
             lease: lease,
@@ -292,14 +296,29 @@ final class CandidateRuntimeAuthorityTests: XCTestCase {
                 return XCTFail("Unexpected error: \(error)")
             }
         }
+        let rootPID = observedRoot.value
+        XCTAssertGreaterThan(rootPID, 0)
         let descendantText = try String(contentsOf: descendantReceipt, encoding: .utf8)
             .trimmingCharacters(in: .whitespacesAndNewlines)
         let descendantPID = try XCTUnwrap(pid_t(descendantText))
         for _ in 0..<100 {
-            if kill(descendantPID, 0) != 0 { break }
+            errno = 0
+            let rootGone = kill(rootPID, 0) == -1 && errno == ESRCH
+            errno = 0
+            let descendantGone = kill(descendantPID, 0) == -1 && errno == ESRCH
+            errno = 0
+            let groupGone = kill(-rootPID, 0) == -1 && errno == ESRCH
+            if rootGone && descendantGone && groupGone { break }
             usleep(10_000)
         }
+        errno = 0
+        XCTAssertEqual(kill(rootPID, 0), -1)
+        XCTAssertEqual(errno, ESRCH)
+        errno = 0
         XCTAssertEqual(kill(descendantPID, 0), -1)
+        XCTAssertEqual(errno, ESRCH)
+        errno = 0
+        XCTAssertEqual(kill(-rootPID, 0), -1)
         XCTAssertEqual(errno, ESRCH)
     }
 

@@ -703,6 +703,7 @@ enum GrokCandidateProcessLauncher {
         case fileActionFailed(Int32)
         case spawnFailed(Int32)
         case credentialTransportFailed
+        case credentialTransportCleanupFailed
 
         var errorDescription: String? {
             switch self {
@@ -711,7 +712,9 @@ enum GrokCandidateProcessLauncher {
             case .pipeFailed(let code): return "Could not create candidate process pipes (errno \(code))."
             case .fileActionFailed(let code): return "Could not configure candidate process descriptors (errno \(code))."
             case .spawnFailed(let code): return "Could not launch the held candidate executable (errno \(code))."
-            case .credentialTransportFailed: return "Candidate credential transport handshake failed."
+            case .credentialTransportFailed,
+                 .credentialTransportCleanupFailed:
+                return "Candidate credential transport handshake failed."
             }
         }
     }
@@ -862,10 +865,9 @@ enum GrokCandidateProcessLauncher {
                 try GrokCredentialTransportV1.completeHandshake(&channel)
                 transportChannel = nil
             } catch {
-                _ = Darwin.kill(-pid, SIGKILL)
-                _ = Darwin.kill(pid, SIGKILL)
-                var status: Int32 = 0
-                while waitpid(pid, &status, 0) < 0 && errno == EINTR {}
+                guard terminateTransportProcessGroupAndReap(pid: pid) else {
+                    throw LaunchError.credentialTransportCleanupFailed
+                }
                 throw LaunchError.credentialTransportFailed
             }
         }
@@ -879,6 +881,35 @@ enum GrokCandidateProcessLauncher {
             standardOutput: stdoutPipe,
             standardError: stderrPipe
         )
+    }
+
+    /// Handshake failure must not leave a same-group fixture child holding the
+    /// inherited transport descriptor. Reap the direct child regardless, then
+    /// require its private process group to disappear before returning.
+    private static func terminateTransportProcessGroupAndReap(pid: pid_t) -> Bool {
+        let attempts = 20
+        let retryDelayMicroseconds: useconds_t = 10_000
+
+        for _ in 0..<attempts {
+            if Darwin.kill(-pid, SIGKILL) == 0 || errno == ESRCH {
+                break
+            }
+            usleep(retryDelayMicroseconds)
+        }
+
+        _ = Darwin.kill(pid, SIGKILL)
+        var status: Int32 = 0
+        while waitpid(pid, &status, 0) < 0 && errno == EINTR {}
+
+        for _ in 0..<attempts {
+            errno = 0
+            if Darwin.kill(-pid, 0) == -1 && errno == ESRCH {
+                return true
+            }
+            _ = Darwin.kill(-pid, SIGKILL)
+            usleep(retryDelayMicroseconds)
+        }
+        return false
     }
 
     private static func withCStringArray<T>(
