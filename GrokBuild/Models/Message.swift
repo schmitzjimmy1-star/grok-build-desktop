@@ -168,8 +168,19 @@ struct AssistantTurnCheckpoint: Codable, Sendable, Hashable {
         /// Optional so historical checkpoints remain decodable.
         let preDispatchNextSequence: Int?
         let preDispatchLedgerRevision: Int?
+        /// Exact credential-free runtime identity selected by the app. Optional
+        /// so checkpoints written before Slice 4B.1 remain decodable.
+        let candidateBinarySHA256: String?
+        let candidateProvenanceSHA256: String?
+        let candidateSourceSHA: String?
+        let candidateTeamIdentifier: String?
+        let candidateDesignatedRequirement: String?
+        let candidateCodeDirectoryHash: String?
 
-        init?(_ capability: GrokBuildHardTokenBudgetCapability) {
+        init?(
+            _ capability: GrokBuildHardTokenBudgetCapability,
+            candidate: GrokCandidateRuntimeIdentity? = nil
+        ) {
             guard capability.isEnforcing,
                   let status = capability.status,
                   let allocation = capability.allocation else { return nil }
@@ -207,6 +218,12 @@ struct AssistantTurnCheckpoint: Codable, Sendable, Hashable {
             allowedToolIDs = capability.allowedToolIDs
             preDispatchNextSequence = status.nextSequence
             preDispatchLedgerRevision = status.ledgerRevision
+            candidateBinarySHA256 = candidate?.binarySHA256
+            candidateProvenanceSHA256 = candidate?.provenanceSHA256
+            candidateSourceSHA = candidate?.sourceSHA
+            candidateTeamIdentifier = candidate?.signature.teamIdentifier
+            candidateDesignatedRequirement = candidate?.signature.designatedRequirement
+            candidateCodeDirectoryHash = candidate?.signature.codeDirectoryHash
         }
     }
 

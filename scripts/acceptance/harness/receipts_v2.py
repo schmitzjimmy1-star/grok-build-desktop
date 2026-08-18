@@ -52,6 +52,8 @@ HARD_BUDGET_AUTHORITY_FIELDS = {
     "routeModel", "endpointSHA256", "apiBackend", "requestBoundTokens",
     "maxPayloadBytes", "maxOutputTokens", "boundProvenanceSHA256",
     "preDispatchNextSequence", "preDispatchLedgerRevision",
+    "candidateBinarySHA256", "candidateProvenanceSHA256", "candidateSourceSHA",
+    "candidateTeamIdentifier", "candidateDesignatedRequirement", "candidateCodeDirectoryHash",
 }
 SEMVER = re.compile(r"\b(\d+)\.(\d+)\.(\d+)")
 FAILURE_CODES = {
@@ -282,6 +284,8 @@ def _validate_hard_budget_pre_dispatch_authority(value: Any) -> None:
     for key in (
         "campaignID", "manifestSHA256", "allocationID", "packetID", "cliBuild",
         "routeModel", "endpointSHA256", "apiBackend", "boundProvenanceSHA256",
+        "candidateBinarySHA256", "candidateProvenanceSHA256", "candidateSourceSHA",
+        "candidateTeamIdentifier", "candidateDesignatedRequirement", "candidateCodeDirectoryHash",
     ):
         if not isinstance(value[key], str) or not value[key]:
             raise ReceiptError(f"hard-budget authority {key} must be non-empty")
@@ -290,6 +294,15 @@ def _validate_hard_budget_pre_dispatch_authority(value: Any) -> None:
         "preDispatchNextSequence", "preDispatchLedgerRevision",
     ):
         _require_nonnegative_int(value[key], f"hard-budget authority {key}")
+    for key in ("candidateBinarySHA256", "candidateProvenanceSHA256"):
+        if re.fullmatch(r"[0-9a-f]{64}", value[key]) is None:
+            raise ReceiptError(f"hard-budget authority {key} must be lowercase SHA-256")
+    if re.fullmatch(r"[0-9a-f]{40}", value["candidateSourceSHA"]) is None:
+        raise ReceiptError("hard-budget authority candidateSourceSHA must be lowercase Git SHA")
+    if value["candidateTeamIdentifier"] != "DD2GCQJVB4":
+        raise ReceiptError("hard-budget authority candidate Team Identifier mismatch")
+    if re.fullmatch(r"[0-9a-f]{40}", value["candidateCodeDirectoryHash"]) is None:
+        raise ReceiptError("hard-budget authority candidateCodeDirectoryHash must be a CDHash")
 
 
 def _validate_cost(cost: dict[str, Any]) -> None:
@@ -462,6 +475,11 @@ def _check_hard_budget_pre_dispatch_authority(
     ).encode("utf-8")
     if authority["manifestSHA256"] != hashlib.sha256(canonical_manifest).hexdigest():
         raise ReceiptError(f"{packet['id']}: hard-budget authority manifest hash mismatch")
+    if not all(authority[key] for key in (
+        "candidateBinarySHA256", "candidateProvenanceSHA256", "candidateSourceSHA",
+        "candidateDesignatedRequirement", "candidateCodeDirectoryHash",
+    )):
+        raise ReceiptError(f"{packet['id']}: exact candidate runtime identity is unavailable")
     return authority
 
 

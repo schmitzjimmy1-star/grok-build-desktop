@@ -24,6 +24,7 @@ struct HardBudgetLaunchContract: Sendable, Equatable {
     let ledgerPath: String
     let allocationID: String
     let expectedManifestSHA256: String
+    let candidateExecutionLease: GrokCandidateExecutionLease
     private let manifestIdentity: HardBudgetAuthorityFileIdentity
     private let ledgerIdentity: HardBudgetAuthorityFileIdentity
 
@@ -31,7 +32,8 @@ struct HardBudgetLaunchContract: Sendable, Equatable {
         manifestPath: String,
         ledgerPath: String,
         allocationID: String,
-        expectedManifestSHA256: String
+        expectedManifestSHA256: String,
+        candidateExecutionLease: GrokCandidateExecutionLease?
     ) {
         guard NSString(string: manifestPath).isAbsolutePath,
               NSString(string: ledgerPath).isAbsolutePath,
@@ -44,11 +46,14 @@ struct HardBudgetLaunchContract: Sendable, Equatable {
                 path: manifestPath,
                 expectedSHA256: expectedManifestSHA256
               ),
-              let ledgerIdentity = HardBudgetAuthorityFileIdentity.capture(path: ledgerPath) else { return nil }
+              let ledgerIdentity = HardBudgetAuthorityFileIdentity.capture(path: ledgerPath),
+              let candidateExecutionLease,
+              candidateExecutionLease.heldFileRemainsValid else { return nil }
         self.manifestPath = manifestPath
         self.ledgerPath = ledgerPath
         self.allocationID = allocationID
         self.expectedManifestSHA256 = expectedManifestSHA256
+        self.candidateExecutionLease = candidateExecutionLease
         self.manifestIdentity = manifestIdentity
         self.ledgerIdentity = ledgerIdentity
     }
@@ -59,6 +64,7 @@ struct HardBudgetLaunchContract: Sendable, Equatable {
             expectedSHA256: expectedManifestSHA256
         ) == manifestIdentity
             && HardBudgetAuthorityFileIdentity.capture(path: ledgerPath) == ledgerIdentity
+            && candidateExecutionLease.heldFileRemainsValid
     }
 }
 
@@ -77,6 +83,7 @@ private struct HardBudgetAuthorityFileIdentity: Sendable, Equatable {
               metadata.st_uid == getuid(),
               metadata.st_mode & mode_t(S_IFMT) == mode_t(S_IFREG),
               metadata.st_mode & mode_t(S_IRWXG | S_IRWXO) == 0,
+              metadata.st_nlink == 1,
               metadata.st_size >= 0,
               metadata.st_size <= 1_048_576 else { return nil }
         if let expectedSHA256 {
@@ -113,6 +120,7 @@ enum GrokProcessLaunchEnvironment {
         var environment = base
         hardBudgetKeys.forEach { environment.removeValue(forKey: $0) }
         if let contract {
+            environment.removeValue(forKey: "GROK_CLI_PATH")
             environment[hardBudgetKeys[0]] = contract.ledgerPath
             environment[hardBudgetKeys[1]] = contract.manifestPath
             environment[hardBudgetKeys[2]] = contract.allocationID
@@ -194,6 +202,13 @@ struct GrokLaunchReceipt: Sendable, Equatable {
     let mcpGatewayEnabled: Bool
     let allowedMCPServerNames: [String]
     var observedCLIConfiguredMCPServerNames: [String]
+    let candidateBinarySHA256: String?
+    let candidateProvenanceSHA256: String?
+    let candidateSourceSHA: String?
+    let candidateCLIBuild: String?
+    let candidateTeamIdentifier: String?
+    let candidateDesignatedRequirement: String?
+    let candidateCodeDirectoryHash: String?
     let startedAt: Date
 
     init(
@@ -225,6 +240,14 @@ struct GrokLaunchReceipt: Sendable, Equatable {
             $0.localizedCaseInsensitiveCompare($1) == .orderedAscending
         }
         observedCLIConfiguredMCPServerNames = []
+        let candidate = options.hardBudgetLaunchContract?.candidateExecutionLease.identity
+        candidateBinarySHA256 = candidate?.binarySHA256
+        candidateProvenanceSHA256 = candidate?.provenanceSHA256
+        candidateSourceSHA = candidate?.sourceSHA
+        candidateCLIBuild = candidate?.cliBuild
+        candidateTeamIdentifier = candidate?.signature.teamIdentifier
+        candidateDesignatedRequirement = candidate?.signature.designatedRequirement
+        candidateCodeDirectoryHash = candidate?.signature.codeDirectoryHash
         browserEnabled = mcpServerNames.contains("grokbuild-browser")
         computerUseEnabled = mcpServerNames.contains("grokbuild-computer-use")
         self.startedAt = startedAt
@@ -1047,7 +1070,7 @@ final class GrokProcess: @unchecked Sendable {
     private let _acpEventStream: AsyncStream<AcpEvent>
     private var acpEventContinuation: AsyncStream<AcpEvent>.Continuation?
 
-    private var process: Process?
+    private var process: GrokManagedProcess?
     private var stdin: FileHandle?
     private var stdout: Pipe?
     private var stderr: Pipe?
@@ -1567,29 +1590,6 @@ final class GrokProcess: @unchecked Sendable {
             return
         }
 
-        guard let cli = Self.locateGrokCLI() else {
-            var receipt = GrokLaunchReceipt(
-                options: options,
-                workspaceID: workspace.id,
-                processGeneration: launchGeneration
-            )
-            receipt.outcome = .failed
-            launchReceipt = receipt
-            rejectLaunchModelReceipt(identity: launchIdentity)
-            activeProcessGeneration = nil
-            mcpServerStatuses = MCPReadinessPolicy.failedStatuses(for: options.mcpServers)
-            state = .failed("Could not locate the `grok` CLI. Run `grok login` or set GROK_CLI_PATH.")
-            return
-        }
-
-        let proc = Process()
-        proc.executableURL = cli
-        proc.currentDirectoryURL = workspace.path
-        proc.environment = GrokProcessLaunchEnvironment.resolved(
-            base: ProcessInfo.processInfo.environment,
-            hardBudget: options.hardBudgetLaunchContract
-        )
-
         // ACP: grok [top-level flags] agent [agent flags] stdio
         var args: [String] = []
         if let a = options.agent, !a.isEmpty { args += ["--agent", a] }
@@ -1633,14 +1633,52 @@ final class GrokProcess: @unchecked Sendable {
         args.append("stdio")
         args += options.extraArgs
 
-        proc.arguments = args
-
-        let i = Pipe(), o = Pipe(), e = Pipe()
-        proc.standardInput = i
-        proc.standardOutput = o
-        proc.standardError = e
-
-        do { try proc.run() } catch {
+        let environment = GrokProcessLaunchEnvironment.resolved(
+            base: ProcessInfo.processInfo.environment,
+            hardBudget: options.hardBudgetLaunchContract
+        )
+        let launched: GrokCandidateSpawnResult
+        do {
+            if let contract = options.hardBudgetLaunchContract {
+                launched = try GrokCandidateProcessLauncher.spawn(
+                    lease: contract.candidateExecutionLease,
+                    arguments: args,
+                    environment: environment,
+                    currentDirectory: workspace.path
+                )
+            } else {
+                guard let cli = Self.locateGrokCLI() else {
+                    var receipt = GrokLaunchReceipt(
+                        options: options,
+                        workspaceID: workspace.id,
+                        processGeneration: launchGeneration
+                    )
+                    receipt.outcome = .failed
+                    launchReceipt = receipt
+                    rejectLaunchModelReceipt(identity: launchIdentity)
+                    activeProcessGeneration = nil
+                    mcpServerStatuses = MCPReadinessPolicy.failedStatuses(for: options.mcpServers)
+                    state = .failed("Could not locate the `grok` CLI. Run `grok login` or set GROK_CLI_PATH.")
+                    return
+                }
+                let proc = Process()
+                proc.executableURL = cli
+                proc.currentDirectoryURL = workspace.path
+                proc.environment = environment
+                proc.arguments = args
+                let input = Pipe(), output = Pipe(), errorOutput = Pipe()
+                proc.standardInput = input
+                proc.standardOutput = output
+                proc.standardError = errorOutput
+                try proc.run()
+                launched = GrokCandidateSpawnResult(
+                    process: GrokManagedProcess(proc),
+                    standardInput: input.fileHandleForWriting,
+                    standardOutput: output,
+                    standardError: errorOutput
+                )
+            }
+        } catch {
             var receipt = GrokLaunchReceipt(
                 options: options,
                 workspaceID: workspace.id,
@@ -1659,24 +1697,28 @@ final class GrokProcess: @unchecked Sendable {
         launchReceipt = GrokLaunchReceipt(
             options: options,
             workspaceID: workspace.id,
-            processIdentifier: proc.processIdentifier,
+            processIdentifier: launched.process.processIdentifier,
             processGeneration: launchGeneration
         )
         ownedProcessLedger.begin(OwnedProcessIdentity(
             localTabID: options.localTabID,
             backendSessionID: nil,
             processGeneration: launchGeneration,
-            rootPID: proc.processIdentifier
+            rootPID: launched.process.processIdentifier
         ))
 
-        self.process = proc
-        self.stdin = i.fileHandleForWriting
-        self.stdout = o
-        self.stderr = e
+        self.process = launched.process
+        self.stdin = launched.standardInput
+        self.stdout = launched.standardOutput
+        self.stderr = launched.standardError
         self.stdoutBuffer = Data()
         self.startupStderr = ""
 
-        setupReaders(stdout: o, stderr: e, processGeneration: launchGeneration)
+        setupReaders(
+            stdout: launched.standardOutput,
+            stderr: launched.standardError,
+            processGeneration: launchGeneration
+        )
 
         do {
             try await initializeACP()
@@ -1830,7 +1872,7 @@ final class GrokProcess: @unchecked Sendable {
             // the whole process tree past the app's own exit.
             if p.isRunning {
                 try? await Task.sleep(for: .milliseconds(300))
-                if p.isRunning { kill(p.processIdentifier, SIGKILL) }
+                if p.isRunning { p.forceKillAndReap() }
             }
         }
         // A helper can outlive its parent after reparenting, so a post-parent tree
@@ -3588,24 +3630,7 @@ final class GrokProcess: @unchecked Sendable {
     static var cliOverrideForTests: URL?
 
     private static func locateGrokCLI() -> URL? {
-        if let cliOverrideForTests { return cliOverrideForTests }
-        if let p = ProcessInfo.processInfo.environment["GROK_CLI_PATH"], !p.isEmpty {
-            let u = URL(fileURLWithPath: (p as NSString).expandingTildeInPath)
-            if FileManager.default.isExecutableFile(atPath: u.path) { return u }
-        }
-        for c in ["\(NSHomeDirectory())/.grok/bin/grok",
-                  "\(NSHomeDirectory())/bin/grok",
-                  "/opt/homebrew/bin/grok",
-                  "/usr/local/bin/grok"] {
-            if FileManager.default.isExecutableFile(atPath: c) { return URL(fileURLWithPath: c) }
-        }
-        if let path = ProcessInfo.processInfo.environment["PATH"] {
-            for d in path.split(separator: ":") {
-                let f = URL(fileURLWithPath: String(d)).appendingPathComponent("grok").path
-                if FileManager.default.isExecutableFile(atPath: f) { return URL(fileURLWithPath: f) }
-            }
-        }
-        return nil
+        GrokCLIRuntimeResolver.locateOfficial(testOverride: cliOverrideForTests)
     }
 
 }

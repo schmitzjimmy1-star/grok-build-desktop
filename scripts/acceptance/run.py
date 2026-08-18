@@ -74,6 +74,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--billable", action="store_true", help="Allow fresh provider Sends after preflight")
     parser.add_argument("--run-id", dest="run_id")
     parser.add_argument("--ledger", type=Path, default=DEFAULT_LEDGER)
+    parser.add_argument("--candidate-selection", type=Path)
     parser.add_argument("--cleanup", action="store_true")
     parser.add_argument("--ids-from-ledger", type=Path)
     parser.add_argument("--guessed-id", help=argparse.SUPPRESS)
@@ -83,6 +84,10 @@ def main(argv: list[str] | None = None) -> int:
     args.ledger = args.ledger.expanduser().resolve(strict=False)
     if args.ids_from_ledger is not None:
         args.ids_from_ledger = args.ids_from_ledger.expanduser().resolve(strict=False)
+    if args.candidate_selection is not None:
+        # Preserve the leaf exactly so validate_runtime_selection can enforce
+        # O_NOFOLLOW. `resolve()` here would erase a hostile selection symlink.
+        args.candidate_selection = Path(os.path.abspath(args.candidate_selection.expanduser()))
 
     try:
         if args.fixture:
@@ -279,6 +284,8 @@ def _billable_v2(args: argparse.Namespace) -> int:
         raise HarnessError("billable mode requires --run-id")
     require_live_run_id_v2(args.run_id)
     manifest = load_manifest_v2(args.manifest, run_id=args.run_id)
+    if args.candidate_selection is None:
+        raise HarnessError("v2 execution requires one exact --candidate-selection authority")
     if any(packet["continuation"] is not None for packet in manifest["packets"]):
         raise HarnessError(
             "this manifest contains session-continuation packets; convert them to fresh, "
@@ -286,7 +293,7 @@ def _billable_v2(args: argparse.Namespace) -> int:
         )
     report = preflight_v2(REPO, manifest, ledger=args.ledger)
     safe_print(json.dumps({"preflight": redact_value("preflight", report)}))
-    authority = prepare_campaign_authority(manifest)
+    authority = prepare_campaign_authority(manifest, candidate_selection=args.candidate_selection)
     rows: list[dict] = []
     cumulative = 0
     current_packet: dict | None = None
@@ -296,7 +303,7 @@ def _billable_v2(args: argparse.Namespace) -> int:
     cleanup_is_recorded = False
     send_may_be_live = False
     app_launch_epoch = 0
-    process_zero_confirmed = False
+    process_zero_samples: list[dict] | None = None
     try:
         packets = manifest["packets"]
         for index, packet in enumerate(packets):
@@ -314,6 +321,7 @@ def _billable_v2(args: argparse.Namespace) -> int:
                 budget_file=authority.authorization,
                 cli_manifest_file=authority.cli_manifest,
                 budget_ledger_file=authority.ledger,
+                runtime_selection_file=authority.runtime_selection,
             )
             app_launch_epoch += 1
             select_workspace(REPO)
@@ -387,8 +395,8 @@ def _billable_v2(args: argparse.Namespace) -> int:
         # merely on the in-memory objects the current process hoped it wrote.
         summary = evaluate_v2(manifest, load_ledger_v2(args.ledger))
         quit_installed()
-        summary["processZero"] = two_process_zero_samples()
-        process_zero_confirmed = True
+        process_zero_samples = two_process_zero_samples()
+        summary["processZero"] = process_zero_samples
         safe_print(json.dumps(redact_value("summary", summary), sort_keys=True))
         return 0
     except Exception as exc:
@@ -450,8 +458,7 @@ def _billable_v2(args: argparse.Namespace) -> int:
                 secondary_failures.append("cleanup ledger append failed")
         try:
             quit_installed()
-            two_process_zero_samples()
-            process_zero_confirmed = True
+            process_zero_samples = two_process_zero_samples()
         except Exception:
             secondary_failures.append("installed app cleanup/process-zero failed")
         if secondary_failures:
@@ -465,7 +472,7 @@ def _billable_v2(args: argparse.Namespace) -> int:
         safe_print(json.dumps({
             "authorityRetention": retain_campaign_authority(
                 authority,
-                remove_authorization=process_zero_confirmed,
+                process_zero_samples=process_zero_samples,
             )
         }, sort_keys=True))
 

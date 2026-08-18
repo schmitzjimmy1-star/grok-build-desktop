@@ -1,6 +1,6 @@
 # GrokBuild Slice 4 Activation Campaign — 2026-08-17
 
-Status: **Slice 4B.0 accepted; Slice 4B.1 active; paid activation locked.** This document is the authority for completing
+Status: **Slices 4B.0 and 4B.1 accepted; Slice 4B.2 is next; paid activation locked.** This document is the authority for completing
 the official-provider and open-weight lane after the nonbillable Slice 4A hard-budget checkpoint. It
 does not authorize a provider request, credential-value read, live Grok config
 mutation, installed-CLI replacement, tag, release, or Slice 5 work.
@@ -120,8 +120,8 @@ evidence from a predecessor or begin while its predecessor remains unmerged.
 
 Slice 4B.0 is accepted. Jimmy explicitly authorized sequential execution of
 4B.1, then 4B.2, then 4B.3 on 2026-08-18. Merge-per-slice remains mandatory:
-only 4B.1 is active now, while 4B.2 and 4B.3 remain locked until each immediate
-predecessor is reviewed and merged.
+4B.1 is accepted, 4B.2 is next, and 4B.3 remains locked until 4B.2 is reviewed
+and merged.
 
 ### Scope
 
@@ -232,19 +232,79 @@ Team ID, and `codesign -d -r-` evidence. `HardBudgetLaunchContract` rechecks the
 no-follow, owner/private, regular-file, device/inode/size/hash, and signing
 validation immediately before process creation. A path recheck alone is not
 the inspected-equals-launched proof because replacement can occur after the
-last pathname check. Slice 4B.1 must therefore use an FD-anchored execution
-lease for disposable signed fixture candidates and prove the inspected bytes
-are the launched bytes. The real 4B.0 candidates remain ad-hoc, refused, and
+last pathname check. Slice 4B.1 therefore copies the held, hashed descriptor
+bytes into a random owner-private one-use executable, retains that copy's FD,
+starts it suspended before user code, and compares the live process CodeDirectory
+hash to the inspected copy before `SIGCONT`. A mismatch is killed and reaped before ACP can
+start. This is the available Darwin inspected-equals-launched proof: macOS has
+no usable `fexecve`, and a direct `/dev/fd/<n>` `posix_spawn` probe returned
+`EACCES`. Hostile disposable signed-fixture tests prove a post-inspection source
+path swap still executes the pinned inspected bytes and cannot execute replacement
+code. The real 4B.0 candidates remain ad-hoc, refused, and
 non-armable until the separately authorized signed installation in 4B.6; 4B.1
 must not create a durable real-candidate install merely to make a fixture green.
 `GrokProcess` and
-`GrokCLIService` must share one resolver. Armed preflight, inspect, catalog, ACP,
-and provider execution must all name the same binary.
+`GrokCLIService` must share one resolver. Armed catalog and ACP execution name
+the same selected candidate. Candidate preflight/inspect and provider execution
+remain hard-locked until 4B.3 supplies the native credential and route-provenance
+contracts; dormant legacy preflight must not be represented as candidate
+authority.
 
 The candidate is stored below an owner-private GrokBuild runtime root keyed by
 its digest. Ordinary launches continue to use the official CLI. Rollback occurs
 only after process-zero and means removing the acceptance selection—not
 overwriting, deleting, or silently downgrading the official installation.
+
+### 4B.1 receipt — 2026-08-18
+
+- One strict runtime-selection sidecar binds the owner-private runtime root,
+  digest-addressed candidate and provenance paths, and exact provenance hash.
+  Swift and Python independently require the complete v1 source, toolchain,
+  build, binary, architecture, build-string, Team, strict-signing, and
+  designated-requirement contract. Root, digest-ancestor, selection, manifest,
+  and ledger symlinks or hard links fail closed.
+- `GrokProcess` and `GrokCLIService` now share one armed resolver. Any partial,
+  duplicate, stale, malformed, or legacy acceptance authority blocks ordinary
+  CLI discovery. Ambient `PATH`, `GROK_CLI_PATH`, and test overrides cannot
+  substitute a different runtime while armed. Catalog warmup is suppressed
+  until the selected candidate owns the ACP catalog.
+- Acquisition hashes a no-follow candidate descriptor, copies those exact bytes
+  into a random owner-private one-use executable, reopens and revalidates the
+  copy, starts it suspended, and verifies the live CodeDirectory hash before
+  `SIGCONT`. Hostile tests prove a post-acquisition source-path swap executes the
+  pinned bytes, ad-hoc and wrong-Team fixtures refuse, a lease is single-use,
+  and a TERM-ignoring child is force-killed and synchronously reaped.
+- Authority retirement requires two typed process-zero samples and unlink-safe
+  single-link sidecars. It removes only the ephemeral Swift authorization and
+  runtime-selection sidecars; the CLI manifest, durable ledger, candidate, and
+  provenance remain retained. A hard-linked sidecar refuses retirement rather
+  than pretending its authority was removed.
+- Final local verification passed the Python v2 authority/evaluator suite
+  **25/25**, `CandidateRuntimeAuthorityTests` **8/8**, the complete Swift suite
+  **984/984**, harness dry-run with exactly 3,000,000 planned and 1,000,000
+  reserved tokens, `compileall`, and `git diff --check`. Two independent skeptical reviews
+  returned no remaining 4B.1 blocker.
+- A direct v2 `--billable` invocation exited 2 at the absolute-ceiling guard
+  before runtime discovery, authority creation, app launch, or provider work.
+  Process-zero samples at `2026-08-18T05:38:53-0400` and
+  `2026-08-18T05:38:54-0400` contained no GrokBuild, helper, agent, or Grok CLI
+  process.
+- Retained candidate B still reports `grok 1.0.5 (003f955) [stable]`, binary
+  SHA-256 `4763acd631b927b71cfa8594863fc19e9bb6873f7757ce7c7903eb3993b57287`,
+  provenance SHA-256
+  `dae8c7ad444ea5d2ce726cbb84f9fdfba9c471772126b9ec1521bb0dc3443bda`,
+  ad-hoc signing, and no Team Identifier, so it remains deliberately non-armable
+  and uninstalled. The official installed CLI remains unchanged at
+  `grok 1.0.4 (d846eb93d94d) [stable]`, SHA-256
+  `39366f7756a090b735cc1df8c93a8c0c3c7871555cf6cbb28f9351ca82936485`.
+  No candidate install, Keychain value read, live config mutation, provider
+  request, or paid packet occurred.
+
+PR [#124](https://github.com/schmitzjimmy1-star/grok-build-desktop/pull/124)
+is the 4B.1 publication vehicle. Its final head must pass the required app test
+and bundle check before a normal match-head merge; merged-main parity, ordinary
+installed-app rollback acceptance, and final process-zero close the slice.
+Slice 4B.2 must not begin before those receipts settle.
 
 ### `HardBudgetCredentialMaterializationV1`
 

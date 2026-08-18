@@ -2370,7 +2370,13 @@ final class ChatStore {
         isYolo = false
         lastError = nil
         startConnectionWatchdog()
-        applyBuiltInModelCatalog(await GrokModelCatalog.shared.models())
+        if hardBudgetLaunchContract == nil {
+            applyBuiltInModelCatalog(await GrokModelCatalog.shared.models())
+        } else {
+            // The candidate ACP catalog becomes authoritative after initialize.
+            // Never run the ordinary CLI catalog helper inside an armed launch.
+            applyBuiltInModelCatalog(GrokModelCatalog.cachedOrFallback())
+        }
         let settings = loadPermissionSettings()
         let savedSelection = effectiveResumeSessionID.flatMap { sessionSelections[$0] }
         guard let modelForLaunch = modelForProcessLaunch(fallbackSelection: savedSelection) else {
@@ -3046,7 +3052,8 @@ final class ChatStore {
                     manifestPath: authorization.hardBudgetCLIManifestPath,
                     ledgerPath: authorization.hardBudgetLedgerPath,
                     allocationID: authorization.budget.allocationID,
-                    expectedManifestSHA256: authorization.hardBudgetManifestSHA256
+                    expectedManifestSHA256: authorization.hardBudgetManifestSHA256,
+                    candidateExecutionLease: authorization.candidateExecutionLease
                   ) else {
                 lastError = "Acceptance dispatch stopped because the launch budget does not authorize this exact final payload."
                 return false
@@ -3262,7 +3269,10 @@ final class ChatStore {
             do {
                 let hardBudget = try await process.fetchHardTokenBudgetCapability()
                 guard hardBudget.authorizes(authorization),
-                      let hardBudgetReceipt = AssistantTurnCheckpoint.HardBudgetReceipt(hardBudget) else {
+                      let hardBudgetReceipt = AssistantTurnCheckpoint.HardBudgetReceipt(
+                        hardBudget,
+                        candidate: authorization.candidateExecutionLease?.identity
+                      ) else {
                     lastError = "Acceptance dispatch stopped because the live CLI hard-budget allocation does not authorize this exact packet."
                     return false
                 }

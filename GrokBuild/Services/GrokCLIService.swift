@@ -1006,30 +1006,7 @@ final class GrokCLIService {
     static var cliOverrideForTests: URL?
 
     static func locateGrokCLI() -> URL? {
-        if let override = cliOverrideForTests { return override }
-        if let path = ProcessInfo.processInfo.environment["GROK_CLI_PATH"], !path.isEmpty {
-            let url = URL(fileURLWithPath: (path as NSString).expandingTildeInPath)
-            if FileManager.default.isExecutableFile(atPath: url.path) { return url }
-        }
-        for candidate in [
-            "\(NSHomeDirectory())/.grok/bin/grok",
-            "\(NSHomeDirectory())/bin/grok",
-            "/opt/homebrew/bin/grok",
-            "/usr/local/bin/grok"
-        ] {
-            if FileManager.default.isExecutableFile(atPath: candidate) {
-                return URL(fileURLWithPath: candidate)
-            }
-        }
-        if let path = ProcessInfo.processInfo.environment["PATH"] {
-            for dir in path.split(separator: ":") {
-                let candidate = URL(fileURLWithPath: String(dir)).appendingPathComponent("grok").path
-                if FileManager.default.isExecutableFile(atPath: candidate) {
-                    return URL(fileURLWithPath: candidate)
-                }
-            }
-        }
-        return nil
+        GrokCLIRuntimeResolver.locateOfficial(testOverride: cliOverrideForTests)
     }
 
     /// Short display string from `grok --version` (e.g. `0.2.60 [stable]`).

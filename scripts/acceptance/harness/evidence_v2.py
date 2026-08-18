@@ -47,6 +47,12 @@ _HARD_BUDGET_AUTHORITY_FIELDS = (
     "boundProvenanceSHA256",
     "preDispatchNextSequence",
     "preDispatchLedgerRevision",
+    "candidateBinarySHA256",
+    "candidateProvenanceSHA256",
+    "candidateSourceSHA",
+    "candidateTeamIdentifier",
+    "candidateDesignatedRequirement",
+    "candidateCodeDirectoryHash",
 )
 
 

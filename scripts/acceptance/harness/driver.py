@@ -220,6 +220,7 @@ def launch_installed(
     budget_file: Path | None = None,
     cli_manifest_file: Path | None = None,
     budget_ledger_file: Path | None = None,
+    runtime_selection_file: Path | None = None,
 ) -> None:
     global _WINDOW_ID
     _WINDOW_ID = ""
@@ -232,9 +233,9 @@ def launch_installed(
             "another GrokBuild binary is running; quit it before driving /Applications/GrokBuild.app: "
             + ", ".join(wrong)
         )
-    budgeted = (budget_file, cli_manifest_file, budget_ledger_file)
+    budgeted = (budget_file, cli_manifest_file, budget_ledger_file, runtime_selection_file)
     if any(value is not None for value in budgeted) and any(value is None for value in budgeted):
-        raise DriverError("budgeted acceptance requires authorization, CLI manifest, and ledger paths together")
+        raise DriverError("budgeted acceptance requires authorization, CLI manifest, ledger, and runtime selection together")
     if budget_file is not None and str(INSTALLED_EXEC) in running:
         raise DriverError("budgeted acceptance requires a fresh installed app process")
     if str(INSTALLED_EXEC) not in running:
@@ -245,6 +246,7 @@ def launch_installed(
                 f"--grokbuild-acceptance-budget-file={budget_file}",
                 f"--grokbuild-acceptance-cli-manifest-file={cli_manifest_file}",
                 f"--grokbuild-acceptance-budget-ledger-file={budget_ledger_file}",
+                f"--grokbuild-acceptance-runtime-selection-file={runtime_selection_file}",
             ])
         subprocess.run(command, check=False)
     deadline = time.time() + 30
