@@ -186,8 +186,18 @@ Nonbillable evidence is green: full Swift **976/976**, focused ACP **90/90**,
 Python harness **22/22**, Rust sampler hard-budget **29/29**, prior focused armed
 CLI checks, and both repository diff checks. Three independent skeptical
 reviewers returned **COMMIT** for this checkpoint and **NO-GO** for paid
-execution. No provider request, credential read, live config mutation, installed
-CLI upgrade, or app installation occurred.
+execution. Candidate proof used no provider request, credential read, live config
+mutation, or installed CLI upgrade.
+
+PR #120 passed required **Test and Build App** on exact head `88059e5` and
+merged normally as `7c9f8ae29426a39a23192ca57f99213af8f8f846`. Clean
+merged-main `make ship` independently passed **976/976** and installed that exact
+clean merge with matching dist/install SHA-256 `9ef7fa6f…173882`, Team
+`DD2GCQJVB4`, deep/strict signing, and no quarantine. The installed CLI remains
+official `grok 1.0.4 (d846eb93d94d) [stable]`, so the fork capability remains
+unavailable and paid Send remains blocked. No backend or provider path ran. Two
+process-zero samples settled at `2026-08-18T00:38:00Z` and
+`2026-08-18T00:38:05Z`.
 
 Paid remains locked for concrete next-slice reasons: the exact fork binary is not
 installed; route-specific bound provenance is not independently generated and
