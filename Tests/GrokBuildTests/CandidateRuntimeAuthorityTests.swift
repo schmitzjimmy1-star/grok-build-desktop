@@ -10,7 +10,297 @@ final class CandidateRuntimeAuthorityTests: XCTestCase {
 
     override func tearDown() {
         GrokCandidateRuntimeAuthority.signatureVerifierOverrideForTests = nil
+        GrokCandidateProcessLauncher.spawnedProcessObserverForTests = nil
+        GrokCredentialTransportV1.outboundFrameFaultForTests = .none
+        GrokCredentialTransportV1.socketPairCreatedObserverForTests = nil
         super.tearDown()
+    }
+
+    func testAppOwnedSpawnGateClosesSocketpairRaceBeforeConcurrentProcessLaunch() throws {
+        let fixture = try CandidateRuntimeTestFixture.makeCredentialReceiverExecutable()
+        defer { try? FileManager.default.removeItem(at: fixture.container) }
+        CandidateRuntimeTestFixture.installSignatureOverride()
+        let lease = try XCTUnwrap(GrokCandidateRuntimeAuthority.acquireLease(
+            selectionPath: fixture.selection.path,
+            expectedCLIBuild: fixture.cliBuild
+        ))
+        let socketCreated = DispatchSemaphore(value: 0)
+        let allowDescriptorPolicy = DispatchSemaphore(value: 0)
+        let candidateFinished = DispatchSemaphore(value: 0)
+        let competingFinished = DispatchSemaphore(value: 0)
+        final class ResultBox: @unchecked Sendable {
+            var candidateSucceeded = false
+            var competingSucceeded = false
+        }
+        let result = ResultBox()
+        GrokCredentialTransportV1.socketPairCreatedObserverForTests = {
+            socketCreated.signal()
+            _ = allowDescriptorPolicy.wait(timeout: .now() + 2)
+        }
+        let payload = try XCTUnwrap(GrokCredentialTransportPayload(Array("spawn-gate-fake".utf8)))
+        DispatchQueue.global().async {
+            defer { candidateFinished.signal() }
+            guard let launched = try? GrokCandidateProcessLauncher.spawn(
+                lease: lease,
+                arguments: [],
+                environment: ["HOME": fixture.container.path, "PATH": "/usr/bin:/bin"],
+                currentDirectory: fixture.container,
+                credentialTransport: payload
+            ) else { return }
+            try? launched.standardInput.close()
+            while launched.process.isRunning { usleep(10_000) }
+            result.candidateSucceeded = true
+        }
+        XCTAssertEqual(socketCreated.wait(timeout: .now() + 2), .success)
+
+        DispatchQueue.global().async {
+            defer { competingFinished.signal() }
+            let process = Process()
+            process.executableURL = URL(fileURLWithPath: "/usr/bin/true")
+            guard (try? GrokChildProcessSpawnGate.run(process)) != nil else { return }
+            process.waitUntilExit()
+            result.competingSucceeded = process.terminationStatus == 0
+        }
+        XCTAssertEqual(competingFinished.wait(timeout: .now() + 0.1), .timedOut)
+        allowDescriptorPolicy.signal()
+        XCTAssertEqual(candidateFinished.wait(timeout: .now() + 4), .success)
+        XCTAssertEqual(competingFinished.wait(timeout: .now() + 2), .success)
+        XCTAssertTrue(result.candidateSucceeded)
+        XCTAssertTrue(result.competingSucceeded)
+    }
+
+    func testFakeCredentialTransportUsesRealCandidateSpawnAndLeaksNowhere() throws {
+        let fixture = try CandidateRuntimeTestFixture.makeCredentialReceiverExecutable()
+        defer { try? FileManager.default.removeItem(at: fixture.container) }
+        CandidateRuntimeTestFixture.installSignatureOverride()
+        let lease = try XCTUnwrap(GrokCandidateRuntimeAuthority.acquireLease(
+            selectionPath: fixture.selection.path,
+            expectedCLIBuild: fixture.cliBuild
+        ))
+
+        var sentinel = Array("S4B2-FAKE-\(UUID().uuidString)-END".utf8)
+        defer { _ = sentinel.withUnsafeMutableBytes { $0.initializeMemory(as: UInt8.self, repeating: 0) } }
+        let payload = try XCTUnwrap(GrokCredentialTransportPayload(sentinel))
+        let decoySource = Darwin.open("/dev/null", O_RDONLY)
+        XCTAssertGreaterThanOrEqual(decoySource, 0)
+        let decoy = fcntl(decoySource, F_DUPFD, 512)
+        Darwin.close(decoySource)
+        XCTAssertGreaterThanOrEqual(decoy, 512)
+        defer { if decoy >= 0 { Darwin.close(decoy) } }
+        XCTAssertEqual(fcntl(decoy, F_SETFD, 0), 0)
+
+        let launched = try GrokCandidateProcessLauncher.spawn(
+            lease: lease,
+            arguments: [],
+            environment: [
+                "HOME": fixture.container.path,
+                "PATH": "/usr/bin:/bin",
+                "XAI_API_KEY": "must-not-cross",
+                "OPENAI_API_KEY": "must-not-cross",
+                "DYLD_INSERT_LIBRARIES": "must-not-cross",
+                "GROK_HARD_TOKEN_BUDGET_ALLOCATION": "fixture-allocation",
+            ],
+            currentDirectory: fixture.container,
+            credentialTransport: payload
+        )
+        try launched.standardInput.close()
+        let output = try XCTUnwrap(try launched.standardOutput.fileHandleForReading.readToEnd())
+        let error = try launched.standardError.fileHandleForReading.readToEnd() ?? Data()
+        waitForExit(launched.process)
+        XCTAssertEqual(output, Data("transport=fd-v1,result=ok\n".utf8))
+        XCTAssertTrue(error.isEmpty)
+        XCTAssertNil(output.range(of: Data(sentinel)))
+        XCTAssertNil(error.range(of: Data(sentinel)))
+
+        let files = try FileManager.default.subpathsOfDirectory(atPath: fixture.container.path)
+        for relative in files {
+            let path = fixture.container.appendingPathComponent(relative)
+            var isDirectory: ObjCBool = false
+            guard FileManager.default.fileExists(atPath: path.path, isDirectory: &isDirectory),
+                  !isDirectory.boolValue,
+                  let data = try? Data(contentsOf: path) else { continue }
+            XCTAssertNil(data.range(of: Data(sentinel)), "Fake transport bytes persisted in fixture artifact")
+        }
+        XCTAssertEqual(kill(launched.process.processIdentifier, 0), -1)
+        XCTAssertEqual(errno, ESRCH)
+    }
+
+    func testFakeCredentialTransportRejectsBoundsBadPeerAndTimeoutWithoutZombie() throws {
+        XCTAssertNil(GrokCredentialTransportPayload([]))
+        XCTAssertNil(GrokCredentialTransportPayload(
+            [UInt8](repeating: 7, count: GrokCredentialTransportPayload.maximumByteCount + 1)
+        ))
+
+        for behavior in [
+            CandidateRuntimeTestFixture.CredentialReceiverBehavior.malformedAcknowledgement,
+            .timeout,
+            .trailingReadyByte,
+            .slowDripAcknowledgement,
+        ] {
+            let fixture = try CandidateRuntimeTestFixture.makeCredentialReceiverExecutable(behavior: behavior)
+            defer { try? FileManager.default.removeItem(at: fixture.container) }
+            CandidateRuntimeTestFixture.installSignatureOverride()
+            let lease = try XCTUnwrap(GrokCandidateRuntimeAuthority.acquireLease(
+                selectionPath: fixture.selection.path,
+                expectedCLIBuild: fixture.cliBuild
+            ))
+            final class PIDBox: @unchecked Sendable { var value: pid_t = 0 }
+            let observed = PIDBox()
+            GrokCandidateProcessLauncher.spawnedProcessObserverForTests = { observed.value = $0 }
+            let payload = try XCTUnwrap(GrokCredentialTransportPayload(Array("bounded-fake".utf8)))
+            XCTAssertThrowsError(try GrokCandidateProcessLauncher.spawn(
+                lease: lease,
+                arguments: [],
+                environment: ["HOME": fixture.container.path, "PATH": "/usr/bin:/bin"],
+                currentDirectory: fixture.container,
+                credentialTransport: payload
+            )) { error in
+                XCTAssertFalse(error.localizedDescription.contains("bounded-fake"))
+                guard case GrokCandidateProcessLauncher.LaunchError.credentialTransportFailed = error else {
+                    return XCTFail("Unexpected error: \(error)")
+                }
+            }
+            XCTAssertGreaterThan(observed.value, 0)
+            XCTAssertEqual(kill(observed.value, 0), -1)
+            XCTAssertEqual(errno, ESRCH)
+            GrokCandidateProcessLauncher.spawnedProcessObserverForTests = nil
+        }
+    }
+
+    func testFakeCredentialTransportRejectsPayloadInArgumentsOrEnvironmentBeforeSpawn() throws {
+        let fixture = try CandidateRuntimeTestFixture.makeCredentialReceiverExecutable()
+        defer { try? FileManager.default.removeItem(at: fixture.container) }
+        CandidateRuntimeTestFixture.installSignatureOverride()
+        let lease = try XCTUnwrap(GrokCandidateRuntimeAuthority.acquireLease(
+            selectionPath: fixture.selection.path,
+            expectedCLIBuild: fixture.cliBuild
+        ))
+        let text = "pre-spawn-fake-sentinel"
+        let payload = try XCTUnwrap(GrokCredentialTransportPayload(Array(text.utf8)))
+        final class PIDBox: @unchecked Sendable { var value: pid_t = 0 }
+        let observed = PIDBox()
+        GrokCandidateProcessLauncher.spawnedProcessObserverForTests = { observed.value = $0 }
+
+        XCTAssertThrowsError(try GrokCandidateProcessLauncher.spawn(
+            lease: lease,
+            arguments: ["prefix-\(text)-suffix"],
+            environment: ["HOME": fixture.container.path, "PATH": "/usr/bin:/bin"],
+            currentDirectory: fixture.container,
+            credentialTransport: payload
+        )) { XCTAssertFalse($0.localizedDescription.contains(text)) }
+        XCTAssertEqual(observed.value, 0)
+        XCTAssertThrowsError(try GrokCandidateProcessLauncher.spawn(
+            lease: lease,
+            arguments: [],
+            environment: ["HOME": "prefix-\(text)-suffix", "PATH": "/usr/bin:/bin"],
+            currentDirectory: fixture.container,
+            credentialTransport: payload
+        )) { XCTAssertFalse($0.localizedDescription.contains(text)) }
+        XCTAssertEqual(observed.value, 0)
+        XCTAssertThrowsError(try GrokCandidateProcessLauncher.spawn(
+            lease: lease,
+            arguments: [],
+            environment: ["XAI_API_KEY": text, "PATH": "/usr/bin:/bin"],
+            currentDirectory: fixture.container,
+            credentialTransport: payload
+        )) { XCTAssertFalse($0.localizedDescription.contains(text)) }
+        XCTAssertEqual(observed.value, 0)
+    }
+
+    func testFakeCredentialTransportAcceptsExactMaximumFrame() throws {
+        let fixture = try CandidateRuntimeTestFixture.makeCredentialReceiverExecutable()
+        defer { try? FileManager.default.removeItem(at: fixture.container) }
+        CandidateRuntimeTestFixture.installSignatureOverride()
+        let lease = try XCTUnwrap(GrokCandidateRuntimeAuthority.acquireLease(
+            selectionPath: fixture.selection.path,
+            expectedCLIBuild: fixture.cliBuild
+        ))
+        var bytes = [UInt8](repeating: 0x5a, count: GrokCredentialTransportPayload.maximumByteCount)
+        defer { _ = bytes.withUnsafeMutableBytes { $0.initializeMemory(as: UInt8.self, repeating: 0) } }
+        let payload = try XCTUnwrap(GrokCredentialTransportPayload(bytes))
+        let launched = try GrokCandidateProcessLauncher.spawn(
+            lease: lease,
+            arguments: [],
+            environment: ["HOME": fixture.container.path, "PATH": "/usr/bin:/bin"],
+            currentDirectory: fixture.container,
+            credentialTransport: payload
+        )
+        try launched.standardInput.close()
+        let output = try launched.standardOutput.fileHandleForReading.readToEnd() ?? Data()
+        waitForExit(launched.process)
+        XCTAssertEqual(output, Data("transport=fd-v1,result=ok\n".utf8))
+    }
+
+    func testFakeCredentialTransportRejectsMalformedTruncatedTrailingAndDuplicateFrames() throws {
+        for fault in [
+            GrokCredentialTransportV1.OutboundFrameFaultForTests.badMagic,
+            .oversizedClaim,
+            .truncated,
+            .trailingByte,
+            .duplicatedFrame,
+        ] {
+            let fixture = try CandidateRuntimeTestFixture.makeCredentialReceiverExecutable()
+            defer { try? FileManager.default.removeItem(at: fixture.container) }
+            CandidateRuntimeTestFixture.installSignatureOverride()
+            let lease = try XCTUnwrap(GrokCandidateRuntimeAuthority.acquireLease(
+                selectionPath: fixture.selection.path,
+                expectedCLIBuild: fixture.cliBuild
+            ))
+            final class PIDBox: @unchecked Sendable { var value: pid_t = 0 }
+            let observed = PIDBox()
+            GrokCandidateProcessLauncher.spawnedProcessObserverForTests = { observed.value = $0 }
+            GrokCredentialTransportV1.outboundFrameFaultForTests = fault
+            let payload = try XCTUnwrap(GrokCredentialTransportPayload(Array("malformed-fake".utf8)))
+            XCTAssertThrowsError(try GrokCandidateProcessLauncher.spawn(
+                lease: lease,
+                arguments: [],
+                environment: ["HOME": fixture.container.path, "PATH": "/usr/bin:/bin"],
+                currentDirectory: fixture.container,
+                credentialTransport: payload
+            )) { error in
+                XCTAssertFalse(error.localizedDescription.contains("malformed-fake"))
+                guard case GrokCandidateProcessLauncher.LaunchError.credentialTransportFailed = error else {
+                    return XCTFail("Unexpected error: \(error)")
+                }
+            }
+            XCTAssertGreaterThan(observed.value, 0)
+            XCTAssertEqual(kill(observed.value, 0), -1)
+            XCTAssertEqual(errno, ESRCH)
+            GrokCandidateProcessLauncher.spawnedProcessObserverForTests = nil
+            GrokCredentialTransportV1.outboundFrameFaultForTests = .none
+        }
+    }
+
+    func testFakeCredentialTransportKillsPreReturnSameGroupDescriptorHoldingDescendant() throws {
+        let fixture = try CandidateRuntimeTestFixture.makeCredentialReceiverExecutable(behavior: .forkBeforeClose)
+        defer { try? FileManager.default.removeItem(at: fixture.container) }
+        CandidateRuntimeTestFixture.installSignatureOverride()
+        let lease = try XCTUnwrap(GrokCandidateRuntimeAuthority.acquireLease(
+            selectionPath: fixture.selection.path,
+            expectedCLIBuild: fixture.cliBuild
+        ))
+        let descendantReceipt = fixture.container.appendingPathComponent("descendant.pid")
+        let payload = try XCTUnwrap(GrokCredentialTransportPayload(Array("group-cleanup-fake".utf8)))
+        XCTAssertThrowsError(try GrokCandidateProcessLauncher.spawn(
+            lease: lease,
+            arguments: [descendantReceipt.path],
+            environment: ["HOME": fixture.container.path, "PATH": "/usr/bin:/bin"],
+            currentDirectory: fixture.container,
+            credentialTransport: payload
+        )) { error in
+            guard case GrokCandidateProcessLauncher.LaunchError.credentialTransportFailed = error else {
+                return XCTFail("Unexpected error: \(error)")
+            }
+        }
+        let descendantText = try String(contentsOf: descendantReceipt, encoding: .utf8)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        let descendantPID = try XCTUnwrap(pid_t(descendantText))
+        for _ in 0..<100 {
+            if kill(descendantPID, 0) != 0 { break }
+            usleep(10_000)
+        }
+        XCTAssertEqual(kill(descendantPID, 0), -1)
+        XCTAssertEqual(errno, ESRCH)
     }
 
     func testSuspendedChildExecutesPinnedInspectedBytesAfterOriginalPathSwap() throws {

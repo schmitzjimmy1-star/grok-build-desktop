@@ -40,7 +40,7 @@ enum GrokConfigCandidateInspector {
         stderr.fileHandleForReading.readabilityHandler = { errors.append($0.availableData) }
         let timedOut = LockedFlag()
         do {
-            try process.run()
+            try GrokChildProcessSpawnGate.run(process)
         } catch {
             stdout.fileHandleForReading.readabilityHandler = nil
             stderr.fileHandleForReading.readabilityHandler = nil

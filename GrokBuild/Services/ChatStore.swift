@@ -6136,7 +6136,7 @@ enum DiffUtils {
         try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
             p.terminationHandler = { _ in continuation.resume() }
             do {
-                try p.run()
+                try GrokChildProcessSpawnGate.run(p)
             } catch {
                 continuation.resume(throwing: error)
             }

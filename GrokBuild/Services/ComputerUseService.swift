@@ -986,7 +986,7 @@ enum ComputerUseService {
             }
 
             do {
-                try process.run()
+                try GrokChildProcessSpawnGate.run(process)
             } catch {
                 finish(.failure(error))
                 return
@@ -1258,7 +1258,7 @@ enum ComputerUseService {
             }
 
             do {
-                try process.run()
+                try GrokChildProcessSpawnGate.run(process)
             } catch {
                 finish(.failure(error))
                 return

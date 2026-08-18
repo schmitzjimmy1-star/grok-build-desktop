@@ -3188,7 +3188,7 @@ struct PermissionCard: View {
                 process.executableURL = URL(fileURLWithPath: "/usr/bin/open")
                 process.arguments = ["-a", "Xcode", oldURL.path, newURL.path]
             }
-            try process.run()
+            try GrokChildProcessSpawnGate.run(process)
         } catch {
             // Silent fallback: the native diff is a convenience, not a required path.
         }

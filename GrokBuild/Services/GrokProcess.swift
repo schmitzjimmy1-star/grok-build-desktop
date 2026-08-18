@@ -1670,7 +1670,7 @@ final class GrokProcess: @unchecked Sendable {
                 proc.standardInput = input
                 proc.standardOutput = output
                 proc.standardError = errorOutput
-                try proc.run()
+                try GrokChildProcessSpawnGate.run(proc)
                 launched = GrokCandidateSpawnResult(
                     process: GrokManagedProcess(proc),
                     standardInput: input.fileHandleForWriting,

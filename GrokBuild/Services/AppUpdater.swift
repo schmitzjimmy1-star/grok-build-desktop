@@ -139,7 +139,7 @@ final class AppUpdater {
         process.standardError = FileHandle.nullDevice
 
         do {
-            try process.run()
+            try GrokChildProcessSpawnGate.run(process)
         } catch {
             phase = .failed("Could not launch install helper: \(error.localizedDescription)")
             notifyPhaseChanged()
@@ -432,7 +432,7 @@ final class AppUpdater {
         process.standardError = FileHandle.nullDevice
 
         do {
-            try process.run()
+            try GrokChildProcessSpawnGate.run(process)
         } catch {
             phase = .failed("Could not launch install helper: \(error.localizedDescription)")
             notifyPhaseChanged()

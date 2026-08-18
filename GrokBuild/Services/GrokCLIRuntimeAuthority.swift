@@ -692,12 +692,17 @@ struct GrokCandidateSpawnResult {
 }
 
 enum GrokCandidateProcessLauncher {
+    #if DEBUG
+    static var spawnedProcessObserverForTests: (@Sendable (pid_t) -> Void)?
+    #endif
+
     enum LaunchError: LocalizedError {
         case leaseAlreadyConsumed
         case authorityChanged
         case pipeFailed(Int32)
         case fileActionFailed(Int32)
         case spawnFailed(Int32)
+        case credentialTransportFailed
 
         var errorDescription: String? {
             switch self {
@@ -706,6 +711,7 @@ enum GrokCandidateProcessLauncher {
             case .pipeFailed(let code): return "Could not create candidate process pipes (errno \(code))."
             case .fileActionFailed(let code): return "Could not configure candidate process descriptors (errno \(code))."
             case .spawnFailed(let code): return "Could not launch the held candidate executable (errno \(code))."
+            case .credentialTransportFailed: return "Candidate credential transport handshake failed."
             }
         }
     }
@@ -714,10 +720,23 @@ enum GrokCandidateProcessLauncher {
         lease: GrokCandidateExecutionLease,
         arguments: [String],
         environment: [String: String],
-        currentDirectory: URL
+        currentDirectory: URL,
+        credentialTransport: GrokCredentialTransportPayload? = nil
     ) throws -> GrokCandidateSpawnResult {
         guard lease.heldFileRemainsValid else { throw LaunchError.authorityChanged }
+        if let credentialTransport,
+           GrokCredentialTransportV1.argumentsOrEnvironmentContainPayload(
+               credentialTransport,
+               arguments: arguments,
+               environment: environment
+           ) {
+            throw LaunchError.credentialTransportFailed
+        }
         guard lease.claimForSpawn() else { throw LaunchError.leaseAlreadyConsumed }
+
+        GrokChildProcessSpawnGate.acquire()
+        var spawnGateHeld = true
+        defer { if spawnGateHeld { GrokChildProcessSpawnGate.release() } }
 
         let stdinPipe = Pipe()
         let stdoutPipe = Pipe()
@@ -730,6 +749,18 @@ enum GrokCandidateProcessLauncher {
         let stderrWrite = stderrPipe.fileHandleForWriting.fileDescriptor
         for descriptor in [stdinRead, stdinWrite, stdoutRead, stdoutWrite, stderrRead, stderrWrite] {
             _ = fcntl(descriptor, F_SETFD, FD_CLOEXEC)
+        }
+
+        var transportChannel: GrokCredentialTransportV1.PreparedChannel?
+        if let credentialTransport {
+            transportChannel = try GrokCredentialTransportV1.prepare(payload: credentialTransport)
+        }
+        defer {
+            if var channel = transportChannel {
+                channel.closeParent()
+                channel.closeChild()
+                channel.bestEffortWipe()
+            }
         }
 
         var actions: posix_spawn_file_actions_t?
@@ -753,6 +784,17 @@ enum GrokCandidateProcessLauncher {
                 throw LaunchError.fileActionFailed(actionCode)
             }
         }
+        if let channel = transportChannel {
+            do {
+                try GrokCredentialTransportV1.installChildDescriptor(
+                    channel.childDescriptor,
+                    parentDescriptor: channel.parentDescriptor,
+                    actions: &actions
+                )
+            } catch {
+                throw LaunchError.fileActionFailed(EINVAL)
+            }
+        }
         actionCode = currentDirectory.path.withCString {
             posix_spawn_file_actions_addchdir(&actions, $0)
         }
@@ -764,12 +806,22 @@ enum GrokCandidateProcessLauncher {
         let attributeCode = posix_spawnattr_init(&attributes)
         guard attributeCode == 0 else { throw LaunchError.fileActionFailed(attributeCode) }
         defer { posix_spawnattr_destroy(&attributes) }
-        let flagCode = posix_spawnattr_setflags(&attributes, Int16(POSIX_SPAWN_START_SUSPENDED))
+        var spawnFlags = Int16(POSIX_SPAWN_START_SUSPENDED)
+        if credentialTransport != nil {
+            spawnFlags |= Int16(POSIX_SPAWN_CLOEXEC_DEFAULT | POSIX_SPAWN_SETPGROUP)
+            guard posix_spawnattr_setpgroup(&attributes, 0) == 0 else {
+                throw LaunchError.fileActionFailed(EINVAL)
+            }
+        }
+        let flagCode = posix_spawnattr_setflags(&attributes, spawnFlags)
         guard flagCode == 0 else { throw LaunchError.fileActionFailed(flagCode) }
 
         let executablePath = lease.executionPath
         let argv = [executablePath] + arguments
-        let env = environment.sorted { $0.key < $1.key }.map { "\($0.key)=\($0.value)" }
+        let launchEnvironment = credentialTransport == nil
+            ? environment
+            : GrokCredentialTransportV1.sanitizedEnvironment(environment)
+        let env = launchEnvironment.sorted { $0.key < $1.key }.map { "\($0.key)=\($0.value)" }
         var pid: pid_t = 0
         let spawnCode = withCStringArray(argv) { argvPointer in
             withCStringArray(env) { envPointer in
@@ -781,6 +833,15 @@ enum GrokCandidateProcessLauncher {
         guard spawnCode == 0 else {
             throw LaunchError.spawnFailed(spawnCode)
         }
+        #if DEBUG
+        spawnedProcessObserverForTests?(pid)
+        #endif
+
+        if transportChannel != nil {
+            transportChannel!.closeChild()
+        }
+        GrokChildProcessSpawnGate.release()
+        spawnGateHeld = false
 
         guard GrokCandidateRuntimeAuthority.dynamicCodeDirectoryHash(processIdentifier: pid)
                 == lease.identity.signature.codeDirectoryHash else {
@@ -794,6 +855,19 @@ enum GrokCandidateProcessLauncher {
             var status: Int32 = 0
             _ = waitpid(pid, &status, 0)
             throw LaunchError.spawnFailed(errno)
+        }
+
+        if var channel = transportChannel {
+            do {
+                try GrokCredentialTransportV1.completeHandshake(&channel)
+                transportChannel = nil
+            } catch {
+                _ = Darwin.kill(-pid, SIGKILL)
+                _ = Darwin.kill(pid, SIGKILL)
+                var status: Int32 = 0
+                while waitpid(pid, &status, 0) < 0 && errno == EINTR {}
+                throw LaunchError.credentialTransportFailed
+            }
         }
 
         try? stdinPipe.fileHandleForReading.close()
