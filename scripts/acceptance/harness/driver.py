@@ -215,7 +215,12 @@ def _pin_installed_window() -> None:
     _WINDOW_ID = visible[0][0]
 
 
-def launch_installed(*, budget_file: Path | None = None) -> None:
+def launch_installed(
+    *,
+    budget_file: Path | None = None,
+    cli_manifest_file: Path | None = None,
+    budget_ledger_file: Path | None = None,
+) -> None:
     global _WINDOW_ID
     _WINDOW_ID = ""
     if not APP_PATH.exists():
@@ -227,12 +232,20 @@ def launch_installed(*, budget_file: Path | None = None) -> None:
             "another GrokBuild binary is running; quit it before driving /Applications/GrokBuild.app: "
             + ", ".join(wrong)
         )
+    budgeted = (budget_file, cli_manifest_file, budget_ledger_file)
+    if any(value is not None for value in budgeted) and any(value is None for value in budgeted):
+        raise DriverError("budgeted acceptance requires authorization, CLI manifest, and ledger paths together")
     if budget_file is not None and str(INSTALLED_EXEC) in running:
         raise DriverError("budgeted acceptance requires a fresh installed app process")
     if str(INSTALLED_EXEC) not in running:
         command = ["open", "-n", str(APP_PATH)]
         if budget_file is not None:
-            command.extend(["--args", f"--grokbuild-acceptance-budget-file={budget_file}"])
+            command.extend([
+                "--args",
+                f"--grokbuild-acceptance-budget-file={budget_file}",
+                f"--grokbuild-acceptance-cli-manifest-file={cli_manifest_file}",
+                f"--grokbuild-acceptance-budget-ledger-file={budget_ledger_file}",
+            ])
         subprocess.run(command, check=False)
     deadline = time.time() + 30
     while time.time() < deadline:
@@ -460,10 +473,15 @@ def _wait_until_resume_clicked(*, timeout_seconds: int) -> None:
 
 
 def wait_for_marker(marker: str, *, timeout_seconds: int) -> None:
+    """Compatibility name for a marker-correlated terminal-checkpoint wait."""
+    wait_for_terminal_checkpoint(marker, timeout_seconds=timeout_seconds)
+
+
+def wait_for_terminal_checkpoint(marker: str, *, timeout_seconds: int) -> None:
     """Wait for the matching assistant turn to persist a settled checkpoint.
 
-    The user prompt also contains the marker, so AX text matching is not a
-    completion signal.
+    This correlates the frozen user-prompt marker to its assistant checkpoint;
+    it never requires that a stopped assistant response contain the marker.
     """
     assert_safe_text(marker, context="marker")
     transcripts = Path.home() / "Library/Application Support/GrokBuild/Transcripts"

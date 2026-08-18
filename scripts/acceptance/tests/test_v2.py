@@ -1,18 +1,32 @@
 from __future__ import annotations
 
 import copy
+import hashlib
 import json
 import os
 import tempfile
 import unittest
 from pathlib import Path
+import stat
 
 from scripts.acceptance.harness.errors import ReceiptError, SchemaError
 from scripts.acceptance.harness.errors import PreflightError
 from scripts.acceptance.harness.preflight_v2 import require_runtime_floor
 from scripts.acceptance.harness.receipts_v2 import _validate_row, append_row, evaluate
 from scripts.acceptance.harness.schema_v2 import load_manifest
-from scripts.acceptance.harness.evidence_v2 import _cost_reconciliation
+from scripts.acceptance.harness.evidence_v2 import (
+    _cost_reconciliation,
+    _hard_budget_pre_dispatch_authority,
+    _hard_budget_terminal_projection,
+    extract_terminal,
+    terminal_failure,
+)
+from scripts.acceptance.harness.authority_v2 import (
+    canonical_cli_manifest,
+    prepare_campaign_authority,
+    retain_campaign_authority,
+    swift_authorization_sidecar,
+)
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -153,6 +167,244 @@ class Slice4V2Contracts(unittest.TestCase):
         with self.assertRaises(SchemaError):
             _load_temp(raw)
 
+    def test_private_cli_authority_is_canonical_and_sidecar_matches_it(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            authority = prepare_campaign_authority(self.manifest, root=Path(directory))
+            self.assertEqual(stat.S_IMODE(authority.directory.stat().st_mode), 0o700)
+            for path in (authority.cli_manifest, authority.ledger, authority.authorization):
+                self.assertEqual(stat.S_IMODE(path.stat().st_mode), 0o600)
+            cli = json.loads(authority.cli_manifest.read_text(encoding="utf-8"))
+            self.assertEqual(cli, canonical_cli_manifest(self.manifest))
+            self.assertEqual(cli["version"], 1)
+            self.assertEqual(cli["ceilingTokens"], 3_000_000)
+            self.assertEqual([row["id"] for row in cli["allocations"]], [
+                packet["hardBudget"]["allocationID"] for packet in self.manifest["packets"]
+            ])
+            sidecar = json.loads(authority.authorization.read_text(encoding="utf-8"))
+            self.assertEqual(sidecar, swift_authorization_sidecar(self.manifest, authority.cli_manifest, authority.ledger))
+            self.assertEqual(sidecar["schemaVersion"], 2)
+            self.assertEqual(sidecar["expectedCLIBuild"], self.manifest["expectedCLIBuild"])
+            self.assertEqual(sidecar["packets"][0]["route"], cli["allocations"][0]["route"])
+            retained = retain_campaign_authority(authority, remove_authorization=True)
+            self.assertTrue(retained["cliManifestRetained"])
+            self.assertTrue(retained["ledgerRetained"])
+            self.assertTrue(retained["authorizationSidecarRemoved"])
+            self.assertFalse(authority.authorization.exists())
+
+    def test_hard_budget_route_and_allocation_invariants_are_schema_enforced(self) -> None:
+        raw = json.loads(MANIFEST.read_text(encoding="utf-8"))
+        raw["packets"][0]["hardBudget"]["allocationID"] = raw["packets"][1]["hardBudget"]["allocationID"]
+        with self.assertRaises(SchemaError):
+            _load_temp(raw)
+        raw = json.loads(MANIFEST.read_text(encoding="utf-8"))
+        raw["packets"][0]["hardBudget"]["route"]["requestBoundTokens"] = raw["packets"][0]["tokenAllocation"] + 1
+        with self.assertRaises(SchemaError):
+            _load_temp(raw)
+        raw = json.loads(MANIFEST.read_text(encoding="utf-8"))
+        raw["expectedCLIBuild"] = "grokbuild-fork"
+        with self.assertRaises(SchemaError):
+            _load_temp(raw)
+
+    def test_completed_packet_requires_a_full_settled_hard_budget_projection(self) -> None:
+        for mutation in (
+            lambda projection: None,
+            lambda projection: {**projection, "requests": []},
+            lambda projection: {**projection, "status": "ambiguous"},
+            lambda projection: {
+                **projection,
+                "requests": [{
+                    **projection["requests"][0],
+                    "lifecycle": "reserved",
+                    "actualTokens": None,
+                }],
+            },
+        ):
+            rows = copy.deepcopy(self.rows)
+            terminal = _terminal(rows, "NAT-CTRL")
+            terminal["hardBudgetTerminalProjection"] = mutation(
+                terminal["hardBudgetTerminalProjection"]
+            )
+            with self.assertRaises(ReceiptError):
+                evaluate(self.manifest, rows)
+
+    def test_hard_budget_records_reject_duplicates_route_drift_and_usage_mismatch(self) -> None:
+        rows = copy.deepcopy(self.rows)
+        terminal = _terminal(rows, "OAI-H-ORD3")
+        projection = terminal["hardBudgetTerminalProjection"]
+        duplicate = copy.deepcopy(projection["requests"][0])
+        duplicate["sequence"] = 2
+        projection["requests"].append(duplicate)
+        projection["reservationCount"] = 2
+        projection["nextSequence"] = 2
+        terminal["usage"]["modelCalls"] = 2
+        terminal["usage"]["totalTokens"] = 4
+        with self.assertRaisesRegex(ReceiptError, "duplicate hard-budget reservation"):
+            evaluate(self.manifest, rows)
+
+        rows = copy.deepcopy(self.rows)
+        terminal = _terminal(rows, "OAI-H-ORD3")
+        projection = terminal["hardBudgetTerminalProjection"]
+        repeated_correlation = copy.deepcopy(projection["requests"][0])
+        repeated_correlation["reservationID"] = "reservation-OAI-H-ORD3-2"
+        repeated_correlation["sequence"] = 1
+        # One provider request can legitimately drive a multi-call tool loop.
+        repeated_correlation["providerRequestID"] = projection["requests"][0]["providerRequestID"]
+        projection["requests"].append(repeated_correlation)
+        projection["reservationCount"] = 2
+        projection["nextSequence"] = 2
+        terminal["usage"]["modelCalls"] = 2
+        terminal["usage"]["totalTokens"] = 4
+        self.assertEqual(evaluate(self.manifest, rows)["outcome"], "accepted")
+
+        rows = copy.deepcopy(self.rows)
+        _terminal(rows, "NAT-CTRL")["hardBudgetTerminalProjection"]["requests"][0]["model"] = "wrong-model"
+        with self.assertRaisesRegex(ReceiptError, "route record mismatch"):
+            evaluate(self.manifest, rows)
+
+        rows = copy.deepcopy(self.rows)
+        _terminal(rows, "NAT-CTRL")["hardBudgetTerminalProjection"]["requests"][0]["actualTokens"] = 1
+        _terminal(rows, "NAT-CTRL")["hardBudgetTerminalProjection"]["requests"][0]["chargedTokens"] = 1
+        with self.assertRaisesRegex(ReceiptError, "do not reconcile"):
+            evaluate(self.manifest, rows)
+
+        rows = copy.deepcopy(self.rows)
+        request = _terminal(rows, "NAT-CTRL")["hardBudgetTerminalProjection"]["requests"][0]
+        request["reservedTokens"] = 1
+        request["actualTokens"] = 2
+        request["chargedTokens"] = 2
+        with self.assertRaisesRegex(ReceiptError, "settled charge is invalid"):
+            evaluate(self.manifest, rows)
+
+    def test_stop_failure_retains_ambiguous_full_reservation_evidence(self) -> None:
+        packet = self.manifest["packets"][0]
+        row = terminal_failure(packet, self.manifest["runId"], "user stopped", 1)
+        route = packet["hardBudget"]["route"]
+        row["hardBudgetTerminalProjection"] = {
+            "status": "ambiguous",
+            "ledgerRevision": 7,
+            "nextSequence": 2,
+            "reservationCount": 1,
+            "reason": "stop after reservation; full reservation retained",
+            "requests": [{
+                "reservationID": "reservation-stop",
+                "sequence": 1,
+                "providerRequestID": "provider-stop",
+                "model": route["model"],
+                "endpointSHA256": route["endpointSha256"],
+                "apiBackend": route["apiBackend"],
+                "payloadBytes": 1,
+                "maxOutputTokens": 1,
+                "reservedTokens": 2,
+                "actualTokens": None,
+                "chargedTokens": 2,
+                "lifecycle": "ambiguous_full_reservation_charged",
+            }],
+        }
+        _validate_row(row)
+        self.assertEqual(row["hardBudgetTerminalProjection"]["requests"][0]["chargedTokens"], 2)
+
+    def test_stop_checkpoint_preserves_ambiguous_projection_without_route_or_usage(self) -> None:
+        packet = self.manifest["packets"][0]
+        checkpoint = {
+            "isSettled": True,
+            "outcomeCode": "userStopped",
+            "processGeneration": 9,
+            "hardBudgetReceipt": _hard_budget_authority(packet),
+            "hardBudgetTerminalProjection": {
+                **_hard_budget_projection(packet),
+                "status": "ambiguous",
+                "reason": "Stop retained full reservation",
+                "requests": [{
+                    **_hard_budget_projection(packet)["requests"][0],
+                    "actualTokens": None,
+                    "chargedTokens": 2,
+                    "lifecycle": "ambiguous_full_reservation_charged",
+                }],
+            },
+        }
+        envelope = {"messages": [
+            {"role": "user", "content": packet["prompt"]},
+            {"role": "assistant", "content": "", "assistantTrace": {"checkpoint": checkpoint}},
+        ]}
+        with tempfile.TemporaryDirectory() as directory:
+            transcripts = Path(directory)
+            (transcripts / "stop-tab.json").write_text(json.dumps(envelope), encoding="utf-8")
+            row = extract_terminal(
+                packet, self.manifest["runId"], {"tabId": "stop-tab", "backendId": "stop-backend"},
+                transcripts, 1,
+            )
+        self.assertEqual(row["status"], "rejected")
+        self.assertIsNone(row["configuredRoute"])
+        self.assertIsNone(row["observedRoute"])
+        self.assertIsNone(row["usage"])
+        self.assertEqual(row["hardBudgetTerminalProjection"]["status"], "ambiguous")
+        self.assertEqual(row["hardBudgetTerminalProjection"]["requests"][0]["chargedTokens"], 2)
+        _validate_row(row)
+
+    def test_terminal_projection_is_allowlisted_before_receipt_persistence(self) -> None:
+        projection = _hard_budget_projection(self.manifest["packets"][0])
+        projection["rawLedgerPath"] = "/private/secret-ledger"
+        projection["requests"][0]["authorization"] = "must-not-persist"
+        persisted = _hard_budget_terminal_projection(projection)
+        self.assertNotIn("rawLedgerPath", persisted)
+        self.assertNotIn("authorization", persisted["requests"][0])
+        _validate_row({**copy.deepcopy(self.rows[1]), "hardBudgetTerminalProjection": persisted})
+
+        authority = _hard_budget_authority(self.manifest["packets"][0], self.manifest)
+        authority["ledgerPath"] = "/private/authority-ledger"
+        persisted_authority = _hard_budget_pre_dispatch_authority(authority)
+        self.assertNotIn("ledgerPath", persisted_authority)
+        _validate_row({**copy.deepcopy(self.rows[1]), "hardBudgetPreDispatchAuthority": persisted_authority})
+
+    def test_pre_dispatch_authority_binds_terminal_cursor_and_serial_records(self) -> None:
+        rows = copy.deepcopy(self.rows)
+        terminal = _terminal(rows, "NAT-CTRL")
+        terminal["hardBudgetPreDispatchAuthority"]["preDispatchNextSequence"] = 1
+        with self.assertRaisesRegex(ReceiptError, "next sequence"):
+            evaluate(self.manifest, rows)
+
+        rows = copy.deepcopy(self.rows)
+        terminal = _terminal(rows, "NAT-CTRL")
+        terminal["hardBudgetTerminalProjection"]["ledgerRevision"] = 0
+        with self.assertRaisesRegex(ReceiptError, "revision did not advance"):
+            evaluate(self.manifest, rows)
+
+        rows = copy.deepcopy(self.rows)
+        terminal = _terminal(rows, "NAT-CTRL")
+        terminal["hardBudgetPreDispatchAuthority"]["preDispatchNextSequence"] = 1
+        terminal["hardBudgetTerminalProjection"]["nextSequence"] = 2
+        with self.assertRaisesRegex(ReceiptError, "predates pre-dispatch cursor"):
+            evaluate(self.manifest, rows)
+
+        rows = copy.deepcopy(self.rows)
+        terminal = _terminal(rows, "OAI-H-ORD3")
+        requests = terminal["hardBudgetTerminalProjection"]["requests"]
+        requests.append({
+            **requests[0],
+            "reservationID": "reservation-gap",
+            "sequence": 99,
+        })
+        terminal["hardBudgetTerminalProjection"]["reservationCount"] = 2
+        terminal["hardBudgetTerminalProjection"]["nextSequence"] = (
+            terminal["hardBudgetPreDispatchAuthority"]["preDispatchNextSequence"] + 2
+        )
+        terminal["usage"]["modelCalls"] = 2
+        terminal["usage"]["totalTokens"] = 4
+        with self.assertRaisesRegex(ReceiptError, "sequence range is not contiguous"):
+            evaluate(self.manifest, rows)
+
+    def test_future_billable_source_requires_fresh_authority_per_packet(self) -> None:
+        source = (ROOT / "run.py").read_text(encoding="utf-8")
+        billable_v2 = source[source.index("def _billable_v2"):source.index("if __name__")]
+        self.assertIn("convert them to fresh,", billable_v2)
+        self.assertIn("cli_manifest_file=authority.cli_manifest", billable_v2)
+        self.assertIn("budget_ledger_file=authority.ledger", billable_v2)
+        self.assertNotIn("resume_saved_task()", billable_v2)
+        self.assertIn("retain_campaign_authority", billable_v2)
+        stop_recovery = billable_v2[billable_v2.index("except Exception as exc:"):]
+        self.assertIn("wait_for_terminal_checkpoint(current_packet[\"marker\"]", stop_recovery)
+        self.assertNotIn("wait_for_marker(current_packet[\"marker\"]", stop_recovery)
+
     def test_ledger_refuses_a_preexisting_symlink(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
@@ -240,6 +492,8 @@ def _accepted_rows(manifest: dict) -> list[dict]:
                      "reconciliation": "unavailable" if native else "provider-unavailable"},
             "toolReceipts": tools, "workerReceipts": workers, "outcome": "completed",
             "coordination": ({"maximumUsefulConcurrency": 2} if packet["childTopology"] else None),
+            "hardBudgetPreDispatchAuthority": _hard_budget_authority(packet, manifest),
+            "hardBudgetTerminalProjection": _hard_budget_projection(packet),
             "checkpointDigest": "0" * 64, "failure": None,
         }
         cleanup_row = {
@@ -254,6 +508,53 @@ def _accepted_rows(manifest: dict) -> list[dict]:
         _validate_row(cleanup_row)
         rows.extend([start, terminal, cleanup_row])
     return rows
+
+
+def _hard_budget_authority(packet: dict, manifest: dict | None = None) -> dict:
+    manifest = manifest or load_manifest(MANIFEST, run_id=RUN_ID)
+    route = packet["hardBudget"]["route"]
+    canonical = json.dumps(canonical_cli_manifest(manifest), sort_keys=True, separators=(",", ":")).encode("utf-8")
+    return {
+        "campaignID": manifest["runId"],
+        "manifestSHA256": hashlib.sha256(canonical).hexdigest(),
+        "allocationID": packet["hardBudget"]["allocationID"],
+        "packetID": packet["id"],
+        "cliBuild": manifest["expectedCLIBuild"],
+        "routeModel": route["model"],
+        "endpointSHA256": route["endpointSha256"],
+        "apiBackend": route["apiBackend"],
+        "requestBoundTokens": route["requestBoundTokens"],
+        "maxPayloadBytes": route["maxPayloadBytes"],
+        "maxOutputTokens": route["maxOutputTokens"],
+        "boundProvenanceSHA256": route["boundProvenanceSha256"],
+        "preDispatchNextSequence": 0,
+        "preDispatchLedgerRevision": 0,
+    }
+
+
+def _hard_budget_projection(packet: dict) -> dict:
+    route = packet["hardBudget"]["route"]
+    return {
+        "status": "settled",
+        "ledgerRevision": 1,
+        "nextSequence": 1,
+        "reservationCount": 1,
+        "reason": None,
+        "requests": [{
+            "reservationID": f"reservation-{packet['id']}",
+            "sequence": 0,
+            "providerRequestID": f"provider-{packet['id']}",
+            "model": route["model"],
+            "endpointSHA256": route["endpointSha256"],
+            "apiBackend": route["apiBackend"],
+            "payloadBytes": 1,
+            "maxOutputTokens": 1,
+            "reservedTokens": 2,
+            "actualTokens": 2,
+            "chargedTokens": 2,
+            "lifecycle": "settled_usage_reported",
+        }],
+    }
 
 
 def _workload(packet: dict) -> tuple[list[dict], list[dict]]:

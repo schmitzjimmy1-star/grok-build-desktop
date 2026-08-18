@@ -10,6 +10,46 @@ from typing import Any
 from .errors import DriverError
 
 
+_HARD_BUDGET_PROJECTION_FIELDS = (
+    "status",
+    "ledgerRevision",
+    "nextSequence",
+    "reservationCount",
+    "reason",
+    "requests",
+)
+_HARD_BUDGET_REQUEST_FIELDS = (
+    "reservationID",
+    "sequence",
+    "providerRequestID",
+    "model",
+    "endpointSHA256",
+    "apiBackend",
+    "payloadBytes",
+    "maxOutputTokens",
+    "reservedTokens",
+    "actualTokens",
+    "chargedTokens",
+    "lifecycle",
+)
+_HARD_BUDGET_AUTHORITY_FIELDS = (
+    "campaignID",
+    "manifestSHA256",
+    "allocationID",
+    "packetID",
+    "cliBuild",
+    "routeModel",
+    "endpointSHA256",
+    "apiBackend",
+    "requestBoundTokens",
+    "maxPayloadBytes",
+    "maxOutputTokens",
+    "boundProvenanceSHA256",
+    "preDispatchNextSequence",
+    "preDispatchLedgerRevision",
+)
+
+
 def attempt_started(packet: dict[str, Any], run_id: str, app_launch_epoch: int, identities: dict[str, str] | None = None) -> dict[str, Any]:
     identities = identities or {}
     return {
@@ -58,6 +98,8 @@ def terminal_failure(
         "toolReceipts": [],
         "workerReceipts": [],
         "coordination": None,
+        "hardBudgetPreDispatchAuthority": None,
+        "hardBudgetTerminalProjection": None,
         "outcome": "failed",
         "checkpointDigest": None,
         "failure": _failure_code(reason),
@@ -129,34 +171,49 @@ def extract_terminal(
     configured = checkpoint.get("structuredRouteReceipt")
     observed = checkpoint.get("observedRouteReceipt")
     usage_raw = checkpoint.get("usageReceipt")
-    if not isinstance(configured, dict) or not isinstance(observed, dict) or not isinstance(usage_raw, dict):
+    complete_execution_receipt = (
+        isinstance(configured, dict) and isinstance(observed, dict) and isinstance(usage_raw, dict)
+    )
+    if completed and not complete_execution_receipt:
         raise DriverError("settled checkpoint lacks typed route or usage receipt")
-    model_usage = usage_raw.get("modelUsage") or []
-    usage = {
-        "inputTokens": usage_raw.get("inputTokens"),
-        "outputTokens": usage_raw.get("outputTokens"),
-        "totalTokens": usage_raw.get("totalTokens"),
-        "cachedReadTokens": usage_raw.get("cachedReadTokens"),
-        "cacheCreationTokens": usage_raw.get("cacheCreationTokens"),
-        "reasoningTokens": usage_raw.get("reasoningTokens"),
-        "modelCalls": usage_raw.get("modelCalls"),
-        "modelUsageIDs": sorted(
-            str(item.get("modelID")) for item in model_usage
-            if isinstance(item, dict) and item.get("modelID")
-        ),
-    }
-    estimate = _frozen_estimate(packet.get("frozenPricing"), usage)
-    provider_ticks = usage_raw.get("costUsdTicks")
-    partial = usage_raw.get("costIsPartial")
-    reconciliation = _cost_reconciliation(provider_ticks, partial, estimate)
-    tools = _tools(trace, packet)
-    workers = _workers(checkpoint, packet)
+    if complete_execution_receipt:
+        model_usage = usage_raw.get("modelUsage") or []
+        usage = {
+            "inputTokens": usage_raw.get("inputTokens"),
+            "outputTokens": usage_raw.get("outputTokens"),
+            "totalTokens": usage_raw.get("totalTokens"),
+            "cachedReadTokens": usage_raw.get("cachedReadTokens"),
+            "cacheCreationTokens": usage_raw.get("cacheCreationTokens"),
+            "reasoningTokens": usage_raw.get("reasoningTokens"),
+            "modelCalls": usage_raw.get("modelCalls"),
+            "modelUsageIDs": sorted(
+                str(item.get("modelID")) for item in model_usage
+                if isinstance(item, dict) and item.get("modelID")
+            ),
+        }
+        estimate = _frozen_estimate(packet.get("frozenPricing"), usage)
+        provider_ticks = usage_raw.get("costUsdTicks")
+        partial = usage_raw.get("costIsPartial")
+        reconciliation = _cost_reconciliation(provider_ticks, partial, estimate)
+        tools = _tools(trace, packet)
+        workers = _workers(checkpoint, packet)
+    else:
+        configured = observed = usage = None
+        estimate = provider_ticks = partial = None
+        reconciliation = "unavailable"
+        tools = workers = []
     coordination_raw = checkpoint.get("coordinationReceipt")
     coordination = None
-    if isinstance(coordination_raw, dict):
+    if complete_execution_receipt and isinstance(coordination_raw, dict):
         coordination = {
             "maximumUsefulConcurrency": coordination_raw.get("maximumUsefulConcurrency"),
         }
+    hard_budget_projection = _hard_budget_terminal_projection(
+        checkpoint.get("hardBudgetTerminalProjection")
+    )
+    hard_budget_authority = _hard_budget_pre_dispatch_authority(
+        checkpoint.get("hardBudgetReceipt")
+    )
     canonical = json.dumps(checkpoint, sort_keys=True, separators=(",", ":")).encode("utf-8")
     return {
         "schemaVersion": 2,
@@ -183,10 +240,34 @@ def extract_terminal(
         "toolReceipts": tools,
         "workerReceipts": workers,
         "coordination": coordination,
+        "hardBudgetPreDispatchAuthority": hard_budget_authority,
+        "hardBudgetTerminalProjection": hard_budget_projection,
         "outcome": outcome,
         "checkpointDigest": hashlib.sha256(canonical).hexdigest(),
         "failure": None if completed else ("budget-stop" if outcome == "userStopped" else "campaign-failure"),
     }
+
+
+def _hard_budget_terminal_projection(value: Any) -> Any:
+    """Persist only the typed Swift terminal projection, never raw ledger material."""
+    if not isinstance(value, dict):
+        return value
+    projection = {field: value.get(field) for field in _HARD_BUDGET_PROJECTION_FIELDS}
+    requests = value.get("requests")
+    if isinstance(requests, list):
+        projection["requests"] = [
+            ({field: request.get(field) for field in _HARD_BUDGET_REQUEST_FIELDS}
+             if isinstance(request, dict) else request)
+            for request in requests
+        ]
+    return projection
+
+
+def _hard_budget_pre_dispatch_authority(value: Any) -> Any:
+    """Persist only the typed pre-dispatch authority needed to bind a terminal ledger."""
+    if not isinstance(value, dict):
+        return value
+    return {field: value.get(field) for field in _HARD_BUDGET_AUTHORITY_FIELDS}
 
 
 def _message_for_prompt(messages: list[Any], prompt: str, marker: str) -> dict[str, Any]:

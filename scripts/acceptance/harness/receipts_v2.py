@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import hashlib
 import os
 import re
 import stat
@@ -10,6 +11,7 @@ from pathlib import Path
 from typing import Any
 
 from .errors import ReceiptError
+from .authority_v2 import canonical_cli_manifest
 from .schema_v2 import ROUTE_FIELDS
 
 COMMON = {
@@ -19,7 +21,8 @@ COMMON = {
 START_ONLY = COMMON | {"reservedTokens", "maxModelCalls"}
 TERMINAL_ONLY = COMMON | {
     "configuredRoute", "observedRoute", "usage", "cost", "toolReceipts",
-    "workerReceipts", "coordination", "outcome", "checkpointDigest", "failure",
+    "workerReceipts", "coordination", "hardBudgetPreDispatchAuthority",
+    "hardBudgetTerminalProjection", "outcome", "checkpointDigest", "failure",
 }
 CLEANUP_ONLY = COMMON | {"cleanup"}
 OBSERVED_ROUTE_FIELDS = {
@@ -39,6 +42,17 @@ TOOL_FIELDS = {"family", "qualifiedToolID", "identity", "status", "order"}
 WORKER_FIELDS = {"role", "status", "childBackendSessionID", "toolCallCount", "runtimeModelID"}
 CLEANUP_FIELDS = {"localTab", "backendSession"}
 COORDINATION_FIELDS = {"maximumUsefulConcurrency"}
+HARD_BUDGET_PROJECTION_FIELDS = {"status", "ledgerRevision", "nextSequence", "reservationCount", "reason", "requests"}
+HARD_BUDGET_REQUEST_FIELDS = {
+    "reservationID", "sequence", "providerRequestID", "model", "endpointSHA256", "apiBackend",
+    "payloadBytes", "maxOutputTokens", "reservedTokens", "actualTokens", "chargedTokens", "lifecycle",
+}
+HARD_BUDGET_AUTHORITY_FIELDS = {
+    "campaignID", "manifestSHA256", "allocationID", "packetID", "cliBuild",
+    "routeModel", "endpointSHA256", "apiBackend", "requestBoundTokens",
+    "maxPayloadBytes", "maxOutputTokens", "boundProvenanceSHA256",
+    "preDispatchNextSequence", "preDispatchLedgerRevision",
+}
 SEMVER = re.compile(r"\b(\d+)\.(\d+)\.(\d+)")
 FAILURE_CODES = {
     "preflight", "send", "timeout", "route", "usage", "cleanup", "driver",
@@ -164,6 +178,8 @@ def _validate_terminal_row(row: dict[str, Any]) -> None:
             raise ReceiptError("worker runtimeModelID must be a string or null")
 
     _validate_cost(row["cost"])
+    _validate_hard_budget_pre_dispatch_authority(row["hardBudgetPreDispatchAuthority"])
+    _validate_hard_budget_terminal_projection(row["hardBudgetTerminalProjection"])
     if row["status"] == "failed":
         if row["configuredRoute"] is not None or row["observedRoute"] is not None or row["usage"] is not None:
             raise ReceiptError("failed terminal row cannot invent route or usage")
@@ -178,6 +194,17 @@ def _validate_terminal_row(row: dict[str, Any]) -> None:
         return
     if row["status"] not in {"settled", "rejected"}:
         raise ReceiptError("terminal row must be settled, rejected, or preserve a pre-receipt failure")
+    if row["status"] == "rejected" and (
+        row["configuredRoute"] is None or row["observedRoute"] is None or row["usage"] is None
+    ):
+        if any(value is not None for value in (row["configuredRoute"], row["observedRoute"], row["usage"])):
+            raise ReceiptError("partial rejected terminal evidence must not mix route or usage receipts")
+        if row["outcome"] != "userStopped" or row["failure"] != "budget-stop":
+            raise ReceiptError("partial rejected terminal evidence is reserved for an honest user Stop")
+        if row["coordination"] is not None or row["toolReceipts"] or row["workerReceipts"]:
+            raise ReceiptError("partial rejected terminal evidence cannot invent workload receipts")
+        _validate_terminal_identity_and_digest(row)
+        return
     _exact_object(row["configuredRoute"], ROUTE_FIELDS, "configuredRoute")
     _validate_configured_route(row["configuredRoute"])
     _exact_object(row["observedRoute"], OBSERVED_ROUTE_FIELDS, "observedRoute")
@@ -207,16 +234,62 @@ def _validate_terminal_row(row: dict[str, Any]) -> None:
         not isinstance(item, str) or not item for item in observed["modelUsageIDs"]
     ):
         raise ReceiptError("observedRoute.modelUsageIDs must contain non-empty strings")
-    digest = row["checkpointDigest"]
-    if not isinstance(digest, str) or re.fullmatch(r"[0-9a-f]{64}", digest) is None:
-        raise ReceiptError("settled terminal row requires a SHA-256 checkpoint digest")
-    if not row["tabId"] or not row["backendId"] or row["processGeneration"] is None:
-        raise ReceiptError("settled terminal row requires exact tab/backend/generation identity")
+    _validate_terminal_identity_and_digest(row)
     if row["status"] == "settled":
         if row["failure"] is not None or row["outcome"] != "completed":
             raise ReceiptError("settled terminal row requires the completed outcome")
     elif row["failure"] not in FAILURE_CODES or not isinstance(row["outcome"], str) or not row["outcome"]:
         raise ReceiptError("rejected terminal row must retain its outcome and failure code")
+
+
+def _validate_terminal_identity_and_digest(row: dict[str, Any]) -> None:
+    digest = row["checkpointDigest"]
+    if not isinstance(digest, str) or re.fullmatch(r"[0-9a-f]{64}", digest) is None:
+        raise ReceiptError("settled terminal row requires a SHA-256 checkpoint digest")
+    if not row["tabId"] or not row["backendId"] or row["processGeneration"] is None:
+        raise ReceiptError("settled terminal row requires exact tab/backend/generation identity")
+
+
+def _validate_hard_budget_terminal_projection(value: Any) -> None:
+    if value is None:
+        return
+    _exact_object(value, HARD_BUDGET_PROJECTION_FIELDS, "hardBudgetTerminalProjection")
+    if value["status"] not in {"settled", "ambiguous", "unavailable", "rejected"}:
+        raise ReceiptError("hardBudgetTerminalProjection.status is invalid")
+    for key in ("ledgerRevision", "nextSequence", "reservationCount"):
+        if value[key] is not None:
+            _require_nonnegative_int(value[key], f"hardBudgetTerminalProjection.{key}")
+    if value["reason"] is not None and (not isinstance(value["reason"], str) or not value["reason"]):
+        raise ReceiptError("hardBudgetTerminalProjection.reason must be a non-empty string or null")
+    if value["requests"] is not None:
+        if not isinstance(value["requests"], list):
+            raise ReceiptError("hardBudgetTerminalProjection.requests must be a list or null")
+        for index, request in enumerate(value["requests"]):
+            _exact_object(request, HARD_BUDGET_REQUEST_FIELDS, f"hardBudgetTerminalProjection.requests[{index}]")
+            for key in ("reservationID", "providerRequestID", "model", "endpointSHA256", "apiBackend", "lifecycle"):
+                if not isinstance(request[key], str) or not request[key]:
+                    raise ReceiptError(f"hard-budget request {key} must be non-empty")
+            for key in ("sequence", "payloadBytes", "maxOutputTokens", "reservedTokens", "chargedTokens"):
+                _require_nonnegative_int(request[key], f"hard-budget request {key}")
+            if request["actualTokens"] is not None:
+                _require_nonnegative_int(request["actualTokens"], "hard-budget request actualTokens")
+
+
+def _validate_hard_budget_pre_dispatch_authority(value: Any) -> None:
+    if value is None:
+        return
+    _exact_object(value, HARD_BUDGET_AUTHORITY_FIELDS, "hardBudgetPreDispatchAuthority")
+    for key in (
+        "campaignID", "manifestSHA256", "allocationID", "packetID", "cliBuild",
+        "routeModel", "endpointSHA256", "apiBackend", "boundProvenanceSHA256",
+    ):
+        if not isinstance(value[key], str) or not value[key]:
+            raise ReceiptError(f"hard-budget authority {key} must be non-empty")
+    for key in (
+        "requestBoundTokens", "maxPayloadBytes", "maxOutputTokens",
+        "preDispatchNextSequence", "preDispatchLedgerRevision",
+    ):
+        _require_nonnegative_int(value[key], f"hard-budget authority {key}")
 
 
 def _validate_cost(cost: dict[str, Any]) -> None:
@@ -316,6 +389,8 @@ def evaluate_prefix(
             raise ReceiptError(f"{packet['id']}: packet token allocation exceeded")
         if int(calls) > int(packet["maxModelCalls"]):
             raise ReceiptError(f"{packet['id']}: model-call allocation exceeded")
+        authority = _check_hard_budget_pre_dispatch_authority(manifest, packet, terminal)
+        _check_hard_budget_settlement(packet, terminal, int(total), int(calls), authority)
         usage_ids = sorted(str(item) for item in usage.get("modelUsageIDs") or [])
         if usage_ids != sorted(packet["expectedModelUsageIDs"]):
             raise ReceiptError(f"{packet['id']}: modelUsage IDs mismatch")
@@ -357,6 +432,90 @@ def evaluate_prefix(
         "providerCostUsdTicks": provider_ticks,
         "outcome": "accepted",
     }
+
+
+def _check_hard_budget_pre_dispatch_authority(
+    manifest: dict[str, Any], packet: dict[str, Any], terminal: dict[str, Any]
+) -> dict[str, Any]:
+    authority = terminal["hardBudgetPreDispatchAuthority"]
+    if not isinstance(authority, dict):
+        raise ReceiptError(f"{packet['id']}: completed packet requires hard-budget pre-dispatch authority")
+    route = packet["hardBudget"]["route"]
+    if (
+        authority["campaignID"], authority["allocationID"], authority["packetID"], authority["cliBuild"],
+    ) != (
+        manifest["runId"], packet["hardBudget"]["allocationID"], packet["id"], manifest["expectedCLIBuild"],
+    ):
+        # The campaign run ID is deliberately the authority campaign ID for this v2 manifest.
+        raise ReceiptError(f"{packet['id']}: hard-budget authority campaign/allocation identity mismatch")
+    if (
+        authority["routeModel"], authority["endpointSHA256"], authority["apiBackend"],
+        authority["requestBoundTokens"], authority["maxPayloadBytes"], authority["maxOutputTokens"],
+        authority["boundProvenanceSHA256"],
+    ) != (
+        route["model"], route["endpointSha256"], route["apiBackend"], route["requestBoundTokens"],
+        route["maxPayloadBytes"], route["maxOutputTokens"], route["boundProvenanceSha256"],
+    ):
+        raise ReceiptError(f"{packet['id']}: hard-budget authority route/bounds mismatch")
+    canonical_manifest = json.dumps(
+        canonical_cli_manifest(manifest), sort_keys=True, separators=(",", ":")
+    ).encode("utf-8")
+    if authority["manifestSHA256"] != hashlib.sha256(canonical_manifest).hexdigest():
+        raise ReceiptError(f"{packet['id']}: hard-budget authority manifest hash mismatch")
+    return authority
+
+
+def _check_hard_budget_settlement(
+    packet: dict[str, Any], terminal: dict[str, Any], total: int, calls: int, authority: dict[str, Any]
+) -> None:
+    projection = terminal["hardBudgetTerminalProjection"]
+    if not isinstance(projection, dict) or projection["status"] != "settled":
+        raise ReceiptError(f"{packet['id']}: completed packet requires a settled hard-budget terminal projection")
+    requests = projection["requests"]
+    if not isinstance(requests, list) or not requests or projection["reservationCount"] != len(requests):
+        raise ReceiptError(f"{packet['id']}: hard-budget terminal requests are missing or ambiguous")
+    if projection["ledgerRevision"] is None or projection["nextSequence"] is None:
+        raise ReceiptError(f"{packet['id']}: hard-budget terminal cursor is unavailable")
+    if projection["ledgerRevision"] <= authority["preDispatchLedgerRevision"]:
+        raise ReceiptError(f"{packet['id']}: hard-budget ledger revision did not advance")
+    if projection["nextSequence"] != authority["preDispatchNextSequence"] + len(requests):
+        raise ReceiptError(f"{packet['id']}: hard-budget next sequence does not match completed serial records")
+    seen_reservations: set[str] = set()
+    seen_sequences: set[int] = set()
+    actual_tokens = 0
+    route = packet["hardBudget"]["route"]
+    for request in requests:
+        if request["lifecycle"] != "settled_usage_reported" or request["actualTokens"] is None:
+            raise ReceiptError(f"{packet['id']}: completed packet has non-settled hard-budget reservation")
+        for value, seen, label in (
+            (request["reservationID"], seen_reservations, "reservation"),
+            (request["sequence"], seen_sequences, "sequence"),
+        ):
+            if value in seen:
+                raise ReceiptError(f"{packet['id']}: duplicate hard-budget {label}")
+            seen.add(value)
+        if request["sequence"] < authority["preDispatchNextSequence"]:
+            raise ReceiptError(f"{packet['id']}: hard-budget record predates pre-dispatch cursor")
+        if (request["model"], request["endpointSHA256"], request["apiBackend"]) != (
+            route["model"], route["endpointSha256"], route["apiBackend"],
+        ):
+            raise ReceiptError(f"{packet['id']}: hard-budget route record mismatch")
+        if request["payloadBytes"] > route["maxPayloadBytes"] or request["maxOutputTokens"] > route["maxOutputTokens"]:
+            raise ReceiptError(f"{packet['id']}: hard-budget request exceeded route bound")
+        if (
+            request["reservedTokens"] <= 0
+            or request["actualTokens"] > request["reservedTokens"]
+            or request["chargedTokens"] != request["actualTokens"]
+        ):
+            raise ReceiptError(f"{packet['id']}: hard-budget settled charge is invalid")
+        actual_tokens += int(request["actualTokens"])
+    expected_sequences = set(range(
+        authority["preDispatchNextSequence"], projection["nextSequence"]
+    ))
+    if seen_sequences != expected_sequences:
+        raise ReceiptError(f"{packet['id']}: hard-budget sequence range is not contiguous")
+    if len(requests) != calls or actual_tokens != total:
+        raise ReceiptError(f"{packet['id']}: hard-budget records do not reconcile to completion usage")
 
 
 def evaluate(manifest: dict[str, Any], rows: list[dict[str, Any]]) -> dict[str, Any]:

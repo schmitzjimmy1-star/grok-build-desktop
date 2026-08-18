@@ -20,6 +20,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from harness.cleanup import require_exact_ids
+from harness.authority_v2 import prepare_campaign_authority, retain_campaign_authority
 from harness.driver import (
     capture_identities,
     close_current_session,
@@ -32,6 +33,7 @@ from harness.driver import (
     select_model,
     send_prompt,
     stop_turn,
+    wait_for_terminal_checkpoint,
     wait_for_marker,
     wait_for_stop_control,
 )
@@ -277,9 +279,14 @@ def _billable_v2(args: argparse.Namespace) -> int:
         raise HarnessError("billable mode requires --run-id")
     require_live_run_id_v2(args.run_id)
     manifest = load_manifest_v2(args.manifest, run_id=args.run_id)
+    if any(packet["continuation"] is not None for packet in manifest["packets"]):
+        raise HarnessError(
+            "this manifest contains session-continuation packets; convert them to fresh, "
+            "self-contained allocations before unlocking billable execution"
+        )
     report = preflight_v2(REPO, manifest, ledger=args.ledger)
     safe_print(json.dumps({"preflight": redact_value("preflight", report)}))
-    budget_file = _write_budget_guard(manifest, args.ledger)
+    authority = prepare_campaign_authority(manifest)
     rows: list[dict] = []
     cumulative = 0
     current_packet: dict | None = None
@@ -289,10 +296,8 @@ def _billable_v2(args: argparse.Namespace) -> int:
     cleanup_is_recorded = False
     send_may_be_live = False
     app_launch_epoch = 0
+    process_zero_confirmed = False
     try:
-        launch_installed(budget_file=budget_file)
-        app_launch_epoch += 1
-        select_workspace(REPO)
         packets = manifest["packets"]
         for index, packet in enumerate(packets):
             current_packet = packet
@@ -305,14 +310,15 @@ def _billable_v2(args: argparse.Namespace) -> int:
             if cumulative + allocation + int(manifest["emergencyReserveTokens"]) > int(manifest["campaignTokenCeiling"]):
                 raise HarnessError(f"{packet['id']}: pre-Send reserve refusal")
 
-            continuation = packet["continuation"]
-            start_new = continuation is None or int(continuation["turn"]) == 1
-            if start_new:
-                new_chat()
-                select_model(packet["selectorModelID"])
-            elif continuation and continuation.get("resumeAfterQuit"):
-                restore_continuation(marker=rows[-1]["marker"])
-                resume_saved_task()
+            launch_installed(
+                budget_file=authority.authorization,
+                cli_manifest_file=authority.cli_manifest,
+                budget_ledger_file=authority.ledger,
+            )
+            app_launch_epoch += 1
+            select_workspace(REPO)
+            new_chat()
+            select_model(packet["selectorModelID"])
 
             if _sha256(Path.home() / ".grok/config.toml") != report["configSha256"]:
                 raise HarnessError("config hash drift before Send")
@@ -339,20 +345,12 @@ def _billable_v2(args: argparse.Namespace) -> int:
                 app_launch_epoch,
             )
             current_identities["processGeneration"] = terminal["processGeneration"]
-            nxt = packets[index + 1] if index + 1 < len(packets) else None
-            next_continuation = (nxt or {}).get("continuation")
-            same_continuation = bool(
-                continuation
-                and next_continuation
-                and continuation["group"] == next_continuation["group"]
-            )
-            expected_local_cleanup = "retained" if same_continuation else "closedExact"
             candidate_cleanup = cleanup_receipt(
                 packet,
                 manifest["runId"],
                 current_identities,
                 app_launch_epoch,
-                local_tab=expected_local_cleanup,
+                local_tab="closedExact",
             )
             validation_error: Exception | None = None
             if _sha256(Path.home() / ".grok/config.toml") != report["configSha256"]:
@@ -376,26 +374,21 @@ def _billable_v2(args: argparse.Namespace) -> int:
             if validation_error is not None:
                 # Exact paid evidence is fsync'd before cleanup or campaign stop.
                 raise HarnessError(f"packet evidence rejected: {validation_error}") from validation_error
-            if not same_continuation:
-                close_current_session(current_identities["tabId"])
+            close_current_session(current_identities["tabId"])
             append_row_v2(args.ledger, candidate_cleanup)
             rows.append(candidate_cleanup)
             cleanup_is_recorded = True
             evaluate_prefix_v2(manifest, load_ledger_v2(args.ledger))
             cumulative += int(terminal["usage"]["totalTokens"])
-
-            if next_continuation and next_continuation.get("resumeAfterQuit"):
-                quit_installed()
-                two_process_zero_samples()
-                launch_installed(budget_file=budget_file)
-                app_launch_epoch += 1
-                select_workspace(REPO)
+            quit_installed()
+            two_process_zero_samples()
 
         # Acceptance is based on the fsync'd ledger reloaded from disk, never
         # merely on the in-memory objects the current process hoped it wrote.
         summary = evaluate_v2(manifest, load_ledger_v2(args.ledger))
         quit_installed()
         summary["processZero"] = two_process_zero_samples()
+        process_zero_confirmed = True
         safe_print(json.dumps(redact_value("summary", summary), sort_keys=True))
         return 0
     except Exception as exc:
@@ -403,7 +396,7 @@ def _billable_v2(args: argparse.Namespace) -> int:
         if current_packet is not None and send_may_be_live and not terminal_is_recorded:
             try:
                 stop_turn()
-                wait_for_marker(current_packet["marker"], timeout_seconds=45)
+                wait_for_terminal_checkpoint(current_packet["marker"], timeout_seconds=45)
                 current_identities = capture_identities(REPO, current_packet["marker"])
                 stopped = extract_terminal(
                     current_packet,
@@ -458,6 +451,7 @@ def _billable_v2(args: argparse.Namespace) -> int:
         try:
             quit_installed()
             two_process_zero_samples()
+            process_zero_confirmed = True
         except Exception:
             secondary_failures.append("installed app cleanup/process-zero failed")
         if secondary_failures:
@@ -468,42 +462,12 @@ def _billable_v2(args: argparse.Namespace) -> int:
             raise
         raise HarnessError(f"v2 campaign stopped: {type(exc).__name__}") from exc
     finally:
-        try:
-            budget_file.unlink()
-        except OSError:
-            pass
-
-
-def _write_budget_guard(manifest: dict, ledger: Path) -> Path:
-    path = ledger.with_suffix(ledger.suffix + ".budget.json")
-    payload = {
-        "schemaVersion": 1,
-        "runID": manifest["runId"],
-        "campaignTokenCeiling": manifest["campaignTokenCeiling"],
-        "emergencyReserveTokens": manifest["emergencyReserveTokens"],
-        "packets": [
-            {
-                "marker": packet["marker"],
-                "promptHash": packet["promptHash"],
-                "tokenAllocation": packet["tokenAllocation"],
-                "maxModelCalls": packet["maxModelCalls"],
-            }
-            for packet in manifest["packets"]
-        ],
-    }
-    path.parent.mkdir(parents=True, exist_ok=True)
-    flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL
-    if hasattr(os, "O_NOFOLLOW"):
-        flags |= os.O_NOFOLLOW
-    try:
-        fd = os.open(path, flags, 0o600)
-    except OSError as exc:
-        raise HarnessError("acceptance budget path must not pre-exist or follow a link") from exc
-    with os.fdopen(fd, "w", encoding="utf-8") as handle:
-        handle.write(json.dumps(payload, sort_keys=True))
-        handle.flush()
-        os.fsync(handle.fileno())
-    return path
+        safe_print(json.dumps({
+            "authorityRetention": retain_campaign_authority(
+                authority,
+                remove_authorization=process_zero_confirmed,
+            )
+        }, sort_keys=True))
 
 
 def _sha256(path: Path) -> str | None:

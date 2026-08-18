@@ -22,6 +22,7 @@ CAMPAIGN_CEILING = 4_000_000
 PLANNED_MAXIMUM = 3_000_000
 MINIMUM_RESERVE = 1_000_000
 RUN_ID_LIVE = re.compile(r"^[0-9]{8}T[0-9]{6}Z$")
+FULL_CLI_BUILD = re.compile(r"^[0-9]+\.[0-9]+\.[0-9]+(?:[-+][0-9A-Za-z.-]+)? \([0-9a-f]{7,40}\)$")
 ROUTE_KINDS = {"nativeXAI", "directProvider", "brokeredOpenRouter", "localEndpoint", "unavailable"}
 WORKLOADS = {"noTool", "orderedMultiTool", "twoChildCoordination", "continuation", "recovery"}
 FORBIDDEN_BYTES = {9, 10, 13, 92}
@@ -35,6 +36,7 @@ ROOT_FIELDS = {
     "maxAttempts",
     "effort",
     "parentAgent",
+    "expectedCLIBuild",
     "forbiddenToolsDefault",
     "packets",
 }
@@ -59,6 +61,7 @@ PACKET_FIELDS = {
     "childTopology",
     "continuation",
     "frozenPricing",
+    "hardBudget",
 }
 READ_FIXTURE_FIELDS = {"identity", "workspacePath", "sha256", "expectedStatus"}
 READ_FIXTURE_ROOT = "scripts/acceptance/fixtures/.slice4-native-tools/"
@@ -75,6 +78,11 @@ ROUTE_FIELDS = {
     "modelIsPinned",
     "servingProviderIsProven",
     "appFallbackEnabled",
+}
+HARD_BUDGET_FIELDS = {"allocationID", "route"}
+HARD_BUDGET_ROUTE_FIELDS = {
+    "model", "endpointSha256", "apiBackend", "requestBoundTokens",
+    "maxPayloadBytes", "maxOutputTokens", "boundProvenanceSha256",
 }
 
 
@@ -147,6 +155,7 @@ def load_manifest(path: Path, *, run_id: str | None = None) -> dict[str, Any]:
         raise SchemaError("campaign maxAttempts must be exactly 1")
     if raw["effort"] != "low" or raw["parentAgent"] != "default":
         raise SchemaError("campaign effort must be low and parentAgent default")
+    _validate_exact_cli_build(raw["expectedCLIBuild"])
     if "GrokBuild:update_plan" not in _native_tool_ids(raw["forbiddenToolsDefault"], "forbiddenToolsDefault"):
         raise SchemaError("forbiddenToolsDefault must include GrokBuild:update_plan")
     if not isinstance(raw["packets"], list) or not raw["packets"]:
@@ -156,6 +165,7 @@ def load_manifest(path: Path, *, run_id: str | None = None) -> dict[str, Any]:
     manifest["runId"] = run_id or str(raw["runId"])
     seen_ids: set[str] = set()
     seen_markers: set[str] = set()
+    seen_allocation_ids: set[str] = set()
     allocation = 0
     for index, packet in enumerate(manifest["packets"]):
         if not isinstance(packet, dict):
@@ -223,6 +233,11 @@ def load_manifest(path: Path, *, run_id: str | None = None) -> dict[str, Any]:
         _validate_topology(packet_id, packet["childTopology"])
         _validate_continuation(packet_id, packet["continuation"])
         _validate_pricing(packet_id, packet["frozenPricing"])
+        _validate_hard_budget(packet_id, packet, raw["expectedCLIBuild"])
+        allocation_id = packet["hardBudget"]["allocationID"]
+        if allocation_id in seen_allocation_ids:
+            raise SchemaError(f"{packet_id}: duplicate hard-budget allocationID")
+        seen_allocation_ids.add(allocation_id)
 
     if allocation > planned_maximum:
         raise SchemaError(f"packet allocations {allocation} exceed plannedTokenMaximum")
@@ -349,6 +364,42 @@ def _validate_pricing(packet_id: str, pricing: Any) -> None:
     _number(pricing["promptUsdPerMillion"], f"{packet_id}.frozenPricing.promptUsdPerMillion", minimum=0)
     _number(pricing["completionUsdPerMillion"], f"{packet_id}.frozenPricing.completionUsdPerMillion", minimum=0)
     _required_string(pricing["source"], f"{packet_id}.frozenPricing.source")
+
+
+def _validate_hard_budget(packet_id: str, packet: dict[str, Any], expected_cli_build: Any) -> None:
+    _validate_exact_cli_build(expected_cli_build)
+    value = packet["hardBudget"]
+    if not isinstance(value, dict):
+        raise SchemaError(f"{packet_id}: hardBudget must be an object")
+    _exact_fields(value, HARD_BUDGET_FIELDS, f"{packet_id}.hardBudget")
+    allocation_id = _required_string(value["allocationID"], f"{packet_id}.hardBudget.allocationID")
+    if re.fullmatch(r"[A-Za-z0-9_.-]{1,128}", allocation_id) is None:
+        raise SchemaError(f"{packet_id}: hardBudget allocationID is not CLI-safe")
+    route = value["route"]
+    if not isinstance(route, dict):
+        raise SchemaError(f"{packet_id}: hardBudget.route must be an object")
+    _exact_fields(route, HARD_BUDGET_ROUTE_FIELDS, f"{packet_id}.hardBudget.route")
+    if route["model"] != packet["effectiveModelID"]:
+        raise SchemaError(f"{packet_id}: hard-budget model must equal effectiveModelID")
+    if route["apiBackend"] not in {"chat_completions", "responses", "messages"}:
+        raise SchemaError(f"{packet_id}: hard-budget API backend is unsupported")
+    for key in ("endpointSha256", "boundProvenanceSha256"):
+        if not isinstance(route[key], str) or re.fullmatch(r"[0-9a-f]{64}", route[key]) is None:
+            raise SchemaError(f"{packet_id}: hard-budget {key} must be SHA-256")
+    request_bound = _integer(route["requestBoundTokens"], f"{packet_id}.hardBudget.route.requestBoundTokens", minimum=1)
+    payload_bound = _integer(route["maxPayloadBytes"], f"{packet_id}.hardBudget.route.maxPayloadBytes", minimum=1)
+    output_bound = _integer(route["maxOutputTokens"], f"{packet_id}.hardBudget.route.maxOutputTokens", minimum=1)
+    if payload_bound + output_bound > request_bound or request_bound > packet["tokenAllocation"]:
+        raise SchemaError(f"{packet_id}: invalid conservative hard-budget bounds")
+
+
+def _validate_exact_cli_build(value: Any) -> None:
+    build = _required_string(value, "expectedCLIBuild")
+    if FULL_CLI_BUILD.fullmatch(build) is None:
+        raise SchemaError(
+            "expectedCLIBuild must be the exact installed xai_grok_version full_version "
+            "(for example 1.0.5 (abcdef0)); generic labels and placeholders are forbidden"
+        )
 
 
 def require_live_run_id(run_id: str) -> None:
