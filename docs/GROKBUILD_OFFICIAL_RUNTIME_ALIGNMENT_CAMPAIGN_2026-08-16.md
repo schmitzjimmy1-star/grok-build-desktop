@@ -1,6 +1,6 @@
 # GrokBuild Official Runtime Alignment Campaign — 2026-08-16
 
-Status: **Slices 0–3 complete; Slice 4A active inside Slice 4.** Jimmy authorized a rigorous
+Status: **Slices 0–3 complete; Slice 4A nonbillable implementation complete inside Slice 4; paid activation locked.** Jimmy authorized a rigorous
 merge-per-slice campaign on 2026-08-16. Every slice gets its own branch,
 explicit commits, ready pull request, exact-head required checks, normal merge,
 merged-main installation, and process-zero closeout before the next slice begins.
@@ -34,7 +34,7 @@ Grok CLI.
 | **2** | **Typed ACP control spine** | Add a version/capability-aware facade over each existing ACP connection; first methods are models, usage, session metadata, and bounded session updates. | **Complete — PR #116** |
 | **3** | **Session truth and recovery** | Consume typed `session/load` replay, reconcile the local presentation cache, and retire private root/child storage reads after a shadow-parity gate. | **Complete — PR #118** |
 | **4** | **Official provider and open-weight lane** | Use official provider definitions, resolve the keyless-endpoint credential hazard, and pilot one Keychain-backed auth helper without bundling a model runtime. | **Active** |
-| **4A** | **Hard pre-provider budget governor** | Define and prove an official-CLI-owned, atomic worst-case reservation boundary shared by parent, child, and retry sampling before any provider request; keep the app and harness projection-only. | **Active — nonbillable checkpoint committed; paid locked** |
+| **4A** | **Hard pre-provider budget governor** | Define and prove an official-CLI-owned, atomic worst-case reservation boundary shared by parent, child, and retry sampling before any provider request; keep the app and harness projection-only. | **Nonbillable implementation complete — paid locked** |
 | **5** | **Controls behave like controls** | Replace model-prompt control actions where official methods exist; separate cancel, worker cancel, and disconnect semantics. | Locked |
 | **6** | **Coordinator simplification** | Split transport/session/projection owners only after authority correction; evaluate workspace/profile process pooling without a default leader daemon. | Locked |
 
@@ -67,10 +67,14 @@ tests prove the invariant across concurrency, retry, cancellation, and restart.
 ### Slice 4A nonbillable checkpoint — 2026-08-17
 
 The local fork is pinned to official 1.0.5 source `9fabade`. CLI fork commits
-`b1ab29e` and `717b94b` implement the current nonbillable governor checkpoint;
-app commits `7f7bfad` and `6619bde` fail closed on route substitution and project
-the exact downstream capability under `com.grokbuild/*` rather than pretending
-it is an upstream `x.ai/*` method.
+`b1ab29e`, `717b94b`, `2a639d9`, `190e984`, `e78ae89`, and `03a28d4`
+implement the nonbillable governor, armed-runtime containment, typed request
+receipts, and durable cursor projection. App commits `7f7bfad`, `6619bde`,
+`e9a4a4d`, `39dd56c`, `c73469f`, `f373f04`, and `08b95f6` fail closed on route
+substitution, activate one immutable packet per CLI process, retain native
+read-only acceptance fixtures, and reconcile terminal ledger evidence. The
+downstream contract stays under `com.grokbuild/*`; it is never presented as an
+upstream `x.ai/*` method.
 
 The CLI checkpoint owns one immutable multi-route campaign manifest and one
 durable process-shared ledger. Each allocation binds packet, prompt digest,
@@ -84,27 +88,36 @@ multimodal/indirect inputs, memory embeddings, web search, and image/video
 generation paths fail closed rather than escape accounting.
 
 GrokBuild remains projection-only. It hashes the final prompt after MCP/file
-attachment blocks, securely reads one private regular authorization file, and
-requires the exact live CLI capability to match the campaign ID, 4M ceiling,
-1M reserve, 3M spendable ledger, manifest digest, CLI build, allocation and
-packet IDs, prompt, route, bound, provenance, and remaining token/call state.
-The checkpoint retained in the transcript is explicitly pre-dispatch authority,
-not a fabricated reservation or spend receipt.
+attachment blocks, securely reads separate private authorization, CLI-manifest,
+and shared-ledger files, and requires the exact live CLI capability to match the
+campaign ID, 4M ceiling, 1M reserve, 3M spendable ledger, manifest digest, CLI
+build, allocation and packet IDs, prompt, route, bound, provenance, containment,
+and remaining token/call state. Configured acceptance starts no warm unarmed CLI;
+the exact packet contract launches a fresh process and ambient governor variables
+are scrubbed. A successful checkpoint now requires the CLI's typed terminal
+request records to advance the pre-dispatch ledger cursor through one exact
+contiguous reservation range, match route and bounds, remain within each reserved
+token amount, settle with exact charges, and reconcile to ACP model-call and token
+usage. Stop cancels, drains, queries the still-live generation, and retains a
+truthful reserved/ambiguous/unavailable projection before teardown.
 
-Acceptance: full Swift `968/968`; focused ACP/harness/model Swift `163/163`;
-Python harness `10/10`; Rust sampler `238` total tests; shell/tools/memory Cargo
-checks; both diff checks clean. Three skeptical reviewers returned **COMMIT**
-for this nonbillable checkpoint and **NO-GO** for paid execution. No provider
-call, credential read, live config mutation, installed CLI upgrade, or app
-installation occurred.
+Acceptance: full Swift **976/976**; focused ACP **90/90**; Python v2 harness
+**22/22**; Rust sampler hard-budget **29/29** at CLI head `03a28d4`; prior armed
+shell/agent/pager checks remain retained; both repository diff checks are clean.
+Three skeptical reviewers returned **COMMIT** for the exact nonbillable app and
+harness tree and **NO-GO** for paid execution. No provider call, credential read,
+live config mutation, installed CLI upgrade, or app installation occurred.
 
-Paid execution remains blocked until the harness generates and injects the
-exact campaign/ledger/allocation contract per packet, continuation allocation
-handoff is explicit, terminal reservation and settlement are projected as typed
-receipts, the exact committed fork binary and bound provenance are installed
-and independently verified, and terminal/MCP same-user network and ledger
-bypass is contained. Real kill/restart/cancel/no-retry and side-egress hostile
-fixtures are also required. Slice 5 and Slice 6 remain locked.
+Paid execution remains blocked at the first harness branch. The next full Slice
+4 activation must install and prove the exact committed fork binary, generate and
+independently verify route-specific bound provenance, resolve external-provider
+credentials without re-enabling arbitrary auth-helper subprocesses, and replace
+or redesign the continuation packets that the current fresh-allocation harness
+correctly refuses as a whole. It must then run nonbillable loopback process,
+kill/restart/cancel, no-retry, and side-egress acceptance before any provider
+Send. The private CLI manifest and ledger are retained after process-zero for
+forensic reconciliation; only the app authorization sidecar is removed. Slice 5
+and Slice 6 remain locked.
 
 ## Slice 0 — Restore CLI execution ownership
 

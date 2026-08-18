@@ -37,10 +37,12 @@
 > limited to official provider projection, the OpenRouter Keychain-helper pilot,
 > official model-catalog authority, the paid-harness v2, and a paid packet with
 > at most 3,000,000 planned tokens plus a 1,000,000-token emergency reserve.
-> The v2 scaffolding is fail-closed and no paid Send has run: official ACP usage
-> arrives after provider work, so the current reactive Stop guard cannot prove
-> Jimmy's absolute 4,000,000-token ceiling. Paid execution remains locked until a
-> hard official or worst-case bound exists; this is blocked work, not a waiver.
+> The v2 path is fail-closed and no paid Send has run. The local CLI fork now owns
+> a durable pre-provider worst-case reservation contract because official ACP usage
+> arrives after provider work; the reactive Stop guard remains defense in depth.
+> Paid execution stays locked until that exact fork, route bounds, credential
+> boundary, and nonbillable lifecycle proof are installed and reconciled. This is
+> blocked work, not a waiver.
 > Slice 4A is limited to an official-CLI-owned pre-dispatch reservation contract,
 > hostile nonbillable fixtures, and projection-only GrokBuild/harness support.
 > It may not substitute a Swift poller, proxy, second runtime, or aspirational
@@ -55,7 +57,7 @@
 > 2026-08-14 Residual Closeout (Phases 0–6) complete and merged as `4613bde` (PR #94);
 > 2026-08-13 campaign (Slices 0–7) closed at merge `c0895ee` (PR #86).
 
-## Official Runtime Alignment — 2026-08-16 (Slices 0–3 complete; Slice 4A active)
+## Official Runtime Alignment — 2026-08-16 (Slices 0–3 complete; Slice 4A nonbillable implementation complete)
 
 Authorized spec is
 [`docs/GROKBUILD_OFFICIAL_RUNTIME_ALIGNMENT_CAMPAIGN_2026-08-16.md`](GROKBUILD_OFFICIAL_RUNTIME_ALIGNMENT_CAMPAIGN_2026-08-16.md).
@@ -139,10 +141,11 @@ prompt or backend resume. Native Quit produced process-zero samples at
 Jimmy authorized Slice 4 on 2026-08-17. Its exact ownership, implementation,
 nonbillable, paid-budget, cleanup, and publication contract is canonical in the
 campaign document. Provider/catalog/config implementation commits `b4623d8` and
-`afb5d3e` are retained on the Slice 4 branch. The v2 ledger/guard candidate is
-under test, but its paid path is explicitly locked because reactive usage polling
-cannot prove the absolute 4M ceiling. Zero paid Slice 4 packets have run. Slice 5
-remains locked.
+`afb5d3e` are retained on the Slice 4 branch. The v2 ledger/guard implementation
+is committed locally, but its paid path stays explicitly locked until the exact
+fork and its route-specific worst-case bounds are installed and independently
+proven. Reactive usage polling alone cannot prove the absolute 4M ceiling. Zero
+paid Slice 4 packets have run. Slice 5 remains locked.
 
 Jimmy authorized Slice 4A on 2026-08-17 as the exact hard-budget continuation.
 Its authority is deliberately narrower than a CLI upgrade or provider test: pin
@@ -152,13 +155,15 @@ project official typed budget state through the existing ACP connection. The
 current paid harness refusal stays first and unconditional until the installed
 CLI advertises that proven capability. Slice 5 and Slice 6 remain locked.
 
-The first nonbillable Slice 4A checkpoint is committed, but it is not a paid
-unlock or merge candidate yet. The pinned CLI fork commits are `b1ab29e`
-(`add durable hard-token reservations`) and `717b94b` (`enforce campaign
-hard-budget contracts`). App commits `7f7bfad` and `6619bde` fail closed on
-quarantined/restored route substitution and project the exact CLI-owned budget
-authority over the existing ACP connection. The runtime now uses one private,
-durable, process-shared campaign ledger with route-specific packet allocations;
+The nonbillable Slice 4A implementation is committed locally, but it is not a
+paid unlock. The pinned CLI fork series is `b1ab29e`, `717b94b`, `2a639d9`,
+`190e984`, `e78ae89`, and `03a28d4`. The app/harness series is `7f7bfad`,
+`6619bde`, `e9a4a4d`, `39dd56c`, `c73469f`, `f373f04`, and `08b95f6`. It fails
+closed on quarantined/restored route substitution, activates an immutable packet
+only after the final prompt is frozen, and projects exact CLI-owned pre-dispatch
+and terminal budget evidence over the existing ACP connection. The runtime now
+uses one private, durable, process-shared campaign ledger with route-specific
+packet allocations;
 all six sampler dispatch paths validate the final serialized text-only payload,
 reserve before network, disable automatic retries and redirects, retain
 ambiguous reservations, and refuse hosted search, remote Responses context,
@@ -167,23 +172,31 @@ cross-binds the exact 4,000,000 campaign policy, 1,000,000 unreachable reserve,
 3,000,000 spendable CLI ceiling, campaign/manifest/build/allocation/packet,
 prompt digest, route, bound provenance, and remaining token/call authority.
 
-Nonbillable evidence is green: full Swift `968/968`, focused Swift `163/163`,
-Python harness `10/10`, Rust sampler `238` total tests, shell/tools/memory Cargo
-checks, and both repository diff checks. Three independent skeptical reviewers
-returned **COMMIT** for this checkpoint and **NO-GO** for paid execution. No
-provider request, credential read, live config mutation, installed CLI upgrade,
-or app installation occurred.
+The app persists full request records from `com.grokbuild/budget/receipts`. A
+success requires an advanced durable ledger revision, the exact contiguous
+sequence range after the pre-dispatch cursor, route/bound equality, actual usage
+within every reservation, exact charge equality, and reconciliation to ACP calls
+and tokens. Stop queries after cancel/drain but before teardown and preserves
+reserved or ambiguous full-charge evidence without calling it settled. The v2
+harness independently allowlists and checks the same authority, cursors, records,
+and partial userStopped form; repeated provider correlation IDs remain legal
+while reservation IDs and sequences remain unique.
 
-Paid remains locked for concrete reasons: the harness does not yet generate and
-inject the exact campaign manifest/shared ledger/per-packet allocation; one CLI
-process still selects one immutable allocation while the matrix spans packets
-and a relaunch continuation; the app receipt is pre-dispatch authority rather
-than a terminal reservation/settlement projection; exact committed CLI binary
-identity and route-specific bound provenance are not installed and reconciled;
-and arbitrary same-user terminal or MCP network egress can bypass the sampler,
-unset governor variables, invoke another CLI/provider, or tamper with same-UID
-ledger files. The next 4A checkpoint must solve those boundaries and add real
-kill/restart/cancel/no-retry/side-egress hostile proof. Slice 5 remains locked.
+Nonbillable evidence is green: full Swift **976/976**, focused ACP **90/90**,
+Python harness **22/22**, Rust sampler hard-budget **29/29**, prior focused armed
+CLI checks, and both repository diff checks. Three independent skeptical
+reviewers returned **COMMIT** for this checkpoint and **NO-GO** for paid
+execution. No provider request, credential read, live config mutation, installed
+CLI upgrade, or app installation occurred.
+
+Paid remains locked for concrete next-slice reasons: the exact fork binary is not
+installed; route-specific bound provenance is not independently generated and
+verified; armed mode intentionally forbids arbitrary auth-helper subprocesses,
+so external-provider credentials need a non-executable pre-materialized boundary;
+and the continuation group is incompatible with one immutable fresh allocation
+per process, so the harness refuses the entire manifest before creating authority.
+Nonbillable loopback kill/restart/cancel/no-retry/side-egress proof must land
+before the first paid Send. Slice 5 remains locked.
 
 ## Visual Quiet — 2026-08-15 (Phase 6 welcome extraction authorized)
 

@@ -888,19 +888,35 @@ multimodal/indirect inputs, and known direct built-in inference/media egress fai
 closed while armed. Missing usage, Stop, stream failure, or process death retains
 the full ambiguous reservation. This downstream feature is truthfully advertised
 as `initialize._meta["com.grokbuild/hardTokenBudget"]` and queried on the same
-tab connection with `com.grokbuild/budget/status`; it is never labeled `x.ai/*`.
+tab connection with `com.grokbuild/budget/status` and
+`com.grokbuild/budget/receipts`; it is never labeled `x.ai/*`.
+
 GrokBuild authorizes only an exact match on campaign, 4M policy, 1M unreachable
 reserve, 3M spendable CLI ceiling, manifest/build/allocation/packet, prompt, route,
-bound provenance, and remaining token/call state. The stored receipt is explicitly
-pre-dispatch authority, not proof that a reservation dispatched or settled.
+bound provenance, containment, and remaining token/call state. Acceptance mode
+does not warm an unarmed CLI. After the final prompt is frozen, the exact packet
+contract launches a fresh process with an explicit manifest, shared ledger, and
+allocation environment; ambient governor variables are stripped. The pre-dispatch
+receipt freezes the ledger revision and sequence cursor. A successful terminal
+checkpoint then requires typed CLI request records to advance that cursor through
+the exact contiguous reservation range, match the frozen route and bounds, settle
+within every reservation with exact charges, and reconcile to ACP model-call and
+token usage. Stop cancels, drains, queries the still-live generation, and retains
+reserved, ambiguous, or unavailable evidence before teardown.
 
-The v2 harness still refuses billable launch before runtime discovery. Paid unlock
-requires exact campaign/ledger/allocation injection, typed terminal reservation and
-settlement reconciliation, installed fork identity plus independently verified
-route bounds, and containment of same-user terminal/MCP network or ledger bypass.
-Its allowlisted ledger otherwise retains rejected evidence, pins an app-launch
-epoch across continuation, and never scrapes private CLI sessions or runs a second
-ACP client.
+The v2 harness still refuses billable launch before runtime discovery. It creates
+one canonical private campaign manifest and ledger, a separate app authorization
+sidecar, and one fresh allocation/process per packet; the manifest and ledger are
+retained after process-zero for forensic reconciliation. Its allowlisted evaluator
+independently verifies the pre/post cursor, typed request records, route, bounds,
+calls, tokens, and partial `userStopped` evidence. It never scrapes private CLI
+sessions or runs a second ACP client. Paid unlock still requires installing and
+proving the exact committed fork, independently generating route-specific bound
+provenance, materializing external-provider credentials without executable auth
+helpers, and replacing or redesigning continuation packets that cannot satisfy the
+immutable one-allocation-per-process contract. Nonbillable loopback
+kill/restart/cancel/no-retry and side-egress proof must pass before any provider
+Send.
 
 The TOML parser is the one deliberate third-party SwiftPM exception to the lightweight default. Foundation and the Apple SDK expose no TOML 1.0 parser, while the previous line parser demonstrably misclassified valid nested/quoted/partial official Grok configuration and could corrupt it on save. `swift-toml` is pinned to an exact revision, statically linked, performs no I/O or networking, and is used only for parse validation; `THIRD_PARTY_NOTICES.md` ships in the app bundle. Grok CLI remains the sole owner of provider resolution, auth-helper execution/cache/timeout, inference, tools, sessions, and model-catalog membership.
 
