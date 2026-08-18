@@ -107,8 +107,9 @@ def _walk_named(node: Any, hits: list[dict[str, str]]) -> None:
         name = node.get("name")
         ref = node.get("ref_id") or node.get("ref")
         role = str(node.get("role") or "")
+        value = str(node.get("value") or "")
         if isinstance(name, str) and isinstance(ref, str) and ref.startswith("@"):
-            hits.append({"name": name, "ref": ref, "role": role})
+            hits.append({"name": name, "ref": ref, "role": role, "value": value})
         for child in node.get("children") or []:
             _walk_named(child, hits)
     elif isinstance(node, list):
@@ -117,7 +118,7 @@ def _walk_named(node: Any, hits: list[dict[str, str]]) -> None:
 
 
 def _find_named(name: str, *, role: str | None = None) -> str:
-    args = ["find", "--app", APP_NAME, "--name", name, "--first"]
+    args = ["find", "--app", APP_NAME, *_window_args(), "--name", name, "--first"]
     if role:
         args.extend(["--role", role])
     found = _ad(args)
@@ -175,7 +176,9 @@ def _click_menu_item(label: str) -> None:
 
 MODEL_LABELS = {
     "grok-4.6": "Grok 4.6",
+    "gpt-5.6-terra": "gpt-5.6-terra",
     "gpt-5.6-luna": "gpt-5.6-luna",
+    "deepseek-deepseek-v4-flash-0731": "DeepSeek V4 Flash 0731",
     "openai/gpt-4.1-mini": "openai/gpt-4.1-mini",
 }
 
@@ -205,13 +208,19 @@ def _pin_installed_window() -> None:
         if hidden:
             continue
         visible.append((window_id, bool(window.get("is_focused") or window.get("focused"))))
-    if not visible:
-        raise DriverError("installed GrokBuild has no visible window")
-    focused = [item[0] for item in visible if item[1]]
-    _WINDOW_ID = focused[0] if focused else visible[0][0]
+    if len(visible) != 1:
+        raise DriverError(
+            f"budgeted driver requires exactly one visible GrokBuild window, found {len(visible)}"
+        )
+    _WINDOW_ID = visible[0][0]
 
 
-def launch_installed() -> None:
+def launch_installed(
+    *,
+    budget_file: Path | None = None,
+    cli_manifest_file: Path | None = None,
+    budget_ledger_file: Path | None = None,
+) -> None:
     global _WINDOW_ID
     _WINDOW_ID = ""
     if not APP_PATH.exists():
@@ -223,8 +232,21 @@ def launch_installed() -> None:
             "another GrokBuild binary is running; quit it before driving /Applications/GrokBuild.app: "
             + ", ".join(wrong)
         )
+    budgeted = (budget_file, cli_manifest_file, budget_ledger_file)
+    if any(value is not None for value in budgeted) and any(value is None for value in budgeted):
+        raise DriverError("budgeted acceptance requires authorization, CLI manifest, and ledger paths together")
+    if budget_file is not None and str(INSTALLED_EXEC) in running:
+        raise DriverError("budgeted acceptance requires a fresh installed app process")
     if str(INSTALLED_EXEC) not in running:
-        subprocess.run(["open", str(APP_PATH)], check=False)
+        command = ["open", "-n", str(APP_PATH)]
+        if budget_file is not None:
+            command.extend([
+                "--args",
+                f"--grokbuild-acceptance-budget-file={budget_file}",
+                f"--grokbuild-acceptance-cli-manifest-file={cli_manifest_file}",
+                f"--grokbuild-acceptance-budget-ledger-file={budget_ledger_file}",
+            ])
+        subprocess.run(command, check=False)
     deadline = time.time() + 30
     while time.time() < deadline:
         try:
@@ -258,13 +280,10 @@ def quit_installed() -> None:
 
 
 def select_build_mode() -> None:
-    """Prefer the mode selector. Never click empty-state Build starter cards."""
-    try:
-        _click_named("Agent mode")
-        time.sleep(0.4)
-        _click_menu_item("Build")
-    except DriverError:
-        return
+    """Select Build from the exact mode menu; absence is a hard acceptance stop."""
+    _click_named("Agent mode")
+    time.sleep(0.4)
+    _click_menu_item("Build")
     time.sleep(0.2)
 
 
@@ -272,13 +291,10 @@ def select_model(model: str) -> None:
     label = MODEL_LABELS.get(model, model)
     _click_named("Model and reasoning effort")
     time.sleep(0.4)
-    try:
-        _click_menu_item("Low")
-        time.sleep(0.3)
-        _click_named("Model and reasoning effort")
-        time.sleep(0.4)
-    except DriverError:
-        pass
+    _click_menu_item("Low")
+    time.sleep(0.3)
+    _click_named("Model and reasoning effort")
+    time.sleep(0.4)
     _click_menu_item(label)
     time.sleep(0.2)
 
@@ -298,31 +314,85 @@ def new_chat() -> None:
     raise DriverError("new chat did not expose Message composer")
 
 
+def select_workspace(path: Path) -> None:
+    """Select the one exact repo row so UI launch cwd matches official inspect cwd."""
+    snapshot = _ad(["snapshot", "--app", APP_NAME, *_window_args(), "--surface", "window", "-i"])
+    hits: list[dict[str, str]] = []
+    payload = _payload(snapshot)
+    if isinstance(payload, dict):
+        _walk_named(payload.get("tree"), hits)
+    expected_name = f"Project {path.name}"
+    matches = [item for item in hits if item["name"] == expected_name and item.get("value") == str(path)]
+    if len(matches) != 1:
+        raise DriverError("exact acceptance project row is not uniquely available")
+    _ad(["click", matches[0]["ref"]])
+    time.sleep(0.6)
+
+
+def close_current_session(tab_id: str) -> None:
+    """Close only the selected run-created tab and prove no sibling transcript moved."""
+    transcripts = Path.home() / "Library/Application Support/GrokBuild/Transcripts"
+    target = transcripts / f"{tab_id}.json"
+    metadata = transcripts / f"{tab_id}.metadata.json"
+    if not target.is_file():
+        raise DriverError("exact run-created transcript is unavailable before cleanup")
+    before = {path.name for path in transcripts.glob("*.json")}
+    snapshot = _ad(["snapshot", "--app", APP_NAME, *_window_args(), "--surface", "window", "-i"])
+    hits: list[dict[str, str]] = []
+    payload = _payload(snapshot)
+    if isinstance(payload, dict):
+        _walk_named(payload.get("tree"), hits)
+    actions = [item for item in hits if item["name"].startswith("Session actions for ")]
+    if len(actions) != 1:
+        raise DriverError("exactly one selected Session actions control is required for cleanup")
+    _ad(["click", actions[0]["ref"]])
+    time.sleep(0.3)
+    _click_menu_item("Close Local Tab")
+    deadline = time.time() + 15
+    while time.time() < deadline and target.exists():
+        time.sleep(0.25)
+    if target.exists():
+        raise DriverError("exact run-created local tab did not close")
+    after = {path.name for path in transcripts.glob("*.json")}
+    expected_removed = {target.name}
+    if metadata.name in before:
+        expected_removed.add(metadata.name)
+    if metadata.exists() or before - expected_removed != after:
+        raise DriverError("cleanup changed a transcript outside the exact run-created tab")
+
+
 def send_prompt(prompt: str) -> None:
+    """Perform exactly one billable Send actuator.
+
+    Missing labels may be searched without cost, but once a concrete control is
+    selected the harness never falls back to another click or Cmd-Return. An
+    uncertain actuator result is terminal evidence, not permission to resend.
+    """
     assert_safe_text(prompt, context="composer")
     ref = _find_named("Message composer", role="textfield")
-    try:
-        _ad(["clear", ref])
-    except DriverError:
-        pass
+    _ad(["clear", ref])
     _type_into(ref, prompt)
     time.sleep(0.4)
-    last_error: Exception | None = None
     deadline = time.time() + 12
+    send_ref = None
     while time.time() < deadline:
         for name in SEND_LABELS:
             try:
-                _click_named(name)
-                return
-            except DriverError as exc:
-                last_error = exc
+                send_ref = _find_named(name)
+                break
+            except DriverError:
+                continue
+        if send_ref is not None:
+            break
         time.sleep(0.4)
+
+    if send_ref is None:
+        raise DriverError("could not find one exact Send control")
     try:
-        _ad(["press", "cmd+return", "--app", APP_NAME])
+        _ad(["click", send_ref])
         return
     except DriverError as exc:
-        last_error = exc
-    raise DriverError(f"could not send from composer: {last_error}")
+        raise DriverError(f"single Send actuator returned an uncertain failure: {exc}") from exc
 
 
 def wait_for_stop_control(*, timeout_seconds: int = 45) -> None:
@@ -403,10 +473,15 @@ def _wait_until_resume_clicked(*, timeout_seconds: int) -> None:
 
 
 def wait_for_marker(marker: str, *, timeout_seconds: int) -> None:
+    """Compatibility name for a marker-correlated terminal-checkpoint wait."""
+    wait_for_terminal_checkpoint(marker, timeout_seconds=timeout_seconds)
+
+
+def wait_for_terminal_checkpoint(marker: str, *, timeout_seconds: int) -> None:
     """Wait for the matching assistant turn to persist a settled checkpoint.
 
-    The user prompt also contains the marker, so AX text matching is not a
-    completion signal.
+    This correlates the frozen user-prompt marker to its assistant checkpoint;
+    it never requires that a stopped assistant response contain the marker.
     """
     assert_safe_text(marker, context="marker")
     transcripts = Path.home() / "Library/Application Support/GrokBuild/Transcripts"
@@ -429,7 +504,7 @@ def wait_for_marker(marker: str, *, timeout_seconds: int) -> None:
                 checkpoint = trace.get("checkpoint") or {}
                 if not isinstance(checkpoint, dict) or not checkpoint:
                     continue
-                if checkpoint.get("isSettled") is False:
+                if checkpoint.get("isSettled") is not True:
                     continue
                 if (
                     checkpoint.get("processGeneration")
@@ -447,7 +522,7 @@ def restore_continuation(*, marker: str) -> None:
     assert_safe_text(marker, context="restore-marker")
     try:
         _ad(
-            ["wait", "--app", APP_NAME, "--text", marker, "--timeout", "35000"],
+            ["wait", "--app", APP_NAME, *_window_args(), "--text", marker, "--timeout", "35000"],
             timeout=40,
         )
         _find_named("Message composer", role="textfield")
@@ -455,13 +530,13 @@ def restore_continuation(*, marker: str) -> None:
         return
     except DriverError:
         pass
-    found = _ad(["find", "--app", APP_NAME, "--name", "Session:", "--limit", "20"])
+    found = _ad(["find", "--app", APP_NAME, *_window_args(), "--name", "Session:", "--limit", "20"])
     for item in _matches(found):
         try:
             _ad(["click", _ref(item)])
             time.sleep(0.6)
             _ad(
-                ["wait", "--app", APP_NAME, "--text", marker, "--timeout", "12000"],
+                ["wait", "--app", APP_NAME, *_window_args(), "--text", marker, "--timeout", "12000"],
                 timeout=16,
             )
             _find_named("Message composer", role="textfield")
@@ -482,12 +557,8 @@ def capture_identities(repo: Path, marker: str) -> dict[str, str]:
         if tab_id and backend_id:
             return {"tabId": tab_id, "backendId": backend_id, "sessionRoot": quote(str(repo), safe="")}
         time.sleep(0.5)
-    if not tab_id:
-        tab_id = _tab_from_rg(transcripts, marker)
-    if not backend_id:
-        backend_id = _backend_from_cli(repo, marker)
     if not tab_id or not backend_id:
-        raise DriverError(f"could not capture exact identities for {marker}")
+        raise DriverError(f"app-owned typed checkpoint lacks exact identities for {marker}")
     return {"tabId": tab_id, "backendId": backend_id, "sessionRoot": quote(str(repo), safe="")}
 
 
@@ -530,38 +601,4 @@ def _backend_from_envelope(envelope: dict[str, Any]) -> str:
         backend = str(checkpoint.get("parentBackendSessionID") or "").strip()
         if backend:
             return backend
-    return ""
-
-
-def _tab_from_rg(transcripts: Path, marker: str) -> str:
-    if not transcripts.exists():
-        return ""
-    listed = subprocess.run(
-        ["rg", "-l", "--glob", "*.json", marker, str(transcripts)],
-        text=True,
-        capture_output=True,
-        check=False,
-    )
-    files = [
-        line
-        for line in listed.stdout.splitlines()
-        if line.endswith(".json") and not line.endswith(".metadata.json")
-    ]
-    return Path(files[-1]).stem if files else ""
-
-
-def _backend_from_cli(repo: Path, marker: str) -> str:
-    grok = Path.home() / ".grok/bin/grok"
-    binary = str(grok) if grok.exists() else "grok"
-    search = subprocess.run(
-        [binary, "sessions", "search", marker, "--limit", "5"],
-        cwd=repo,
-        text=True,
-        capture_output=True,
-        check=False,
-    )
-    for line in search.stdout.splitlines():
-        stripped = line.strip()
-        if len(stripped) >= 32 and "-" in stripped:
-            return stripped.split()[0]
     return ""

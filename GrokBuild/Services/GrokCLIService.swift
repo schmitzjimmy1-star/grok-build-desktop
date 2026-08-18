@@ -13,11 +13,23 @@ struct GrokCLIResult: Sendable {
 final class LockedData: @unchecked Sendable {
     private let lock = NSLock()
     private var data = Data()
+    private let maxBytes: Int?
+    private var truncated = false
+
+    init(maxBytes: Int? = nil) {
+        self.maxBytes = maxBytes
+    }
 
     func append(_ chunk: Data) {
         guard !chunk.isEmpty else { return }
         lock.lock()
-        data.append(chunk)
+        if let maxBytes {
+            let remaining = max(0, maxBytes - data.count)
+            if remaining > 0 { data.append(chunk.prefix(remaining)) }
+            if chunk.count > remaining { truncated = true }
+        } else {
+            data.append(chunk)
+        }
         lock.unlock()
     }
 
@@ -26,6 +38,12 @@ final class LockedData: @unchecked Sendable {
         let value = data
         lock.unlock()
         return value
+    }
+
+    var wasTruncated: Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        return truncated
     }
 }
 

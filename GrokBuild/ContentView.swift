@@ -281,6 +281,9 @@ struct ContentView: View {
             onCloseSession: { id in
                 closeSession(id: id)
             },
+            onCloseLocalSession: { id in
+                closeSession(id: id, deleteBackend: false)
+            },
             onMoveWorkspace: { source, destination in
                 workspaceStore.moveWorkspaces(from: source, to: destination)
             },

@@ -86,10 +86,16 @@ final class CustomModelTests: XCTestCase {
             supportsThinkingDisplay: true,
             providerID: "zai"
         )
+        let provider = Provider(
+            id: "zai",
+            name: "Z.ai",
+            baseURL: "https://api.z.ai/api/coding/paas/v4"
+        )
 
         try CustomModelStore.save(
             models: [model],
             defaultModelID: nil,
+            providers: [provider],
             repository: repository,
             defaults: defaults
         )
@@ -147,7 +153,7 @@ final class CustomModelTests: XCTestCase {
 
         XCTAssertEqual(snapshot.models.map(\.id), ["via-gateway"])
         XCTAssertEqual(snapshot.models.first?.model, "m")
-        XCTAssertEqual(snapshot.writeSafety.blockers, [.nestedModelTables])
+        XCTAssertTrue(snapshot.writeSafety.blockers.contains(.nestedModelTables))
     }
 
     func testOfficialAdvancedModelStructuresBlockWrites() throws {
@@ -286,7 +292,7 @@ final class CustomModelTests: XCTestCase {
 
         for fixture in fixtures {
             let safety = CustomModelStore.writeSafety(for: fixture.contents)
-            XCTAssertEqual(safety.blockers, [fixture.blocker], fixture.name)
+            XCTAssertTrue(safety.blockers.contains(fixture.blocker), fixture.name)
             try assertSaveBlockedWithoutChangingBytes(
                 fixture.contents,
                 expectedBlocker: fixture.blocker,
@@ -307,12 +313,31 @@ final class CustomModelTests: XCTestCase {
             try? FileManager.default.removeItem(at: directory)
         }
 
-        let removed = CustomModel(id: "remove-me", model: "m", baseURL: "https://example.test/v1")
-        let kept = CustomModel(id: "keep-me", model: "k", baseURL: "https://example.test/v1")
+        let removed = CustomModel(
+            id: "remove-me",
+            model: "m",
+            baseURL: "https://example.test/v1",
+            apiKey: "test-key",
+            providerID: "test-provider"
+        )
+        let kept = CustomModel(
+            id: "keep-me",
+            model: "k",
+            baseURL: "https://example.test/v1",
+            apiKey: "test-key",
+            providerID: "test-provider"
+        )
+        let provider = Provider(
+            id: "test-provider",
+            name: "Test provider",
+            baseURL: "https://example.test/v1",
+            apiKey: "test-key"
+        )
         let repository = GrokConfigRepository(configURL: configURL)
         try CustomModelStore.save(
             models: [removed, kept],
             defaultModelID: removed.id,
+            providers: [provider],
             repository: repository,
             defaults: defaults
         )
@@ -325,6 +350,7 @@ final class CustomModelTests: XCTestCase {
         try CustomModelStore.save(
             models: plan.models,
             defaultModelID: plan.defaultModelID,
+            providers: [provider],
             repository: repository,
             defaults: defaults
         )
@@ -401,11 +427,20 @@ final class CustomModelTests: XCTestCase {
             id: "minimax-m2.5",
             model: "MiniMax-M2.5",
             baseURL: "https://api.minimax.io/v1",
-            name: "MiniMax"
+            name: "MiniMax",
+            apiKey: "test-key",
+            providerID: "minimax"
+        )
+        let provider = Provider(
+            id: "minimax",
+            name: "MiniMax",
+            baseURL: "https://api.minimax.io/v1",
+            apiKey: "test-key"
         )
         try CustomModelStore.save(
             models: [model],
             defaultModelID: "minimax-m2.5",
+            providers: [provider],
             repository: repository,
             defaults: defaults
         )
@@ -473,6 +508,354 @@ final class CustomModelTests: XCTestCase {
         let model = CustomModel(id: "grok-build", model: "grok-build", baseURL: "https://x/v1")
         let rewritten = CustomModelStore.rewrite("", models: [model], defaultModelID: nil)
         XCTAssertTrue(rewritten.contains("[model.grok-build]"))
+    }
+
+    func testLinkedBearerProviderUsesOfficialHelperProjectionWithoutInlineSecret() throws {
+        let provider = Provider(
+            id: "openrouter",
+            name: "OpenRouter",
+            baseURL: "https://openrouter.ai/api/v1",
+            apiKey: "synthetic-test-secret",
+            authScheme: .bearer
+        )
+        let model = CustomModel(
+            id: "deepseek-v4",
+            model: "deepseek/deepseek-v4-flash-0731",
+            baseURL: provider.baseURL,
+            apiKey: provider.apiKey,
+            providerID: provider.id
+        )
+        let toml = CustomModelStore.rewrite(
+            "",
+            models: [model],
+            defaultModelID: model.id,
+            providers: [provider]
+        )
+
+        XCTAssertTrue(toml.contains(#"[model_providers."grokbuild.saved.openrouter"]"#))
+        XCTAssertTrue(toml.contains(#"[model_providers."grokbuild.saved.openrouter".auth]"#))
+        XCTAssertTrue(toml.contains(#"model_provider = "grokbuild.saved.openrouter""#))
+        XCTAssertTrue(toml.contains(#"args = ["openrouter"]"#))
+        XCTAssertTrue(toml.contains("GrokBuildProviderAuthHelper"))
+        XCTAssertFalse(toml.contains("synthetic-test-secret"))
+        XCTAssertFalse(toml.contains("api_key ="))
+
+        let reparsed = CustomModelStore.parse(toml)
+        XCTAssertTrue(reparsed.writeSafety.canWrite)
+        XCTAssertTrue(reparsed.usesOfficialProviderProjection)
+        XCTAssertEqual(reparsed.models.first?.providerID, provider.id)
+        XCTAssertEqual(reparsed.models.first?.baseURL, provider.baseURL)
+    }
+
+    func testLocalKeylessModelUsesOfficialNoAuthBoundary() {
+        let model = CustomModel(
+            id: "ollama-local",
+            model: "qwen3",
+            baseURL: "http://127.0.0.1:11434/v1"
+        )
+        let toml = CustomModelStore.rewrite("", models: [model], defaultModelID: nil)
+
+        XCTAssertTrue(toml.contains(#"[model_providers."grokbuild.local.ollama-local"]"#))
+        XCTAssertTrue(toml.contains(#"model_provider = "grokbuild.local.ollama-local""#))
+        XCTAssertFalse(toml.contains(".auth]"))
+        XCTAssertFalse(toml.contains("api_key ="))
+    }
+
+    func testRemoteKeylessFlatModelFailsClosedWithoutChangingConfig() throws {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("grokbuild-keyless-remote-\(UUID().uuidString)")
+        let repository = GrokConfigRepository(configURL: directory.appendingPathComponent("config.toml"))
+        let original = "[keep]\nvalue = true\n"
+        try repository.update { _ in original }
+        defer { try? FileManager.default.removeItem(at: directory) }
+
+        XCTAssertThrowsError(try CustomModelStore.save(
+            models: [CustomModel(id: "remote", model: "m", baseURL: "https://remote.example/v1")],
+            defaultModelID: nil,
+            repository: repository
+        )) { error in
+            guard case CustomModelStore.SaveError.invalidProjection = error else {
+                return XCTFail("expected fail-closed provider projection error, got \(error)")
+            }
+        }
+        XCTAssertEqual(repository.read(), original)
+    }
+
+    func testLegacyFlatModelsAreQuarantinedEvenWhenTheCLIWouldAdvertiseThem() {
+        let legacy = CustomModelStore.parse("""
+        [model.remote]
+        model = "provider/model"
+        base_url = "https://remote.example/v1"
+
+        [model.local-auth]
+        model = "local/model"
+        base_url = "http://127.0.0.1:9000/v1"
+        api_key = "sentinel-not-a-real-secret"
+        """)
+
+        XCTAssertEqual(
+            CustomModelStore.quarantinedRuntimeModelIDs(from: legacy),
+            ["remote", "local-auth"]
+        )
+        XCTAssertTrue(CustomModelStore.runtimeEligibleModels(from: legacy).isEmpty)
+
+        let provider = Provider(
+            id: "remote",
+            name: "Remote",
+            baseURL: "https://remote.example/v1",
+            apiKey: "synthetic"
+        )
+        let migrated = CustomModelStore.parse(CustomModelStore.rewrite(
+            "",
+            models: [CustomModel(
+                id: "remote",
+                model: "provider/model",
+                baseURL: provider.baseURL,
+                providerID: provider.id
+            )],
+            defaultModelID: nil,
+            providers: [provider]
+        ))
+        XCTAssertEqual(CustomModelStore.runtimeEligibleModels(from: migrated).map(\.id), ["remote"])
+        XCTAssertTrue(CustomModelStore.quarantinedRuntimeModelIDs(from: migrated).isEmpty)
+    }
+
+    func testSafeLaunchSelectionFailsClosedWhenEveryAdvertisedModelIsQuarantined() {
+        XCTAssertNil(ChatStore.firstSafeLaunchModel(
+            fallbackCandidates: ["grok-4.6", "grok-4.5"],
+            availableModels: ["grok-4.6", "grok-4.5"],
+            quarantinedModelIDs: ["grok-4.6", "grok-4.5"]
+        ))
+    }
+
+    func testQuarantinedExplicitLaunchModelDoesNotFallBackToSafeNativeModel() {
+        XCTAssertNil(ChatStore.firstSafeLaunchModel(
+            requiredModel: "legacy-flat",
+            fallbackCandidates: ["grok-4.6"],
+            availableModels: ["legacy-flat", "grok-4.6"],
+            quarantinedModelIDs: ["legacy-flat"]
+        ))
+    }
+
+    func testQuarantinedConfiguredOrRestoredLaunchModelDoesNotBecomeFallbackAdvice() {
+        for required in ["project-default", "restored-selection"] {
+            XCTAssertNil(ChatStore.firstSafeLaunchModel(
+                requiredModel: required,
+                fallbackCandidates: ["grok-4.6"],
+                availableModels: [required, "grok-4.6"],
+                quarantinedModelIDs: [required]
+            ))
+        }
+    }
+
+    func testRestoredTabModelPrecedesProjectDefaultAtLaunch() {
+        XCTAssertEqual(
+            ChatStore.requiredLaunchModel(
+                explicitModel: nil,
+                legacyModel: nil,
+                restoredSelectionModel: "restored-selection",
+                projectDefaultModel: "project-default"
+            ),
+            "restored-selection"
+        )
+        XCTAssertEqual(
+            ChatStore.requiredLaunchModel(
+                explicitModel: "explicit-selection",
+                legacyModel: "legacy-selection",
+                restoredSelectionModel: "restored-selection",
+                projectDefaultModel: "project-default"
+            ),
+            "explicit-selection"
+        )
+    }
+
+    func testSafeLaunchSelectionKeepsCLIOwnedProviderModelInThePartyList() {
+        let snapshot = CustomModelStore.parse("""
+        [model.gateway]
+        model = "provider/model"
+        model_provider = "user-owned-gateway"
+        """)
+        XCTAssertTrue(CustomModelStore.quarantinedRuntimeModelIDs(from: snapshot).isEmpty)
+        XCTAssertEqual(ChatStore.firstSafeLaunchModel(
+            requiredModel: "gateway",
+            fallbackCandidates: [],
+            availableModels: ["gateway"],
+            quarantinedModelIDs: CustomModelStore.quarantinedRuntimeModelIDs(from: snapshot)
+        ), "gateway")
+    }
+
+    func testSlashModelDispatchGateExtractsOnlyAnExplicitModelTarget() {
+        XCTAssertEqual(ChatStore.modelIDRequestedBySlashCommand("/model legacy-flat"), "legacy-flat")
+        XCTAssertEqual(ChatStore.modelIDRequestedBySlashCommand("  /MODEL\tprovider/model  "), "provider/model")
+        XCTAssertNil(ChatStore.modelIDRequestedBySlashCommand("/model"))
+        XCTAssertNil(ChatStore.modelIDRequestedBySlashCommand("explain /model legacy-flat"))
+    }
+
+    @MainActor
+    func testLiveUnsafeModelSwitchDoesNotDispatchSessionSetModel() async throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("grokbuild-unsafe-live-switch-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let scriptURL = root.appendingPathComponent("fake-grok")
+        let rpcLogURL = root.appendingPathComponent("rpc.log")
+        let script = """
+        #!/bin/sh
+        while IFS= read -r line; do
+          printf '%s\n' "$line" >> '\(rpcLogURL.path)'
+          id=$(printf '%s' "$line" | sed -E 's/.*"id":([0-9]+).*/\\1/')
+          case "$line" in
+            *'"method":"initialize"'*)
+              printf '{"jsonrpc":"2.0","id":%s,"result":{"_meta":{"agentVersion":"1.0.4"}}}\n' "$id"
+              ;;
+            *'"method":"session/new"'*)
+              printf '{"jsonrpc":"2.0","id":%s,"result":{"sessionId":"unsafe-switch-session","models":{"currentModelId":"grok-4.5","availableModels":[{"modelId":"grok-4.5"},{"modelId":"legacy-flat"}]}}}\n' "$id"
+              ;;
+            *'"method":"session/set_model"'*)
+              model=$(printf '%s' "$line" | sed -E 's/.*"modelId":"([^"]+)".*/\\1/')
+              printf '{"jsonrpc":"2.0","id":%s,"result":{"_meta":{"model":{"Ok":"%s"}}}}\n' "$id" "$model"
+              ;;
+          esac
+        done
+        """
+        try script.write(to: scriptURL, atomically: true, encoding: .utf8)
+        try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: scriptURL.path)
+        let unsafeSnapshot = CustomModelStore.parse("""
+        [model.legacy-flat]
+        model = "provider/model"
+        base_url = "https://unsafe.example/v1"
+        """)
+
+        GrokProcess.cliOverrideForTests = scriptURL
+        defer { GrokProcess.cliOverrideForTests = nil }
+        let store = ChatStore(customModelSnapshotLoader: { unsafeSnapshot })
+        store.bindTabSession(UUID(), savedModel: nil)
+        await store.start(workspace: Workspace(name: "fixture", path: root))
+        let safeModelBeforeSwitch = store.currentModel
+        let before = (try? String(contentsOf: rpcLogURL, encoding: .utf8)) ?? ""
+        let beforeCount = before.components(separatedBy: "\"method\":\"session/set_model\"").count
+
+        store.setModel("legacy-flat")
+        try? await Task.sleep(for: .milliseconds(100))
+
+        let after = (try? String(contentsOf: rpcLogURL, encoding: .utf8)) ?? ""
+        XCTAssertEqual(
+            after.components(separatedBy: "\"method\":\"session/set_model\"").count,
+            beforeCount
+        )
+        XCTAssertEqual(store.currentModel, safeModelBeforeSwitch)
+        XCTAssertNotNil(store.modelSwitchError)
+        await store.shutdownPermanently()
+    }
+
+    func testCLIInspectionWarningRestoresExactPriorConfigAndDefersMetadata() throws {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("grokbuild-inspect-rollback-\(UUID().uuidString)")
+        let repository = GrokConfigRepository(configURL: directory.appendingPathComponent("config.toml"))
+        let suiteName = "GrokBuildTests.inspectRollback.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defer {
+            defaults.removePersistentDomain(forName: suiteName)
+            try? FileManager.default.removeItem(at: directory)
+        }
+        let original = "# exact prior bytes\n[models]\ndefault = \"grok-4.6\"\n"
+        try repository.update { _ in original }
+        let provider = Provider(
+            id: "gateway",
+            name: "Gateway",
+            baseURL: "https://gateway.example/v1",
+            apiKey: "synthetic"
+        )
+        let model = CustomModel(
+            id: "gateway-model",
+            model: "provider/model",
+            baseURL: provider.baseURL,
+            providerID: provider.id
+        )
+        var inspectedModels: Set<String> = []
+        var inspectedProviders: Set<String> = []
+
+        XCTAssertThrowsError(try CustomModelStore.save(
+            models: [model],
+            defaultModelID: model.id,
+            providers: [provider],
+            repository: repository,
+            defaults: defaults,
+            candidateValidator: { modelIDs, providerIDs in
+                inspectedModels = modelIDs
+                inspectedProviders = providerIDs
+                throw GrokConfigCandidateInspector.InspectionError.appOwnedWarning
+            }
+        ))
+        XCTAssertEqual(repository.read(), original)
+        XCTAssertEqual(inspectedModels, [model.id])
+        XCTAssertEqual(inspectedProviders, ["grokbuild.saved.gateway"])
+        XCTAssertTrue(CustomModelMetadataStore.load(defaults: defaults).isEmpty)
+    }
+
+    func testCLIInspectionRollbackNeverOverwritesConcurrentExternalReplacement() throws {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("grokbuild-inspect-conflict-\(UUID().uuidString)")
+        let repository = GrokConfigRepository(configURL: directory.appendingPathComponent("config.toml"))
+        defer { try? FileManager.default.removeItem(at: directory) }
+        try repository.update { _ in "[models]\ndefault = \"grok-4.6\"\n" }
+        let external = "[external]\nwon = true\n"
+        let model = CustomModel(id: "local", model: "m", baseURL: "http://127.0.0.1:9000/v1")
+
+        XCTAssertThrowsError(try CustomModelStore.save(
+            models: [model],
+            defaultModelID: nil,
+            repository: repository,
+            candidateValidator: { _, _ in
+                try external.write(to: repository.configURL, atomically: true, encoding: .utf8)
+                throw GrokConfigCandidateInspector.InspectionError.appOwnedWarning
+            }
+        )) { error in
+            XCTAssertEqual(error as? CustomModelStore.SaveError, .candidateRollbackFailed)
+        }
+        XCTAssertEqual(try String(contentsOf: repository.configURL, encoding: .utf8), external)
+    }
+
+    func testOfficialPartialAndUnknownFlatOverridesFailClosed() {
+        let fixtures = [
+            "[model.partial]\nenv_key = \"REMOTE_KEY\"\n",
+            "[model.partial]\nmodel = \"m\"\nbase_url = \"https://x/v1\"\nmax_retries = 2\n",
+            "[model.partial]\nmodel = \"m\"\nbase_url = \"https://x/v1\"\nhidden = true\n",
+        ]
+        for fixture in fixtures {
+            let safety = CustomModelStore.writeSafety(for: fixture)
+            XCTAssertFalse(safety.canWrite, fixture)
+            XCTAssertTrue(safety.blockers.contains(.unsupportedModelFields), fixture)
+        }
+    }
+
+    func testDisconnectedProviderProjectionDropsEveryInlineCredentialCopy() {
+        let provider = Provider(
+            id: "openrouter",
+            name: "OpenRouter",
+            baseURL: "https://openrouter.ai/api/v1",
+            apiKey: "",
+            authScheme: .bearer
+        )
+        let legacy = CustomModel(
+            id: "deepseek-v4",
+            model: "deepseek/deepseek-v4-flash-0731",
+            baseURL: provider.baseURL,
+            apiKey: "old-inline-secret",
+            providerID: provider.id
+        )
+        let resolved = legacy.resolved(using: [provider])
+        let toml = CustomModelStore.rewrite(
+            "",
+            models: [resolved],
+            defaultModelID: nil,
+            providers: [provider]
+        )
+
+        XCTAssertEqual(resolved.apiKey, "")
+        XCTAssertFalse(toml.contains("old-inline-secret"))
+        XCTAssertFalse(toml.contains("api_key ="))
+        XCTAssertTrue(toml.contains("GrokBuildProviderAuthHelper"))
     }
 
     private func assertSaveBlockedWithoutChangingBytes(
@@ -921,8 +1304,9 @@ final class CustomModelTests: XCTestCase {
         XCTAssertEqual(model.resolved(using: []), model)
     }
 
-    func testKeylessProviderDoesNotWipeModelKey() {
-        // A provider with no credential must not clobber a key already on the model.
+    func testKeylessProviderClearsLegacyModelKey() {
+        // A linked provider is authoritative. Disconnect must not leave a model-level key
+        // behind for legacy migration to resurrect on the next load.
         let provider = Provider(id: "minimax", name: "MiniMax", baseURL: "https://api.minimax.io/v1")
         let model = CustomModel(
             id: "minimax-m2.5",
@@ -932,8 +1316,8 @@ final class CustomModelTests: XCTestCase {
             providerID: "minimax"
         )
         let resolved = model.resolved(using: [provider])
-        XCTAssertEqual(resolved.apiKey, "sk-real-key", "model's own key must survive")
-        XCTAssertTrue(resolved.hasInlineKey)
+        XCTAssertEqual(resolved.apiKey, "")
+        XCTAssertFalse(resolved.hasInlineKey)
         // Base URL still comes from the provider.
         XCTAssertEqual(resolved.baseURL, "https://api.minimax.io/v1")
     }

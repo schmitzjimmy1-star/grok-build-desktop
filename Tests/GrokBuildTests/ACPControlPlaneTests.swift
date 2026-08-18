@@ -6,9 +6,42 @@ final class ACPControlPlaneTests: XCTestCase {
     func testAgentVersionParsingUsesNumericFamilyAndOrdersSemantically() throws {
         XCTAssertEqual(ACPAgentVersion("1.0.5-alpha.2")?.description, "1.0.5-alpha.2")
         XCTAssertEqual(ACPAgentVersion("grok 1.0.5 (abcdef)")?.major, 1)
-        XCTAssertTrue(try XCTUnwrap(ACPAgentVersion("1.0.4")) < ACPControlMethod.officialExtensionFloor)
-        XCTAssertFalse(try XCTUnwrap(ACPAgentVersion("1.0.10")) < ACPControlMethod.officialExtensionFloor)
+        XCTAssertFalse(try XCTUnwrap(ACPAgentVersion("1.0.4")) < ACPControlMethod.models.officialExtensionFloor)
+        XCTAssertTrue(try XCTUnwrap(ACPAgentVersion("1.0.4")) < ACPControlMethod.sessionUsage.officialExtensionFloor)
+        XCTAssertFalse(try XCTUnwrap(ACPAgentVersion("1.0.10")) < ACPControlMethod.sessionUsage.officialExtensionFloor)
         XCTAssertNil(ACPAgentVersion("stable-ish"))
+    }
+
+    func testOfficialModelCatalogUpdateIsCompleteAndRejectsMalformedRows() throws {
+        let event = try XCTUnwrap(ACPModelCatalogEvent.parse([
+            "currentModelId": "custom-a",
+            "availableModels": [
+                ["modelId": "custom-a", "name": "Custom A"],
+                ["modelId": "grok-4.6", "name": "Grok 4.6", "_meta": ["totalContextTokens": 200_000]],
+            ],
+        ], processGeneration: 9))
+        XCTAssertEqual(event.processGeneration, 9)
+        XCTAssertEqual(event.currentModelID, "custom-a")
+        XCTAssertEqual(event.models.map(\.id), ["custom-a", "grok-4.6"])
+        XCTAssertEqual(event.models.last?.contextTokens, 200_000)
+
+        XCTAssertNil(ACPModelCatalogEvent.parse([
+            "availableModels": [["name": "missing id"]],
+        ], processGeneration: 9))
+        XCTAssertNil(ACPModelCatalogEvent.parse([
+            "availableModels": [
+                ["modelId": "duplicate"],
+                ["modelId": "duplicate"],
+            ],
+        ], processGeneration: 9))
+    }
+
+    func testModelsAreAvailableOn104WhilePersistedControlsStayGated() {
+        let registry = ACPControlCapabilityRegistry()
+        registry.reset(generation: 4, agentVersion: ACPAgentVersion("1.0.4"))
+        XCTAssertTrue(registry.shouldAttempt(.models, generation: 4))
+        XCTAssertFalse(registry.shouldAttempt(.sessionUsage, generation: 4))
+        XCTAssertEqual(registry.state(for: .sessionUsage, generation: 4), .unsupported)
     }
 
     func testTypedParsersAcceptOfficial105WireShapes() throws {

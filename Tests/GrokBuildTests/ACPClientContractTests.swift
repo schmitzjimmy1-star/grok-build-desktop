@@ -1,7 +1,510 @@
+import CryptoKit
 import XCTest
 @testable import GrokBuild
 
 final class ACPClientContractTests: XCTestCase {
+    private let hardBudgetSHA = String(repeating: "a", count: 64)
+
+    private func acceptanceRoute(
+        model: String = "grok-4.6",
+        apiBackend: String = "responses",
+        requestBoundTokens: Int = 100,
+        maxPayloadBytes: Int = 80,
+        maxOutputTokens: Int = 20,
+        sha256: String? = nil
+    ) -> AcceptanceHardBudgetRoute {
+        let sha256 = sha256 ?? hardBudgetSHA
+        return AcceptanceHardBudgetRoute(
+            model: model,
+            endpointSHA256: sha256,
+            apiBackend: apiBackend,
+            requestBoundTokens: requestBoundTokens,
+            maxPayloadBytes: maxPayloadBytes,
+            maxOutputTokens: maxOutputTokens,
+            boundProvenanceSHA256: sha256
+        )
+    }
+
+    private func acceptanceBudget(
+        packetID: String,
+        marker: String,
+        promptHash: String,
+        tokenAllocation: Int,
+        maxModelCalls: Int,
+        route: AcceptanceHardBudgetRoute? = nil
+    ) -> AcceptanceTurnBudget {
+        AcceptanceTurnBudget(
+            packetID: packetID,
+            allocationID: packetID,
+            marker: marker,
+            promptHash: promptHash,
+            tokenAllocation: tokenAllocation,
+            maxModelCalls: maxModelCalls,
+            route: route ?? acceptanceRoute()
+        )
+    }
+
+    private func acceptanceAuthorization(
+        budget: AcceptanceTurnBudget,
+        runID: String = "campaign",
+        campaignTokenCeiling: Int = 4_000_000,
+        emergencyReserveTokens: Int = 1_000_000,
+        manifestSHA256: String? = nil,
+        cliBuild: String = "grokbuild-fork",
+        authorizationManifestPath: String = "/private/tmp/grokbuild-authorization.json",
+        cliManifestPath: String = "/private/tmp/grokbuild-cli-manifest.json",
+        ledgerPath: String = "/private/tmp/grokbuild-ledger.json"
+    ) -> AcceptanceBudgetAuthorization {
+        AcceptanceBudgetAuthorization(
+            runID: runID,
+            campaignTokenCeiling: campaignTokenCeiling,
+            emergencyReserveTokens: emergencyReserveTokens,
+            hardBudgetManifestSHA256: manifestSHA256 ?? hardBudgetSHA,
+            expectedCLIBuild: cliBuild,
+            budget: budget,
+            authorizationManifestPath: authorizationManifestPath,
+            hardBudgetCLIManifestPath: cliManifestPath,
+            hardBudgetLedgerPath: ledgerPath
+        )
+    }
+
+    private func hardBudgetTerminalRecord(
+        reservationID: String = "reservation-1",
+        sequence: Int = 1,
+        providerRequestID: String = "provider-request",
+        actualTokens: Int? = 10,
+        lifecycle: HardTokenReceiptSnapshot.Lifecycle = .settledUsageReported,
+        model: String = "grok-4.6",
+        endpointSHA256: String? = nil,
+        apiBackend: String = "responses",
+        payloadBytes: Int = 12,
+        maxOutputTokens: Int = 20,
+        reservedTokens: Int = 20,
+        chargedTokens: Int? = nil
+    ) -> HardTokenReceiptSnapshot.Record {
+        .init(
+            reservationID: reservationID,
+            sequence: sequence,
+            providerRequestID: providerRequestID,
+            model: model,
+            endpointSHA256: endpointSHA256 ?? hardBudgetSHA,
+            apiBackend: apiBackend,
+            payloadBytes: payloadBytes,
+            maxOutputTokens: maxOutputTokens,
+            reservedTokens: reservedTokens,
+            actualTokens: actualTokens,
+            chargedTokens: chargedTokens ?? actualTokens ?? reservedTokens,
+            lifecycle: lifecycle
+        )
+    }
+
+    private func hardBudgetTerminalSnapshot(
+        _ receipts: [HardTokenReceiptSnapshot.Record]
+    ) -> HardTokenReceiptSnapshot {
+        .init(
+            campaignID: "campaign",
+            manifestSHA256: hardBudgetSHA,
+            allocationID: "allocation",
+            packetID: "packet",
+            ledgerRevision: 4,
+            nextSequence: 1 + receipts.count,
+            receipts: receipts
+        )
+    }
+
+    private func hardBudgetTerminalCompletion(
+        modelCalls: Int? = nil,
+        totalTokens: Int? = nil
+    ) -> TurnCompletionReceipt {
+        .init(
+            identity: .init(localTabID: UUID(), backendSessionID: "backend", processGeneration: 1, backendEventID: "event"),
+            promptID: "prompt",
+            stopReason: "end_turn",
+            redactedError: nil,
+            totalTokens: totalTokens,
+            modelCalls: modelCalls,
+            turnCount: 1
+        )
+    }
+
+    private func hardBudgetTerminalAuthority() throws -> AssistantTurnCheckpoint.HardBudgetReceipt {
+        let capability = try XCTUnwrap(GrokBuildHardTokenBudgetCapability.parse([
+            "capabilityVersion": 2, "armed": true, "configurationValid": true,
+            "enforcementPoint": "sampler-pre-dispatch", "ledgerVersion": 3,
+            "boundMethodVersion": 1, "durable": true, "processShared": true,
+            "receiptProjection": true, "cancelConservative": true, "crashConservative": true,
+            "noAutomaticRetry": false, "samplerTransportRetriesDisabled": true,
+            "authProviderHelpersDisabled": true, "terminalDisabled": true,
+            "externalMcpDisabled": true, "hooksDisabled": true, "pluginsDisabled": true,
+            "lspDisabled": true, "workflowsDisabled": true, "schedulerDisabled": true,
+            "protectedAuthorityFs": true, "workspaceFsConfined": true,
+            "allowedToolIds": GrokBuildHardTokenBudgetCapability.allowedToolIDs,
+            "cliBuild": "grokbuild-test",
+            "status": [
+                "campaignId": "campaign", "ceilingTokens": 3_000_000,
+                "settledTokens": 0, "outstandingTokens": 0, "remainingTokens": 3_000_000,
+                "violated": false, "manifestSha256": hardBudgetSHA, "allocationId": "allocation",
+                "allocationRemainingTokens": 100, "allocationRemainingCalls": 2,
+                "nextSequence": 1, "ledgerRevision": 0,
+            ],
+            "allocation": [
+                "id": "allocation", "packetId": "packet", "promptSha256": hardBudgetSHA,
+                "tokenCeiling": 100, "maxModelCalls": 2,
+                "route": [
+                    "model": "grok-4.6", "endpointSha256": hardBudgetSHA, "apiBackend": "responses",
+                    "requestBoundTokens": 100, "maxPayloadBytes": 80, "maxOutputTokens": 20,
+                    "boundProvenanceSha256": hardBudgetSHA,
+                ],
+            ],
+        ]))
+        return try XCTUnwrap(AssistantTurnCheckpoint.HardBudgetReceipt(capability))
+    }
+
+    private func hardBudgetReceiptResponse(actualTokens: Any = 10) -> [String: Any] {
+        [
+            "campaignId": "campaign", "manifestSha256": hardBudgetSHA,
+            "allocationId": "allocation", "packetId": "packet",
+            "ledgerRevision": 1, "nextSequence": 2,
+            "receipts": [[
+                "reservationId": "reservation-1", "sequence": 1, "providerRequestId": "provider-request",
+                "model": "grok-4.6", "endpointSha256": hardBudgetSHA, "apiBackend": "responses",
+                "payloadBytes": 12, "maxOutputTokens": 20, "reservedTokens": 20,
+                "actualTokens": actualTokens, "chargedTokens": 10, "terminalState": "settled_usage_reported",
+            ]],
+        ]
+    }
+
+    func testAcceptanceBudgetManifestRejectsReserveConsumptionAndAmbiguousMarkers() {
+        let manifest = AcceptanceBudgetManifest(
+            schemaVersion: 2,
+            runID: "run",
+            campaignTokenCeiling: 4_000_000,
+            emergencyReserveTokens: 1_000_000,
+            hardBudgetManifestSHA256: hardBudgetSHA,
+            expectedCLIBuild: "grokbuild-fork",
+            packets: [
+                acceptanceBudget(packetID: "one", marker: "ONE", promptHash: String(repeating: "0", count: 64), tokenAllocation: 2_000_000, maxModelCalls: 1),
+                acceptanceBudget(packetID: "two", marker: "TWO", promptHash: String(repeating: "1", count: 64), tokenAllocation: 1_000_001, maxModelCalls: 1),
+            ]
+        )
+        XCTAssertFalse(manifest.isValid)
+
+        let valid = AcceptanceBudgetManifest(
+            schemaVersion: 2,
+            runID: "run",
+            campaignTokenCeiling: 4_000_000,
+            emergencyReserveTokens: 1_000_000,
+            hardBudgetManifestSHA256: hardBudgetSHA,
+            expectedCLIBuild: "grokbuild-fork",
+            packets: [acceptanceBudget(packetID: "only", marker: "ONLY", promptHash: "3a4726dafd3f6c5e45b1c6a41a7e948aeedcb39387ffdaef1f8b666f407e1236", tokenAllocation: 10, maxModelCalls: 1)]
+        )
+        XCTAssertTrue(valid.isValid)
+        XCTAssertNotNil(valid.budget(for: "Return ONLY"))
+        XCTAssertNil(valid.budget(for: "Different ONLY"))
+        XCTAssertNil(valid.budget(for: "Return ONLY twice ONLY"))
+        XCTAssertEqual(AcceptanceBudgetGuard.resolve(prompt: "ordinary", arguments: []), .inactive)
+        XCTAssertEqual(
+            AcceptanceBudgetGuard.resolve(
+                prompt: "ordinary",
+                arguments: ["app", "--grokbuild-acceptance-budget-file=/does/not/exist"]
+            ),
+            .blocked
+        )
+    }
+
+    func testAcceptanceBudgetGuardRequiresPrivateRegularFileAndFinalPromptDigest() throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("grokbuild-budget-guard-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let prompt = "Return PRIVATE-BUDGET"
+        let digest = SHA256.hash(data: Data(prompt.utf8))
+            .map { String(format: "%02x", $0) }
+            .joined()
+        let cliManifest = root.appendingPathComponent("cli-manifest.json")
+        let cliManifestData = Data("{\"schema\":\"hard-budget\"}".utf8)
+        try cliManifestData.write(to: cliManifest)
+        try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: cliManifest.path)
+        let cliManifestDigest = SHA256.hash(data: cliManifestData)
+            .map { String(format: "%02x", $0) }
+            .joined()
+        let manifest = AcceptanceBudgetManifest(
+            schemaVersion: 2,
+            runID: "private-budget",
+            campaignTokenCeiling: 4_000_000,
+            emergencyReserveTokens: 1_000_000,
+            hardBudgetManifestSHA256: cliManifestDigest,
+            expectedCLIBuild: "grokbuild-fork",
+            packets: [acceptanceBudget(
+                packetID: "private-budget",
+                marker: "PRIVATE-BUDGET",
+                promptHash: digest,
+                tokenAllocation: 100,
+                maxModelCalls: 1
+            )]
+        )
+        let file = root.appendingPathComponent("budget.json")
+        try JSONEncoder().encode(manifest).write(to: file)
+        try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: file.path)
+        let ledger = root.appendingPathComponent("ledger.json")
+        try Data("{}".utf8).write(to: ledger)
+        try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: ledger.path)
+        let argument = "\(AcceptanceBudgetGuard.argumentPrefix)\(file.path)"
+        let cliManifestArgument = "\(AcceptanceBudgetGuard.cliManifestArgumentPrefix)\(cliManifest.path)"
+        let ledgerArgument = "\(AcceptanceBudgetGuard.ledgerArgumentPrefix)\(ledger.path)"
+        XCTAssertEqual(
+            AcceptanceBudgetGuard.resolve(prompt: prompt, arguments: ["app", argument, cliManifestArgument, ledgerArgument]),
+            .budget(acceptanceAuthorization(
+                budget: manifest.packets[0],
+                runID: "private-budget",
+                manifestSHA256: cliManifestDigest,
+                authorizationManifestPath: file.path,
+                cliManifestPath: cliManifest.path,
+                ledgerPath: ledger.path
+            ))
+        )
+        XCTAssertEqual(
+            AcceptanceBudgetGuard.resolve(prompt: "attachment\n\n\(prompt)", arguments: ["app", argument, cliManifestArgument, ledgerArgument]),
+            .blocked
+        )
+
+        try FileManager.default.setAttributes([.posixPermissions: 0o644], ofItemAtPath: file.path)
+        XCTAssertEqual(
+            AcceptanceBudgetGuard.resolve(prompt: prompt, arguments: ["app", argument, cliManifestArgument, ledgerArgument]),
+            .blocked
+        )
+        try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: file.path)
+        let link = root.appendingPathComponent("budget-link.json")
+        try FileManager.default.createSymbolicLink(at: link, withDestinationURL: file)
+        XCTAssertEqual(
+            AcceptanceBudgetGuard.resolve(
+                prompt: prompt,
+                arguments: ["app", "\(AcceptanceBudgetGuard.argumentPrefix)\(link.path)", cliManifestArgument, ledgerArgument]
+            ),
+            .blocked
+        )
+    }
+
+    @MainActor
+    func testConfiguredAcceptanceStartDefersCLIProcessUntilExactPacketPreparation() async {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("grokbuild-deferred-acceptance-\(UUID().uuidString)", isDirectory: true)
+        try? FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let store = ChatStore(
+            acceptanceBudgetResolver: { _ in .blocked },
+            acceptanceBudgetIsConfigured: { true }
+        )
+        store.bindTabSession(UUID(), savedModel: "grok-4.6")
+        await store.start(workspace: Workspace(name: "deferred-acceptance", path: root))
+        XCTAssertNil(store.process.activeProcessGeneration)
+        XCTAssertEqual(store.connectionState, .idle)
+        let unauthorizedSent = await store.sendAndWait("unauthorized final payload")
+        XCTAssertFalse(unauthorizedSent)
+        XCTAssertNil(store.process.activeProcessGeneration)
+        await store.retryConnection()
+        XCTAssertNil(store.process.activeProcessGeneration)
+        XCTAssertTrue(store.lastError?.contains("immutable CLI budget contract") == true)
+        await store.shutdownPermanently()
+    }
+
+    func testHardBudgetLaunchEnvironmentScrubsAmbientAuthorityAndSetsOnlyExplicitContract() throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("grokbuild-launch-authority-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let manifest = root.appendingPathComponent("manifest.json")
+        let ledger = root.appendingPathComponent("ledger.json")
+        let manifestData = Data("{\"campaign\":\"test\"}".utf8)
+        try manifestData.write(to: manifest)
+        try Data("{}".utf8).write(to: ledger)
+        try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: manifest.path)
+        try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: ledger.path)
+        let manifestSHA = SHA256.hash(data: manifestData)
+            .map { String(format: "%02x", $0) }
+            .joined()
+        let ambient = [
+            "PATH": "/usr/bin",
+            "GROK_HARD_TOKEN_BUDGET_LEDGER": "/forged/ledger",
+            "GROK_HARD_TOKEN_BUDGET_MANIFEST": "/forged/manifest",
+            "GROK_HARD_TOKEN_BUDGET_ALLOCATION": "forged-allocation",
+        ]
+        let ordinary = GrokProcessLaunchEnvironment.resolved(base: ambient, hardBudget: nil)
+        XCTAssertEqual(ordinary["PATH"], "/usr/bin")
+        for key in GrokProcessLaunchEnvironment.hardBudgetKeys {
+            XCTAssertNil(ordinary[key])
+        }
+
+        let contract = try XCTUnwrap(HardBudgetLaunchContract(
+            manifestPath: manifest.path,
+            ledgerPath: ledger.path,
+            allocationID: "packet-two",
+            expectedManifestSHA256: manifestSHA
+        ))
+        let armed = GrokProcessLaunchEnvironment.resolved(base: ambient, hardBudget: contract)
+        XCTAssertEqual(armed["GROK_HARD_TOKEN_BUDGET_LEDGER"], contract.ledgerPath)
+        XCTAssertEqual(armed["GROK_HARD_TOKEN_BUDGET_MANIFEST"], contract.manifestPath)
+        XCTAssertEqual(armed["GROK_HARD_TOKEN_BUDGET_ALLOCATION"], contract.allocationID)
+        XCTAssertTrue(contract.filesRemainValid)
+
+        try Data("{\"campaign\":\"swapped\"}".utf8).write(to: manifest)
+        XCTAssertFalse(contract.filesRemainValid)
+    }
+
+    func testGrokBuildHardBudgetCapabilityRequiresExactForkContract() throws {
+        let sha = String(repeating: "a", count: 64)
+        let value: [String: Any] = [
+            "capabilityVersion": 2,
+            "armed": true,
+            "configurationValid": true,
+            "enforcementPoint": "sampler-pre-dispatch",
+            "ledgerVersion": 3,
+            "boundMethodVersion": 1,
+            "durable": true,
+            "processShared": true,
+            "receiptProjection": true,
+            "cancelConservative": true,
+            "crashConservative": true,
+            "noAutomaticRetry": false,
+            "samplerTransportRetriesDisabled": true,
+            "authProviderHelpersDisabled": true,
+            "terminalDisabled": true,
+            "externalMcpDisabled": true,
+            "hooksDisabled": true,
+            "pluginsDisabled": true,
+            "lspDisabled": true,
+            "workflowsDisabled": true,
+            "schedulerDisabled": true,
+            "protectedAuthorityFs": true,
+            "workspaceFsConfined": true,
+            "allowedToolIds": GrokBuildHardTokenBudgetCapability.allowedToolIDs,
+            "cliBuild": "grokbuild-fork",
+            "status": [
+                "campaignId": "campaign",
+                "ceilingTokens": 3_000_000,
+                "settledTokens": 0,
+                "outstandingTokens": 0,
+                "remainingTokens": 3_000_000,
+                "violated": false,
+                "manifestSha256": sha,
+                "allocationId": "packet-a",
+                "allocationRemainingTokens": 100,
+                "allocationRemainingCalls": 1,
+                "nextSequence": 1,
+                "ledgerRevision": 0,
+            ],
+            "allocation": [
+                "id": "packet-a",
+                "packetId": "packet-a",
+                "promptSha256": sha,
+                "tokenCeiling": 100,
+                "maxModelCalls": 1,
+                "route": [
+                    "model": "grok-4.6",
+                    "endpointSha256": sha,
+                    "apiBackend": "responses",
+                    "requestBoundTokens": 100,
+                    "maxPayloadBytes": 80,
+                    "maxOutputTokens": 20,
+                    "boundProvenanceSha256": sha,
+                ],
+            ],
+        ]
+        let capability = try XCTUnwrap(GrokBuildHardTokenBudgetCapability.parse(value))
+        XCTAssertTrue(capability.isEnforcing)
+        let budget = acceptanceBudget(
+            packetID: "packet-a",
+            marker: "marker",
+            promptHash: sha,
+            tokenAllocation: 100,
+            maxModelCalls: 1,
+            route: acceptanceRoute()
+        )
+        XCTAssertTrue(capability.authorizes(acceptanceAuthorization(budget: budget)))
+        XCTAssertFalse(capability.authorizes(acceptanceAuthorization(budget: budget, runID: "other")))
+        XCTAssertFalse(capability.authorizes(acceptanceAuthorization(
+            budget: budget,
+            campaignTokenCeiling: 3_999_999
+        )))
+        XCTAssertFalse(capability.authorizes(acceptanceAuthorization(
+            budget: budget,
+            manifestSHA256: String(repeating: "b", count: 64)
+        )))
+        XCTAssertFalse(capability.authorizes(acceptanceAuthorization(
+            budget: budget,
+            cliBuild: "other-build"
+        )))
+        var wrongNamespace = value
+        wrongNamespace["enforcementPoint"] = "swift-poller"
+        XCTAssertFalse(try XCTUnwrap(GrokBuildHardTokenBudgetCapability.parse(wrongNamespace)).isEnforcing)
+
+        var dishonestRetryClaim = value
+        dishonestRetryClaim["noAutomaticRetry"] = true
+        XCTAssertFalse(try XCTUnwrap(GrokBuildHardTokenBudgetCapability.parse(dishonestRetryClaim)).isEnforcing)
+
+        var missingContainment = value
+        missingContainment.removeValue(forKey: "terminalDisabled")
+        XCTAssertNil(GrokBuildHardTokenBudgetCapability.parse(missingContainment))
+
+        var widenedTools = value
+        widenedTools["allowedToolIds"] = GrokBuildHardTokenBudgetCapability.allowedToolIDs + ["Bash"]
+        XCTAssertFalse(try XCTUnwrap(GrokBuildHardTokenBudgetCapability.parse(widenedTools)).isEnforcing)
+    }
+
+    func testHardBudgetReceiptPreservesHistoricalDecodeButNewEvidenceCarriesContainment() throws {
+        let sha = String(repeating: "a", count: 64)
+        let capability = try XCTUnwrap(GrokBuildHardTokenBudgetCapability.parse([
+            "capabilityVersion": 2, "armed": true, "configurationValid": true,
+            "enforcementPoint": "sampler-pre-dispatch", "ledgerVersion": 3,
+            "boundMethodVersion": 1, "durable": true, "processShared": true,
+            "receiptProjection": true,
+            "cancelConservative": true, "crashConservative": true,
+            "noAutomaticRetry": false, "samplerTransportRetriesDisabled": true,
+            "authProviderHelpersDisabled": true, "terminalDisabled": true,
+            "externalMcpDisabled": true, "hooksDisabled": true, "pluginsDisabled": true,
+            "lspDisabled": true, "workflowsDisabled": true, "schedulerDisabled": true,
+            "protectedAuthorityFs": true, "workspaceFsConfined": true,
+            "allowedToolIds": GrokBuildHardTokenBudgetCapability.allowedToolIDs,
+            "cliBuild": "grokbuild-fork",
+            "status": [
+                "campaignId": "campaign", "ceilingTokens": 3_000_000,
+                "settledTokens": 0, "outstandingTokens": 0, "remainingTokens": 3_000_000,
+                "violated": false, "manifestSha256": sha, "allocationId": "packet-a",
+                "allocationRemainingTokens": 100, "allocationRemainingCalls": 1,
+                "nextSequence": 0, "ledgerRevision": 0,
+            ],
+            "allocation": [
+                "id": "packet-a", "packetId": "packet-a", "promptSha256": sha,
+                "tokenCeiling": 100, "maxModelCalls": 1,
+                "route": [
+                    "model": "grok-4.6", "endpointSha256": sha, "apiBackend": "responses",
+                    "requestBoundTokens": 100, "maxPayloadBytes": 80, "maxOutputTokens": 20,
+                    "boundProvenanceSha256": sha,
+                ],
+            ],
+        ]))
+        let receipt = try XCTUnwrap(AssistantTurnCheckpoint.HardBudgetReceipt(capability))
+        XCTAssertEqual(receipt.allowedToolIDs, GrokBuildHardTokenBudgetCapability.allowedToolIDs)
+        XCTAssertEqual(receipt.noAutomaticRetry, false)
+        XCTAssertEqual(receipt.samplerTransportRetriesDisabled, true)
+
+        var historical = try XCTUnwrap(
+            JSONSerialization.jsonObject(with: JSONEncoder().encode(receipt)) as? [String: Any]
+        )
+        [
+            "noAutomaticRetry", "samplerTransportRetriesDisabled", "authProviderHelpersDisabled", "terminalDisabled",
+            "externalMCPDisabled", "hooksDisabled", "pluginsDisabled", "lspDisabled",
+            "workflowsDisabled", "schedulerDisabled", "protectedAuthorityFS", "workspaceFSConfined",
+            "allowedToolIDs",
+        ].forEach { historical.removeValue(forKey: $0) }
+        let decoded = try JSONDecoder().decode(
+            AssistantTurnCheckpoint.HardBudgetReceipt.self,
+            from: JSONSerialization.data(withJSONObject: historical)
+        )
+        XCTAssertNil(decoded.allowedToolIDs)
+        XCTAssertNil(decoded.terminalDisabled)
+    }
+
     func testChildSessionLedgerRejectsTraversalIdentity() async {
         let process = GrokProcess()
         let receipts = await process.fetchChildToolReceipts(childID: "../other")
@@ -518,6 +1021,285 @@ final class ACPClientContractTests: XCTestCase {
         XCTAssertEqual(store.modelSelectorStatusLabel, "Saved")
         XCTAssertTrue(store.modelAccessibilityValue.contains("no active process"))
         XCTAssertEqual(store.persistedModelIntent, .explicit("grok-4.5"))
+        await store.shutdownPermanently()
+    }
+
+    @MainActor
+    func testLiveModelSwitchRefreshesSessionMetadataBeforeNextTurnReceipt() async throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("grokbuild-model-metadata-switch-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let rpcLogURL = root.appendingPathComponent("rpc.log")
+        let scriptURL = root.appendingPathComponent("fake-grok")
+        let script = """
+        #!/bin/sh
+        current_model='model-a'
+        while IFS= read -r line; do
+          printf '%s\n' "$line" >> '\(rpcLogURL.path)'
+          id=$(printf '%s' "$line" | sed -E 's/.*"id":([0-9]+).*/\\1/')
+          case "$line" in
+            *'"method":"initialize"'*)
+              printf '{"jsonrpc":"2.0","id":%s,"result":{"_meta":{"agentVersion":"1.0.5","modelState":{"currentModelId":"model-a","availableModels":[{"modelId":"model-a"},{"modelId":"model-b"}]}}}}\n' "$id"
+              ;;
+            *'"method":"session/new"'*)
+              printf '{"jsonrpc":"2.0","id":%s,"result":{"sessionId":"metadata-switch-backend","models":{"currentModelId":"model-a","availableModels":[{"modelId":"model-a"},{"modelId":"model-b"}]}}}\n' "$id"
+              ;;
+            *'"method":"x.ai/session/info"'*)
+              printf '{"jsonrpc":"2.0","id":%s,"result":{"result":{"sessionId":"metadata-switch-backend","cwd":"\(root.path)","model":"%s","resolvedModelId":"resolved-%s","modelFingerprint":"fingerprint-%s","apiBackend":"responses"}}}\n' "$id" "$current_model" "$current_model" "$current_model"
+              ;;
+            *'"method":"session/set_model"'*)
+              current_model='model-b'
+              printf '{"jsonrpc":"2.0","id":%s,"result":{"_meta":{"model":{"Ok":"model-b"}}}}\n' "$id"
+              ;;
+            *'"method":"session/prompt"'*)
+              printf '{"jsonrpc":"2.0","method":"_x.ai/session_notification","params":{"sessionId":"metadata-switch-backend","update":{"sessionUpdate":"agent_message_chunk","content":{"type":"text","text":"Model B answered."}}}}\n'
+              printf '{"jsonrpc":"2.0","method":"_x.ai/session_notification","params":{"sessionId":"metadata-switch-backend","update":{"sessionUpdate":"turn_completed","stop_reason":"end_turn","usage":{"totalTokens":10,"modelCalls":1,"numTurns":1,"modelUsage":{"model-b":{"totalTokens":10,"modelCalls":1}}}}}}\n'
+              printf '{"jsonrpc":"2.0","id":%s,"result":{"stopReason":"end_turn"}}\n' "$id"
+              ;;
+          esac
+        done
+        """
+        try script.write(to: scriptURL, atomically: true, encoding: .utf8)
+        try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: scriptURL.path)
+
+        GrokProcess.cliOverrideForTests = scriptURL
+        defer { GrokProcess.cliOverrideForTests = nil }
+        let store = ChatStore()
+        store.bindTabSession(UUID(), savedModel: "model-a")
+        await store.start(workspace: Workspace(name: "metadata-switch", path: root))
+
+        for _ in 0..<200 {
+            let rpc = (try? String(contentsOf: rpcLogURL, encoding: .utf8)) ?? ""
+            if rpc.contains("\"method\":\"x.ai/session/info\"") { break }
+            try await Task.sleep(for: .milliseconds(5))
+        }
+        store.setModel("model-b")
+        for _ in 0..<200 where store.modelExecutionState.status != .confirmed {
+            try await Task.sleep(for: .milliseconds(5))
+        }
+        for _ in 0..<200 {
+            let rpc = (try? String(contentsOf: rpcLogURL, encoding: .utf8)) ?? ""
+            if rpc.components(separatedBy: "\"method\":\"x.ai/session/info\"").count - 1 >= 2 { break }
+            try await Task.sleep(for: .milliseconds(5))
+        }
+
+        let sent = await store.sendAndWait("Answer on the confirmed model")
+        XCTAssertTrue(sent)
+        let observed = try XCTUnwrap(
+            store.messages.last(where: { $0.role == .assistant })?
+                .assistantTrace?.checkpoint?.observedRouteReceipt
+        )
+        XCTAssertEqual(observed.sessionModelID, "model-b")
+        XCTAssertEqual(observed.resolvedModelID, "resolved-model-b")
+        XCTAssertEqual(observed.modelFingerprint, "fingerprint-model-b")
+        XCTAssertEqual(observed.turnUsageEffectiveModelID, "model-b")
+        XCTAssertNotEqual(observed.sessionModelID, "model-a")
+        await store.shutdownPermanently()
+    }
+
+    @MainActor
+    func testAcceptanceBudgetUsesLiveOfficialUsageAndStopsWithoutRetry() async throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("grokbuild-acceptance-budget-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let rpcLogURL = root.appendingPathComponent("rpc.log")
+        let scriptURL = root.appendingPathComponent("fake-grok")
+        let zeroSHA = String(repeating: "0", count: 64)
+        let cliManifestURL = root.appendingPathComponent("hard-budget-manifest.json")
+        let ledgerURL = root.appendingPathComponent("hard-budget-ledger.json")
+        let cliManifestData = Data("{\"campaignId\":\"test\"}".utf8)
+        try cliManifestData.write(to: cliManifestURL)
+        try Data("{}".utf8).write(to: ledgerURL)
+        try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: cliManifestURL.path)
+        try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: ledgerURL.path)
+        let manifestSHA = SHA256.hash(data: cliManifestData)
+            .map { String(format: "%02x", $0) }
+            .joined()
+        let script = """
+        #!/bin/sh
+        usage_calls=0
+        printf 'ENV:%s|%s|%s\n' "$GROK_HARD_TOKEN_BUDGET_MANIFEST" "$GROK_HARD_TOKEN_BUDGET_LEDGER" "$GROK_HARD_TOKEN_BUDGET_ALLOCATION" >> '\(rpcLogURL.path)'
+        while IFS= read -r line; do
+          printf '%s\n' "$line" >> '\(rpcLogURL.path)'
+          id=$(printf '%s' "$line" | sed -E 's/.*"id":([0-9]+).*/\\1/')
+          case "$line" in
+            *'"method":"initialize"'*)
+              printf '{"jsonrpc":"2.0","id":%s,"result":{"_meta":{"agentVersion":"1.0.5","modelState":{"currentModelId":"grok-4.6","availableModels":[{"modelId":"grok-4.6"}]},"com.grokbuild/hardTokenBudget":{"capabilityVersion":2,"armed":true,"configurationValid":true,"enforcementPoint":"sampler-pre-dispatch","ledgerVersion":3,"boundMethodVersion":1,"durable":true,"processShared":true,"receiptProjection":true,"cancelConservative":true,"crashConservative":true,"noAutomaticRetry":false,"samplerTransportRetriesDisabled":true,"authProviderHelpersDisabled":true,"terminalDisabled":true,"externalMcpDisabled":true,"hooksDisabled":true,"pluginsDisabled":true,"lspDisabled":true,"workflowsDisabled":true,"schedulerDisabled":true,"protectedAuthorityFs":true,"workspaceFsConfined":true,"allowedToolIds":["GrokBuild:read_file","GrokBuild:task","GrokBuild:get_task_output","GrokBuild:wait_tasks","GrokBuild:kill_task"],"cliBuild":"grokbuild-test","status":{"campaignId":"test","ceilingTokens":3000000,"settledTokens":0,"outstandingTokens":0,"remainingTokens":3000000,"violated":false,"nextSequence":0,"ledgerRevision":0,"manifestSha256":"\(manifestSHA)","allocationId":"packet","allocationRemainingTokens":10,"allocationRemainingCalls":1},"allocation":{"id":"packet","packetId":"packet","promptSha256":"\(zeroSHA)","tokenCeiling":10,"maxModelCalls":1,"route":{"model":"grok-4.6","endpointSha256":"\(zeroSHA)","apiBackend":"responses","requestBoundTokens":10,"maxPayloadBytes":5,"maxOutputTokens":5,"boundProvenanceSha256":"\(zeroSHA)"}}}}}}\n' "$id"
+              ;;
+            *'"method":"session/new"'*)
+              printf '{"jsonrpc":"2.0","id":%s,"result":{"sessionId":"budget-backend","models":{"currentModelId":"grok-4.6","availableModels":[{"modelId":"grok-4.6"}]}}}\n' "$id"
+              ;;
+            *'"method":"session/load"'*)
+              printf '{"jsonrpc":"2.0","id":%s,"result":{"models":{"currentModelId":"grok-4.6","availableModels":[{"modelId":"grok-4.6"}]}}}\n' "$id"
+              ;;
+            *'"method":"x.ai/session/info"'*)
+              printf '{"jsonrpc":"2.0","id":%s,"result":{"result":{"sessionId":"budget-backend","cwd":"\(root.path)","model":"grok-4.6"}}}\n' "$id"
+              ;;
+            *'"method":"x.ai/session/usage"'*)
+              usage_calls=$((usage_calls + 1))
+              if [ "$usage_calls" -eq 1 ]; then total=0; else total=10; fi
+              printf '{"jsonrpc":"2.0","id":%s,"result":{"usage":{"totalTokens":%s,"modelCalls":1,"numTurns":0}}}\n' "$id" "$total"
+              ;;
+            *'"method":"com.grokbuild/budget/status"'*)
+              printf '{"jsonrpc":"2.0","id":%s,"result":{"capabilityVersion":2,"armed":true,"configurationValid":true,"enforcementPoint":"sampler-pre-dispatch","ledgerVersion":3,"boundMethodVersion":1,"durable":true,"processShared":true,"receiptProjection":true,"cancelConservative":true,"crashConservative":true,"noAutomaticRetry":false,"samplerTransportRetriesDisabled":true,"authProviderHelpersDisabled":true,"terminalDisabled":true,"externalMcpDisabled":true,"hooksDisabled":true,"pluginsDisabled":true,"lspDisabled":true,"workflowsDisabled":true,"schedulerDisabled":true,"protectedAuthorityFs":true,"workspaceFsConfined":true,"allowedToolIds":["GrokBuild:read_file","GrokBuild:task","GrokBuild:get_task_output","GrokBuild:wait_tasks","GrokBuild:kill_task"],"cliBuild":"grokbuild-test","status":{"campaignId":"test","ceilingTokens":3000000,"settledTokens":0,"outstandingTokens":0,"remainingTokens":3000000,"violated":false,"nextSequence":0,"ledgerRevision":0,"manifestSha256":"\(manifestSHA)","allocationId":"packet","allocationRemainingTokens":10,"allocationRemainingCalls":1},"allocation":{"id":"packet","packetId":"packet","promptSha256":"\(zeroSHA)","tokenCeiling":10,"maxModelCalls":1,"route":{"model":"grok-4.6","endpointSha256":"\(zeroSHA)","apiBackend":"responses","requestBoundTokens":10,"maxPayloadBytes":5,"maxOutputTokens":5,"boundProvenanceSha256":"\(zeroSHA)"}}}}\n' "$id"
+              ;;
+            *'"method":"com.grokbuild/budget/receipts"'*)
+              printf '{"jsonrpc":"2.0","id":%s,"result":{"campaignId":"test","manifestSha256":"\(manifestSHA)","allocationId":"packet","packetId":"packet","ledgerRevision":1,"nextSequence":1,"receipts":[{"reservationId":"reservation-stop","sequence":0,"providerRequestId":"provider-stop","model":"grok-4.6","endpointSha256":"\(zeroSHA)","apiBackend":"responses","payloadBytes":1,"maxOutputTokens":5,"reservedTokens":10,"actualTokens":null,"chargedTokens":10,"terminalState":"reserved"}]}}\n' "$id"
+              ;;
+            *'"method":"session/prompt"'*)
+              ;;
+          esac
+        done
+        """
+        try script.write(to: scriptURL, atomically: true, encoding: .utf8)
+        try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: scriptURL.path)
+
+        GrokProcess.cliOverrideForTests = scriptURL
+        defer { GrokProcess.cliOverrideForTests = nil }
+        let marker = "GB-S4-BUDGET-TEST"
+        let budget = acceptanceBudget(
+            packetID: "packet",
+            marker: marker,
+            promptHash: zeroSHA,
+            tokenAllocation: 10,
+            maxModelCalls: 1,
+            route: acceptanceRoute(
+                requestBoundTokens: 10,
+                maxPayloadBytes: 5,
+                maxOutputTokens: 5,
+                sha256: zeroSHA
+            )
+        )
+        let store = ChatStore(
+            acceptanceBudgetResolver: { prompt in
+                prompt.contains(marker)
+                    ? .budget(self.acceptanceAuthorization(
+                        budget: budget,
+                        runID: "test",
+                        manifestSHA256: manifestSHA,
+                        cliBuild: "grokbuild-test",
+                        cliManifestPath: cliManifestURL.path,
+                        ledgerPath: ledgerURL.path
+                    ))
+                    : .blocked
+            },
+            acceptanceBudgetIsConfigured: { true }
+        )
+        store.bindTabSession(UUID(), savedModel: "grok-4.6")
+        await store.start(workspace: Workspace(name: "acceptance-budget", path: root))
+
+        let sent = await store.sendAndWait("Return \(marker)")
+        XCTAssertFalse(sent)
+        XCTAssertEqual(store.latestTurnOutcome, .userStopped)
+        XCTAssertTrue(store.lastError?.contains("Acceptance safety stop") == true)
+        let rpc = try String(contentsOf: rpcLogURL, encoding: .utf8)
+        XCTAssertEqual(rpc.components(separatedBy: "\"method\":\"session/new\"").count - 1, 1)
+        XCTAssertEqual(rpc.components(separatedBy: "\"method\":\"session/load\"").count - 1, 0)
+        XCTAssertEqual(rpc.components(separatedBy: "\"method\":\"session/prompt\"").count - 1, 1)
+        XCTAssertTrue(
+            rpc.contains("ENV:\(cliManifestURL.path)|\(ledgerURL.path)|packet"),
+            rpc
+        )
+        XCTAssertGreaterThanOrEqual(
+            rpc.components(separatedBy: "\"method\":\"x.ai/session/usage\"").count - 1,
+            2
+        )
+        XCTAssertEqual(
+            rpc.components(separatedBy: "\"method\":\"session/cancel\"").count - 1,
+            1,
+            rpc
+        )
+        let hardBudgetReceipt = try XCTUnwrap(
+            store.messages.last(where: { $0.role == .assistant })?
+                .assistantTrace?.checkpoint?.hardBudgetReceipt
+        )
+        XCTAssertEqual(hardBudgetReceipt.cliBuild, "grokbuild-test")
+        XCTAssertEqual(hardBudgetReceipt.allocationID, "packet")
+        XCTAssertEqual(hardBudgetReceipt.promptSHA256, zeroSHA)
+        XCTAssertEqual(hardBudgetReceipt.requestBoundTokens, 10)
+        let terminalProjection = try XCTUnwrap(
+            store.messages.last(where: { $0.role == .assistant })?
+                .assistantTrace?.checkpoint?.hardBudgetTerminalProjection
+        )
+        XCTAssertEqual(terminalProjection.status, .ambiguous)
+        XCTAssertEqual(terminalProjection.reservationCount, 1)
+        XCTAssertEqual(terminalProjection.requests?.first?.lifecycle, "reserved")
+        XCTAssertEqual(terminalProjection.requests?.first?.chargedTokens, 10)
+        await store.shutdownPermanently()
+    }
+
+    @MainActor
+    func testOfficialCLIVersionWithoutForkBudgetCapabilityCannotDispatchAcceptance() async throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("grokbuild-no-hard-budget-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let rpcLogURL = root.appendingPathComponent("rpc.log")
+        let scriptURL = root.appendingPathComponent("fake-grok")
+        let cliManifestURL = root.appendingPathComponent("hard-budget-manifest.json")
+        let ledgerURL = root.appendingPathComponent("hard-budget-ledger.json")
+        let cliManifestData = Data("{\"campaignId\":\"no-fork\"}".utf8)
+        try cliManifestData.write(to: cliManifestURL)
+        try Data("{}".utf8).write(to: ledgerURL)
+        try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: cliManifestURL.path)
+        try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: ledgerURL.path)
+        let manifestSHA = SHA256.hash(data: cliManifestData)
+            .map { String(format: "%02x", $0) }
+            .joined()
+        let script = """
+        #!/bin/sh
+        while IFS= read -r line; do
+          printf '%s\n' "$line" >> '\(rpcLogURL.path)'
+          id=$(printf '%s' "$line" | sed -E 's/.*"id":([0-9]+).*/\\1/')
+          case "$line" in
+            *'"method":"initialize"'*)
+              printf '{"jsonrpc":"2.0","id":%s,"result":{"_meta":{"agentVersion":"1.0.5","modelState":{"currentModelId":"grok-4.6","availableModels":[{"modelId":"grok-4.6"}]}}}}\n' "$id"
+              ;;
+            *'"method":"session/new"'*)
+              printf '{"jsonrpc":"2.0","id":%s,"result":{"sessionId":"no-budget-backend","models":{"currentModelId":"grok-4.6","availableModels":[{"modelId":"grok-4.6"}]}}}\n' "$id"
+              ;;
+            *'"method":"x.ai/session/info"'*)
+              printf '{"jsonrpc":"2.0","id":%s,"result":{"result":{"sessionId":"no-budget-backend","cwd":"\(root.path)","model":"grok-4.6"}}}\n' "$id"
+              ;;
+            *'"method":"x.ai/session/usage"'*)
+              printf '{"jsonrpc":"2.0","id":%s,"result":{"usage":{"totalTokens":0,"modelCalls":0,"numTurns":0}}}\n' "$id"
+              ;;
+          esac
+        done
+        """
+        try script.write(to: scriptURL, atomically: true, encoding: .utf8)
+        try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: scriptURL.path)
+
+        GrokProcess.cliOverrideForTests = scriptURL
+        defer { GrokProcess.cliOverrideForTests = nil }
+        let budget = acceptanceBudget(
+            packetID: "no-fork",
+            marker: "NO-FORK-BUDGET",
+            promptHash: String(repeating: "0", count: 64),
+            tokenAllocation: 10,
+            maxModelCalls: 1
+        )
+        let store = ChatStore(
+            acceptanceBudgetResolver: { _ in
+                .budget(self.acceptanceAuthorization(
+                    budget: budget,
+                    manifestSHA256: manifestSHA,
+                    cliManifestPath: cliManifestURL.path,
+                    ledgerPath: ledgerURL.path
+                ))
+            },
+            acceptanceBudgetIsConfigured: { true }
+        )
+        store.bindTabSession(UUID(), savedModel: "grok-4.6")
+        await store.start(workspace: Workspace(name: "no-budget", path: root))
+
+        let sent = await store.sendAndWait("Return NO-FORK-BUDGET")
+        XCTAssertFalse(sent)
+        XCTAssertTrue(store.lastError?.contains("hard-budget receipt is unavailable") == true)
+        let rpc = try String(contentsOf: rpcLogURL, encoding: .utf8)
+        XCTAssertFalse(rpc.contains("\"method\":\"session/prompt\""), rpc)
         await store.shutdownPermanently()
     }
 
@@ -2401,5 +3183,189 @@ final class ACPClientContractTests: XCTestCase {
         XCTAssertEqual(ComposerDensityPolicy.minimumLineCount, 1)
         XCTAssertEqual(ComposerDensityPolicy.maximumLineCount, 8)
         XCTAssertEqual(ComposerDensityPolicy.editorMinimumHeight, ComposerControlMetrics.minimumHitTarget)
+    }
+
+    func testHardBudgetTerminalVerdictRejectsHostileReceiptShapes() throws {
+        let authority = try hardBudgetTerminalAuthority()
+        XCTAssertEqual(
+            HardBudgetTerminalVerdict.evaluate(snapshot: hardBudgetTerminalSnapshot([]), authority: authority, completion: nil),
+            .rejected,
+            "A governed success cannot settle without a receipt."
+        )
+        XCTAssertEqual(
+            HardBudgetTerminalVerdict.evaluate(
+                snapshot: hardBudgetTerminalSnapshot([
+                    hardBudgetTerminalRecord(lifecycle: .reserved),
+                ]),
+                authority: authority,
+                completion: nil
+            ),
+            .ambiguous
+        )
+        XCTAssertEqual(
+            HardBudgetTerminalVerdict.evaluate(
+                snapshot: hardBudgetTerminalSnapshot([
+                    hardBudgetTerminalRecord(lifecycle: .ambiguousFullReservationCharged),
+                ]),
+                authority: authority,
+                completion: nil
+            ),
+            .ambiguous
+        )
+        XCTAssertEqual(
+            HardBudgetTerminalVerdict.evaluate(
+                snapshot: hardBudgetTerminalSnapshot([
+                    hardBudgetTerminalRecord(reservationID: "same", sequence: 1),
+                    hardBudgetTerminalRecord(reservationID: "same", sequence: 2),
+                ]),
+                authority: authority,
+                completion: nil
+            ),
+            .rejected
+        )
+        XCTAssertEqual(
+            HardBudgetTerminalVerdict.evaluate(
+                snapshot: hardBudgetTerminalSnapshot([
+                    hardBudgetTerminalRecord(reservationID: "one", sequence: 1),
+                    hardBudgetTerminalRecord(reservationID: "two", sequence: 1),
+                ]),
+                authority: authority,
+                completion: nil
+            ),
+            .rejected
+        )
+        XCTAssertEqual(
+            HardBudgetTerminalVerdict.evaluate(
+                snapshot: hardBudgetTerminalSnapshot([
+                    hardBudgetTerminalRecord(actualTokens: nil),
+                ]),
+                authority: authority,
+                completion: nil
+            ),
+            .rejected
+        )
+    }
+
+    func testHardBudgetTerminalVerdictBindsCompletionAccountingButAllowsRepeatedProviderRequestID() throws {
+        let authority = try hardBudgetTerminalAuthority()
+        let settled = hardBudgetTerminalSnapshot([
+            hardBudgetTerminalRecord(reservationID: "one", sequence: 1, providerRequestID: "shared", actualTokens: 4),
+            hardBudgetTerminalRecord(reservationID: "two", sequence: 2, providerRequestID: "shared", actualTokens: 6),
+        ])
+        XCTAssertEqual(
+            HardBudgetTerminalVerdict.evaluate(
+                snapshot: settled,
+                authority: authority,
+                completion: hardBudgetTerminalCompletion(modelCalls: 2, totalTokens: 10)
+            ),
+            .settled,
+            "Provider request IDs are not a unique ledger key."
+        )
+        XCTAssertEqual(
+            HardBudgetTerminalVerdict.evaluate(
+                snapshot: settled,
+                authority: authority,
+                completion: hardBudgetTerminalCompletion(modelCalls: 1, totalTokens: 10)
+            ),
+            .rejected
+        )
+        XCTAssertEqual(
+            HardBudgetTerminalVerdict.evaluate(
+                snapshot: settled,
+                authority: authority,
+                completion: hardBudgetTerminalCompletion(modelCalls: 2, totalTokens: 9)
+            ),
+            .rejected
+        )
+    }
+
+    func testHardBudgetTerminalVerdictRejectsAuthorityBoundRecordDrift() throws {
+        let authority = try hardBudgetTerminalAuthority()
+        let rejected: (HardTokenReceiptSnapshot.Record) -> Void = { record in
+            XCTAssertEqual(
+                HardBudgetTerminalVerdict.evaluate(
+                    snapshot: self.hardBudgetTerminalSnapshot([record]),
+                    authority: authority,
+                    completion: nil
+                ),
+                .rejected
+            )
+        }
+        rejected(hardBudgetTerminalRecord(chargedTokens: 9))
+        rejected(hardBudgetTerminalRecord(model: "wrong-model"))
+        rejected(hardBudgetTerminalRecord(endpointSHA256: String(repeating: "b", count: 64)))
+        rejected(hardBudgetTerminalRecord(apiBackend: "messages"))
+        rejected(hardBudgetTerminalRecord(reservedTokens: 0))
+        rejected(hardBudgetTerminalRecord(reservedTokens: 101))
+        rejected(hardBudgetTerminalRecord(payloadBytes: 81))
+        rejected(hardBudgetTerminalRecord(maxOutputTokens: 21))
+        rejected(hardBudgetTerminalRecord(actualTokens: 21, reservedTokens: 20, chargedTokens: 21))
+        rejected(hardBudgetTerminalRecord(actualTokens: 101, chargedTokens: 101))
+        XCTAssertEqual(
+            HardBudgetTerminalVerdict.evaluate(
+                snapshot: hardBudgetTerminalSnapshot([
+                    hardBudgetTerminalRecord(reservationID: "one", sequence: 1),
+                    hardBudgetTerminalRecord(reservationID: "two", sequence: 99),
+                ]),
+                authority: authority,
+                completion: nil
+            ),
+            .rejected
+        )
+
+        XCTAssertEqual(
+            HardBudgetTerminalVerdict.evaluate(
+                snapshot: hardBudgetTerminalSnapshot([
+                    hardBudgetTerminalRecord(reservationID: "one", sequence: 1, actualTokens: 10),
+                    hardBudgetTerminalRecord(reservationID: "two", sequence: 2, actualTokens: 10),
+                    hardBudgetTerminalRecord(reservationID: "three", sequence: 3, actualTokens: 10),
+                ]),
+                authority: authority,
+                completion: nil
+            ),
+            .rejected
+        )
+    }
+
+    func testHardBudgetReceiptSnapshotRejectsMalformedNonNullActualTokens() {
+        XCTAssertNil(HardTokenReceiptSnapshot.parse(hardBudgetReceiptResponse(actualTokens: "ten")))
+        XCTAssertNil(HardTokenReceiptSnapshot.parse(hardBudgetReceiptResponse(actualTokens: -1)))
+        XCTAssertNotNil(HardTokenReceiptSnapshot.parse(hardBudgetReceiptResponse(actualTokens: NSNull())))
+    }
+
+    func testHardBudgetTerminalProjectionDecodesHistoricalPayloadWithoutRequests() throws {
+        let projection = AssistantTurnCheckpoint.HardBudgetTerminalProjection(
+            status: .settled,
+            ledgerRevision: 4,
+            nextSequence: 5,
+            reservationCount: 1,
+            reason: nil,
+            requests: [
+                .init(
+                    reservationID: "reservation-1",
+                    sequence: 1,
+                    providerRequestID: "provider-request",
+                    model: "grok-4.6",
+                    endpointSHA256: hardBudgetSHA,
+                    apiBackend: "responses",
+                    payloadBytes: 12,
+                    maxOutputTokens: 20,
+                    reservedTokens: 20,
+                    actualTokens: 10,
+                    chargedTokens: 10,
+                    lifecycle: "settled_usage_reported"
+                ),
+            ]
+        )
+        var historical = try XCTUnwrap(
+            JSONSerialization.jsonObject(with: JSONEncoder().encode(projection)) as? [String: Any]
+        )
+        historical.removeValue(forKey: "requests")
+        let decoded = try JSONDecoder().decode(
+            AssistantTurnCheckpoint.HardBudgetTerminalProjection.self,
+            from: JSONSerialization.data(withJSONObject: historical)
+        )
+        XCTAssertEqual(decoded.status, .settled)
+        XCTAssertNil(decoded.requests)
     }
 }

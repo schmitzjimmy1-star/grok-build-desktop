@@ -19,7 +19,9 @@ def ledger_identities(receipts: list[dict[str, Any]]) -> set[str]:
             if child_id:
                 identities.add(child_id)
         for worker in row.get("workerReceipts") or []:
-            child_id = str(worker.get("childId") or "").strip()
+            child_id = str(
+                worker.get("childBackendSessionID") or worker.get("childId") or ""
+            ).strip()
             if child_id:
                 identities.add(child_id)
     return identities

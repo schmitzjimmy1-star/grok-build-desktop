@@ -105,6 +105,7 @@ struct AssistantTurnCheckpoint: Codable, Sendable, Hashable {
         let outputTokens: Int?
         let totalTokens: Int?
         let cachedReadTokens: Int?
+        let cacheCreationTokens: Int?
         let reasoningTokens: Int?
         let modelCalls: Int?
         let apiDurationMilliseconds: Int?
@@ -118,10 +119,187 @@ struct AssistantTurnCheckpoint: Codable, Sendable, Hashable {
         let inputTokens: Int?
         let outputTokens: Int?
         let cachedReadTokens: Int?
+        let cacheCreationTokens: Int?
         let reasoningTokens: Int?
         let apiDurationMilliseconds: Int?
         let costUsdTicks: Int?
+        let costIsPartial: Bool?
         let modelUsage: [ModelUsage]
+    }
+
+    /// Pre-dispatch authority reported by the exact GrokBuild CLI fork. It is a
+    /// projection of the runtime-owned ledger, not app-computed budget state.
+    struct HardBudgetReceipt: Codable, Sendable, Hashable {
+        let capabilityVersion: Int
+        let cliBuild: String
+        let campaignID: String
+        let manifestSHA256: String
+        let allocationID: String
+        let packetID: String
+        let promptSHA256: String
+        let allocationTokenCeiling: Int
+        let allocationMaxModelCalls: Int
+        let routeModel: String
+        let endpointSHA256: String
+        let apiBackend: String
+        let requestBoundTokens: Int
+        let maxPayloadBytes: Int
+        let maxOutputTokens: Int
+        let boundProvenanceSHA256: String
+        let campaignRemainingTokens: Int
+        let allocationRemainingTokens: Int
+        let allocationRemainingCalls: Int
+        /// New receipts retain the exact containment proof. Optionals preserve
+        /// decoding for checkpoints persisted before the Slice 4A wire added it.
+        let noAutomaticRetry: Bool?
+        let samplerTransportRetriesDisabled: Bool?
+        let authProviderHelpersDisabled: Bool?
+        let terminalDisabled: Bool?
+        let externalMCPDisabled: Bool?
+        let hooksDisabled: Bool?
+        let pluginsDisabled: Bool?
+        let lspDisabled: Bool?
+        let workflowsDisabled: Bool?
+        let schedulerDisabled: Bool?
+        let protectedAuthorityFS: Bool?
+        let workspaceFSConfined: Bool?
+        let allowedToolIDs: [String]?
+        /// Cursor captured immediately before the governed provider dispatch.
+        /// Optional so historical checkpoints remain decodable.
+        let preDispatchNextSequence: Int?
+        let preDispatchLedgerRevision: Int?
+
+        init?(_ capability: GrokBuildHardTokenBudgetCapability) {
+            guard capability.isEnforcing,
+                  let status = capability.status,
+                  let allocation = capability.allocation else { return nil }
+            capabilityVersion = capability.capabilityVersion
+            cliBuild = capability.cliBuild
+            campaignID = status.campaignID
+            manifestSHA256 = status.manifestSHA256
+            allocationID = allocation.id
+            packetID = allocation.packetID
+            promptSHA256 = allocation.promptSHA256
+            allocationTokenCeiling = allocation.tokenCeiling
+            allocationMaxModelCalls = allocation.maxModelCalls
+            routeModel = allocation.route.model
+            endpointSHA256 = allocation.route.endpointSHA256
+            apiBackend = allocation.route.apiBackend
+            requestBoundTokens = allocation.route.requestBoundTokens
+            maxPayloadBytes = allocation.route.maxPayloadBytes
+            maxOutputTokens = allocation.route.maxOutputTokens
+            boundProvenanceSHA256 = allocation.route.boundProvenanceSHA256
+            campaignRemainingTokens = status.remainingTokens
+            allocationRemainingTokens = status.allocationRemainingTokens
+            allocationRemainingCalls = status.allocationRemainingCalls
+            noAutomaticRetry = capability.noAutomaticRetry
+            samplerTransportRetriesDisabled = capability.samplerTransportRetriesDisabled
+            authProviderHelpersDisabled = capability.authProviderHelpersDisabled
+            terminalDisabled = capability.terminalDisabled
+            externalMCPDisabled = capability.externalMCPDisabled
+            hooksDisabled = capability.hooksDisabled
+            pluginsDisabled = capability.pluginsDisabled
+            lspDisabled = capability.lspDisabled
+            workflowsDisabled = capability.workflowsDisabled
+            schedulerDisabled = capability.schedulerDisabled
+            protectedAuthorityFS = capability.protectedAuthorityFS
+            workspaceFSConfined = capability.workspaceFSConfined
+            allowedToolIDs = capability.allowedToolIDs
+            preDispatchNextSequence = status.nextSequence
+            preDispatchLedgerRevision = status.ledgerRevision
+        }
+    }
+
+    /// Terminal ledger evidence is separate from pre-dispatch authority. Older
+    /// checkpoints decode without it; absent is never upgraded to settled.
+    struct HardBudgetTerminalProjection: Codable, Sendable, Hashable {
+        enum Status: String, Codable, Sendable { case settled, ambiguous, unavailable, rejected }
+        struct Request: Codable, Sendable, Hashable {
+            let reservationID: String
+            let sequence: Int
+            let providerRequestID: String
+            let model: String
+            let endpointSHA256: String
+            let apiBackend: String
+            let payloadBytes: Int
+            let maxOutputTokens: Int
+            let reservedTokens: Int
+            let actualTokens: Int?
+            let chargedTokens: Int
+            let lifecycle: String
+        }
+        let status: Status
+        let ledgerRevision: Int?
+        let nextSequence: Int?
+        let reservationCount: Int?
+        let reason: String?
+        let requests: [Request]?
+    }
+
+    /// Structured, credential-free route configuration frozen against the exact
+    /// process generation. This proves what GrokBuild configured; ACP model and
+    /// usage receipts separately prove what the CLI actually reported.
+    struct RouteReceipt: Codable, Sendable, Hashable {
+        enum Kind: String, Codable, Sendable {
+            case nativeXAI
+            case directProvider
+            case brokeredOpenRouter
+            case localEndpoint
+            case unavailable
+        }
+
+        let kind: Kind
+        let selectedModelID: String
+        let providerName: String
+        let appProviderID: String?
+        let officialProviderID: String?
+        let endpointIdentity: String?
+        let providerModelID: String
+        let apiBackend: String?
+        let authBoundary: String
+        let modelIsPinned: Bool
+        let servingProviderIsProven: Bool
+        let appFallbackEnabled: Bool
+
+        init(_ route: ModelRouteContract) {
+            switch route.kind {
+            case .nativeXAI: kind = .nativeXAI
+            case .directProvider: kind = .directProvider
+            case .brokeredOpenRouter: kind = .brokeredOpenRouter
+            case .localEndpoint: kind = .localEndpoint
+            case .unavailable: kind = .unavailable
+            }
+            selectedModelID = route.selectedModelID
+            providerName = route.providerName
+            appProviderID = route.appProviderID
+            officialProviderID = route.officialProviderID
+            endpointIdentity = route.endpointRouteIdentity ?? route.endpointHost
+            providerModelID = route.providerModelID
+            apiBackend = route.apiBackend
+            authBoundary = route.authBoundary.rawValue
+            modelIsPinned = route.modelIsPinned
+            servingProviderIsProven = route.servingProviderIsProven
+            appFallbackEnabled = false
+        }
+    }
+
+    /// Generation-bound values reported by the live CLI. Session-info fields are
+    /// optional because 1.0.4 does not expose that extension; their absence is an
+    /// explicit unavailable receipt, never proof of the configured route.
+    struct ObservedRouteReceipt: Codable, Sendable, Hashable {
+        let processGeneration: UInt64?
+        let backendSessionID: String?
+        let requestID: String?
+        let acpAgentVersion: String?
+        let catalogCurrentModelID: String?
+        let catalogContainsSelectedModel: Bool?
+        let sessionModelID: String?
+        let resolvedModelID: String?
+        let modelFingerprint: String?
+        let apiBackend: String?
+        /// Effective model only when the authoritative turn usage names exactly one model.
+        let turnUsageEffectiveModelID: String?
+        let modelUsageIDs: [String]
     }
 
     let objective: String?
@@ -155,12 +333,20 @@ struct AssistantTurnCheckpoint: Codable, Sendable, Hashable {
     /// Credential-free route detail captured from the exact process generation
     /// when this settled checkpoint was written. Absent legacy values stay absent.
     var routeReceipt: String? = nil
+    var structuredRouteReceipt: RouteReceipt? = nil
+    var observedRouteReceipt: ObservedRouteReceipt? = nil
+    var hardBudgetReceipt: HardBudgetReceipt? = nil
+    var hardBudgetTerminalProjection: HardBudgetTerminalProjection? = nil
 
     init(
         snapshot: RunEvidenceSnapshot,
         requestedToolFamilies: [String],
         attachmentNames: [String] = [],
-        routeReceipt: String? = nil
+        routeReceipt: String? = nil,
+        routeContract: ModelRouteContract? = nil,
+        observedRouteReceipt: ObservedRouteReceipt? = nil,
+        hardBudgetReceipt: HardBudgetReceipt? = nil,
+        hardBudgetTerminalProjection: HardBudgetTerminalProjection? = nil
     ) {
         objective = snapshot.goalSummary
         outcome = snapshot.outcome.displayName
@@ -241,9 +427,11 @@ struct AssistantTurnCheckpoint: Codable, Sendable, Hashable {
             inputTokens: snapshot.usage.inputTokens,
             outputTokens: snapshot.usage.outputTokens,
             cachedReadTokens: snapshot.usage.cachedReadTokens,
+            cacheCreationTokens: snapshot.usage.cacheCreationTokens,
             reasoningTokens: snapshot.usage.reasoningTokens,
             apiDurationMilliseconds: snapshot.usage.apiDurationMilliseconds,
             costUsdTicks: snapshot.usage.costUsdTicks,
+            costIsPartial: snapshot.usage.costIsPartial,
             modelUsage: snapshot.usage.modelUsage.map {
                 ModelUsage(
                     modelID: $0.modelID,
@@ -251,6 +439,7 @@ struct AssistantTurnCheckpoint: Codable, Sendable, Hashable {
                     outputTokens: $0.outputTokens,
                     totalTokens: $0.totalTokens,
                     cachedReadTokens: $0.cachedReadTokens,
+                    cacheCreationTokens: $0.cacheCreationTokens,
                     reasoningTokens: $0.reasoningTokens,
                     modelCalls: $0.modelCalls,
                     apiDurationMilliseconds: $0.apiDurationMilliseconds,
@@ -261,6 +450,10 @@ struct AssistantTurnCheckpoint: Codable, Sendable, Hashable {
         coordinationReceipt = snapshot.coordination
         self.attachmentNames = Array(Set(attachmentNames)).sorted()
         self.routeReceipt = routeReceipt
+        structuredRouteReceipt = routeContract.map(RouteReceipt.init)
+        self.observedRouteReceipt = observedRouteReceipt
+        self.hardBudgetReceipt = hardBudgetReceipt
+        self.hardBudgetTerminalProjection = hardBudgetTerminalProjection
     }
 
     /// Reconstitutes the settled Activity projection from the existing local
@@ -310,9 +503,11 @@ struct AssistantTurnCheckpoint: Codable, Sendable, Hashable {
                 inputTokens: $0.inputTokens,
                 outputTokens: $0.outputTokens,
                 cachedReadTokens: $0.cachedReadTokens,
+                cacheCreationTokens: $0.cacheCreationTokens,
                 reasoningTokens: $0.reasoningTokens,
                 apiDurationMilliseconds: $0.apiDurationMilliseconds,
                 costUsdTicks: $0.costUsdTicks,
+                costIsPartial: $0.costIsPartial,
                 modelUsage: $0.modelUsage.map {
                     ModelUsageReceipt(
                         modelID: $0.modelID,
@@ -320,6 +515,7 @@ struct AssistantTurnCheckpoint: Codable, Sendable, Hashable {
                         outputTokens: $0.outputTokens,
                         totalTokens: $0.totalTokens,
                         cachedReadTokens: $0.cachedReadTokens,
+                        cacheCreationTokens: $0.cacheCreationTokens,
                         reasoningTokens: $0.reasoningTokens,
                         modelCalls: $0.modelCalls,
                         apiDurationMilliseconds: $0.apiDurationMilliseconds,

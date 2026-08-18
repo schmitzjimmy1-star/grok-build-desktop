@@ -1,0 +1,705 @@
+{
+  "schemaVersion": 2,
+  "runId": "DRY-RUN",
+  "campaignTokenCeiling": 4000000,
+  "plannedTokenMaximum": 3000000,
+  "emergencyReserveTokens": 1000000,
+  "maxAttempts": 1,
+  "effort": "low",
+  "parentAgent": "default",
+  "forbiddenToolsDefault": [
+    "GrokBuild:update_plan"
+  ],
+  "packets": [
+    {
+      "id": "NAT-CTRL",
+      "marker": "GB-S4-NAT-CTRL-{runId}",
+      "prompt": "Return exactly {marker} and nothing else.",
+      "selectorModelID": "grok-4.6",
+      "effectiveModelID": "grok-4.6",
+      "expectedModelUsageIDs": [
+        "grok-4.6"
+      ],
+      "routeReceipt": {
+        "kind": "nativeXAI",
+        "selectedModelID": "grok-4.6",
+        "providerName": "xAI",
+        "appProviderID": null,
+        "officialProviderID": null,
+        "endpointIdentity": null,
+        "providerModelID": "grok-4.6",
+        "apiBackend": null,
+        "authBoundary": "nativeSession",
+        "modelIsPinned": true,
+        "servingProviderIsProven": true,
+        "appFallbackEnabled": false
+      },
+      "tokenAllocation": 100000,
+      "maxModelCalls": 1,
+      "maxAttempts": 1,
+      "workload": "noTool",
+      "allowedTools": [],
+      "requiredTools": [],
+      "forbiddenTools": [
+        "GrokBuild:update_plan"
+      ],
+      "requiredResponseTerms": [],
+      "orderedGroups": [],
+      "readFixtures": [],
+      "childTopology": null,
+      "continuation": null,
+      "frozenPricing": null,
+      "hardBudget": {
+        "allocationID": "s4-nat-ctrl",
+        "route": {
+          "model": "grok-4.6",
+          "endpointSha256": "ebb5dec7d8c69fa5c35a5bfa5ae24d96b7d763c30f68df44bceb7195465ce82b",
+          "apiBackend": "responses",
+          "requestBoundTokens": 100000,
+          "maxPayloadBytes": 8192,
+          "maxOutputTokens": 91808,
+          "boundProvenanceSha256": "9f7ee2a1f4fae3348dec514ebf94adfe788c7c6ecabccd6eb1b59a1dea057ec5"
+        }
+      }
+    },
+    {
+      "id": "OAI-H-NO",
+      "marker": "GB-S4-OAI-H-NO-{runId}",
+      "prompt": "Return exactly {marker} and nothing else.",
+      "selectorModelID": "gpt-5.6-terra",
+      "effectiveModelID": "gpt-5.6-terra",
+      "expectedModelUsageIDs": [
+        "gpt-5.6-terra"
+      ],
+      "routeReceipt": {
+        "kind": "directProvider",
+        "selectedModelID": "gpt-5.6-terra",
+        "providerName": "ChatGPT (OpenAI)",
+        "appProviderID": "openai",
+        "officialProviderID": "grokbuild.saved.openai",
+        "endpointIdentity": "https://api.openai.com/v1",
+        "providerModelID": "gpt-5.6-terra",
+        "apiBackend": "responses",
+        "authBoundary": "officialHelper",
+        "modelIsPinned": true,
+        "servingProviderIsProven": true,
+        "appFallbackEnabled": false
+      },
+      "tokenAllocation": 100000,
+      "maxModelCalls": 1,
+      "maxAttempts": 1,
+      "workload": "noTool",
+      "allowedTools": [],
+      "requiredTools": [],
+      "forbiddenTools": [
+        "GrokBuild:update_plan"
+      ],
+      "requiredResponseTerms": [],
+      "orderedGroups": [],
+      "readFixtures": [],
+      "childTopology": null,
+      "continuation": null,
+      "frozenPricing": {
+        "currency": "USD",
+        "promptUsdPerMillion": 2.0,
+        "completionUsdPerMillion": 12.0,
+        "cacheTreatment": "uncachedUpperBound",
+        "source": "https://openai.com/index/advancing-the-price-performance-frontier-with-gpt-5-6/"
+      },
+      "hardBudget": {
+        "allocationID": "s4-oai-h-no",
+        "route": {
+          "model": "gpt-5.6-terra",
+          "endpointSha256": "ee0291cefbb5b6136483fb38ba9efe9264f9b685d5006c273e293a54b43a1883",
+          "apiBackend": "responses",
+          "requestBoundTokens": 100000,
+          "maxPayloadBytes": 8192,
+          "maxOutputTokens": 91808,
+          "boundProvenanceSha256": "8d01aff0b5e92c6e5c0b3c3584a3bf00ac11f1477cd1ae12c8ffcf2034b770ba"
+        }
+      }
+    },
+    {
+      "id": "OAI-H-ORD3",
+      "marker": "GB-S4-OAI-H-ORD3-{runId}",
+      "prompt": "Use GrokBuild:read_file exactly three times in order to read scripts/acceptance/fixtures/.slice4-native-tools/ONE.txt then scripts/acceptance/fixtures/.slice4-native-tools/TWO.txt then scripts/acceptance/fixtures/.slice4-native-tools/THREE.txt. Use no other tool and finish with exactly {marker}.",
+      "selectorModelID": "gpt-5.6-terra",
+      "effectiveModelID": "gpt-5.6-terra",
+      "expectedModelUsageIDs": [
+        "gpt-5.6-terra"
+      ],
+      "routeReceipt": {
+        "kind": "directProvider",
+        "selectedModelID": "gpt-5.6-terra",
+        "providerName": "ChatGPT (OpenAI)",
+        "appProviderID": "openai",
+        "officialProviderID": "grokbuild.saved.openai",
+        "endpointIdentity": "https://api.openai.com/v1",
+        "providerModelID": "gpt-5.6-terra",
+        "apiBackend": "responses",
+        "authBoundary": "officialHelper",
+        "modelIsPinned": true,
+        "servingProviderIsProven": true,
+        "appFallbackEnabled": false
+      },
+      "tokenAllocation": 350000,
+      "maxModelCalls": 4,
+      "maxAttempts": 1,
+      "workload": "orderedMultiTool",
+      "allowedTools": [
+        "GrokBuild:read_file"
+      ],
+      "requiredTools": [
+        "GrokBuild:read_file"
+      ],
+      "forbiddenTools": [
+        "GrokBuild:update_plan"
+      ],
+      "requiredResponseTerms": [],
+      "orderedGroups": [
+        [
+          "ONE",
+          "TWO",
+          "THREE"
+        ]
+      ],
+      "readFixtures": [
+        {
+          "identity": "ONE",
+          "workspacePath": "scripts/acceptance/fixtures/.slice4-native-tools/ONE.txt",
+          "sha256": "bd52020371c038c4ad38a8d2df05dfa1a220d40fbe1ae83b63d6010cb527e531",
+          "expectedStatus": "succeeded"
+        },
+        {
+          "identity": "TWO",
+          "workspacePath": "scripts/acceptance/fixtures/.slice4-native-tools/TWO.txt",
+          "sha256": "465a43c7b7b79945ec5bc4dd80b20230ea1a992bd6401fe2ed5f736d67799e0c",
+          "expectedStatus": "succeeded"
+        },
+        {
+          "identity": "THREE",
+          "workspacePath": "scripts/acceptance/fixtures/.slice4-native-tools/THREE.txt",
+          "sha256": "78c923a1c539b547435337c10ac361cc6523e5a1f0bac5da66fb060cb004447d",
+          "expectedStatus": "succeeded"
+        }
+      ],
+      "childTopology": null,
+      "continuation": null,
+      "frozenPricing": {
+        "currency": "USD",
+        "promptUsdPerMillion": 2.0,
+        "completionUsdPerMillion": 12.0,
+        "cacheTreatment": "uncachedUpperBound",
+        "source": "https://openai.com/index/advancing-the-price-performance-frontier-with-gpt-5-6/"
+      },
+      "hardBudget": {
+        "allocationID": "s4-oai-h-ord3",
+        "route": {
+          "model": "gpt-5.6-terra",
+          "endpointSha256": "ee0291cefbb5b6136483fb38ba9efe9264f9b685d5006c273e293a54b43a1883",
+          "apiBackend": "responses",
+          "requestBoundTokens": 87500,
+          "maxPayloadBytes": 8192,
+          "maxOutputTokens": 79308,
+          "boundProvenanceSha256": "dafb2935f5b4d1f4df18fe6710c086d99ef67007b8ad90586616c1b9013f6a75"
+        }
+      }
+    },
+    {
+      "id": "OR-OW-NO",
+      "marker": "GB-S4-OR-OW-NO-{runId}",
+      "prompt": "Return exactly {marker} and nothing else.",
+      "selectorModelID": "deepseek-deepseek-v4-flash-0731",
+      "effectiveModelID": "deepseek/deepseek-v4-flash",
+      "expectedModelUsageIDs": [
+        "deepseek/deepseek-v4-flash"
+      ],
+      "routeReceipt": {
+        "kind": "brokeredOpenRouter",
+        "selectedModelID": "deepseek-deepseek-v4-flash-0731",
+        "providerName": "OpenRouter",
+        "appProviderID": "openrouter",
+        "officialProviderID": "grokbuild.saved.openrouter",
+        "endpointIdentity": "https://openrouter.ai/api/v1",
+        "providerModelID": "deepseek/deepseek-v4-flash",
+        "apiBackend": "chat_completions",
+        "authBoundary": "officialHelper",
+        "modelIsPinned": true,
+        "servingProviderIsProven": false,
+        "appFallbackEnabled": false
+      },
+      "tokenAllocation": 100000,
+      "maxModelCalls": 1,
+      "maxAttempts": 1,
+      "workload": "noTool",
+      "allowedTools": [],
+      "requiredTools": [],
+      "forbiddenTools": [
+        "GrokBuild:update_plan"
+      ],
+      "requiredResponseTerms": [],
+      "orderedGroups": [],
+      "readFixtures": [],
+      "childTopology": null,
+      "continuation": null,
+      "frozenPricing": {
+        "currency": "USD",
+        "promptUsdPerMillion": 0.09,
+        "completionUsdPerMillion": 0.18,
+        "cacheTreatment": "uncachedUpperBound",
+        "source": "https://openrouter.ai/deepseek/deepseek-v4-flash/api"
+      },
+      "hardBudget": {
+        "allocationID": "s4-or-ow-no",
+        "route": {
+          "model": "deepseek/deepseek-v4-flash",
+          "endpointSha256": "5c1332d5f9242f304584f5dca3e53a8afe9d1e0c9ea153e0ab73f27e4f341bce",
+          "apiBackend": "chat_completions",
+          "requestBoundTokens": 100000,
+          "maxPayloadBytes": 8192,
+          "maxOutputTokens": 91808,
+          "boundProvenanceSha256": "e1e898291e8fe317aa3ff1b147d4503edd4af18808fa935da852af28a61209f1"
+        }
+      }
+    },
+    {
+      "id": "OR-OW-ORD3",
+      "marker": "GB-S4-OR-OW-ORD3-{runId}",
+      "prompt": "Use GrokBuild:read_file exactly three times in order to read scripts/acceptance/fixtures/.slice4-native-tools/ONE.txt then scripts/acceptance/fixtures/.slice4-native-tools/TWO.txt then scripts/acceptance/fixtures/.slice4-native-tools/THREE.txt. Use no other tool and finish with exactly {marker}.",
+      "selectorModelID": "deepseek-deepseek-v4-flash-0731",
+      "effectiveModelID": "deepseek/deepseek-v4-flash",
+      "expectedModelUsageIDs": [
+        "deepseek/deepseek-v4-flash"
+      ],
+      "routeReceipt": {
+        "kind": "brokeredOpenRouter",
+        "selectedModelID": "deepseek-deepseek-v4-flash-0731",
+        "providerName": "OpenRouter",
+        "appProviderID": "openrouter",
+        "officialProviderID": "grokbuild.saved.openrouter",
+        "endpointIdentity": "https://openrouter.ai/api/v1",
+        "providerModelID": "deepseek/deepseek-v4-flash",
+        "apiBackend": "chat_completions",
+        "authBoundary": "officialHelper",
+        "modelIsPinned": true,
+        "servingProviderIsProven": false,
+        "appFallbackEnabled": false
+      },
+      "tokenAllocation": 350000,
+      "maxModelCalls": 4,
+      "maxAttempts": 1,
+      "workload": "orderedMultiTool",
+      "allowedTools": [
+        "GrokBuild:read_file"
+      ],
+      "requiredTools": [
+        "GrokBuild:read_file"
+      ],
+      "forbiddenTools": [
+        "GrokBuild:update_plan"
+      ],
+      "requiredResponseTerms": [],
+      "orderedGroups": [
+        [
+          "ONE",
+          "TWO",
+          "THREE"
+        ]
+      ],
+      "readFixtures": [
+        {
+          "identity": "ONE",
+          "workspacePath": "scripts/acceptance/fixtures/.slice4-native-tools/ONE.txt",
+          "sha256": "bd52020371c038c4ad38a8d2df05dfa1a220d40fbe1ae83b63d6010cb527e531",
+          "expectedStatus": "succeeded"
+        },
+        {
+          "identity": "TWO",
+          "workspacePath": "scripts/acceptance/fixtures/.slice4-native-tools/TWO.txt",
+          "sha256": "465a43c7b7b79945ec5bc4dd80b20230ea1a992bd6401fe2ed5f736d67799e0c",
+          "expectedStatus": "succeeded"
+        },
+        {
+          "identity": "THREE",
+          "workspacePath": "scripts/acceptance/fixtures/.slice4-native-tools/THREE.txt",
+          "sha256": "78c923a1c539b547435337c10ac361cc6523e5a1f0bac5da66fb060cb004447d",
+          "expectedStatus": "succeeded"
+        }
+      ],
+      "childTopology": null,
+      "continuation": null,
+      "frozenPricing": {
+        "currency": "USD",
+        "promptUsdPerMillion": 0.09,
+        "completionUsdPerMillion": 0.18,
+        "cacheTreatment": "uncachedUpperBound",
+        "source": "https://openrouter.ai/deepseek/deepseek-v4-flash/api"
+      },
+      "hardBudget": {
+        "allocationID": "s4-or-ow-ord3",
+        "route": {
+          "model": "deepseek/deepseek-v4-flash",
+          "endpointSha256": "5c1332d5f9242f304584f5dca3e53a8afe9d1e0c9ea153e0ab73f27e4f341bce",
+          "apiBackend": "chat_completions",
+          "requestBoundTokens": 87500,
+          "maxPayloadBytes": 8192,
+          "maxOutputTokens": 79308,
+          "boundProvenanceSha256": "8d0e428209069628cb0d99547b66dfb8bfeb09e52644b64cecb5e3065c9630b1"
+        }
+      }
+    },
+    {
+      "id": "OR-OW-CH2",
+      "marker": "GB-S4-OR-OW-CH2-{runId}",
+      "prompt": "Use GrokBuild:task exactly twice to start concurrent inherited-model children named LEFT and RIGHT, then use GrokBuild:wait_tasks exactly once and finish with exactly {marker}.",
+      "selectorModelID": "deepseek-deepseek-v4-flash-0731",
+      "effectiveModelID": "deepseek/deepseek-v4-flash",
+      "expectedModelUsageIDs": [
+        "deepseek/deepseek-v4-flash"
+      ],
+      "routeReceipt": {
+        "kind": "brokeredOpenRouter",
+        "selectedModelID": "deepseek-deepseek-v4-flash-0731",
+        "providerName": "OpenRouter",
+        "appProviderID": "openrouter",
+        "officialProviderID": "grokbuild.saved.openrouter",
+        "endpointIdentity": "https://openrouter.ai/api/v1",
+        "providerModelID": "deepseek/deepseek-v4-flash",
+        "apiBackend": "chat_completions",
+        "authBoundary": "officialHelper",
+        "modelIsPinned": true,
+        "servingProviderIsProven": false,
+        "appFallbackEnabled": false
+      },
+      "tokenAllocation": 750000,
+      "maxModelCalls": 7,
+      "maxAttempts": 1,
+      "workload": "twoChildCoordination",
+      "allowedTools": [
+        "GrokBuild:task",
+        "GrokBuild:wait_tasks"
+      ],
+      "requiredTools": [
+        "GrokBuild:task",
+        "GrokBuild:wait_tasks"
+      ],
+      "forbiddenTools": [
+        "GrokBuild:update_plan"
+      ],
+      "requiredResponseTerms": [],
+      "orderedGroups": [],
+      "readFixtures": [],
+      "childTopology": {
+        "count": 2,
+        "roles": [
+          "LEFT",
+          "RIGHT"
+        ],
+        "collection": "GrokBuild:wait_tasks",
+        "maxSimultaneous": 2
+      },
+      "continuation": null,
+      "frozenPricing": {
+        "currency": "USD",
+        "promptUsdPerMillion": 0.09,
+        "completionUsdPerMillion": 0.18,
+        "cacheTreatment": "uncachedUpperBound",
+        "source": "https://openrouter.ai/deepseek/deepseek-v4-flash/api"
+      },
+      "hardBudget": {
+        "allocationID": "s4-or-ow-ch2",
+        "route": {
+          "model": "deepseek/deepseek-v4-flash",
+          "endpointSha256": "5c1332d5f9242f304584f5dca3e53a8afe9d1e0c9ea153e0ab73f27e4f341bce",
+          "apiBackend": "chat_completions",
+          "requestBoundTokens": 107142,
+          "maxPayloadBytes": 8192,
+          "maxOutputTokens": 98950,
+          "boundProvenanceSha256": "1220ac344f2b02a1e2e0c8146eb4dff07bf61d4d646d3345ff6d40a1b7a27dee"
+        }
+      }
+    },
+    {
+      "id": "OR-OW-CONT-T1",
+      "marker": "GB-S4-OR-OW-CONT-T1-{runId}",
+      "prompt": "Remember the nonce ALDER and return exactly {marker}.",
+      "selectorModelID": "deepseek-deepseek-v4-flash-0731",
+      "effectiveModelID": "deepseek/deepseek-v4-flash",
+      "expectedModelUsageIDs": [
+        "deepseek/deepseek-v4-flash"
+      ],
+      "routeReceipt": {
+        "kind": "brokeredOpenRouter",
+        "selectedModelID": "deepseek-deepseek-v4-flash-0731",
+        "providerName": "OpenRouter",
+        "appProviderID": "openrouter",
+        "officialProviderID": "grokbuild.saved.openrouter",
+        "endpointIdentity": "https://openrouter.ai/api/v1",
+        "providerModelID": "deepseek/deepseek-v4-flash",
+        "apiBackend": "chat_completions",
+        "authBoundary": "officialHelper",
+        "modelIsPinned": true,
+        "servingProviderIsProven": false,
+        "appFallbackEnabled": false
+      },
+      "tokenAllocation": 100000,
+      "maxModelCalls": 1,
+      "maxAttempts": 1,
+      "workload": "continuation",
+      "allowedTools": [],
+      "requiredTools": [],
+      "forbiddenTools": [
+        "GrokBuild:update_plan"
+      ],
+      "requiredResponseTerms": [],
+      "orderedGroups": [],
+      "readFixtures": [],
+      "childTopology": null,
+      "continuation": {
+        "group": "OR-OW-CONT",
+        "turn": 1,
+        "of": 3,
+        "resumeAfterQuit": false
+      },
+      "frozenPricing": {
+        "currency": "USD",
+        "promptUsdPerMillion": 0.09,
+        "completionUsdPerMillion": 0.18,
+        "cacheTreatment": "uncachedUpperBound",
+        "source": "https://openrouter.ai/deepseek/deepseek-v4-flash/api"
+      },
+      "hardBudget": {
+        "allocationID": "s4-or-ow-cont-t1",
+        "route": {
+          "model": "deepseek/deepseek-v4-flash",
+          "endpointSha256": "5c1332d5f9242f304584f5dca3e53a8afe9d1e0c9ea153e0ab73f27e4f341bce",
+          "apiBackend": "chat_completions",
+          "requestBoundTokens": 100000,
+          "maxPayloadBytes": 8192,
+          "maxOutputTokens": 91808,
+          "boundProvenanceSha256": "e1e898291e8fe317aa3ff1b147d4503edd4af18808fa935da852af28a61209f1"
+        }
+      }
+    },
+    {
+      "id": "OR-OW-CONT-T2",
+      "marker": "GB-S4-OR-OW-CONT-T2-{runId}",
+      "prompt": "Use GrokBuild:read_file exactly twice in order: first read scripts/acceptance/fixtures/.slice4-native-tools/MISSING.txt and preserve its missing-file failure, then read scripts/acceptance/fixtures/.slice4-native-tools/RECOVERED.txt and finish with exactly {marker}.",
+      "selectorModelID": "deepseek-deepseek-v4-flash-0731",
+      "effectiveModelID": "deepseek/deepseek-v4-flash",
+      "expectedModelUsageIDs": [
+        "deepseek/deepseek-v4-flash"
+      ],
+      "routeReceipt": {
+        "kind": "brokeredOpenRouter",
+        "selectedModelID": "deepseek-deepseek-v4-flash-0731",
+        "providerName": "OpenRouter",
+        "appProviderID": "openrouter",
+        "officialProviderID": "grokbuild.saved.openrouter",
+        "endpointIdentity": "https://openrouter.ai/api/v1",
+        "providerModelID": "deepseek/deepseek-v4-flash",
+        "apiBackend": "chat_completions",
+        "authBoundary": "officialHelper",
+        "modelIsPinned": true,
+        "servingProviderIsProven": false,
+        "appFallbackEnabled": false
+      },
+      "tokenAllocation": 250000,
+      "maxModelCalls": 3,
+      "maxAttempts": 1,
+      "workload": "recovery",
+      "allowedTools": [
+        "GrokBuild:read_file"
+      ],
+      "requiredTools": [
+        "GrokBuild:read_file"
+      ],
+      "forbiddenTools": [
+        "GrokBuild:update_plan"
+      ],
+      "requiredResponseTerms": [],
+      "orderedGroups": [
+        [
+          "MISSING",
+          "RECOVERED"
+        ]
+      ],
+      "readFixtures": [
+        {
+          "identity": "MISSING",
+          "workspacePath": "scripts/acceptance/fixtures/.slice4-native-tools/MISSING.txt",
+          "sha256": null,
+          "expectedStatus": "failed"
+        },
+        {
+          "identity": "RECOVERED",
+          "workspacePath": "scripts/acceptance/fixtures/.slice4-native-tools/RECOVERED.txt",
+          "sha256": "2197338f7a0600b495bf402df6d7b71759c9509bc6b7a400bf209f06a38cf873",
+          "expectedStatus": "succeeded"
+        }
+      ],
+      "childTopology": null,
+      "continuation": {
+        "group": "OR-OW-CONT",
+        "turn": 2,
+        "of": 3,
+        "resumeAfterQuit": false
+      },
+      "frozenPricing": {
+        "currency": "USD",
+        "promptUsdPerMillion": 0.09,
+        "completionUsdPerMillion": 0.18,
+        "cacheTreatment": "uncachedUpperBound",
+        "source": "https://openrouter.ai/deepseek/deepseek-v4-flash/api"
+      },
+      "hardBudget": {
+        "allocationID": "s4-or-ow-cont-t2",
+        "route": {
+          "model": "deepseek/deepseek-v4-flash",
+          "endpointSha256": "5c1332d5f9242f304584f5dca3e53a8afe9d1e0c9ea153e0ab73f27e4f341bce",
+          "apiBackend": "chat_completions",
+          "requestBoundTokens": 83333,
+          "maxPayloadBytes": 8192,
+          "maxOutputTokens": 75141,
+          "boundProvenanceSha256": "bd2d67e343060aba5919a9ecf1990760e9f46ad8339872002d9847cfe2529668"
+        }
+      }
+    },
+    {
+      "id": "OR-OW-CONT-T3",
+      "marker": "GB-S4-OR-OW-CONT-T3-{runId}",
+      "prompt": "State the remembered nonce and return exactly {marker}.",
+      "selectorModelID": "deepseek-deepseek-v4-flash-0731",
+      "effectiveModelID": "deepseek/deepseek-v4-flash",
+      "expectedModelUsageIDs": [
+        "deepseek/deepseek-v4-flash"
+      ],
+      "routeReceipt": {
+        "kind": "brokeredOpenRouter",
+        "selectedModelID": "deepseek-deepseek-v4-flash-0731",
+        "providerName": "OpenRouter",
+        "appProviderID": "openrouter",
+        "officialProviderID": "grokbuild.saved.openrouter",
+        "endpointIdentity": "https://openrouter.ai/api/v1",
+        "providerModelID": "deepseek/deepseek-v4-flash",
+        "apiBackend": "chat_completions",
+        "authBoundary": "officialHelper",
+        "modelIsPinned": true,
+        "servingProviderIsProven": false,
+        "appFallbackEnabled": false
+      },
+      "tokenAllocation": 150000,
+      "maxModelCalls": 1,
+      "maxAttempts": 1,
+      "workload": "continuation",
+      "allowedTools": [],
+      "requiredTools": [],
+      "forbiddenTools": [
+        "GrokBuild:update_plan"
+      ],
+      "requiredResponseTerms": [
+        "ALDER"
+      ],
+      "orderedGroups": [],
+      "readFixtures": [],
+      "childTopology": null,
+      "continuation": {
+        "group": "OR-OW-CONT",
+        "turn": 3,
+        "of": 3,
+        "resumeAfterQuit": true
+      },
+      "frozenPricing": {
+        "currency": "USD",
+        "promptUsdPerMillion": 0.09,
+        "completionUsdPerMillion": 0.18,
+        "cacheTreatment": "uncachedUpperBound",
+        "source": "https://openrouter.ai/deepseek/deepseek-v4-flash/api"
+      },
+      "hardBudget": {
+        "allocationID": "s4-or-ow-cont-t3",
+        "route": {
+          "model": "deepseek/deepseek-v4-flash",
+          "endpointSha256": "5c1332d5f9242f304584f5dca3e53a8afe9d1e0c9ea153e0ab73f27e4f341bce",
+          "apiBackend": "chat_completions",
+          "requestBoundTokens": 150000,
+          "maxPayloadBytes": 8192,
+          "maxOutputTokens": 141808,
+          "boundProvenanceSha256": "d6413bc4dede6d312cd6298964a8944c3dff64b87f52fee79e4301d060c8e396"
+        }
+      }
+    },
+    {
+      "id": "OAI-H-CH2",
+      "marker": "GB-S4-OAI-H-CH2-{runId}",
+      "prompt": "Use GrokBuild:task exactly twice to start concurrent inherited-model children named LEFT and RIGHT, then use GrokBuild:wait_tasks exactly once and finish with exactly {marker}.",
+      "selectorModelID": "gpt-5.6-terra",
+      "effectiveModelID": "gpt-5.6-terra",
+      "expectedModelUsageIDs": [
+        "gpt-5.6-terra"
+      ],
+      "routeReceipt": {
+        "kind": "directProvider",
+        "selectedModelID": "gpt-5.6-terra",
+        "providerName": "ChatGPT (OpenAI)",
+        "appProviderID": "openai",
+        "officialProviderID": "grokbuild.saved.openai",
+        "endpointIdentity": "https://api.openai.com/v1",
+        "providerModelID": "gpt-5.6-terra",
+        "apiBackend": "responses",
+        "authBoundary": "officialHelper",
+        "modelIsPinned": true,
+        "servingProviderIsProven": true,
+        "appFallbackEnabled": false
+      },
+      "tokenAllocation": 750000,
+      "maxModelCalls": 7,
+      "maxAttempts": 1,
+      "workload": "twoChildCoordination",
+      "allowedTools": [
+        "GrokBuild:task",
+        "GrokBuild:wait_tasks"
+      ],
+      "requiredTools": [
+        "GrokBuild:task",
+        "GrokBuild:wait_tasks"
+      ],
+      "forbiddenTools": [
+        "GrokBuild:update_plan"
+      ],
+      "requiredResponseTerms": [],
+      "orderedGroups": [],
+      "readFixtures": [],
+      "childTopology": {
+        "count": 2,
+        "roles": [
+          "LEFT",
+          "RIGHT"
+        ],
+        "collection": "GrokBuild:wait_tasks",
+        "maxSimultaneous": 2
+      },
+      "continuation": null,
+      "frozenPricing": {
+        "currency": "USD",
+        "promptUsdPerMillion": 2.0,
+        "completionUsdPerMillion": 12.0,
+        "cacheTreatment": "uncachedUpperBound",
+        "source": "https://openai.com/index/advancing-the-price-performance-frontier-with-gpt-5-6/"
+      },
+      "hardBudget": {
+        "allocationID": "s4-oai-h-ch2",
+        "route": {
+          "model": "gpt-5.6-terra",
+          "endpointSha256": "ee0291cefbb5b6136483fb38ba9efe9264f9b685d5006c273e293a54b43a1883",
+          "apiBackend": "responses",
+          "requestBoundTokens": 107142,
+          "maxPayloadBytes": 8192,
+          "maxOutputTokens": 98950,
+          "boundProvenanceSha256": "f9fd55e94378539ed7890804b716aff54b506fbdc9c4577a2006dda7a0bc3e58"
+        }
+      }
+    }
+  ],
+  "expectedCLIBuild": "1.0.5 (03a28d4)"
+}

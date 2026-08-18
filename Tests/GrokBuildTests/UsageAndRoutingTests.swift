@@ -176,7 +176,7 @@ final class UsageAndRoutingTests: XCTestCase {
         XCTAssertEqual(estimate.low, 0.004, accuracy: 1e-12)
         XCTAssertEqual(estimate.high, 0.004, accuracy: 1e-12)
         let summary = try! XCTUnwrap(ledger.summaryText(pricing: [:]))
-        XCTAssertTrue(summary.contains("$0.12 provider-reported"), summary)
+        XCTAssertTrue(summary.contains("$0.01 provider-reported"), summary)
         XCTAssertFalse(summary.contains("est."), summary)
     }
 
@@ -223,7 +223,7 @@ final class UsageAndRoutingTests: XCTestCase {
             available: ["grok-4.5", "deepseek-deepseek-v4-flash-0731", "gpt-5.6-terra"],
             customIDs: ["deepseek-deepseek-v4-flash-0731", "gpt-5.6-terra"]
         )
-        XCTAssertEqual(grouped.map(\.label), ["Grok", "Your models"])
+        XCTAssertEqual(grouped.map(\.label), ["Grok CLI", "Your models"])
         XCTAssertEqual(grouped[0].ids, ["grok-4.5"])
         XCTAssertEqual(grouped[1].ids, ["deepseek-deepseek-v4-flash-0731", "gpt-5.6-terra"])
 
@@ -232,7 +232,7 @@ final class UsageAndRoutingTests: XCTestCase {
             customIDs: ["deepseek-deepseek-v4-flash-0731"]
         )
         XCTAssertEqual(customOnly.map(\.label), ["Your models"],
-                       "empty groups render nothing — no dead Grok header for custom-only setups")
+                       "empty groups render nothing — no dead Grok CLI header for custom-only setups")
     }
 
     func testWorkbenchPolishWiring() throws {
@@ -339,8 +339,11 @@ final class UsageAndRoutingTests: XCTestCase {
             "ChatStore keeps one thin delegate so live and settled snapshots share one call"
         )
         let settleAnchor = try XCTUnwrap(chatStoreSource.range(of: "let turnSucceeded = completion.isSuccessful"))
-        let afterSettle = String(chatStoreSource[settleAnchor.upperBound...].prefix(600))
-        XCTAssertTrue(afterSettle.contains("sessionUsage.recordTurn("),
+        let settledSnapshotAnchor = try XCTUnwrap(
+            chatStoreSource.range(of: "let settledSnapshot = makeRunEvidenceSnapshot", range: settleAnchor.upperBound..<chatStoreSource.endIndex)
+        )
+        let authoritativeSettlement = String(chatStoreSource[settleAnchor.upperBound..<settledSnapshotAnchor.lowerBound])
+        XCTAssertTrue(authoritativeSettlement.contains("sessionUsage.recordTurn("),
                       "the ledger records only at the authoritative completion barrier")
         XCTAssertFalse(chatStoreSource.contains("sessionUsage.recordTurn(\n                modelID: nil"),
                       "ledger entries carry the effective model for pricing correlation")

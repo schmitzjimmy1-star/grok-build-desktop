@@ -1,3 +1,5 @@
+import CryptoKit
+import Darwin
 import Foundation
 import Observation
 
@@ -13,6 +15,110 @@ enum GrokProcessState: Sendable, Equatable {
         return nil
     }
 
+}
+
+/// Explicit, credential-free authority for one armed CLI process. Ambient
+/// hard-budget state is intentionally never inherited by a child process.
+struct HardBudgetLaunchContract: Sendable, Equatable {
+    let manifestPath: String
+    let ledgerPath: String
+    let allocationID: String
+    let expectedManifestSHA256: String
+    private let manifestIdentity: HardBudgetAuthorityFileIdentity
+    private let ledgerIdentity: HardBudgetAuthorityFileIdentity
+
+    init?(
+        manifestPath: String,
+        ledgerPath: String,
+        allocationID: String,
+        expectedManifestSHA256: String
+    ) {
+        guard NSString(string: manifestPath).isAbsolutePath,
+              NSString(string: ledgerPath).isAbsolutePath,
+              !allocationID.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+              expectedManifestSHA256.range(
+                of: #"^[0-9a-f]{64}$"#,
+                options: .regularExpression
+              ) != nil,
+              let manifestIdentity = HardBudgetAuthorityFileIdentity.capture(
+                path: manifestPath,
+                expectedSHA256: expectedManifestSHA256
+              ),
+              let ledgerIdentity = HardBudgetAuthorityFileIdentity.capture(path: ledgerPath) else { return nil }
+        self.manifestPath = manifestPath
+        self.ledgerPath = ledgerPath
+        self.allocationID = allocationID
+        self.expectedManifestSHA256 = expectedManifestSHA256
+        self.manifestIdentity = manifestIdentity
+        self.ledgerIdentity = ledgerIdentity
+    }
+
+    var filesRemainValid: Bool {
+        HardBudgetAuthorityFileIdentity.capture(
+            path: manifestPath,
+            expectedSHA256: expectedManifestSHA256
+        ) == manifestIdentity
+            && HardBudgetAuthorityFileIdentity.capture(path: ledgerPath) == ledgerIdentity
+    }
+}
+
+private struct HardBudgetAuthorityFileIdentity: Sendable, Equatable {
+    let device: UInt64
+    let inode: UInt64
+    let size: Int64
+
+    static func capture(path: String, expectedSHA256: String? = nil) -> Self? {
+        guard NSString(string: path).isAbsolutePath else { return nil }
+        let descriptor = Darwin.open(path, O_RDONLY | O_CLOEXEC | O_NOFOLLOW)
+        guard descriptor >= 0 else { return nil }
+        let handle = FileHandle(fileDescriptor: descriptor, closeOnDealloc: true)
+        var metadata = stat()
+        guard fstat(descriptor, &metadata) == 0,
+              metadata.st_uid == getuid(),
+              metadata.st_mode & mode_t(S_IFMT) == mode_t(S_IFREG),
+              metadata.st_mode & mode_t(S_IRWXG | S_IRWXO) == 0,
+              metadata.st_size >= 0,
+              metadata.st_size <= 1_048_576 else { return nil }
+        if let expectedSHA256 {
+            let expectedSize = Int(metadata.st_size)
+            guard let data = try? handle.read(upToCount: expectedSize + 1),
+                  data.count == expectedSize,
+                  SHA256.hash(data: data).map({ String(format: "%02x", $0) }).joined()
+                    == expectedSHA256 else { return nil }
+        }
+        var afterRead = stat()
+        guard fstat(descriptor, &afterRead) == 0,
+              afterRead.st_dev == metadata.st_dev,
+              afterRead.st_ino == metadata.st_ino,
+              afterRead.st_size == metadata.st_size else { return nil }
+        return Self(
+            device: UInt64(metadata.st_dev),
+            inode: UInt64(metadata.st_ino),
+            size: Int64(metadata.st_size)
+        )
+    }
+}
+
+enum GrokProcessLaunchEnvironment {
+    static let hardBudgetKeys = [
+        "GROK_HARD_TOKEN_BUDGET_LEDGER",
+        "GROK_HARD_TOKEN_BUDGET_MANIFEST",
+        "GROK_HARD_TOKEN_BUDGET_ALLOCATION",
+    ]
+
+    static func resolved(
+        base: [String: String],
+        hardBudget contract: HardBudgetLaunchContract?
+    ) -> [String: String] {
+        var environment = base
+        hardBudgetKeys.forEach { environment.removeValue(forKey: $0) }
+        if let contract {
+            environment[hardBudgetKeys[0]] = contract.ledgerPath
+            environment[hardBudgetKeys[1]] = contract.manifestPath
+            environment[hardBudgetKeys[2]] = contract.allocationID
+        }
+        return environment
+    }
 }
 
 struct GrokLaunchOptions: Sendable {
@@ -50,6 +156,7 @@ struct GrokLaunchOptions: Sendable {
     /// app's default catch-all MCP deny rule. Grok and user-supplied deny rules
     /// remain authoritative, and the app never mutates global MCP configuration.
     var mcpGatewayEnabled: Bool = false
+    var hardBudgetLaunchContract: HardBudgetLaunchContract? = nil
 }
 
 enum GrokLaunchOutcome: String, Sendable, Equatable {
@@ -688,6 +795,9 @@ enum AcpEvent: @unchecked Sendable {
     case questionRequest(QuestionRequest)
     case permissionRequest(PermissionRequest)
     case modeChanged(mode: AgentMode)
+    /// Complete effective-model catalog replacement from the exact live CLI
+    /// generation. This is membership authority, not a provider discovery hint.
+    case modelCatalogChanged(ACPModelCatalogEvent)
     case contextUsage(totalTokens: Int)
     case availableCommands([SlashCommand])
     /// A grok `scheduler_*` tool-call `session/update`, forwarded raw for the scheduled-tasks panel.
@@ -710,6 +820,43 @@ enum AcpEvent: @unchecked Sendable {
     case error(String)
 }
 
+struct ACPModelCatalogEvent: Sendable, Equatable {
+    struct Model: Sendable, Equatable {
+        let id: String
+        let name: String
+        let contextTokens: Int?
+    }
+
+    let processGeneration: UInt64
+    let currentModelID: String?
+    let models: [Model]
+
+    static func parse(_ raw: [String: Any], processGeneration: UInt64) -> ACPModelCatalogEvent? {
+        let state = raw["modelState"] as? [String: Any] ?? raw
+        guard let available = state["availableModels"] as? [[String: Any]] else { return nil }
+        var seen = Set<String>()
+        let models = available.compactMap { item -> Model? in
+            guard let rawID = item["modelId"] as? String else { return nil }
+            let id = rawID.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !id.isEmpty, seen.insert(id).inserted else { return nil }
+            let name = (item["name"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines)
+            let meta = item["_meta"] as? [String: Any]
+            return Model(
+                id: id,
+                name: name?.isEmpty == false ? name! : id,
+                contextTokens: meta?["totalContextTokens"] as? Int
+            )
+        }
+        // A malformed row cannot silently shrink the official complete catalog.
+        guard models.count == available.count else { return nil }
+        return ACPModelCatalogEvent(
+            processGeneration: processGeneration,
+            currentModelID: state["currentModelId"] as? String,
+            models: models
+        )
+    }
+}
+
 /// The terminal parent-turn receipt emitted by ACP. This is deliberately small
 /// and credential-free: only final outcome metadata needed by the run-evidence
 /// projection crosses the process boundary.
@@ -719,10 +866,35 @@ struct ModelUsageReceipt: Sendable, Equatable, Hashable {
     let outputTokens: Int?
     let totalTokens: Int?
     let cachedReadTokens: Int?
+    let cacheCreationTokens: Int?
     let reasoningTokens: Int?
     let modelCalls: Int?
     let apiDurationMilliseconds: Int?
     let costUsdTicks: Int?
+
+    init(
+        modelID: String,
+        inputTokens: Int?,
+        outputTokens: Int?,
+        totalTokens: Int?,
+        cachedReadTokens: Int?,
+        cacheCreationTokens: Int? = nil,
+        reasoningTokens: Int?,
+        modelCalls: Int?,
+        apiDurationMilliseconds: Int?,
+        costUsdTicks: Int?
+    ) {
+        self.modelID = modelID
+        self.inputTokens = inputTokens
+        self.outputTokens = outputTokens
+        self.totalTokens = totalTokens
+        self.cachedReadTokens = cachedReadTokens
+        self.cacheCreationTokens = cacheCreationTokens
+        self.reasoningTokens = reasoningTokens
+        self.modelCalls = modelCalls
+        self.apiDurationMilliseconds = apiDurationMilliseconds
+        self.costUsdTicks = costUsdTicks
+    }
 }
 
 struct TurnCompletionReceipt: Sendable, Equatable {
@@ -740,9 +912,11 @@ struct TurnCompletionReceipt: Sendable, Equatable {
     let inputTokens: Int?
     let outputTokens: Int?
     let cachedReadTokens: Int?
+    let cacheCreationTokens: Int?
     let reasoningTokens: Int?
     let apiDurationMilliseconds: Int?
     let costUsdTicks: Int?
+    let costIsPartial: Bool?
     let modelUsage: [ModelUsageReceipt]
 
     init(
@@ -757,9 +931,11 @@ struct TurnCompletionReceipt: Sendable, Equatable {
         inputTokens: Int? = nil,
         outputTokens: Int? = nil,
         cachedReadTokens: Int? = nil,
+        cacheCreationTokens: Int? = nil,
         reasoningTokens: Int? = nil,
         apiDurationMilliseconds: Int? = nil,
         costUsdTicks: Int? = nil,
+        costIsPartial: Bool? = nil,
         modelUsage: [ModelUsageReceipt] = []
     ) {
         self.identity = identity
@@ -773,9 +949,11 @@ struct TurnCompletionReceipt: Sendable, Equatable {
         self.inputTokens = inputTokens
         self.outputTokens = outputTokens
         self.cachedReadTokens = cachedReadTokens
+        self.cacheCreationTokens = cacheCreationTokens
         self.reasoningTokens = reasoningTokens
         self.apiDurationMilliseconds = apiDurationMilliseconds
         self.costUsdTicks = costUsdTicks
+        self.costIsPartial = costIsPartial
         self.modelUsage = modelUsage
     }
 
@@ -923,6 +1101,9 @@ final class GrokProcess: @unchecked Sendable {
     /// process generation. They are never inferred from the app bundle or an
     /// updater catalog.
     private(set) var acpAgentVersion: ACPAgentVersion?
+    /// Exact downstream hard-budget authority advertised by the live CLI fork.
+    /// An official xAI version number alone never satisfies this capability.
+    private(set) var hardTokenBudgetCapability: GrokBuildHardTokenBudgetCapability?
     private let acpControlCapabilities = ACPControlCapabilityRegistry()
     /// True only while Stop is allowing the captured process generation to deliver
     /// final ACP receipts before identity invalidation and hard teardown.
@@ -950,6 +1131,7 @@ final class GrokProcess: @unchecked Sendable {
 
     // Populated from initialize modelState so we use real models from grok CLI
     private(set) var availableModelsInfo: [(id: String, name: String, contextTokens: Int?)] = []
+    private(set) var hasAuthoritativeModelCatalog = false
     private(set) var availableSlashCommands: [SlashCommand] = []
     // MARK: - Parsing helpers (instance for access to state if needed)
 
@@ -1340,6 +1522,7 @@ final class GrokProcess: @unchecked Sendable {
         let launchGeneration = processGeneration
         activeProcessGeneration = launchGeneration
         acpAgentVersion = nil
+        hardTokenBudgetCapability = nil
         acpControlCapabilities.reset(generation: launchGeneration, agentVersion: nil)
         configuredMCPServerNames = options.mcpServers.map(\.name)
         observedCLIConfiguredMCPServerNames = []
@@ -1367,6 +1550,22 @@ final class GrokProcess: @unchecked Sendable {
             identity: launchIdentity
         )
         availableModelsInfo.removeAll()
+        hasAuthoritativeModelCatalog = false
+
+        guard options.hardBudgetLaunchContract?.filesRemainValid != false else {
+            var receipt = GrokLaunchReceipt(
+                options: options,
+                workspaceID: workspace.id,
+                processGeneration: launchGeneration
+            )
+            receipt.outcome = .failed
+            launchReceipt = receipt
+            rejectLaunchModelReceipt(identity: launchIdentity)
+            activeProcessGeneration = nil
+            mcpServerStatuses = MCPReadinessPolicy.failedStatuses(for: options.mcpServers)
+            state = .failed("Acceptance authority changed after authorization. No Grok process was launched.")
+            return
+        }
 
         guard let cli = Self.locateGrokCLI() else {
             var receipt = GrokLaunchReceipt(
@@ -1386,7 +1585,10 @@ final class GrokProcess: @unchecked Sendable {
         let proc = Process()
         proc.executableURL = cli
         proc.currentDirectoryURL = workspace.path
-        proc.environment = ProcessInfo.processInfo.environment
+        proc.environment = GrokProcessLaunchEnvironment.resolved(
+            base: ProcessInfo.processInfo.environment,
+            hardBudget: options.hardBudgetLaunchContract
+        )
 
         // ACP: grok [top-level flags] agent [agent flags] stdio
         var args: [String] = []
@@ -1535,6 +1737,26 @@ final class GrokProcess: @unchecked Sendable {
 
     func stop() async {
         await cleanupProcess(setIdle: true)
+    }
+
+    /// Stop a governed turn without losing the only live ACP generation that can
+    /// answer its terminal receipt query. Ordinary Stop remains unchanged.
+    func stopAndFetchHardTokenReceipts(_ query: HardTokenReceiptQuery) async -> Result<HardTokenReceiptSnapshot, Error> {
+        guard let sid = sessionId, let handle = stdin else {
+            await cleanupProcess(setIdle: true)
+            return .failure(ACPControlError.noActiveConnection)
+        }
+        isStopDraining = true
+        writeCancellationAsynchronously(sessionID: sid, to: handle)
+        try? await Task.sleep(for: Self.stopReceiptDrainWindow)
+        let result: Result<HardTokenReceiptSnapshot, Error>
+        do { result = .success(try await fetchHardTokenReceipts(query)) }
+        catch { result = .failure(error) }
+        // Keep the completion bridge closed until cleanup invalidates this
+        // generation. Otherwise a late turn_completed could briefly reopen the
+        // UI between the receipt query and process teardown.
+        await cleanupProcess(setIdle: true, sendCancel: false)
+        return result
     }
 
     /// Terminal teardown: stops the process AND finishes the ACP event stream so the
@@ -2110,6 +2332,55 @@ final class GrokProcess: @unchecked Sendable {
         )
     }
 
+    func fetchHardTokenBudgetCapability() async throws -> GrokBuildHardTokenBudgetCapability {
+        guard let generation = activeProcessGeneration,
+              hardTokenBudgetCapability != nil else {
+            throw ACPControlError.invalidStandardResponse(
+                method: GrokBuildHardTokenBudgetCapability.statusMethod,
+                reason: "the live CLI did not advertise the GrokBuild hard-budget capability"
+            )
+        }
+        let raw = try await sendRequestWithTimeout(
+            method: GrokBuildHardTokenBudgetCapability.statusMethod,
+            params: [:],
+            seconds: 3
+        )
+        guard activeProcessGeneration == generation else {
+            throw ACPControlError.staleConnection
+        }
+        guard let capability = GrokBuildHardTokenBudgetCapability.parse(raw) else {
+            throw ACPControlError.invalidStandardResponse(
+                method: GrokBuildHardTokenBudgetCapability.statusMethod,
+                reason: "malformed capability receipt"
+            )
+        }
+        hardTokenBudgetCapability = capability
+        return capability
+    }
+
+    func fetchHardTokenReceipts(_ query: HardTokenReceiptQuery) async throws -> HardTokenReceiptSnapshot {
+        guard let generation = activeProcessGeneration else { throw ACPControlError.noActiveConnection }
+        let raw = try await sendRequestWithTimeout(
+            method: GrokBuildHardTokenBudgetCapability.receiptsMethod,
+            params: query.parameters,
+            seconds: 3
+        )
+        guard activeProcessGeneration == generation else { throw ACPControlError.staleConnection }
+        guard let snapshot = HardTokenReceiptSnapshot.parse(raw),
+              snapshot.campaignID == query.campaignID,
+              snapshot.manifestSHA256 == query.manifestSHA256,
+              snapshot.allocationID == query.allocationID,
+              snapshot.packetID == query.packetID,
+              snapshot.ledgerRevision >= query.baselineRevision,
+              snapshot.nextSequence >= query.baselineSequence else {
+            throw ACPControlError.invalidStandardResponse(
+                method: GrokBuildHardTokenBudgetCapability.receiptsMethod,
+                reason: "malformed or mismatched hard-token receipt snapshot"
+            )
+        }
+        return snapshot
+    }
+
     func fetchACPSessionMetadata() async throws -> ACPControlSessionMetadata {
         guard let sessionId else { throw ACPControlError.noActiveConnection }
         return try ACPControlSessionMetadata.parse(
@@ -2417,29 +2688,28 @@ final class GrokProcess: @unchecked Sendable {
         // Parse real models from modelState (do not make up)
         let meta = res?["_meta"] as? [String: Any]
         acpAgentVersion = (meta?["agentVersion"] as? String).flatMap(ACPAgentVersion.init)
+        hardTokenBudgetCapability = GrokBuildHardTokenBudgetCapability.parse(
+            meta?[GrokBuildHardTokenBudgetCapability.metadataKey]
+        )
         if let generation = activeProcessGeneration {
             acpControlCapabilities.reset(generation: generation, agentVersion: acpAgentVersion)
         }
         if let ms = (res?["modelState"] as? [String: Any]) ?? (meta?["modelState"] as? [String: Any]),
-           let models = ms["availableModels"] as? [[String: Any]] {
-            availableModelsInfo = models.compactMap { m in
-                guard let id = m["modelId"] as? String else { return nil }
-                let name = m["name"] as? String ?? id
-                let meta = m["_meta"] as? [String: Any]
-                return (id: id, name: name, contextTokens: meta?["totalContextTokens"] as? Int)
-            }
+           let event = ACPModelCatalogEvent.parse(ms, processGeneration: activeProcessGeneration ?? 0) {
+            applyModelCatalog(event)
         }
         // Official 1.0.5 waits for the first real catalog on this extension.
         // Use it only when initialize did not already provide models, and never
         // make launch depend on a non-standard method.
-        if availableModelsInfo.isEmpty,
+        if !hasAuthoritativeModelCatalog,
            let acpAgentVersion,
-           acpAgentVersion >= ACPControlMethod.officialExtensionFloor,
+           acpAgentVersion >= ACPControlMethod.models.officialExtensionFloor,
            let catalog = try? await fetchACPModelCatalog() {
             currentModelId = catalog.currentModelID ?? currentModelId
             availableModelsInfo = catalog.availableModels.map {
                 (id: $0.id, name: $0.name, contextTokens: $0.contextTokens)
             }
+            hasAuthoritativeModelCatalog = true
         }
     }
 
@@ -2559,15 +2829,21 @@ final class GrokProcess: @unchecked Sendable {
 
     private func updateModels(from modelState: [String: Any]?) {
         guard let modelState else { return }
-        currentModelId = modelState["currentModelId"] as? String ?? currentModelId
-        if let models = modelState["availableModels"] as? [[String: Any]] {
-            availableModelsInfo = models.compactMap { m in
-                guard let id = m["modelId"] as? String else { return nil }
-                let name = m["name"] as? String ?? id
-                let meta = m["_meta"] as? [String: Any]
-                return (id: id, name: name, contextTokens: meta?["totalContextTokens"] as? Int)
-            }
+        guard let generation = activeProcessGeneration,
+              let event = ACPModelCatalogEvent.parse(modelState, processGeneration: generation) else {
+            currentModelId = modelState["currentModelId"] as? String ?? currentModelId
+            return
         }
+        applyModelCatalog(event)
+    }
+
+    private func applyModelCatalog(_ event: ACPModelCatalogEvent) {
+        guard activeProcessGeneration == event.processGeneration else { return }
+        currentModelId = event.currentModelID ?? currentModelId
+        availableModelsInfo = event.models.map {
+            (id: $0.id, name: $0.name, contextTokens: $0.contextTokens)
+        }
+        hasAuthoritativeModelCatalog = true
     }
 
     private func setupReaders(stdout: Pipe, stderr: Pipe, processGeneration: UInt64) {
@@ -2636,6 +2912,16 @@ final class GrokProcess: @unchecked Sendable {
             if method == "_x.ai/mcp/servers_updated" {
                 observedCLIConfiguredMCPServerNames = Self.mcpServerNames(from: params)
                 launchReceipt?.observedCLIConfiguredMCPServerNames = observedCLIConfiguredMCPServerNames
+                return
+            }
+
+            if method == "x.ai/models/update" || method == "_x.ai/models/update" {
+                guard let event = ACPModelCatalogEvent.parse(
+                    params,
+                    processGeneration: processGeneration
+                ) else { return }
+                applyModelCatalog(event)
+                acpEventContinuation?.yield(.modelCatalogChanged(event))
                 return
             }
 
@@ -2841,9 +3127,11 @@ final class GrokProcess: @unchecked Sendable {
             inputTokens: Self.integer(usage["inputTokens"]),
             outputTokens: Self.integer(usage["outputTokens"]),
             cachedReadTokens: Self.integer(usage["cachedReadTokens"]),
+            cacheCreationTokens: Self.integer(usage["cacheCreationTokens"]),
             reasoningTokens: Self.integer(usage["reasoningTokens"]),
             apiDurationMilliseconds: Self.integer(usage["apiDurationMs"]),
             costUsdTicks: Self.integer(usage["costUsdTicks"]),
+            costIsPartial: usage["costIsPartial"] as? Bool,
             modelUsage: Self.modelUsageReceipts(from: usage["modelUsage"])
         )
     }
@@ -2860,6 +3148,7 @@ final class GrokProcess: @unchecked Sendable {
                 outputTokens: integer(usage["outputTokens"]),
                 totalTokens: integer(usage["totalTokens"]),
                 cachedReadTokens: integer(usage["cachedReadTokens"]),
+                cacheCreationTokens: integer(usage["cacheCreationTokens"]),
                 reasoningTokens: integer(usage["reasoningTokens"]),
                 modelCalls: integer(usage["modelCalls"]),
                 apiDurationMilliseconds: integer(usage["apiDurationMs"]),

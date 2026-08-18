@@ -33,6 +33,13 @@ if [ -f "$BINARY_DIR/GrokBuildComputerUseMCP" ]; then
     chmod +x "$APP_BUNDLE/Contents/MacOS/GrokBuildComputerUseMCP"
 fi
 
+if [ ! -x "$BINARY_DIR/GrokBuildProviderAuthHelper" ]; then
+    echo "Missing provider auth helper at $BINARY_DIR/GrokBuildProviderAuthHelper. The app would be unable to satisfy its official provider auth contract." >&2
+    exit 1
+fi
+cp "$BINARY_DIR/GrokBuildProviderAuthHelper" "$APP_BUNDLE/Contents/MacOS/GrokBuildProviderAuthHelper"
+chmod +x "$APP_BUNDLE/Contents/MacOS/GrokBuildProviderAuthHelper"
+
 if [ -f "$ROOT_DIR/scripts/grokbuild-browser-mcp" ]; then
     cp "$ROOT_DIR/scripts/grokbuild-browser-mcp" "$APP_BUNDLE/Contents/Resources/grokbuild-browser-mcp"
     chmod +x "$APP_BUNDLE/Contents/Resources/grokbuild-browser-mcp"
@@ -47,6 +54,8 @@ if [ -d "$ROOT_DIR/GrokBuild/Resources/Skills" ]; then
     mkdir -p "$APP_BUNDLE/Contents/Resources/Skills"
     cp -R "$ROOT_DIR/GrokBuild/Resources/Skills/." "$APP_BUNDLE/Contents/Resources/Skills/"
 fi
+
+cp "$ROOT_DIR/THIRD_PARTY_NOTICES.md" "$APP_BUNDLE/Contents/Resources/THIRD_PARTY_NOTICES.md"
 
 # Copy the Grok brand mark so GrokBrandIcon.mark() resolves it in the dev bundle
 # (brand mark + welcome state). Without this the app falls back to an SF Symbol.

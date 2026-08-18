@@ -34,20 +34,385 @@ struct ACPAgentVersion: Sendable, Equatable, Comparable, CustomStringConvertible
     var description: String { rawValue }
 }
 
+/// Typed, contract-bound receipt query. It contains no filesystem selector.
+struct HardTokenReceiptQuery: Sendable, Equatable {
+    let campaignID: String
+    let manifestSHA256: String
+    let allocationID: String
+    let packetID: String
+    let baselineSequence: Int
+    let baselineRevision: Int
+
+    var parameters: [String: Any] {
+        ["campaignId": campaignID, "manifestSha256": manifestSHA256,
+         "allocationId": allocationID, "packetId": packetID,
+         "baselineSequence": baselineSequence, "baselineRevision": baselineRevision]
+    }
+}
+
+struct HardTokenReceiptSnapshot: Sendable, Equatable {
+    enum Lifecycle: String, Sendable, Equatable { case reserved, settledUsageReported = "settled_usage_reported", ambiguousFullReservationCharged = "ambiguous_full_reservation_charged" }
+    struct Record: Sendable, Equatable {
+        let reservationID: String; let sequence: Int; let providerRequestID: String
+        let model: String; let endpointSHA256: String; let apiBackend: String
+        let payloadBytes: Int; let maxOutputTokens: Int; let reservedTokens: Int
+        let actualTokens: Int?; let chargedTokens: Int; let lifecycle: Lifecycle
+    }
+    let campaignID: String; let manifestSHA256: String; let allocationID: String; let packetID: String
+    let ledgerRevision: Int; let nextSequence: Int; let receipts: [Record]
+
+    static func parse(_ value: Any?) -> HardTokenReceiptSnapshot? {
+        guard let o = value as? [String: Any],
+              let campaignID = ACPControlParsing.nonemptyString(o["campaignId"]),
+              let manifestSHA256 = GrokBuildHardTokenBudgetCapability.sha256(o["manifestSha256"]),
+              let allocationID = ACPControlParsing.nonemptyString(o["allocationId"]),
+              let packetID = ACPControlParsing.nonemptyString(o["packetId"]),
+              let ledgerRevision = ACPControlParsing.integer(o["ledgerRevision"]), ledgerRevision >= 0,
+              let nextSequence = ACPControlParsing.integer(o["nextSequence"]), nextSequence >= 0,
+              let rows = o["receipts"] as? [[String: Any]] else { return nil }
+        let receipts = rows.compactMap { row -> Record? in
+            guard let reservationID = ACPControlParsing.nonemptyString(row["reservationId"]),
+                  let sequence = ACPControlParsing.integer(row["sequence"]), sequence >= 0,
+                  let providerRequestID = ACPControlParsing.nonemptyString(row["providerRequestId"]),
+                  let model = ACPControlParsing.nonemptyString(row["model"]),
+                  let endpointSHA256 = GrokBuildHardTokenBudgetCapability.sha256(row["endpointSha256"]),
+                  let apiBackend = ACPControlParsing.nonemptyString(row["apiBackend"]),
+                  let payloadBytes = ACPControlParsing.integer(row["payloadBytes"]), payloadBytes >= 0,
+                  let maxOutputTokens = ACPControlParsing.integer(row["maxOutputTokens"]), maxOutputTokens >= 0,
+                  let reservedTokens = ACPControlParsing.integer(row["reservedTokens"]), reservedTokens >= 0,
+                  let chargedTokens = ACPControlParsing.integer(row["chargedTokens"]), chargedTokens >= 0,
+                  let rawState = ACPControlParsing.nonemptyString(row["terminalState"]),
+                  let lifecycle = Lifecycle(rawValue: rawState) else { return nil }
+            let actualTokens: Int?
+            if let rawActualTokens = row["actualTokens"], !(rawActualTokens is NSNull) {
+                guard let parsedActualTokens = ACPControlParsing.integer(rawActualTokens),
+                      parsedActualTokens >= 0 else { return nil }
+                actualTokens = parsedActualTokens
+            } else {
+                actualTokens = nil
+            }
+            return Record(reservationID: reservationID, sequence: sequence, providerRequestID: providerRequestID, model: model, endpointSHA256: endpointSHA256, apiBackend: apiBackend, payloadBytes: payloadBytes, maxOutputTokens: maxOutputTokens, reservedTokens: reservedTokens, actualTokens: actualTokens, chargedTokens: chargedTokens, lifecycle: lifecycle)
+        }
+        guard receipts.count == rows.count else { return nil }
+        return .init(campaignID: campaignID, manifestSHA256: manifestSHA256, allocationID: allocationID, packetID: packetID, ledgerRevision: ledgerRevision, nextSequence: nextSequence, receipts: receipts)
+    }
+}
+
 enum ACPControlMethod: String, CaseIterable, Sendable {
     case models = "x.ai/models/list"
     case sessionUsage = "x.ai/session/usage"
     case sessionInfo = "x.ai/session/info"
     case sessionUpdates = "x.ai/session/updates"
 
-    /// These extension contracts are pinned to official Grok 1.0.5 source.
-    static let officialExtensionFloor = ACPAgentVersion("1.0.5")!
+    /// Method-specific floors pinned to official source. `x.ai/models/list` is
+    /// already the implementation behind `grok models` in 1.0.4; the persisted
+    /// session controls remain gated to the audited 1.0.5 family.
+    var officialExtensionFloor: ACPAgentVersion {
+        switch self {
+        case .models:
+            ACPAgentVersion("1.0.4")!
+        case .sessionUsage, .sessionInfo, .sessionUpdates:
+            ACPAgentVersion("1.0.5")!
+        }
+    }
 }
 
 enum ACPControlCapabilityState: Sendable, Equatable {
     case unknown
     case supported
     case unsupported
+}
+
+/// Credential-free authority advertised only by the GrokBuild CLI fork. The
+/// namespace is intentionally not `x.ai/*`: this is downstream hard-budget
+/// enforcement projected over ACP, not an upstream xAI capability.
+struct GrokBuildHardTokenBudgetCapability: Sendable, Equatable {
+    static let metadataKey = "com.grokbuild/hardTokenBudget"
+    static let statusMethod = "com.grokbuild/budget/status"
+    static let receiptsMethod = "com.grokbuild/budget/receipts"
+    static let allowedToolIDs = [
+        "GrokBuild:read_file",
+        "GrokBuild:task",
+        "GrokBuild:get_task_output",
+        "GrokBuild:wait_tasks",
+        "GrokBuild:kill_task",
+    ]
+
+    struct Status: Sendable, Equatable {
+        let campaignID: String
+        let ceilingTokens: Int
+        let settledTokens: Int
+        let outstandingTokens: Int
+        let remainingTokens: Int
+        let violated: Bool
+        let manifestSHA256: String
+        let allocationID: String
+        let allocationRemainingTokens: Int
+        let allocationRemainingCalls: Int
+        let nextSequence: Int
+        let ledgerRevision: Int
+    }
+
+    struct Route: Sendable, Equatable {
+        let model: String
+        let endpointSHA256: String
+        let apiBackend: String
+        let requestBoundTokens: Int
+        let maxPayloadBytes: Int
+        let maxOutputTokens: Int
+        let boundProvenanceSHA256: String
+    }
+
+    struct Allocation: Sendable, Equatable {
+        let id: String
+        let packetID: String
+        let promptSHA256: String
+        let tokenCeiling: Int
+        let maxModelCalls: Int
+        let route: Route
+    }
+
+    let capabilityVersion: Int
+    let armed: Bool
+    let configurationValid: Bool
+    let enforcementPoint: String
+    let ledgerVersion: Int
+    let boundMethodVersion: Int
+    let durable: Bool
+    let processShared: Bool
+    let receiptProjection: Bool
+    let cancelConservative: Bool
+    let crashConservative: Bool
+    /// The fork deliberately does not make the broader, misleading claim that
+    /// every retry in every shell surface is impossible. Its sampler transport
+    /// retries are the relevant fail-closed enforcement point.
+    let noAutomaticRetry: Bool
+    let samplerTransportRetriesDisabled: Bool
+    let authProviderHelpersDisabled: Bool
+    let terminalDisabled: Bool
+    let externalMCPDisabled: Bool
+    let hooksDisabled: Bool
+    let pluginsDisabled: Bool
+    let lspDisabled: Bool
+    let workflowsDisabled: Bool
+    let schedulerDisabled: Bool
+    let protectedAuthorityFS: Bool
+    let workspaceFSConfined: Bool
+    let allowedToolIDs: [String]
+    let cliBuild: String
+    let status: Status?
+    let allocation: Allocation?
+
+    var isEnforcing: Bool {
+        let conservativeRouteBoundIsValid = allocation.map { allocation in
+            let (bound, overflow) = allocation.route.maxPayloadBytes.addingReportingOverflow(
+                allocation.route.maxOutputTokens
+            )
+            return !overflow && bound <= allocation.route.requestBoundTokens
+        } ?? false
+        return capabilityVersion == 2
+            && armed
+            && configurationValid
+            && enforcementPoint == "sampler-pre-dispatch"
+            && ledgerVersion == 3
+            && boundMethodVersion == 1
+            && durable
+            && processShared
+            && receiptProjection
+            && cancelConservative
+            && crashConservative
+            && !noAutomaticRetry
+            && samplerTransportRetriesDisabled
+            && authProviderHelpersDisabled
+            && terminalDisabled
+            && externalMCPDisabled
+            && hooksDisabled
+            && pluginsDisabled
+            && lspDisabled
+            && workflowsDisabled
+            && schedulerDisabled
+            && protectedAuthorityFS
+            && workspaceFSConfined
+            && allowedToolIDs == Self.allowedToolIDs
+            && !cliBuild.isEmpty
+            && status?.violated == false
+            && allocation != nil
+            && conservativeRouteBoundIsValid
+    }
+
+    func authorizes(_ authorization: AcceptanceBudgetAuthorization) -> Bool {
+        guard isEnforcing,
+              let status,
+              let allocation,
+              authorization.campaignTokenCeiling == 4_000_000,
+              authorization.emergencyReserveTokens == 1_000_000,
+              let spendableTokenCeiling = authorization.spendableTokenCeiling else { return false }
+        let budget = authorization.budget
+        return status.campaignID == authorization.runID
+            && status.ceilingTokens == spendableTokenCeiling
+            && status.manifestSHA256 == authorization.hardBudgetManifestSHA256
+            && cliBuild == authorization.expectedCLIBuild
+            && status.allocationID == authorization.budget.allocationID
+            && allocation.id == authorization.budget.allocationID
+            && allocation.packetID == authorization.budget.packetID
+            && status.allocationID == allocation.id
+            && allocation.promptSHA256 == budget.promptHash
+            && allocation.tokenCeiling == budget.tokenAllocation
+            && allocation.maxModelCalls == budget.maxModelCalls
+            && allocation.route.model == budget.route.model
+            && allocation.route.endpointSHA256 == budget.route.endpointSHA256
+            && allocation.route.apiBackend == budget.route.apiBackend
+            && allocation.route.requestBoundTokens == budget.route.requestBoundTokens
+            && allocation.route.maxPayloadBytes == budget.route.maxPayloadBytes
+            && allocation.route.maxOutputTokens == budget.route.maxOutputTokens
+            && allocation.route.boundProvenanceSHA256 == budget.route.boundProvenanceSHA256
+            && status.allocationRemainingTokens >= budget.tokenAllocation
+            && status.allocationRemainingCalls >= budget.maxModelCalls
+            && status.remainingTokens >= budget.tokenAllocation
+    }
+
+    static func parse(_ value: Any?) -> GrokBuildHardTokenBudgetCapability? {
+        guard let object = value as? [String: Any],
+              let capabilityVersion = nonnegativeInteger(object["capabilityVersion"]),
+              let armed = object["armed"] as? Bool,
+              let configurationValid = object["configurationValid"] as? Bool,
+              let enforcementPoint = ACPControlParsing.nonemptyString(object["enforcementPoint"]),
+              let ledgerVersion = nonnegativeInteger(object["ledgerVersion"]),
+              let boundMethodVersion = nonnegativeInteger(object["boundMethodVersion"]),
+              let durable = object["durable"] as? Bool,
+              let processShared = object["processShared"] as? Bool,
+              let receiptProjection = object["receiptProjection"] as? Bool,
+              let cancelConservative = object["cancelConservative"] as? Bool,
+              let crashConservative = object["crashConservative"] as? Bool,
+              let noAutomaticRetry = object["noAutomaticRetry"] as? Bool,
+              let samplerTransportRetriesDisabled = object["samplerTransportRetriesDisabled"] as? Bool,
+              let authProviderHelpersDisabled = object["authProviderHelpersDisabled"] as? Bool,
+              let terminalDisabled = object["terminalDisabled"] as? Bool,
+              let externalMCPDisabled = object["externalMcpDisabled"] as? Bool,
+              let hooksDisabled = object["hooksDisabled"] as? Bool,
+              let pluginsDisabled = object["pluginsDisabled"] as? Bool,
+              let lspDisabled = object["lspDisabled"] as? Bool,
+              let workflowsDisabled = object["workflowsDisabled"] as? Bool,
+              let schedulerDisabled = object["schedulerDisabled"] as? Bool,
+              let protectedAuthorityFS = object["protectedAuthorityFs"] as? Bool,
+              let workspaceFSConfined = object["workspaceFsConfined"] as? Bool,
+              let allowedToolIDs = exactStringArray(object["allowedToolIds"]),
+              let cliBuild = ACPControlParsing.nonemptyString(object["cliBuild"]) else { return nil }
+        let status = (object["status"] as? [String: Any]).flatMap(parseStatus)
+        let allocation = (object["allocation"] as? [String: Any]).flatMap(parseAllocation)
+        return GrokBuildHardTokenBudgetCapability(
+            capabilityVersion: capabilityVersion,
+            armed: armed,
+            configurationValid: configurationValid,
+            enforcementPoint: enforcementPoint,
+            ledgerVersion: ledgerVersion,
+            boundMethodVersion: boundMethodVersion,
+            durable: durable,
+            processShared: processShared,
+            receiptProjection: receiptProjection,
+            cancelConservative: cancelConservative,
+            crashConservative: crashConservative,
+            noAutomaticRetry: noAutomaticRetry,
+            samplerTransportRetriesDisabled: samplerTransportRetriesDisabled,
+            authProviderHelpersDisabled: authProviderHelpersDisabled,
+            terminalDisabled: terminalDisabled,
+            externalMCPDisabled: externalMCPDisabled,
+            hooksDisabled: hooksDisabled,
+            pluginsDisabled: pluginsDisabled,
+            lspDisabled: lspDisabled,
+            workflowsDisabled: workflowsDisabled,
+            schedulerDisabled: schedulerDisabled,
+            protectedAuthorityFS: protectedAuthorityFS,
+            workspaceFSConfined: workspaceFSConfined,
+            allowedToolIDs: allowedToolIDs,
+            cliBuild: cliBuild,
+            status: status,
+            allocation: allocation
+        )
+    }
+
+    private static func parseStatus(_ object: [String: Any]) -> Status? {
+        guard let campaignID = ACPControlParsing.nonemptyString(object["campaignId"]),
+              let ceilingTokens = nonnegativeInteger(object["ceilingTokens"]),
+              let settledTokens = nonnegativeInteger(object["settledTokens"]),
+              let outstandingTokens = nonnegativeInteger(object["outstandingTokens"]),
+              let remainingTokens = nonnegativeInteger(object["remainingTokens"]),
+              let violated = object["violated"] as? Bool,
+              let manifestSHA256 = sha256(object["manifestSha256"]),
+              let allocationID = ACPControlParsing.nonemptyString(object["allocationId"]),
+              let allocationRemainingTokens = nonnegativeInteger(object["allocationRemainingTokens"]),
+              let allocationRemainingCalls = nonnegativeInteger(object["allocationRemainingCalls"]),
+              let nextSequence = nonnegativeInteger(object["nextSequence"]),
+              let ledgerRevision = nonnegativeInteger(object["ledgerRevision"]) else { return nil }
+        return Status(
+            campaignID: campaignID,
+            ceilingTokens: ceilingTokens,
+            settledTokens: settledTokens,
+            outstandingTokens: outstandingTokens,
+            remainingTokens: remainingTokens,
+            violated: violated,
+            manifestSHA256: manifestSHA256,
+            allocationID: allocationID,
+            allocationRemainingTokens: allocationRemainingTokens,
+            allocationRemainingCalls: allocationRemainingCalls,
+            nextSequence: nextSequence,
+            ledgerRevision: ledgerRevision
+        )
+    }
+
+    private static func parseAllocation(_ object: [String: Any]) -> Allocation? {
+        guard let id = ACPControlParsing.nonemptyString(object["id"]),
+              let packetID = ACPControlParsing.nonemptyString(object["packetId"]),
+              let promptSHA256 = sha256(object["promptSha256"]),
+              let tokenCeiling = nonnegativeInteger(object["tokenCeiling"]),
+              let maxModelCalls = nonnegativeInteger(object["maxModelCalls"]),
+              let routeObject = object["route"] as? [String: Any],
+              let route = parseRoute(routeObject) else { return nil }
+        return Allocation(
+            id: id,
+            packetID: packetID,
+            promptSHA256: promptSHA256,
+            tokenCeiling: tokenCeiling,
+            maxModelCalls: maxModelCalls,
+            route: route
+        )
+    }
+
+    private static func parseRoute(_ object: [String: Any]) -> Route? {
+        guard let model = ACPControlParsing.nonemptyString(object["model"]),
+              let endpointSHA256 = sha256(object["endpointSha256"]),
+              let apiBackend = ACPControlParsing.nonemptyString(object["apiBackend"]),
+              let requestBoundTokens = nonnegativeInteger(object["requestBoundTokens"]),
+              let maxPayloadBytes = nonnegativeInteger(object["maxPayloadBytes"]),
+              let maxOutputTokens = nonnegativeInteger(object["maxOutputTokens"]),
+              let boundProvenanceSHA256 = sha256(object["boundProvenanceSha256"]) else { return nil }
+        return Route(
+            model: model,
+            endpointSHA256: endpointSHA256,
+            apiBackend: apiBackend,
+            requestBoundTokens: requestBoundTokens,
+            maxPayloadBytes: maxPayloadBytes,
+            maxOutputTokens: maxOutputTokens,
+            boundProvenanceSHA256: boundProvenanceSHA256
+        )
+    }
+
+    private static func nonnegativeInteger(_ value: Any?) -> Int? {
+        guard let value = ACPControlParsing.integer(value), value >= 0 else { return nil }
+        return value
+    }
+
+    private static func exactStringArray(_ value: Any?) -> [String]? {
+        guard let values = value as? [Any] else { return nil }
+        let strings = values.compactMap(ACPControlParsing.nonemptyString)
+        return strings.count == values.count ? strings : nil
+    }
+
+    fileprivate static func sha256(_ value: Any?) -> String? {
+        guard let value = ACPControlParsing.nonemptyString(value),
+              value.range(of: #"^[0-9a-f]{64}$"#, options: .regularExpression) != nil else { return nil }
+        return value
+    }
 }
 
 /// Per-process-generation capability cache. xAI extension methods are not
@@ -77,7 +442,7 @@ final class ACPControlCapabilityRegistry: @unchecked Sendable {
             states[method] = .unsupported
             return false
         }
-        if agentVersion < ACPControlMethod.officialExtensionFloor {
+        if agentVersion < method.officialExtensionFloor {
             states[method] = .unsupported
             return false
         }
@@ -98,7 +463,7 @@ final class ACPControlCapabilityRegistry: @unchecked Sendable {
         guard self.generation == generation else { return .unsupported }
         if let state = states[method] { return state }
         guard let agentVersion else { return .unsupported }
-        if agentVersion < ACPControlMethod.officialExtensionFloor {
+        if agentVersion < method.officialExtensionFloor {
             return .unsupported
         }
         return .unknown

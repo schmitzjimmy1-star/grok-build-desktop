@@ -96,6 +96,8 @@ grok-build-desktop/
 │   └── UpdatePanel.swift         # AppKit Updates panel
 ├── GrokBuildComputerUseCore/     # Shared Computer Use contract (tools, argv, policy, env)
 ├── GrokBuildComputerUseMCP/      # Separate SPM target: stdio MCP bridge → agent-desktop
+├── GrokBuildProviderAuthCore/    # Credential-helper argument/keychain contract
+├── GrokBuildProviderAuthHelper/  # Signed CLI credential helper; stdout token only
 ├── Tests/GrokBuildTests/         # Unit/integration tests
 ├── scripts/                      # build-macos-app.sh, release.sh, notarize.sh, install-update, acceptance/
 ├── Package.swift                 # SPM manifest (macOS 26+)
@@ -611,8 +613,8 @@ Do **not** commit exported plist files from repo root (`.gitignore`).
 
 | Path | Purpose |
 |------|---------|
-| `~/.grok/config.toml` | Grok-schema-owned configuration only: custom model tables plus `[models].default`, supported compatibility cells, and custom subagent roles (`[subagents.roles.*]`). Every GrokBuild mutation goes through `GrokConfigRepository`, atomically replaces the file, preserves unrelated content, and enforces `0600`. `CustomModelStore` rechecks the locked current bytes and refuses writes when advanced model/provider structures exceed its flat-table ownership. GrokBuild UI metadata never goes here. |
-| macOS Keychain service `com.grokbuild.provider-credential` | Provider credentials keyed by stable provider ID. The CLI-required per-model copy is projected into the owner-only TOML file. |
+| `~/.grok/config.toml` | Grok-schema-owned configuration only: app-owned custom model/provider tables plus `[models].default`, supported compatibility cells, and custom subagent roles (`[subagents.roles.*]`). Every GrokBuild mutation goes through `GrokConfigRepository`, validates the complete TOML document, atomically replaces the file, preserves unrelated content, and enforces `0600`. Unowned advanced model/provider structures remain locked and byte-preserved. GrokBuild UI metadata never goes here. |
+| macOS Keychain service `com.grokbuild.provider-credential` | Provider credentials keyed by stable provider ID. The signed `GrokBuildProviderAuthHelper` reads one exact item on the CLI's request and emits only the token to stdout; model tables never receive linked-provider secret copies. |
 | `~/.grok/prompts/<name>.md` | Instruction bodies for custom subagent roles (referenced by `prompt_file`) |
 | `~/.grok/skills/` | Installed skills (bundled skills copied by installers) |
 | `~/.grokbuild/computer-use/` | Cursor MCP helper binaries |
@@ -856,9 +858,9 @@ grok owns memory storage, indexing, search, and first-turn injection ([`13-memor
 | Piece | Location |
 |-------|----------|
 | Settings | `SettingsView` → `.models`; persistent pane state in `CustomModelsSettingsViewModel` |
-| Persistence | Provider metadata in UserDefaults; credentials in macOS Keychain; model entries written atomically to owner-only **`~/.grok/config.toml`** by `GrokConfigRepository` |
+| Persistence | Provider metadata in UserDefaults; credentials in macOS Keychain; official app-owned model/provider bindings written atomically to owner-only **`~/.grok/config.toml`** by `GrokConfigRepository` |
 | Validation | `ProviderModelFetcher` with typed auth schemes and results; **Test connection** fetches the catalog, detects configured-model absence separately from authentication, and exposes redacted diagnostics |
-| Native model fields | `CustomModelStore` reads/writes Grok's `api_backend` (`chat_completions`, `responses`, or `messages`) and `context_window`, while preserving other CLI-owned model fields it does not edit |
+| Native model fields | `CustomModelStore` reads/writes Grok's `api_backend` (`chat_completions`, `responses`, or `messages`), `context_window`, and official `model_provider` bindings; unsupported partial/unknown fields lock writes instead of being default-filled or flattened |
 | UI metadata | `CustomModelMetadataStore` keeps reasoning, vision, thinking-display, and provider-link hints in non-secret UserDefaults keyed by model ID; old context metadata is only a migration fallback |
 | Chat | Merged into every live `ChatStore.availableModels` via typed `ConfigurationChange`; default-only changes affect future sessions, affected idle sessions reload, affected streaming sessions queue, and unaffected sessions stay up |
 | Cline Pass | Same **Test connection** action as other providers (required before Add model); live list from `https://api.cline.bot/api/v1/ai/cline/recommended-models` (`clinePass` array, no API key) via `ProviderModelFetcher.fetchClinePassRecommended`. Picker lists models **alphabetically** by slug-derived display name. No hardcoded model table |
@@ -868,7 +870,55 @@ grok owns memory storage, indexing, search, and first-turn injection ([`13-memor
 
 OpenAI-compatible provider URLs; not a replacement for grok-native models. Official presets may save only model IDs returned by their catalog. Custom/local providers can save an unverified ID only through the explicit advanced toggle. Provider credentials migrate transactionally from legacy UserDefaults/model copies: existing Keychain, then saved provider, then one matching model; conflicting matching model keys stop migration rather than guessing. No project `.env` is loaded. GrokBuild defaults new OpenAI-preset models to Grok's native Responses backend; other presets default to Chat Completions, and the model editor exposes all three supported protocols. Custom capability metadata is a UI fallback: ACP-reported model names/context limits stay authoritative when the CLI provides them. Reasoning-effort support is **opt-out** and defaults to `true` until the user disables it in the sidecar. Models explicitly marked as not supporting reasoning effort do not receive `--reasoning-effort` at launch, and the composer hides the effort picker for them. Provider catalog success proves key, endpoint, and account model visibility; it does not prove the Grok CLI's chosen completion endpoint/tool combination is compatible.
 
-**Advanced-config boundary (Official Runtime Alignment Slice 1).** `CustomModelStore` owns only the canonical flat spelling `[model.<id>]` plus `[models].default`. Official Grok configurations may also contain nested `[model.<id>.extra_headers]` / `query_params` tables, `[model_providers.*]` definitions, `model_provider` references, root dotted keys, and alternate valid TOML spellings that the flat rewriter does not own. Load shows only the real parent model instead of inventing nested-table model rows; Settings displays a write-lock notice and disables model/provider/default mutations. Provider loading becomes read-only (existing Keychain hydration only) so it cannot migrate a model credential while the boundary is active. The final authority check runs inside `GrokConfigRepository.update` against current bytes; immediately before rename the repository performs a best-effort source comparison that refuses the tested external-replacement window. This is not a cross-process transaction or cooperative lock, so the tiny compare-to-rename race remains explicit. Provider/Keychain changes use `ProviderModelConfigurationTransaction` and restore the prior provider state if that final config write refuses. The app-launch `GrokConfigLegacyMigration` also rechecks the authoritative update snapshot and commits sidecar metadata only after the config write succeeds. Unsupported files remain byte-for-byte unchanged (owner-only permission enforcement may still repair file mode). The selected ownership boundary is deliberate fail-closed containment, not another handwritten TOML implementation; future support must use a semantic representation or an official CLI/ACP mutation contract.
+**Advanced-config and provider boundary (Official Runtime Alignment Slices 1 and 4).** `CustomModelStore` owns canonical `[model.<id>]`, `[models].default`, and only namespaced `[model_providers."grokbuild.<provider>"]` tables it generated. A pinned TOML 1.0 parser validates the complete document; the writer still patches only exact owned blocks so comments, ordering, and unrelated CLI configuration are preserved. Nested model tables, unowned provider definitions/references, root dotted keys, alternate spellings, partial overrides, and unknown flat fields lock writes rather than being flattened or silently default-filled. Linked bearer providers use the CLI's official inline auth-helper contract; the helper reads one Keychain item and returns only the credential to the CLI. Linked provider secrets are never copied back into `[model.*]`, Disconnect clears both Keychain and legacy model state, local keyless models get an explicit no-auth provider, and remote keyless flat models may only be rewritten through a validated provider migration. Provider loading becomes read-only while any hard boundary is active. The final authority check runs inside `GrokConfigRepository.update` against current bytes; immediately before rename the repository performs a best-effort source comparison that refuses the tested external-replacement window. This is not a cross-process transaction or cooperative lock, so the tiny compare-to-rename race remains explicit. Provider/Keychain changes use `ProviderModelConfigurationTransaction` and restore the prior provider state if that final config write refuses. Unsupported files remain byte-for-byte unchanged (owner-only permission enforcement may still repair file mode).
+
+**Acceptance budget boundary (Official Runtime Alignment Slice 4).**
+`AcceptanceBudgetGuard` is opt-in through one owner-only launch manifest and
+requires the exact SHA-256 of the final submitted prompt after MCP/file attachment
+blocks plus positive packet token/call allocations. Missing, malformed, ambiguous,
+or mismatched manifests block Send. The reactive `x.ai/session/usage` Stop remains
+defense in depth, not the hard provider-billing cap.
+
+**Hard-budget fork checkpoint (Slice 4A).** The pinned 1.0.5 CLI fork owns one
+private, durable, process-shared campaign ledger and immutable route-specific
+packet allocations. All sampler dispatches validate the final serialized
+text-only provider payload and reserve a conservative bound before network;
+automatic retries, redirects, hosted search, remote Responses history,
+multimodal/indirect inputs, and known direct built-in inference/media egress fail
+closed while armed. Missing usage, Stop, stream failure, or process death retains
+the full ambiguous reservation. This downstream feature is truthfully advertised
+as `initialize._meta["com.grokbuild/hardTokenBudget"]` and queried on the same
+tab connection with `com.grokbuild/budget/status` and
+`com.grokbuild/budget/receipts`; it is never labeled `x.ai/*`.
+
+GrokBuild authorizes only an exact match on campaign, 4M policy, 1M unreachable
+reserve, 3M spendable CLI ceiling, manifest/build/allocation/packet, prompt, route,
+bound provenance, containment, and remaining token/call state. Acceptance mode
+does not warm an unarmed CLI. After the final prompt is frozen, the exact packet
+contract launches a fresh process with an explicit manifest, shared ledger, and
+allocation environment; ambient governor variables are stripped. The pre-dispatch
+receipt freezes the ledger revision and sequence cursor. A successful terminal
+checkpoint then requires typed CLI request records to advance that cursor through
+the exact contiguous reservation range, match the frozen route and bounds, settle
+within every reservation with exact charges, and reconcile to ACP model-call and
+token usage. Stop cancels, drains, queries the still-live generation, and retains
+reserved, ambiguous, or unavailable evidence before teardown.
+
+The v2 harness still refuses billable launch before runtime discovery. It creates
+one canonical private campaign manifest and ledger, a separate app authorization
+sidecar, and one fresh allocation/process per packet; the manifest and ledger are
+retained after process-zero for forensic reconciliation. Its allowlisted evaluator
+independently verifies the pre/post cursor, typed request records, route, bounds,
+calls, tokens, and partial `userStopped` evidence. It never scrapes private CLI
+sessions or runs a second ACP client. Paid unlock still requires installing and
+proving the exact committed fork, independently generating route-specific bound
+provenance, materializing external-provider credentials without executable auth
+helpers, and replacing or redesigning continuation packets that cannot satisfy the
+immutable one-allocation-per-process contract. Nonbillable loopback
+kill/restart/cancel/no-retry and side-egress proof must pass before any provider
+Send.
+
+The TOML parser is the one deliberate third-party SwiftPM exception to the lightweight default. Foundation and the Apple SDK expose no TOML 1.0 parser, while the previous line parser demonstrably misclassified valid nested/quoted/partial official Grok configuration and could corrupt it on save. `swift-toml` is pinned to an exact revision, statically linked, performs no I/O or networking, and is used only for parse validation; `THIRD_PARTY_NOTICES.md` ships in the app bundle. Grok CLI remains the sole owner of provider resolution, auth-helper execution/cache/timeout, inference, tools, sessions, and model-catalog membership.
 
 Opening Models must not synchronously query Keychain on the SwiftUI main actor. `SettingsBackgroundLoader` runs `ProviderStore.loadResult()` and `CustomModelStore.load()` on a detached task, then the pane applies the loaded snapshot on the main actor. This keeps navigation and clicks responsive even when Security.framework credential migration is slow.
 

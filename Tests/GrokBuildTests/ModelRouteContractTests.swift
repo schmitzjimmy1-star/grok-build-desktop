@@ -2,6 +2,26 @@ import XCTest
 @testable import GrokBuild
 
 final class ModelRouteContractTests: XCTestCase {
+    func testStructuredCheckpointRouteReceiptIsCredentialFreeAndExplicitAboutFallback() throws {
+        let model = CustomModel(
+            id: "openrouter-deepseek",
+            model: "deepseek/deepseek-v4-flash-0731",
+            baseURL: "https://user:password@openrouter.ai/api/v1?secret=value",
+            providerID: "openrouter"
+        )
+        let route = ModelRouteContract.resolve(selectedModelID: model.id, customModel: model)
+        let receipt = AssistantTurnCheckpoint.RouteReceipt(route)
+        let json = try XCTUnwrap(String(data: JSONEncoder().encode(receipt), encoding: .utf8))
+
+        XCTAssertEqual(receipt.kind, .brokeredOpenRouter)
+        XCTAssertEqual(receipt.providerModelID, "deepseek/deepseek-v4-flash-0731")
+        XCTAssertTrue(receipt.modelIsPinned)
+        XCTAssertFalse(receipt.servingProviderIsProven)
+        XCTAssertFalse(receipt.appFallbackEnabled)
+        XCTAssertFalse(json.contains("password"))
+        XCTAssertFalse(json.contains("secret=value"))
+    }
+
     func testNativeModelIsDirectXAIWithoutAppFallback() {
         let route = ModelRouteContract.resolve(selectedModelID: "grok-4.5", customModel: nil)
 
@@ -10,6 +30,20 @@ final class ModelRouteContractTests: XCTestCase {
         XCTAssertTrue(route.modelIsPinned)
         XCTAssertTrue(route.servingProviderIsProven)
         XCTAssertTrue(route.detailLines.joined().contains("no alternate provider route"))
+    }
+
+    func testCLIAdvertisedUserProviderIsNeverMislabelledNativeXAI() {
+        let route = ModelRouteContract.resolve(
+            selectedModelID: "user-gateway-model",
+            customModel: nil,
+            isKnownNativeModel: false
+        )
+
+        XCTAssertEqual(route.kind, .unavailable)
+        XCTAssertEqual(route.compactLabel, "Provider detail unavailable")
+        XCTAssertFalse(route.servingProviderIsProven)
+        XCTAssertEqual(route.authBoundary, .unavailable)
+        XCTAssertTrue(route.detailLines.joined().contains("does not label"))
     }
 
     func testDirectProviderNamesEndpointAndPinnedModel() {

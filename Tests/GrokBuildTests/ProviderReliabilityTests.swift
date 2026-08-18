@@ -123,8 +123,8 @@ final class ProviderReliabilityTests: XCTestCase {
         let store = InMemoryProviderCredentialStore()
         let provider = Provider(id: "custom", name: "Custom", baseURL: "https://example.test/v1")
         let models = [
-            CustomModel(id: "one", model: "one", baseURL: provider.baseURL, apiKey: "key-a"),
-            CustomModel(id: "two", model: "two", baseURL: provider.baseURL, apiKey: "key-b")
+            CustomModel(id: "one", model: "one", baseURL: provider.baseURL, apiKey: "key-a", providerID: provider.id),
+            CustomModel(id: "two", model: "two", baseURL: provider.baseURL, apiKey: "key-b", providerID: provider.id)
         ]
 
         let result = ProviderCredentialMigrator.migrate(
@@ -179,6 +179,35 @@ final class ProviderReliabilityTests: XCTestCase {
 
         XCTAssertEqual(result.providers.map(\.id), ["gateway"])
         XCTAssertNil(try store.credential(for: "gateway"))
+    }
+
+    func testRepeatedProviderLoadsDoNotManufactureOwnershipFromMatchingURL() throws {
+        let suiteName = "GrokBuildTests.noURLBasedOwnership.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        let store = InMemoryProviderCredentialStore()
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let provider = Provider(id: "gateway", name: "Gateway", baseURL: "https://gateway.test/v1")
+        let encoded = try JSONEncoder().encode([provider])
+        defaults.set(encoded, forKey: "grokbuild.customModelProviders")
+        let unrelatedModel = CustomModel(
+            id: "same-url-is-not-ownership",
+            model: "m",
+            baseURL: provider.baseURL,
+            apiKey: "legacy-model-key"
+        )
+
+        for _ in 0..<2 {
+            let result = ProviderStore.loadResult(
+                defaults: defaults,
+                credentialStore: store,
+                migrationModels: [unrelatedModel],
+                enforceConfigPermissions: false,
+                allowCredentialMigration: true
+            )
+            XCTAssertEqual(result.providers.map(\.id), [provider.id])
+            XCTAssertNil(try store.credential(for: provider.id))
+            XCTAssertEqual(defaults.data(forKey: "grokbuild.customModelProviders"), encoded)
+        }
     }
 
     func testProviderModelTransactionRollsBackWhenConfigBecomesAdvanced() throws {
@@ -240,6 +269,133 @@ final class ProviderReliabilityTests: XCTestCase {
         ).providers
         XCTAssertEqual(restored.map(\.baseURL), ["https://old.example/v1"])
         XCTAssertEqual(try String(contentsOf: configURL, encoding: .utf8), externalAdvancedConfig)
+    }
+
+    func testProviderFailureRestoresConfigAfterFailClosedProjectionWasWrittenFirst() throws {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("grokbuild-provider-config-first-\(UUID().uuidString)")
+        let configURL = directory.appendingPathComponent("config.toml")
+        let repository = GrokConfigRepository(configURL: configURL)
+        let suiteName = "GrokBuildTests.providerConfigFirst.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defer {
+            defaults.removePersistentDomain(forName: suiteName)
+            try? FileManager.default.removeItem(at: directory)
+        }
+        let previous = Provider(
+            id: "gateway",
+            name: "Gateway",
+            baseURL: "https://old.example/v1",
+            apiKey: "old-key"
+        )
+        defaults.set(try JSONEncoder().encode([previous]), forKey: "grokbuild.customModelProviders")
+        let credentialStore = InMemoryProviderCredentialStore(
+            failingCredential: "new-key",
+            initialValues: ["gateway": "old-key"]
+        )
+        let original = "# prior exact bytes\n[models]\ndefault = \"grok-4.6\"\n"
+        try repository.update { _ in original }
+        let updated = Provider(
+            id: "gateway",
+            name: "Gateway",
+            baseURL: "https://new.example/v1",
+            apiKey: "new-key"
+        )
+        let model = CustomModel(
+            id: "gateway-model",
+            model: "provider/model",
+            baseURL: updated.baseURL,
+            providerID: updated.id
+        )
+
+        XCTAssertThrowsError(try ProviderModelConfigurationTransaction.save(
+            previousProviders: [previous],
+            updatedProviders: [updated],
+            models: [model],
+            defaultModelID: model.id,
+            repository: repository,
+            providerDefaults: defaults,
+            modelDefaults: defaults,
+            credentialStore: credentialStore
+        ))
+        XCTAssertEqual(repository.read(), original)
+        XCTAssertEqual(try credentialStore.credential(for: "gateway"), "old-key")
+        XCTAssertEqual(credentialStore.operations.first, "remove:gateway")
+    }
+
+    func testProviderDeletionRevokesCredentialBeforePublishingConfig() throws {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("grokbuild-provider-delete-order-\(UUID().uuidString)")
+        let repository = GrokConfigRepository(configURL: directory.appendingPathComponent("config.toml"))
+        let suiteName = "GrokBuildTests.providerDeleteOrder.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defer {
+            defaults.removePersistentDomain(forName: suiteName)
+            try? FileManager.default.removeItem(at: directory)
+        }
+        let previous = Provider(
+            id: "gateway",
+            name: "Gateway",
+            baseURL: "https://old.example/v1",
+            apiKey: "old-key"
+        )
+        defaults.set(try JSONEncoder().encode([previous]), forKey: "grokbuild.customModelProviders")
+        let credentialStore = InMemoryProviderCredentialStore(initialValues: ["gateway": "old-key"])
+
+        try ProviderModelConfigurationTransaction.save(
+            previousProviders: [previous],
+            updatedProviders: [],
+            models: [],
+            defaultModelID: "grok-4.6",
+            repository: repository,
+            providerDefaults: defaults,
+            modelDefaults: defaults,
+            credentialStore: credentialStore
+        )
+
+        XCTAssertEqual(credentialStore.operations.first, "remove:gateway")
+        XCTAssertNil(try credentialStore.credential(for: "gateway"))
+    }
+
+    func testReusedProviderIDClearsOrphanBeforePublishingNewEndpoint() throws {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("grokbuild-provider-reuse-order-\(UUID().uuidString)")
+        let repository = GrokConfigRepository(configURL: directory.appendingPathComponent("config.toml"))
+        let suiteName = "GrokBuildTests.providerReuseOrder.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defer {
+            defaults.removePersistentDomain(forName: suiteName)
+            try? FileManager.default.removeItem(at: directory)
+        }
+        let updated = Provider(
+            id: "gateway",
+            name: "Gateway",
+            baseURL: "https://new.example/v1",
+            apiKey: "new-key"
+        )
+        let model = CustomModel(
+            id: "gateway-model",
+            model: "provider/model",
+            baseURL: updated.baseURL,
+            providerID: updated.id
+        )
+        let credentialStore = InMemoryProviderCredentialStore(initialValues: ["gateway": "orphaned-old-key"])
+
+        try ProviderModelConfigurationTransaction.save(
+            previousProviders: [],
+            updatedProviders: [updated],
+            models: [model],
+            defaultModelID: model.id,
+            repository: repository,
+            providerDefaults: defaults,
+            modelDefaults: defaults,
+            credentialStore: credentialStore
+        )
+
+        XCTAssertEqual(credentialStore.operations.first, "remove:gateway")
+        XCTAssertEqual(try credentialStore.credential(for: "gateway"), "new-key")
+        XCTAssertTrue(repository.read().contains("base_url = \"https://new.example/v1\""))
+        XCTAssertFalse(repository.read().contains("orphaned-old-key"))
     }
 
     func testProviderRequestUsesOnlyConfiguredAuthenticationHeaders() throws {
@@ -435,12 +591,26 @@ final class ProviderReliabilityTests: XCTestCase {
 }
 
 final class InMemoryProviderCredentialStore: ProviderCredentialStoring, @unchecked Sendable {
-    private var values: [String: String] = [:]
+    private var values: [String: String]
     private let lock = NSLock()
     private let failingProviderID: String?
+    private let failingCredential: String?
+    private var recordedOperations: [String] = []
 
-    init(failingProviderID: String? = nil) {
+    init(
+        failingProviderID: String? = nil,
+        failingCredential: String? = nil,
+        initialValues: [String: String] = [:]
+    ) {
         self.failingProviderID = failingProviderID
+        self.failingCredential = failingCredential
+        values = initialValues
+    }
+
+    var operations: [String] {
+        lock.lock()
+        defer { lock.unlock() }
+        return recordedOperations
     }
 
     func credential(for providerID: String) throws -> String? {
@@ -450,15 +620,19 @@ final class InMemoryProviderCredentialStore: ProviderCredentialStoring, @uncheck
     }
 
     func setCredential(_ credential: String, for providerID: String) throws {
-        if providerID == failingProviderID { throw ProviderCredentialError.verificationFailed }
+        if providerID == failingProviderID || credential == failingCredential {
+            throw ProviderCredentialError.verificationFailed
+        }
         lock.lock()
         defer { lock.unlock() }
+        recordedOperations.append("set:\(providerID)")
         values[providerID] = credential
     }
 
     func removeCredential(for providerID: String) throws {
         lock.lock()
         defer { lock.unlock() }
+        recordedOperations.append("remove:\(providerID)")
         values[providerID] = nil
     }
 }

@@ -71,6 +71,7 @@ final class AcceptanceHarnessTests: XCTestCase {
         XCTAssertTrue(driver.contains("Stop turn"))
         XCTAssertTrue(runScript.contains("deliberateStop"))
         XCTAssertTrue(runScript.contains("250000"))
+        XCTAssertTrue(runScript.contains("load_ledger_v2(args.ledger)"))
     }
 
     func testSlice6ManifestDryRunUsesQuarterMillionCeiling() throws {
@@ -84,10 +85,91 @@ final class AcceptanceHarnessTests: XCTestCase {
         XCTAssertTrue(result.stdout.contains("GB-S6-PKT-T1-20260814T000000Z"), result.stdout)
     }
 
+    func testSlice4V2DryRunReservesOneMillionAndPlansExactlyThreeMillion() throws {
+        let manifest = Self.repoRoot
+            .appendingPathComponent("scripts/acceptance/manifests/official-provider-slice4-v2.json")
+        let result = try runHarness(["--manifest", manifest.path, "--run-id", "20260817T170000Z"])
+        XCTAssertEqual(result.exitCode, 0, result.output)
+        XCTAssertTrue(result.stdout.contains("\"campaignTokenCeiling\": 4000000"), result.stdout)
+        XCTAssertTrue(result.stdout.contains("\"plannedAllocation\": 3000000"), result.stdout)
+        XCTAssertTrue(result.stdout.contains("\"emergencyReserveTokens\": 1000000"), result.stdout)
+        XCTAssertTrue(result.stdout.contains("\"maxAttempts\": 1"), result.stdout)
+        XCTAssertTrue(result.stdout.contains("\"appFallbackEnabled\": false"), result.stdout)
+    }
+
+    func testSlice4V2AbsoluteCeilingGateExecutesBeforeRuntimeDiscovery() throws {
+        let source = try String(
+            contentsOf: Self.repoRoot.appendingPathComponent("scripts/acceptance/harness/preflight_v2.py"),
+            encoding: .utf8
+        )
+        XCTAssertTrue(source.contains("require_runtime_floor"))
+        XCTAssertTrue(source.contains("require_absolute_ceiling_support"))
+        XCTAssertTrue(source.contains("reactive and cannot prove the absolute 4,000,000-token ceiling"))
+
+        let manifest = Self.repoRoot
+            .appendingPathComponent("scripts/acceptance/manifests/official-provider-slice4-v2.json")
+        let result = try runHarness([
+            "--manifest", manifest.path,
+            "--run-id", "20260817T170001Z",
+            "--billable",
+        ])
+        XCTAssertEqual(result.exitCode, 2, result.output)
+        XCTAssertTrue(
+            result.stderr.contains("cannot prove the absolute 4,000,000-token ceiling"),
+            "The hard ceiling refusal must win before the installed 1.0.4 runtime floor or any catalog discovery: \(result.output)"
+        )
+    }
+
+    func testLegacyV1BillableAlsoStopsBeforeLaunchOnUnsupportedRuntime() throws {
+        let result = try runHarness([
+            "--run-id", "20260817T170002Z",
+            "--billable",
+        ])
+        XCTAssertEqual(result.exitCode, 2, result.output)
+        XCTAssertTrue(result.stderr.contains("legacy v1 billable execution is retired"), result.stderr)
+    }
+
+    func testSlice4V2HostileReceiptAndManifestFixtures() throws {
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/env")
+        process.arguments = ["python3", "-m", "unittest", "scripts.acceptance.tests.test_v2"]
+        process.currentDirectoryURL = Self.repoRoot
+        let output = Pipe()
+        process.standardOutput = output
+        process.standardError = output
+        try process.run()
+        process.waitUntilExit()
+        let text = String(decoding: output.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self)
+        XCTAssertEqual(process.terminationStatus, 0, text)
+        XCTAssertTrue(text.contains("OK"), text)
+    }
+
+    func testSlice4HarnessUsesOnlyAppOwnedEvidenceAndAllowlistedV2Rows() throws {
+        let preflight = try String(
+            contentsOf: Self.repoRoot.appendingPathComponent("scripts/acceptance/harness/preflight.py"),
+            encoding: .utf8
+        )
+        let driver = try String(
+            contentsOf: Self.repoRoot.appendingPathComponent("scripts/acceptance/harness/driver.py"),
+            encoding: .utf8
+        )
+        let v2 = try String(
+            contentsOf: Self.repoRoot.appendingPathComponent("scripts/acceptance/harness/receipts_v2.py"),
+            encoding: .utf8
+        )
+        XCTAssertFalse(preflight.contains(".grok/sessions"))
+        XCTAssertFalse(driver.contains("grok sessions search"))
+        XCTAssertTrue(driver.contains("Perform exactly one billable Send actuator"))
+        XCTAssertTrue(v2.contains("START_ONLY"))
+        XCTAssertTrue(v2.contains("TERMINAL_ONLY"))
+        XCTAssertTrue(v2.contains("packet token allocation exceeded"))
+        XCTAssertFalse(v2.contains("evidencePath"))
+    }
+
     private func runHarness(_ arguments: [String]) throws -> (exitCode: Int32, stdout: String, stderr: String, output: String) {
         let process = Process()
-        process.executableURL = URL(fileURLWithPath: "/usr/bin/python3")
-        process.arguments = [Self.runScript.path] + arguments
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/env")
+        process.arguments = ["python3", Self.runScript.path] + arguments
         process.currentDirectoryURL = Self.repoRoot
         let stdout = Pipe()
         let stderr = Pipe()

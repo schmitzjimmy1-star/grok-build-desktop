@@ -10,7 +10,7 @@ Deleting lines, splitting files, or adopting frameworks scores zero by itself.
 
 ## 1. Verdict in one paragraph
 
-GrokBuild is already the thing it claims to be: a 16 MB arm64 SwiftUI shell with **zero
+At the time of this July audit, GrokBuild was a 16 MB arm64 SwiftUI shell with **zero
 third-party dependencies**, Apple-only frameworks each mapped to a reachable feature, one
 serialized TOML boundary, Keychain-held credentials, and Grok owning the agent runtime
 through ordinary ACP. There is no second runtime, no embedded browser engine, no resident
@@ -34,7 +34,7 @@ I/O (F13). Fix those; leave the architecture alone.
 | Skill `grokbuild-desktop` | 1.0 KB | **Delete (recommended, needs Jimmy's OK)** | Zero references in Swift source; never installed, never looked up (F18). If it has an intended future consumer, document the owner instead — limbo is the worst option |
 | Update installer helper | 1.8 KB | **Keep + Fix** | Flow is right (wait-PID → swap → relaunch); fix merge-copy/quarantine/self-overwrite (F7) and TeamID skip (F6) |
 | App icon / menu-bar PNGs | 309 KB | **Keep** | No duplicate payloads found |
-| SwiftPM third-party deps | 0 | **Preserve zero** | Hard default; any addition needs a written system-API insufficiency proof |
+| SwiftPM third-party deps | 1 as of Official Runtime Alignment Slice 4 | **Exact-revision exception: `swift-toml`** | Foundation has no TOML 1.0 parser; valid official nested/quoted/partial Grok config proved the handwritten detector could corrupt bytes. The parser validates only; targeted rewriting and CLI runtime ownership remain unchanged. See `ARCHITECTURE.md` and `THIRD_PARTY_NOTICES.md`. |
 | WebKit linkage | — | **Keep** | Reachable via `PreviewPane` (product feature), not stray |
 | Speech/AVFAudio linkage | — | **Keep** | `VoiceInputService` is lazy and permission-gated |
 | `GitService` + PR flow | — | **Keep + Fix** | Deliberate product feature behind explicit clicks; fix pipe deadlock (F10); `git add -A` bluntness is a product choice to revisit, not dead code |

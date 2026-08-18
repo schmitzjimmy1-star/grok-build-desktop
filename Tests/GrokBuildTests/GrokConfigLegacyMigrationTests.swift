@@ -129,6 +129,7 @@ final class GrokConfigLegacyMigrationTests: XCTestCase {
         grokbuild_supports_reasoning_effort = false
         grokbuild_supports_vision = true
         grokbuild_supports_thinking = true
+        grokbuild_provider_id = "openai"
         """
         try original.write(to: configURL, atomically: true, encoding: .utf8)
         try FileManager.default.setAttributes([.posixPermissions: 0o644], ofItemAtPath: configURL.path)

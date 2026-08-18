@@ -8,7 +8,9 @@ Never prints credentials or response bodies. Never fakes ACP or guesses cleanup 
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
+import os
 import sys
 import time
 from pathlib import Path
@@ -18,32 +20,51 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from harness.cleanup import require_exact_ids
+from harness.authority_v2 import prepare_campaign_authority, retain_campaign_authority
 from harness.driver import (
     capture_identities,
+    close_current_session,
     launch_installed,
     new_chat,
     quit_installed,
     restore_continuation,
     resume_saved_task,
+    select_workspace,
     select_model,
     send_prompt,
     stop_turn,
+    wait_for_terminal_checkpoint,
     wait_for_marker,
     wait_for_stop_control,
 )
 from harness.errors import HarnessError
 from harness.evidence import extract_receipt
+from harness.evidence_v2 import (
+    attempt_started,
+    cleanup_receipt,
+    extract_terminal,
+    reject_terminal,
+    terminal_failure,
+)
 from harness.fixture import run_fixture
 from harness.handoff import HandoffContext, render_handoff, validate_handoff
 from harness.preflight import preflight, two_process_zero_samples
 from harness.receipts import evaluate, load_ledger
 from harness.redaction import redact_value, safe_print
-from harness.schema import dry_run_plan, load_manifest, require_live_run_id
+from harness.schema import dry_run_plan as dry_run_plan_v1, load_manifest as load_manifest_v1, require_live_run_id as require_live_run_id_v1
+from harness.schema_v2 import dry_run_plan as dry_run_plan_v2, load_manifest as load_manifest_v2, require_live_run_id as require_live_run_id_v2
+from harness.receipts_v2 import (
+    append_row as append_row_v2,
+    evaluate as evaluate_v2,
+    evaluate_prefix as evaluate_prefix_v2,
+    load_ledger as load_ledger_v2,
+)
 
 DEFAULT_MANIFEST = ROOT / "manifests" / "installed-three-route-v1.json"
 DEFAULT_LEDGER = Path("/tmp/grokbuild-s5-ledger.jsonl")
 REPO = Path("/Users/jimmyschmitz/Desktop/Projects/MCP Servers/Grok Build/grok-build-desktop")
 TRANSCRIPTS = Path.home() / "Library/Application Support/GrokBuild/Transcripts"
+INSTALLED_PROVIDER_HELPER = Path("/Applications/GrokBuild.app/Contents/MacOS/GrokBuildProviderAuthHelper")
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -59,6 +80,9 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--check-handoff", type=Path)
     parser.add_argument("--evaluate-ledger", action="store_true")
     args = parser.parse_args(argv)
+    args.ledger = args.ledger.expanduser().resolve(strict=False)
+    if args.ids_from_ledger is not None:
+        args.ids_from_ledger = args.ids_from_ledger.expanduser().resolve(strict=False)
 
     try:
         if args.fixture:
@@ -70,15 +94,28 @@ def main(argv: list[str] | None = None) -> int:
         if args.cleanup:
             return _cleanup(args)
         if args.evaluate_ledger:
-            manifest = load_manifest(args.manifest, run_id=args.run_id)
-            receipts = load_ledger(args.ledger)
-            summary = evaluate(manifest, receipts)
+            version = _manifest_version(args.manifest)
+            manifest = _load_manifest(args.manifest, args.run_id, version)
+            if version == 2:
+                summary = evaluate_v2(manifest, load_ledger_v2(args.ledger))
+            else:
+                summary = evaluate(manifest, load_ledger(args.ledger))
             safe_print(json.dumps(redact_value("summary", summary)))
             return 0
         if args.billable:
-            return _billable(args)
-        manifest = load_manifest(args.manifest, run_id=args.run_id)
-        plan = dry_run_plan(manifest)
+            if not args.run_id:
+                raise HarnessError("billable mode requires --run-id")
+            if _manifest_version(args.manifest) != 2:
+                raise HarnessError("legacy v1 billable execution is retired; use the guarded v2 campaign")
+            from harness.preflight_v2 import require_absolute_ceiling_support, require_runtime_floor
+            # This refusal is deliberately first. A locked paid campaign must not
+            # start Grok even for version/catalog discovery.
+            require_absolute_ceiling_support()
+            require_runtime_floor()
+            return _billable_v2(args)
+        version = _manifest_version(args.manifest)
+        manifest = _load_manifest(args.manifest, args.run_id, version)
+        plan = dry_run_plan_v2(manifest) if version == 2 else dry_run_plan_v1(manifest)
         safe_print(json.dumps(redact_value("plan", plan), indent=2))
         return 0
     except HarnessError as exc:
@@ -89,7 +126,7 @@ def main(argv: list[str] | None = None) -> int:
 def _cleanup(args: argparse.Namespace) -> int:
     if args.ids_from_ledger is None:
         require_exact_ids([], None, guessed=False)
-    receipts = load_ledger(args.ids_from_ledger)
+    receipts = _load_any_ledger(args.ids_from_ledger)
     ids = require_exact_ids(receipts, _ids_from_receipts(receipts), guessed=bool(args.guessed_id))
     safe_print(json.dumps({"cleanupIdentities": ids, "executed": False}))
     safe_print("cleanup IDs verified from ledger; installed Close Session still required for tabs")
@@ -104,14 +141,28 @@ def _ids_from_receipts(receipts: list[dict]) -> list[str]:
             if value:
                 ids.append(value)
         ids.extend(str(item) for item in row.get("childIds") or [] if item)
+        ids.extend(
+            str(worker.get("childBackendSessionID"))
+            for worker in row.get("workerReceipts") or []
+            if worker.get("childBackendSessionID")
+        )
     return ids
+
+
+def _load_any_ledger(path: Path) -> list[dict]:
+    try:
+        first = next(line for line in path.read_text(encoding="utf-8").splitlines() if line.strip())
+        version = json.loads(first).get("schemaVersion")
+    except (OSError, StopIteration, json.JSONDecodeError, AttributeError) as exc:
+        raise HarnessError("cleanup ledger is unreadable") from exc
+    return load_ledger_v2(path) if version == 2 else load_ledger(path)
 
 
 def _billable(args: argparse.Namespace) -> int:
     if not args.run_id:
         raise HarnessError("billable mode requires --run-id")
-    require_live_run_id(args.run_id)
-    manifest = load_manifest(args.manifest, run_id=args.run_id)
+    require_live_run_id_v1(args.run_id)
+    manifest = load_manifest_v1(args.manifest, run_id=args.run_id)
     report = preflight(REPO, manifest, ledger=args.ledger)
     safe_print(json.dumps({"preflight": redact_value("preflight", report)}))
     launch_installed()
@@ -128,6 +179,7 @@ def _billable(args: argparse.Namespace) -> int:
             continuation = packet["continuation"]
             start_new = continuation is None or int(continuation["turn"]) == 1
             if start_new:
+                select_workspace(REPO)
                 new_chat()
                 select_model(packet["model"])
             elif continuation and continuation.get("resumeAfterQuit"):
@@ -202,6 +254,230 @@ def _write_ledger(path: Path, rows: list[dict]) -> None:
     with path.open("w", encoding="utf-8") as handle:
         for row in rows:
             handle.write(json.dumps(redact_value("row", row), separators=(",", ":")) + "\n")
+
+
+def _manifest_version(path: Path) -> int:
+    try:
+        value = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        raise HarnessError(f"manifest is unreadable: {exc}") from exc
+    version = value.get("schemaVersion") if isinstance(value, dict) else None
+    if version not in {1, 2}:
+        raise HarnessError(f"unsupported schemaVersion {version}")
+    return int(version)
+
+
+def _load_manifest(path: Path, run_id: str | None, version: int) -> dict:
+    return (load_manifest_v2 if version == 2 else load_manifest_v1)(path, run_id=run_id)
+
+
+def _billable_v2(args: argparse.Namespace) -> int:
+    """Run one-attempt packets under the app's live official-ACP budget guard."""
+    from harness.preflight_v2 import effective_config_sha, preflight as preflight_v2
+
+    if not args.run_id:
+        raise HarnessError("billable mode requires --run-id")
+    require_live_run_id_v2(args.run_id)
+    manifest = load_manifest_v2(args.manifest, run_id=args.run_id)
+    if any(packet["continuation"] is not None for packet in manifest["packets"]):
+        raise HarnessError(
+            "this manifest contains session-continuation packets; convert them to fresh, "
+            "self-contained allocations before unlocking billable execution"
+        )
+    report = preflight_v2(REPO, manifest, ledger=args.ledger)
+    safe_print(json.dumps({"preflight": redact_value("preflight", report)}))
+    authority = prepare_campaign_authority(manifest)
+    rows: list[dict] = []
+    cumulative = 0
+    current_packet: dict | None = None
+    current_identities: dict[str, str] = {}
+    attempt_is_open = False
+    terminal_is_recorded = False
+    cleanup_is_recorded = False
+    send_may_be_live = False
+    app_launch_epoch = 0
+    process_zero_confirmed = False
+    try:
+        packets = manifest["packets"]
+        for index, packet in enumerate(packets):
+            current_packet = packet
+            current_identities = {}
+            attempt_is_open = False
+            terminal_is_recorded = False
+            cleanup_is_recorded = False
+            send_may_be_live = False
+            allocation = int(packet["tokenAllocation"])
+            if cumulative + allocation + int(manifest["emergencyReserveTokens"]) > int(manifest["campaignTokenCeiling"]):
+                raise HarnessError(f"{packet['id']}: pre-Send reserve refusal")
+
+            launch_installed(
+                budget_file=authority.authorization,
+                cli_manifest_file=authority.cli_manifest,
+                budget_ledger_file=authority.ledger,
+            )
+            app_launch_epoch += 1
+            select_workspace(REPO)
+            new_chat()
+            select_model(packet["selectorModelID"])
+
+            if _sha256(Path.home() / ".grok/config.toml") != report["configSha256"]:
+                raise HarnessError("config hash drift before Send")
+            if effective_config_sha(REPO) != report["effectiveConfigSha256"]:
+                raise HarnessError("official effective configuration drift before Send")
+            if _sha256(INSTALLED_PROVIDER_HELPER) != report["helperSha256"]:
+                raise HarnessError("installed provider helper drift before Send")
+            start = attempt_started(packet, manifest["runId"], app_launch_epoch)
+            append_row_v2(args.ledger, start)
+            rows.append(start)
+            attempt_is_open = True
+            # From this boundary onward an AX click may have reached the app
+            # even if the driver reports an uncertain transport failure.
+            send_may_be_live = True
+            send_prompt(packet["prompt"])
+            timeout = 480 if packet["childTopology"] else 300
+            wait_for_marker(packet["marker"], timeout_seconds=timeout)
+            current_identities = capture_identities(REPO, packet["marker"])
+            terminal = extract_terminal(
+                packet,
+                manifest["runId"],
+                current_identities,
+                TRANSCRIPTS,
+                app_launch_epoch,
+            )
+            current_identities["processGeneration"] = terminal["processGeneration"]
+            candidate_cleanup = cleanup_receipt(
+                packet,
+                manifest["runId"],
+                current_identities,
+                app_launch_epoch,
+                local_tab="closedExact",
+            )
+            validation_error: Exception | None = None
+            if _sha256(Path.home() / ".grok/config.toml") != report["configSha256"]:
+                validation_error = HarnessError("config hash drift after Send")
+            elif effective_config_sha(REPO) != report["effectiveConfigSha256"]:
+                validation_error = HarnessError("official effective configuration drift after Send")
+            elif _sha256(INSTALLED_PROVIDER_HELPER) != report["helperSha256"]:
+                validation_error = HarnessError("installed provider helper drift after Send")
+            try:
+                if validation_error is None:
+                    evaluate_prefix_v2(manifest, rows + [terminal, candidate_cleanup])
+            except Exception as error:
+                validation_error = error
+            if validation_error is not None:
+                terminal = reject_terminal(terminal, str(validation_error))
+            append_row_v2(args.ledger, terminal)
+            rows.append(terminal)
+            terminal_is_recorded = True
+            attempt_is_open = False
+            send_may_be_live = False
+            if validation_error is not None:
+                # Exact paid evidence is fsync'd before cleanup or campaign stop.
+                raise HarnessError(f"packet evidence rejected: {validation_error}") from validation_error
+            close_current_session(current_identities["tabId"])
+            append_row_v2(args.ledger, candidate_cleanup)
+            rows.append(candidate_cleanup)
+            cleanup_is_recorded = True
+            evaluate_prefix_v2(manifest, load_ledger_v2(args.ledger))
+            cumulative += int(terminal["usage"]["totalTokens"])
+            quit_installed()
+            two_process_zero_samples()
+
+        # Acceptance is based on the fsync'd ledger reloaded from disk, never
+        # merely on the in-memory objects the current process hoped it wrote.
+        summary = evaluate_v2(manifest, load_ledger_v2(args.ledger))
+        quit_installed()
+        summary["processZero"] = two_process_zero_samples()
+        process_zero_confirmed = True
+        safe_print(json.dumps(redact_value("summary", summary), sort_keys=True))
+        return 0
+    except Exception as exc:
+        secondary_failures: list[str] = []
+        if current_packet is not None and send_may_be_live and not terminal_is_recorded:
+            try:
+                stop_turn()
+                wait_for_terminal_checkpoint(current_packet["marker"], timeout_seconds=45)
+                current_identities = capture_identities(REPO, current_packet["marker"])
+                stopped = extract_terminal(
+                    current_packet,
+                    manifest["runId"],
+                    current_identities,
+                    TRANSCRIPTS,
+                    app_launch_epoch,
+                )
+                current_identities["processGeneration"] = stopped["processGeneration"]
+                append_row_v2(args.ledger, stopped)
+                rows.append(stopped)
+                terminal_is_recorded = True
+                attempt_is_open = False
+            except Exception:
+                secondary_failures.append("live turn could not be stopped and reconciled")
+        if attempt_is_open and current_packet is not None and not terminal_is_recorded:
+            try:
+                failure = terminal_failure(
+                    current_packet,
+                    manifest["runId"],
+                    str(exc),
+                    app_launch_epoch,
+                    current_identities,
+                )
+                append_row_v2(args.ledger, failure)
+                rows.append(failure)
+                terminal_is_recorded = True
+            except Exception:
+                secondary_failures.append("failure ledger append failed")
+        if terminal_is_recorded and not cleanup_is_recorded and current_packet is not None:
+            local_cleanup = "unknown"
+            if current_identities.get("tabId"):
+                try:
+                    close_current_session(current_identities["tabId"])
+                    local_cleanup = "closedExact"
+                except Exception:
+                    local_cleanup = "retained"
+                    secondary_failures.append("exact local-tab cleanup failed")
+            try:
+                cleanup = cleanup_receipt(
+                    current_packet,
+                    manifest["runId"],
+                    current_identities,
+                    app_launch_epoch,
+                    local_tab=local_cleanup,
+                )
+                append_row_v2(args.ledger, cleanup)
+                rows.append(cleanup)
+                cleanup_is_recorded = True
+            except Exception:
+                secondary_failures.append("cleanup ledger append failed")
+        try:
+            quit_installed()
+            two_process_zero_samples()
+            process_zero_confirmed = True
+        except Exception:
+            secondary_failures.append("installed app cleanup/process-zero failed")
+        if secondary_failures:
+            raise HarnessError(
+                "v2 campaign stopped; " + "; ".join(secondary_failures)
+            ) from exc
+        if isinstance(exc, HarnessError):
+            raise
+        raise HarnessError(f"v2 campaign stopped: {type(exc).__name__}") from exc
+    finally:
+        safe_print(json.dumps({
+            "authorityRetention": retain_campaign_authority(
+                authority,
+                remove_authorization=process_zero_confirmed,
+            )
+        }, sort_keys=True))
+
+
+def _sha256(path: Path) -> str | None:
+    if not path.exists():
+        return None
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
 
 
 if __name__ == "__main__":

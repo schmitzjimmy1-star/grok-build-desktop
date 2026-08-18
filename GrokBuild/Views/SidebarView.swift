@@ -140,6 +140,7 @@ struct SidebarView: View {
     var onNewSessionForWorkspace: (Workspace) -> Void = { _ in }
     var onRenameSession: (UUID, String) -> Void = { _, _ in }
     var onCloseSession: (UUID) -> Void = { _ in }
+    var onCloseLocalSession: (UUID) -> Void = { _ in }
     var onMoveWorkspace: (IndexSet, Int) -> Void = { _, _ in }
     var onPinWorkspace: (Workspace) -> Void = { _ in }
     var onUnpinWorkspace: (Workspace) -> Void = { _ in }
@@ -458,7 +459,8 @@ struct SidebarView: View {
                 renamingSessionID = session.id
                 renameText = session.title
             },
-            onClose: { onCloseSession(session.id) }
+            onClose: { onCloseSession(session.id) },
+            onCloseLocal: { onCloseLocalSession(session.id) }
         )
         .tag(SidebarPersistentSelection.session(session.id))
         .listRowInsets(EdgeInsets(top: 1, leading: 16, bottom: 1, trailing: 8))
@@ -468,7 +470,10 @@ struct SidebarView: View {
                 renamingSessionID = session.id
                 renameText = session.title
             }
-            Button("Close Session", role: .destructive) {
+            Button("Close Local Tab") {
+                onCloseLocalSession(session.id)
+            }
+            Button("Delete Session", role: .destructive) {
                 onCloseSession(session.id)
             }
         }
@@ -547,6 +552,7 @@ private struct SessionSidebarRow: View {
     var onSelect: () -> Void
     var onRename: () -> Void
     var onClose: () -> Void
+    var onCloseLocal: () -> Void
     @State private var isHovered = false
 
     var body: some View {
@@ -591,13 +597,17 @@ private struct SessionSidebarRow: View {
             .accessibilityAction(named: "Rename session") {
                 onRename()
             }
-            .accessibilityAction(named: "Close session") {
+            .accessibilityAction(named: "Delete session") {
                 onClose()
+            }
+            .accessibilityAction(named: "Close local tab") {
+                onCloseLocal()
             }
 
             Menu {
                 Button("Rename…", action: onRename)
-                Button("Close Session", role: .destructive, action: onClose)
+                Button("Close Local Tab", action: onCloseLocal)
+                Button("Delete Session", role: .destructive, action: onClose)
             } label: {
                 Image(systemName: "ellipsis")
                     .frame(width: 20, height: 20)
@@ -661,5 +671,8 @@ private struct WorkspaceRow: View {
         )
         .accessibilityAddTraits(isSelected ? .isSelected : [])
         .accessibilityRemoveTraits(isSelected ? [] : .isSelected)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("Project \(workspace.displayName)")
+        .accessibilityValue(workspace.path.path)
     }
 }

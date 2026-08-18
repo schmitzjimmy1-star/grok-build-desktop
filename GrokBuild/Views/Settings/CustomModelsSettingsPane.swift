@@ -547,7 +547,7 @@ struct CustomModelsSettingsPane: View {
     }
 
     private func costText(_ ticks: Int) -> String {
-        SessionUsageLedger.dollars(Double(ticks) / 1_000_000_000) + " provider-reported"
+        SessionUsageLedger.dollars(SessionUsageLedger.dollarsFromCostTicks(ticks)) + " provider-reported"
     }
 
     private func percentage(_ rate: Double) -> String {
@@ -995,7 +995,7 @@ struct CustomModelsSettingsPane: View {
                     }
                 }
 
-                Text("Credentials are stored in macOS Keychain with device-only accessibility. GrokBuild projects only the CLI-required copy into the owner-only ~/.grok/config.toml file. Local/open servers don't need a key.")
+                Text("Credentials stay in macOS Keychain with device-only accessibility. GrokBuild writes only the CLI's official auth-helper reference to ~/.grok/config.toml; the helper returns the credential directly to Grok at runtime. Local/open servers don't need a key.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
 
@@ -1413,14 +1413,14 @@ struct CustomModelsSettingsPane: View {
                             .accessibilityLabel(revealKey ? "Hide API key" : "Show API key")
                         }
                     }
-                    Text("Advanced manual models write the CLI-required api_key only to the owner-readable ~/.grok/config.toml file. Prefer a saved provider so its credential is also backed by Keychain. Local/open servers don't need a key.")
+                    Text("Authenticated remote models must use a saved provider so the credential stays in Keychain behind the CLI auth helper. GrokBuild refuses new inline remote credentials. Local/open servers don't need a key.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 } else if let provider = providers.first(where: { $0.id == draft.providerID }) {
                     HStack(spacing: 8) {
                         Image(systemName: "link")
                             .foregroundStyle(.secondary)
-                        Text("Endpoint and key come from \(provider.name) (\(provider.baseURL)).")
+                        Text("Endpoint and Keychain-backed CLI auth come from \(provider.name) (\(provider.baseURL)).")
                             .font(.caption)
                             .foregroundStyle(.secondary)
                             .lineLimit(2)
@@ -1660,42 +1660,32 @@ struct CustomModelsSettingsPane: View {
             applied: savedDefault,
             live: liveReceipt?.freshness == .live ? liveReceipt?.requestedModelID : nil
         )
-        // Repair a missing sidecar provider link only when the endpoint identifies exactly one
-        // provider. Then re-resolve the
-        // endpoint/credential from the provider so a model reflects a key added to its provider
-        // even if its own config.toml table predates that key.
-        let resolvedModels = snapshot.models.map { model in
-            var m = model
-            if m.providerID == nil {
-                let matches = providers.filter { $0.baseURL == model.baseURL }
-                if matches.count == 1 {
-                    m.providerID = matches[0].id
-                }
-            }
-            return m.resolved(using: providers)
-        }
+        // Only an explicit app-owned legacy provider id or an official managed
+        // model_provider reference proves ownership. Matching a URL is not proof:
+        // two users can legitimately configure the same endpoint independently.
+        let resolvedModels = snapshot.models.map { $0.resolved(using: providers) }
         models = resolvedModels
 
-        let inferredProviderLinks = zip(snapshot.models, resolvedModels).contains { original, resolved in
-            original.providerID != resolved.providerID
+        let everyLegacyModelHasExactOwnership = resolvedModels.allSatisfy { model in
+            model.providerID != nil
         }
-        let needsCredentialProjection = zip(snapshot.models, resolvedModels).contains { original, resolved in
-            original.apiKey != resolved.apiKey || original.baseURL != resolved.baseURL
-        }
-        if needsCredentialProjection,
+        let needsOfficialProviderProjection = !resolvedModels.isEmpty
+            && everyLegacyModelHasExactOwnership
+            && resolvedModels.contains { $0.providerID != nil }
+        if !snapshot.usesOfficialProviderProjection,
+           needsOfficialProviderProjection,
            snapshot.writeSafety.canWrite,
            !providerLoad.migrationIssues.contains(where: { $0.kind == .storage }) {
             do {
                 try CustomModelStore.save(
                     models: resolvedModels,
-                    defaultModelID: snapshot.defaultModelID
+                    defaultModelID: snapshot.defaultModelID,
+                    providers: providers
                 )
                 statusMessage = "Provider credentials migrated to Keychain; secured CLI configuration."
             } catch {
                 errorMessage = "Credential migration could not update config.toml: \(error.localizedDescription)"
             }
-        } else if inferredProviderLinks {
-            CustomModelMetadataStore.save(models: resolvedModels)
         }
     }
 
@@ -2155,7 +2145,8 @@ struct CustomModelsSettingsPane: View {
             let resolvedModels = candidateModels.map { $0.resolved(using: candidateProviders) }
             try CustomModelStore.save(
                 models: resolvedModels,
-                defaultModelID: candidateDefaultModelID
+                defaultModelID: candidateDefaultModelID,
+                providers: candidateProviders
             )
             recordConfigurationPersistenceSuccess(change: change)
             return true
@@ -2187,7 +2178,8 @@ struct CustomModelsSettingsPane: View {
         do {
             try CustomModelStore.save(
                 models: models.map { $0.resolved(using: providers) },
-                defaultModelID: selectedDefault.isEmpty ? nil : selectedDefault
+                defaultModelID: selectedDefault.isEmpty ? nil : selectedDefault,
+                providers: providers
             )
             let request = SettingsApplyRequest(
                 configurationGeneration: valueState.configurationGeneration + 1,

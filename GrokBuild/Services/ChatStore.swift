@@ -3,6 +3,57 @@ import Observation
 import SwiftUI
 import AppKit
 
+enum HardBudgetTerminalVerdict: Equatable {
+    case settled, ambiguous, rejected
+
+    static func evaluate(
+        snapshot: HardTokenReceiptSnapshot,
+        authority: AssistantTurnCheckpoint.HardBudgetReceipt,
+        completion: TurnCompletionReceipt?
+    ) -> Self {
+        let records = snapshot.receipts
+        guard !records.isEmpty else { return .rejected }
+        guard let baselineSequence = authority.preDispatchNextSequence,
+              let baselineRevision = authority.preDispatchLedgerRevision,
+              snapshot.ledgerRevision > baselineRevision else { return .rejected }
+        let (expectedNextSequence, sequenceOverflow) = baselineSequence.addingReportingOverflow(records.count)
+        guard !sequenceOverflow,
+              snapshot.nextSequence == expectedNextSequence,
+              Set(records.map(\.sequence)) == Set(baselineSequence..<expectedNextSequence) else {
+            return .rejected
+        }
+        guard Set(records.map(\.reservationID)).count == records.count,
+              records.count <= authority.allocationMaxModelCalls else { return .rejected }
+        guard records.allSatisfy({ record in
+            record.model == authority.routeModel
+                && record.endpointSHA256 == authority.endpointSHA256
+                && record.apiBackend == authority.apiBackend
+                && record.payloadBytes <= authority.maxPayloadBytes
+                && record.maxOutputTokens <= authority.maxOutputTokens
+                && record.reservedTokens > 0
+                && record.reservedTokens <= authority.requestBoundTokens
+        }) else { return .rejected }
+        if records.contains(where: { $0.lifecycle == .reserved || $0.lifecycle == .ambiguousFullReservationCharged }) { return .ambiguous }
+        guard records.allSatisfy({
+            $0.lifecycle == .settledUsageReported
+                && $0.actualTokens != nil
+                && ($0.actualTokens ?? Int.max) <= $0.reservedTokens
+                && $0.chargedTokens == $0.actualTokens
+        }) else { return .rejected }
+        var actualTokens = 0
+        for record in records {
+            let (sum, overflow) = actualTokens.addingReportingOverflow(record.actualTokens ?? 0)
+            guard !overflow else { return .rejected }
+            actualTokens = sum
+        }
+        guard actualTokens <= authority.allocationTokenCeiling else { return .rejected }
+        if let calls = completion?.modelCalls, calls != records.count { return .rejected }
+        if let total = completion?.totalTokens,
+           actualTokens != total { return .rejected }
+        return .settled
+    }
+}
+
 enum BuiltInToolConnection: String, CaseIterable, Sendable {
     case browser = "grokbuild-browser"
     case computerUse = "grokbuild-computer-use"
@@ -747,9 +798,28 @@ final class ChatStore {
     private var modelContextTokens: [String: Int] = ["grok-4.5": 500_000]
     private var builtInModelIDs = Set<String>()
     private var customModelsByID: [String: CustomModel] = [:]
+    private var configuredCustomModelIDs = Set<String>()
+    /// Safety admission is separate from ACP membership. The CLI may advertise a
+    /// flat legacy route, but GrokBuild will not dispatch it until it has a provider boundary.
+    private var quarantinedRuntimeModelIDs = Set<String>()
     /// Credential-free route configuration captured at process launch. Keeping this keyed to
     /// the process generation prevents a later Settings edit from rewriting an older receipt.
     private var routeContractsByProcessGeneration: [UInt64: ModelRouteContract] = [:]
+    private struct SessionMetadataSnapshot {
+        let selectedModelID: String
+        let revision: UInt64
+        let metadata: ACPControlSessionMetadata
+    }
+    private var sessionMetadataByProcessGeneration: [UInt64: SessionMetadataSnapshot] = [:]
+    private var sessionMetadataRevisionByProcessGeneration: [UInt64: UInt64] = [:]
+
+    private struct FrozenRouteObservation {
+        let routeContract: ModelRouteContract
+        let acpAgentVersion: String?
+        let catalogCurrentModelID: String?
+        let catalogContainsSelectedModel: Bool?
+        let sessionMetadata: ACPControlSessionMetadata?
+    }
     private var runtimeReloadQueue = RuntimeConfigurationReloadQueue()
     private var settingsApplyContinuations: [
         UUID: CheckedContinuation<SettingsApplyReceipt, Never>
@@ -1051,7 +1121,7 @@ final class ChatStore {
         let custom = available.filter { customIDs.contains($0) }
         let native = available.filter { !customIDs.contains($0) }
         var groups: [(String, [String])] = []
-        if !native.isEmpty { groups.append(("Grok", native)) }
+        if !native.isEmpty { groups.append(("Grok CLI", native)) }
         if !custom.isEmpty { groups.append(("Your models", custom)) }
         return groups
     }
@@ -1102,10 +1172,29 @@ final class ChatStore {
     /// True only when two parent tool receipts were simultaneously nonterminal.
     /// It classifies a comparable workload; it does not schedule or infer tools.
     private var currentTurnObservedParallelToolExecution = false
+    private let customModelSnapshotLoader: () -> CustomModelStore.Snapshot
+    private let acceptanceBudgetResolver: (String) -> AcceptanceBudgetResolution
+    private let acceptanceBudgetIsConfigured: () -> Bool
+    private var acceptanceBudgetPollingTask: Task<Void, Never>?
+    private var currentTurnHardBudgetReceipt: AssistantTurnCheckpoint.HardBudgetReceipt?
+    private var currentTurnHardBudgetTerminalProjection: AssistantTurnCheckpoint.HardBudgetTerminalProjection?
 
-    init(process: GrokProcess? = nil, continuityKeyOverride: Data? = nil) {
+    init(
+        process: GrokProcess? = nil,
+        continuityKeyOverride: Data? = nil,
+        customModelSnapshotLoader: @escaping () -> CustomModelStore.Snapshot = { CustomModelStore.load() },
+        acceptanceBudgetResolver: @escaping (String) -> AcceptanceBudgetResolution = {
+            AcceptanceBudgetGuard.resolve(prompt: $0)
+        },
+        acceptanceBudgetIsConfigured: @escaping () -> Bool = {
+            AcceptanceBudgetGuard.isConfigured()
+        }
+    ) {
         self.process = process ?? GrokProcess()
         self.continuityKeyOverride = continuityKeyOverride
+        self.customModelSnapshotLoader = customModelSnapshotLoader
+        self.acceptanceBudgetResolver = acceptanceBudgetResolver
+        self.acceptanceBudgetIsConfigured = acceptanceBudgetIsConfigured
         applyBuiltInModelCatalog(GrokModelCatalog.cachedOrFallback())
         loadSessionSelections()
         Task { [weak self] in await self?.consumeOutput() }
@@ -1860,6 +1949,12 @@ final class ChatStore {
         } else {
             clearTurnState()
         }
+        if acceptanceBudgetIsConfigured() {
+            // A configured campaign cannot warm-start an unarmed CLI. The exact
+            // final payload selects its allocation before the one permitted spawn.
+            connectionState = .idle
+            return
+        }
         await restartProcess(resumeSessionID: resumeSession?.id)
     }
 
@@ -1957,7 +2052,10 @@ final class ChatStore {
 
     /// Applies a typed config change without restarting unrelated live sessions.
     func applyConfigurationChange(_ change: ConfigurationChange) async {
-        mergeCustomModels()
+        // Once the live CLI has spoken, Settings may refresh decorations for IDs the
+        // CLI still advertises, but it may not put a hidden/rejected local row back
+        // on the party list.
+        mergeCustomModels(allowMembership: !process.hasAuthoritativeModelCatalog)
         guard change.impact == .modelRuntime,
               !change.affectedModelIDs.isEmpty,
               change.affectedModelIDs.contains(currentModel),
@@ -2214,10 +2312,16 @@ final class ChatStore {
     private func restartProcess(
         resumeSessionID: String? = nil,
         forceFreshStart: Bool = false,
-        freshStartPredecessorBackendID: String? = nil
+        freshStartPredecessorBackendID: String? = nil,
+        hardBudgetLaunchContract: HardBudgetLaunchContract? = nil
     ) async {
         guard !isPermanentlyShutdown else { return }
         guard let ws = currentWorkspace else { return }
+        guard !acceptanceBudgetIsConfigured() || hardBudgetLaunchContract != nil else {
+            connectionState = .failed("Acceptance requires an exact packet allocation before starting Grok.")
+            lastError = "Acceptance launch stopped because this path did not carry the immutable CLI budget contract."
+            return
+        }
         // A runtime lease belongs to one exact backend/process generation. A
         // reconnect must re-observe scheduler inventory before it can pin runtime.
         clearScheduledTaskRuntimeState(notify: false)
@@ -2269,10 +2373,16 @@ final class ChatStore {
         applyBuiltInModelCatalog(await GrokModelCatalog.shared.models())
         let settings = loadPermissionSettings()
         let savedSelection = effectiveResumeSessionID.flatMap { sessionSelections[$0] }
-        let modelForLaunch = modelForProcessLaunch(fallbackSelection: savedSelection)
+        guard let modelForLaunch = modelForProcessLaunch(fallbackSelection: savedSelection) else {
+            connectionWatchdogTask?.cancel()
+            connectionState = .failed("No model with a safe provider boundary is available.")
+            lastError = "Grok launch stopped before dispatch because every available custom model uses a legacy flat endpoint. Open Models to attach an explicit provider."
+            return
+        }
         let routeContractForLaunch = ModelRouteContract.resolve(
             selectedModelID: modelForLaunch,
-            customModel: customModelsByID[modelForLaunch]
+            customModel: customModelsByID[modelForLaunch],
+            isKnownNativeModel: !configuredCustomModelIDs.contains(modelForLaunch)
         )
         let expectedEffectiveModelForLaunch = customModelsByID[modelForLaunch]?.model
             .trimmingCharacters(in: .whitespacesAndNewlines)
@@ -2338,7 +2448,7 @@ final class ChatStore {
             experimentalMemory: settings.memoryEnabled,
             permissionMode: settings.permissionMode,
             reasoningEffort: reasoningEffortForLaunch,
-            model: modelForLaunch.isEmpty ? nil : modelForLaunch,
+            model: modelForLaunch,
             expectedEffectiveModelID: expectedEffectiveModelForLaunch?.isEmpty == false
                 ? expectedEffectiveModelForLaunch
                 : nil,
@@ -2356,7 +2466,8 @@ final class ChatStore {
             mcpGatewayEnabled: Self.mcpGatewayEnabled(
                 selectedPromptMCPNames: selectedPromptMCPNames,
                 enabledBuiltInToolNames: enabledBuiltInToolNames
-            )
+            ),
+            hardBudgetLaunchContract: hardBudgetLaunchContract
         )
         guard !isPermanentlyShutdown else {
             connectionWatchdogTask?.cancel()
@@ -2378,6 +2489,11 @@ final class ChatStore {
                let oldest = routeContractsByProcessGeneration.keys.min() {
                 routeContractsByProcessGeneration.removeValue(forKey: oldest)
             }
+            refreshSessionMetadata(
+                processGeneration: generation,
+                backendSessionID: process.sessionId,
+                selectedModelID: routeContractForLaunch.selectedModelID
+            )
         }
         mcpServerStatuses = process.mcpServerStatuses
         connectionWatchdogTask?.cancel()
@@ -2824,6 +2940,23 @@ final class ChatStore {
         }
     }
 
+    private static func materializedDispatchPrompt(
+        _ text: String,
+        requestedMCPNames: Set<String>,
+        attachments: [FileAttachment]
+    ) -> String {
+        var blocks: [String] = []
+        if let mcpBlock = PromptMCPAttachmentPromptBuilder.build(from: requestedMCPNames.sorted()) {
+            blocks.append(mcpBlock)
+        }
+        if let fileBlock = AttachmentPromptBuilder.build(from: attachments) {
+            blocks.append(fileBlock)
+        }
+        guard !blocks.isEmpty else { return text }
+        let attachmentBlock = blocks.joined(separator: "\n\n")
+        return text.isEmpty ? attachmentBlock : "\(attachmentBlock)\n\n\(text)"
+    }
+
     private func deliverPrompt(
         _ text: String,
         waitForCompletion: Bool,
@@ -2832,6 +2965,8 @@ final class ChatStore {
     ) async -> Bool {
         var trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         var claimedPendingIntent: PendingSubmitIntent?
+        var prelaunchedAcceptanceAuthorization: AcceptanceBudgetAuthorization?
+        var prelaunchedAcceptancePrompt: String?
         defer {
             if let claimedPendingIntent,
                pendingSubmitIntent?.id == claimedPendingIntent.id {
@@ -2853,6 +2988,10 @@ final class ChatStore {
             GrokBuildPerformance.mark(.submitIntent)
         }
         if continuityRequiresRecovery {
+            guard !acceptanceBudgetIsConfigured() else {
+                lastError = "Acceptance dispatch stopped because this saved task requires an unbudgeted recovery fork. Resolve continuity before running the campaign."
+                return false
+            }
             // Never a dead end: the saved backend can't be safely resumed, so fork to a
             // clean backend (preserving the local transcript) and continue. continueAsNew
             // sets .recoveryForked, which the send gate below allows. This never appends to
@@ -2860,6 +2999,10 @@ final class ChatStore {
             guard await continueAsNew() else { return false }
         }
         if isStreaming {
+            if acceptanceBudgetIsConfigured() {
+                lastError = "Acceptance dispatch stopped because another packet is still running."
+                return false
+            }
             if waitForCompletion {
                 lastError = "Wait for the current response to finish."
                 return false
@@ -2870,6 +3013,58 @@ final class ChatStore {
             }
             lastError = "Wait for the current response to finish."
             return false
+        }
+
+        if acceptanceBudgetIsConfigured() {
+            let intent: PendingSubmitIntent
+            if let preparedIntentID {
+                guard let pendingSubmitIntent, pendingSubmitIntent.id == preparedIntentID else {
+                    return false
+                }
+                intent = pendingSubmitIntent
+            } else if let pendingSubmitIntent {
+                guard pendingSubmitIntent.draft == trimmed else { return false }
+                intent = pendingSubmitIntent
+            } else {
+                intent = makePendingSubmitIntent(draft: trimmed)
+                pendingSubmitIntent = intent
+            }
+            claimedPendingIntent = intent
+            guard pendingSubmitRouteStillMatches(intent),
+                  intent.requestedMCPNames.isEmpty else {
+                lastError = "Acceptance dispatch stopped because the frozen route changed or external MCP tools were attached."
+                return false
+            }
+
+            let frozenPrompt = Self.materializedDispatchPrompt(
+                trimmed,
+                requestedMCPNames: intent.requestedMCPNames,
+                attachments: intent.fileAttachments
+            )
+            guard case .budget(let authorization) = acceptanceBudgetResolver(frozenPrompt),
+                  let launchContract = HardBudgetLaunchContract(
+                    manifestPath: authorization.hardBudgetCLIManifestPath,
+                    ledgerPath: authorization.hardBudgetLedgerPath,
+                    allocationID: authorization.budget.allocationID,
+                    expectedManifestSHA256: authorization.hardBudgetManifestSHA256
+                  ) else {
+                lastError = "Acceptance dispatch stopped because the launch budget does not authorize this exact final payload."
+                return false
+            }
+            let previousGeneration = process.activeProcessGeneration
+            await restartProcess(
+                resumeSessionID: process.sessionId ?? savedGrokSessionID,
+                hardBudgetLaunchContract: launchContract
+            )
+            guard connectionState == .ready,
+                  process.activeProcessGeneration != previousGeneration else {
+                if lastError == nil {
+                    lastError = "Acceptance dispatch stopped because a fresh hard-budget CLI process could not be prepared."
+                }
+                return false
+            }
+            prelaunchedAcceptanceAuthorization = authorization
+            prelaunchedAcceptancePrompt = frozenPrompt
         }
         if preparedIntentID != nil || (connectionState != .ready &&
             (leftoverWarmStartTask != nil || connectionState == .starting)) {
@@ -2966,6 +3161,10 @@ final class ChatStore {
         if process.launchReceipt?.mcpGatewayEnabled != desiredMCPGatewayState
             || Set(process.launchReceipt?.allowedMCPServerNames ?? []) != desiredAllowedMCPServerNames
             || frozenReasoningLaunchMismatch {
+            guard prelaunchedAcceptanceAuthorization == nil else {
+                lastError = "Acceptance dispatch stopped because the governed CLI launch did not retain the frozen reasoning and tool policy."
+                return false
+            }
             await restartProcess(resumeSessionID: process.sessionId ?? savedGrokSessionID)
             guard connectionState == .ready,
                   process.launchReceipt?.mcpGatewayEnabled == desiredMCPGatewayState,
@@ -3007,6 +3206,89 @@ final class ChatStore {
             }
         }
 
+        let freshQuarantine = CustomModelStore.quarantinedRuntimeModelIDs(from: customModelSnapshotLoader())
+        quarantinedRuntimeModelIDs = freshQuarantine
+        let dispatchModelIDs = [
+            claimedPendingIntent?.modelID,
+            process.hasAuthoritativeModelCatalog ? process.currentModelId : nil,
+            currentModel,
+            Self.modelIDRequestedBySlashCommand(trimmed),
+        ].compactMap { $0 }
+        guard dispatchModelIDs.allSatisfy({ !freshQuarantine.contains($0) }) else {
+            lastError = "Grok dispatch stopped because the selected model uses a legacy flat endpoint. Open Models to attach an explicit provider."
+            return false
+        }
+
+        let turnRequestedMCPNames = desiredAllowedMCPServerNames.sorted()
+        let dispatchAttachments = claimedPendingIntent?.fileAttachments ?? fileAttachments
+        let turnAttachmentNames = dispatchAttachments
+            .filter { !$0.isHidden }
+            .map(\.relativePath)
+        trimmed = Self.materializedDispatchPrompt(
+            trimmed,
+            requestedMCPNames: Set(turnRequestedMCPNames),
+            attachments: dispatchAttachments
+        )
+        if let prelaunchedAcceptancePrompt,
+           trimmed != prelaunchedAcceptancePrompt {
+            lastError = "Acceptance dispatch stopped because the frozen payload changed after the governed process launched."
+            return false
+        }
+
+        var acceptanceBudgetContext: (
+            budget: AcceptanceTurnBudget,
+            baseline: ACPControlSessionUsage,
+            processGeneration: UInt64,
+            backendSessionID: String,
+            hardBudgetReceipt: AssistantTurnCheckpoint.HardBudgetReceipt
+        )?
+        let acceptanceBudgetResolution = prelaunchedAcceptanceAuthorization.map {
+            AcceptanceBudgetResolution.budget($0)
+        } ?? acceptanceBudgetResolver(trimmed)
+        if acceptanceBudgetResolution == .blocked {
+            lastError = "Acceptance dispatch stopped because the launch budget is missing, invalid, or does not authorize this exact final payload."
+            return false
+        }
+        if case .budget(let authorization) = acceptanceBudgetResolution {
+            let budget = authorization.budget
+            guard prelaunchedAcceptanceAuthorization != nil else {
+                lastError = "Acceptance dispatch stopped because the packet was not launched under its immutable CLI allocation."
+                return false
+            }
+            guard process.acpControlCapabilityState(for: .sessionUsage) != .unsupported else {
+                lastError = "Acceptance dispatch stopped because this Grok runtime cannot report live official session usage."
+                return false
+            }
+            do {
+                let hardBudget = try await process.fetchHardTokenBudgetCapability()
+                guard hardBudget.authorizes(authorization),
+                      let hardBudgetReceipt = AssistantTurnCheckpoint.HardBudgetReceipt(hardBudget) else {
+                    lastError = "Acceptance dispatch stopped because the live CLI hard-budget allocation does not authorize this exact packet."
+                    return false
+                }
+                let baseline = try await process.fetchACPSessionUsage()
+                guard baseline.totalTokens != nil, baseline.modelCalls != nil else {
+                    lastError = "Acceptance dispatch stopped because the baseline usage receipt is incomplete."
+                    return false
+                }
+                guard let processGeneration = process.activeProcessGeneration,
+                      let backendSessionID = process.sessionId else {
+                    lastError = "Acceptance dispatch stopped because the live process/session identity is unavailable."
+                    return false
+                }
+                acceptanceBudgetContext = (
+                    budget,
+                    baseline,
+                    processGeneration,
+                    backendSessionID,
+                    hardBudgetReceipt
+                )
+            } catch {
+                lastError = "Acceptance dispatch stopped because the live CLI hard-budget receipt is unavailable."
+                return false
+            }
+        }
+
         if commandHistory.last != trimmed {
             commandHistory.append(trimmed)
         }
@@ -3016,23 +3298,11 @@ final class ChatStore {
         isGrokking = true
         turnStartedAt = Date()
         startStallWatchdog()
+        currentTurnRequestedMCPNames = turnRequestedMCPNames
+        currentTurnAttachmentNames = turnAttachmentNames
+        currentTurnHardBudgetReceipt = acceptanceBudgetContext?.hardBudgetReceipt
+        currentTurnHardBudgetTerminalProjection = nil
 
-        var attachmentBlocks: [String] = []
-        currentTurnRequestedMCPNames = desiredAllowedMCPServerNames.sorted()
-        if let mcpBlock = PromptMCPAttachmentPromptBuilder.build(from: currentTurnRequestedMCPNames) {
-            attachmentBlocks.append(mcpBlock)
-        }
-        let dispatchAttachments = claimedPendingIntent?.fileAttachments ?? fileAttachments
-        currentTurnAttachmentNames = dispatchAttachments
-            .filter { !$0.isHidden }
-            .map(\.relativePath)
-        if let fileBlock = AttachmentPromptBuilder.build(from: dispatchAttachments) {
-            attachmentBlocks.append(fileBlock)
-        }
-        if !attachmentBlocks.isEmpty {
-            let attachmentBlock = attachmentBlocks.joined(separator: "\n\n")
-            trimmed = trimmed.isEmpty ? attachmentBlock : "\(attachmentBlock)\n\n\(trimmed)"
-        }
         if let goalCommand = GoalCommand.parse(from: trimmed) {
             SessionGoalStateMutation.apply(goalCommand, to: &goalState)
         }
@@ -3061,6 +3331,15 @@ final class ChatStore {
         pendingExitPlan = nil
         pendingQuestions.removeAll()
         connectionState = .busy
+
+        if let acceptanceBudgetContext {
+            startAcceptanceBudgetPolling(
+                budget: acceptanceBudgetContext.budget,
+                baseline: acceptanceBudgetContext.baseline,
+                processGeneration: acceptanceBudgetContext.processGeneration,
+                backendSessionID: acceptanceBudgetContext.backendSessionID
+            )
+        }
 
         let payload = trimmed
         currentTurnDispatchUptimeNanoseconds = DispatchTime.now().uptimeNanoseconds
@@ -3211,12 +3490,78 @@ final class ChatStore {
         isThinkingExpanded.toggle()
     }
 
+    private func cancelAcceptanceBudgetPolling() {
+        acceptanceBudgetPollingTask?.cancel()
+        acceptanceBudgetPollingTask = nil
+    }
+
+    private func startAcceptanceBudgetPolling(
+        budget: AcceptanceTurnBudget,
+        baseline: ACPControlSessionUsage,
+        processGeneration: UInt64,
+        backendSessionID: String
+    ) {
+        cancelAcceptanceBudgetPolling()
+        guard let baselineTokens = baseline.totalTokens,
+              let baselineCalls = baseline.modelCalls else { return }
+        acceptanceBudgetPollingTask = Task { [weak self] in
+            while !Task.isCancelled {
+                try? await Task.sleep(for: .milliseconds(500))
+                guard !Task.isCancelled, let self else { return }
+                guard self.isStreaming,
+                      self.process.activeProcessGeneration == processGeneration,
+                      self.process.sessionId == backendSessionID else { return }
+                do {
+                    let usage = try await self.process.fetchACPSessionUsage()
+                    guard let currentTokens = usage.totalTokens,
+                          let currentCalls = usage.modelCalls,
+                          currentTokens >= baselineTokens,
+                          currentCalls >= baselineCalls else {
+                        await self.stopForAcceptanceBudget(
+                            "official live usage became incomplete or moved backwards"
+                        )
+                        return
+                    }
+                    let turnTokens = currentTokens - baselineTokens
+                    let turnCalls = currentCalls - baselineCalls
+                    if turnTokens >= budget.tokenAllocation {
+                        await self.stopForAcceptanceBudget(
+                            "the packet reached its \(budget.tokenAllocation)-token allocation"
+                        )
+                        return
+                    }
+                    if turnCalls > budget.maxModelCalls {
+                        await self.stopForAcceptanceBudget(
+                            "the packet exceeded its \(budget.maxModelCalls)-call allocation"
+                        )
+                        return
+                    }
+                } catch {
+                    await self.stopForAcceptanceBudget("official live usage became unavailable")
+                    return
+                }
+            }
+        }
+    }
+
+    private func stopForAcceptanceBudget(_ reason: String) async {
+        // This method runs inside the polling task. Relinquish the stored handle
+        // before calling the ordinary Stop path so `stop()` does not cancel the
+        // task that must remain alive through GrokProcess's ACP cancel/drain window.
+        acceptanceBudgetPollingTask = nil
+        await stop()
+        lastError = "Acceptance safety stop: \(reason). No automatic retry is allowed."
+    }
+
     func clearTurnState() {
+        cancelAcceptanceBudgetPolling()
         firstChunkInterval?.end()
         firstChunkInterval = nil
         currentTurnDispatchUptimeNanoseconds = nil
         currentTurnFirstChunkLatencyMilliseconds = nil
         currentTurnObservedParallelToolExecution = false
+        currentTurnHardBudgetReceipt = nil
+        currentTurnHardBudgetTerminalProjection = nil
         cancelStreamingTextFlush()
         invalidateTurnSettlement()
         isGrokking = false
@@ -3248,6 +3593,7 @@ final class ChatStore {
     }
 
     func stop() async {
+        cancelAcceptanceBudgetPolling()
         pendingSubmitIntent = nil
         let wasActiveTurn = isStreaming || isGrokking
         let stoppedAssistantID = streamingMessageID
@@ -3287,7 +3633,25 @@ final class ChatStore {
         // markActiveSubagentsStoppedByUser then orphans/cancels only workers
         // that never finished.
         let stopStartedAt = ContinuousClock.now
-        await process.stop()
+        if wasActiveTurn, let authority = currentTurnHardBudgetReceipt {
+            if let sequence = authority.preDispatchNextSequence,
+               let revision = authority.preDispatchLedgerRevision {
+                let query = HardTokenReceiptQuery(campaignID: authority.campaignID, manifestSHA256: authority.manifestSHA256, allocationID: authority.allocationID, packetID: authority.packetID, baselineSequence: sequence, baselineRevision: revision)
+                switch await process.stopAndFetchHardTokenReceipts(query) {
+                case .success(let snapshot):
+                    let requests: [AssistantTurnCheckpoint.HardBudgetTerminalProjection.Request] = snapshot.receipts.map { .init(reservationID: $0.reservationID, sequence: $0.sequence, providerRequestID: $0.providerRequestID, model: $0.model, endpointSHA256: $0.endpointSHA256, apiBackend: $0.apiBackend, payloadBytes: $0.payloadBytes, maxOutputTokens: $0.maxOutputTokens, reservedTokens: $0.reservedTokens, actualTokens: $0.actualTokens, chargedTokens: $0.chargedTokens, lifecycle: $0.lifecycle.rawValue) }
+                    let verdict = HardBudgetTerminalVerdict.evaluate(snapshot: snapshot, authority: authority, completion: nil)
+                    currentTurnHardBudgetTerminalProjection = .init(status: verdict == .settled ? .settled : (verdict == .ambiguous ? .ambiguous : .rejected), ledgerRevision: snapshot.ledgerRevision, nextSequence: snapshot.nextSequence, reservationCount: requests.count, reason: verdict == .settled ? nil : "terminal receipt did not settle cleanly before Stop", requests: requests)
+                case .failure:
+                    currentTurnHardBudgetTerminalProjection = .init(status: .unavailable, ledgerRevision: nil, nextSequence: nil, reservationCount: nil, reason: "terminal hard-budget receipt unavailable after Stop drain", requests: nil)
+                }
+            } else {
+                currentTurnHardBudgetTerminalProjection = .init(status: .unavailable, ledgerRevision: nil, nextSequence: nil, reservationCount: nil, reason: "pre-dispatch hard-budget cursor unavailable at Stop", requests: nil)
+                await process.stop()
+            }
+        } else {
+            await process.stop()
+        }
         let stopDuration = stopStartedAt.duration(to: .now).components
         backgroundTaskTracker.recordStopToSettle(
             milliseconds: Int(stopDuration.seconds * 1_000)
@@ -3324,6 +3688,7 @@ final class ChatStore {
     }
 
     func shutdown() async {
+        cancelAcceptanceBudgetPolling()
         pendingSubmitIntent = nil
         firstChunkInterval?.end()
         firstChunkInterval = nil
@@ -3677,9 +4042,54 @@ final class ChatStore {
         appendSystemNote("Reasoning effort: \(reasoningEffortDisplayName(effort)).")
     }
 
+    private func invalidateSessionMetadata(processGeneration: UInt64) {
+        sessionMetadataRevisionByProcessGeneration[processGeneration, default: 0] &+= 1
+        sessionMetadataByProcessGeneration.removeValue(forKey: processGeneration)
+    }
+
+    private func refreshSessionMetadata(
+        processGeneration: UInt64,
+        backendSessionID: String?,
+        selectedModelID: String
+    ) {
+        invalidateSessionMetadata(processGeneration: processGeneration)
+        guard let backendSessionID,
+              process.acpControlCapabilityState(for: .sessionInfo) != .unsupported else { return }
+        let revision = sessionMetadataRevisionByProcessGeneration[processGeneration, default: 0]
+        Task { [weak self] in
+            guard let self,
+                  let metadata = try? await self.process.fetchACPSessionMetadata(),
+                  self.sessionMetadataRevisionByProcessGeneration[processGeneration] == revision,
+                  self.process.activeProcessGeneration == processGeneration,
+                  self.process.sessionId == backendSessionID,
+                  metadata.sessionID == backendSessionID,
+                  self.routeContractsByProcessGeneration[processGeneration]?.selectedModelID == selectedModelID else {
+                return
+            }
+            self.sessionMetadataByProcessGeneration[processGeneration] = SessionMetadataSnapshot(
+                selectedModelID: selectedModelID,
+                revision: revision,
+                metadata: metadata
+            )
+            if self.sessionMetadataByProcessGeneration.count > 8,
+               let oldest = self.sessionMetadataByProcessGeneration.keys.min() {
+                self.sessionMetadataByProcessGeneration.removeValue(forKey: oldest)
+                self.sessionMetadataRevisionByProcessGeneration.removeValue(forKey: oldest)
+            }
+        }
+    }
+
     func setModel(_ model: String) {
         guard !isPreparingSubmit else { return }
         guard availableModels.contains(model) else { return }
+        let freshQuarantine = CustomModelStore.quarantinedRuntimeModelIDs(from: customModelSnapshotLoader())
+        quarantinedRuntimeModelIDs = freshQuarantine
+        guard !freshQuarantine.contains(model) else {
+            modelSwitchError = "This model uses a legacy flat endpoint. Open Models to attach an explicit provider before selecting it."
+            modelSwitchNeedsNewSession = false
+            pendingModelForNewSession = nil
+            return
+        }
         if model == currentModel {
             guard !tabHasExplicitModel else { return }
             tabHasExplicitModel = true
@@ -3752,13 +4162,20 @@ final class ChatStore {
                     )
                     self.routeContractsByProcessGeneration[identity.processGeneration] = ModelRouteContract.resolve(
                         selectedModelID: model,
-                        customModel: self.customModelsByID[model]
+                        customModel: self.customModelsByID[model],
+                        isKnownNativeModel: !self.configuredCustomModelIDs.contains(model)
+                    )
+                    self.refreshSessionMetadata(
+                        processGeneration: identity.processGeneration,
+                        backendSessionID: identity.backendSessionID,
+                        selectedModelID: model
                     )
                 }
             case .requested:
                 // ACP accepted the request without exposing the effective model.
                 // Preserve intent, but do not paint it as live.
                 self.currentModel = model
+                self.invalidateSessionMetadata(processGeneration: identity.processGeneration)
             case .rejected:
                 self.currentModel = previous
                 self.tabModelIntent = previousIntent
@@ -4002,7 +4419,8 @@ final class ChatStore {
     var currentRouteContract: ModelRouteContract {
         ModelRouteContract.resolve(
             selectedModelID: currentModel,
-            customModel: customModelsByID[currentModel]
+            customModel: customModelsByID[currentModel],
+            isKnownNativeModel: !configuredCustomModelIDs.contains(currentModel)
         )
     }
 
@@ -4349,6 +4767,7 @@ final class ChatStore {
                 guard consumedTurnCompletionKeys.insert(key).inserted else { break }
             }
             activeTurnCompletionConsumed = true
+            cancelAcceptanceBudgetPolling()
             // This event shares the same AsyncStream queue as text/tool updates. By
             // acknowledging only here, `process.send` cannot outrun already-yielded
             // synthesis chunks and detach them from their assistant message. Keep
@@ -4363,8 +4782,12 @@ final class ChatStore {
             backgroundTaskTracker.markUnsettledSubagents(only: currentTurnWorkerActivityIDs)
             backgroundActivities = backgroundTaskTracker.activities
             settleToolCallsAtTurnBarrier()
+            let receiptSettled = await captureHardBudgetTerminalProjection(
+                requireSettled: completion.isSuccessful,
+                completion: completion
+            )
             attachCurrentTurnTrace(to: streamingMessageID)
-            let turnSucceeded = completion.isSuccessful
+            let turnSucceeded = completion.isSuccessful && receiptSettled
             latestTurnOutcome = if turnSucceeded {
                 .completed
             } else if completion.isCancelled {
@@ -4375,6 +4798,15 @@ final class ChatStore {
             clearPendingInteractions(for: completion.identity.backendSessionID)
             if latestTurnOutcome == .failed {
                 lastError = completion.redactedError ?? "Grok reported that this turn ended with an error."
+            }
+            let completionAssistantID = streamingMessageID ?? closedTurnAssistantID
+            // turn_completed is the lifecycle authority. Finish the transport-owned UI state
+            // before collecting optional evidence so an extension probe can never hold Stop open.
+            if isStreaming,
+               deferredPromptCompletion == nil,
+               streamingTextBuffer.isEmpty,
+               let stuckAssistantID = completionAssistantID {
+                finishPromptNow(assistantID: stuckAssistantID, ok: turnSucceeded)
             }
             // Slice 6: the authoritative completion receipt is the only usage source.
             sessionUsage.recordTurn(
@@ -4394,19 +4826,34 @@ final class ChatStore {
                 backendSessionID: completion.identity.backendSessionID,
                 backendPromptIndex: completion.backendPromptIndex
             )
-            attachTaskCheckpoint(to: streamingMessageID, snapshot: settledSnapshot)
-            // turn_completed is the lifecycle authority. Observed live 2026-08-03
-            // (gpt-5.6-terra): the usage receipt settled while the prompt's JSON-RPC
-            // response never resolved, leaving a stuck Stop button on a finished turn.
-            // With the display buffer drained and no deferred completion pending, the
-            // turn must finish now; a late response is a no-op via finishPromptNow's
-            // idempotence guard.
-            if isStreaming,
-               deferredPromptCompletion == nil,
-               streamingTextBuffer.isEmpty,
-               let stuckAssistantID = streamingMessageID ?? closedTurnAssistantID {
-                finishPromptNow(assistantID: stuckAssistantID, ok: turnSucceeded)
-            }
+            let frozenRouteContract = settledSnapshot.binding.processGeneration.flatMap {
+                routeContractsByProcessGeneration[$0]
+            } ?? currentRouteContract
+            let frozenObservation = FrozenRouteObservation(
+                routeContract: frozenRouteContract,
+                acpAgentVersion: process.acpAgentVersion?.rawValue,
+                catalogCurrentModelID: process.hasAuthoritativeModelCatalog
+                    ? process.currentModelId
+                    : nil,
+                catalogContainsSelectedModel: process.hasAuthoritativeModelCatalog
+                    ? process.availableModelsInfo.contains { $0.id == frozenRouteContract.selectedModelID }
+                    : nil,
+                sessionMetadata: settledSnapshot.binding.processGeneration.flatMap { generation in
+                    guard let snapshot = sessionMetadataByProcessGeneration[generation],
+                          snapshot.revision == sessionMetadataRevisionByProcessGeneration[generation],
+                          snapshot.selectedModelID == frozenRouteContract.selectedModelID,
+                          snapshot.metadata.sessionID == completion.identity.backendSessionID else {
+                        return nil
+                    }
+                    return snapshot.metadata
+                }
+            )
+            attachTaskCheckpoint(
+                to: completionAssistantID,
+                snapshot: settledSnapshot,
+                completion: completion,
+                frozenObservation: frozenObservation
+            )
             let observationRoute = settledSnapshot.binding.processGeneration.flatMap {
                 routeContractsByProcessGeneration[$0]
             } ?? currentRouteContract
@@ -4486,6 +4933,9 @@ final class ChatStore {
             isYolo = (mode == .yolo)
             availableModes = process.availableModes
             saveCurrentSessionSelection()
+        case .modelCatalogChanged(let catalog):
+            guard process.activeProcessGeneration == catalog.processGeneration else { break }
+            syncModelsFromProcess()
         case .contextUsage(let totalTokens):
             usedContextTokens = totalTokens
 
@@ -4818,9 +5268,11 @@ final class ChatStore {
                 inputTokens: completion?.inputTokens,
                 outputTokens: completion?.outputTokens,
                 cachedReadTokens: completion?.cachedReadTokens,
+                cacheCreationTokens: completion?.cacheCreationTokens,
                 reasoningTokens: completion?.reasoningTokens,
                 apiDurationMilliseconds: completion?.apiDurationMilliseconds,
                 costUsdTicks: completion?.costUsdTicks,
+                costIsPartial: completion?.costIsPartial,
                 modelUsage: completion?.modelUsage ?? []
             ),
             outcome: outcome,
@@ -4942,21 +5394,96 @@ final class ChatStore {
         }
     }
 
+    private func captureHardBudgetTerminalProjection(requireSettled: Bool, completion: TurnCompletionReceipt? = nil) async -> Bool {
+        guard let authority = currentTurnHardBudgetReceipt else { return true }
+        guard let sequence = authority.preDispatchNextSequence,
+              let revision = authority.preDispatchLedgerRevision else {
+            currentTurnHardBudgetTerminalProjection = .init(status: .unavailable, ledgerRevision: nil, nextSequence: nil, reservationCount: nil, reason: "pre-dispatch hard-budget cursor unavailable", requests: nil)
+            if requireSettled {
+                lastError = "Acceptance completion needs review because the pre-dispatch hard-budget cursor is unavailable."
+            }
+            return !requireSettled
+        }
+        let query = HardTokenReceiptQuery(
+            campaignID: authority.campaignID,
+            manifestSHA256: authority.manifestSHA256,
+            allocationID: authority.allocationID,
+            packetID: authority.packetID,
+            baselineSequence: sequence,
+            baselineRevision: revision
+        )
+        do {
+            let snapshot = try await process.fetchHardTokenReceipts(query)
+            let requests: [AssistantTurnCheckpoint.HardBudgetTerminalProjection.Request] = snapshot.receipts.map { .init(reservationID: $0.reservationID, sequence: $0.sequence, providerRequestID: $0.providerRequestID, model: $0.model, endpointSHA256: $0.endpointSHA256, apiBackend: $0.apiBackend, payloadBytes: $0.payloadBytes, maxOutputTokens: $0.maxOutputTokens, reservedTokens: $0.reservedTokens, actualTokens: $0.actualTokens, chargedTokens: $0.chargedTokens, lifecycle: $0.lifecycle.rawValue) }
+            let verdict = HardBudgetTerminalVerdict.evaluate(snapshot: snapshot, authority: authority, completion: completion)
+            let status: AssistantTurnCheckpoint.HardBudgetTerminalProjection.Status =
+                verdict == .settled ? .settled : (verdict == .ambiguous ? .ambiguous : .rejected)
+            currentTurnHardBudgetTerminalProjection = .init(
+                status: status,
+                ledgerRevision: snapshot.ledgerRevision,
+                nextSequence: snapshot.nextSequence,
+                reservationCount: snapshot.receipts.count,
+                reason: verdict == .settled ? nil : "terminal hard-budget receipts did not satisfy the governed completion contract",
+                requests: requests
+            )
+            if requireSettled && status != .settled {
+                lastError = "Acceptance completion needs review because hard-budget reservations did not settle cleanly."
+                return false
+            }
+            return true
+        } catch {
+            currentTurnHardBudgetTerminalProjection = .init(status: .unavailable, ledgerRevision: nil, nextSequence: nil, reservationCount: nil, reason: "terminal hard-budget receipt unavailable", requests: nil)
+            if requireSettled {
+                lastError = "Acceptance completion needs review because the terminal hard-budget receipt is unavailable."
+                return false
+            }
+            return true
+        }
+    }
+
     private func attachTaskCheckpoint(
         to messageID: UUID?,
-        snapshot: RunEvidenceSnapshot
+        snapshot: RunEvidenceSnapshot,
+        completion: TurnCompletionReceipt? = nil,
+        frozenObservation: FrozenRouteObservation? = nil
     ) {
         guard let messageID,
               let index = messages.firstIndex(where: { $0.id == messageID && $0.role == .assistant }) else {
             return
         }
-        let routeContract = snapshot.binding.processGeneration.flatMap { routeContractsByProcessGeneration[$0] }
+        let routeContract = frozenObservation?.routeContract
+            ?? snapshot.binding.processGeneration.flatMap { routeContractsByProcessGeneration[$0] }
             ?? currentRouteContract
+        let observedSessionMetadata = frozenObservation?.sessionMetadata
+        let usageModelIDs = Array(Set(completion?.modelUsage.map(\.modelID) ?? [])).sorted()
+        let observedRoute = AssistantTurnCheckpoint.ObservedRouteReceipt(
+            processGeneration: snapshot.binding.processGeneration,
+            backendSessionID: snapshot.binding.backendSessionID,
+            requestID: snapshot.binding.requestID,
+            acpAgentVersion: frozenObservation?.acpAgentVersion
+                ?? process.acpAgentVersion?.rawValue,
+            catalogCurrentModelID: frozenObservation.map(\.catalogCurrentModelID)
+                ?? (process.hasAuthoritativeModelCatalog ? process.currentModelId : nil),
+            catalogContainsSelectedModel: frozenObservation.map(\.catalogContainsSelectedModel)
+                ?? (process.hasAuthoritativeModelCatalog
+                    ? process.availableModelsInfo.contains { $0.id == routeContract.selectedModelID }
+                    : nil),
+            sessionModelID: observedSessionMetadata?.modelID,
+            resolvedModelID: observedSessionMetadata?.resolvedModelID,
+            modelFingerprint: observedSessionMetadata?.modelFingerprint,
+            apiBackend: observedSessionMetadata?.apiBackend,
+            turnUsageEffectiveModelID: usageModelIDs.count == 1 ? usageModelIDs.first : nil,
+            modelUsageIDs: usageModelIDs
+        )
         let checkpoint = AssistantTurnCheckpoint(
             snapshot: snapshot,
             requestedToolFamilies: currentTurnRequestedMCPNames,
             attachmentNames: currentTurnAttachmentNames,
-            routeReceipt: routeContract.detailLines.first
+            routeReceipt: routeContract.detailLines.first,
+            routeContract: routeContract,
+            observedRouteReceipt: observedRoute,
+            hardBudgetReceipt: currentTurnHardBudgetReceipt,
+            hardBudgetTerminalProjection: currentTurnHardBudgetTerminalProjection
         )
         if var trace = messages[index].assistantTrace {
             trace.checkpoint = checkpoint
@@ -5264,7 +5791,7 @@ final class ChatStore {
     }
 
     private func syncModelsFromProcess() {
-        if !process.availableModelsInfo.isEmpty {
+        if process.hasAuthoritativeModelCatalog {
             builtInModelIDs = Set(process.availableModelsInfo.map(\.id))
             availableModels = process.availableModelsInfo.map { $0.id }
             modelDisplayNames = Dictionary(uniqueKeysWithValues: process.availableModelsInfo.map { ($0.id, $0.name) })
@@ -5273,11 +5800,15 @@ final class ChatStore {
                 return (model.id, tokens)
             })
         }
-        mergeCustomModels()
+        mergeCustomModels(allowMembership: !process.hasAuthoritativeModelCatalog)
     }
 
     private func applyBuiltInModelCatalog(_ models: [GrokModelInfo]) {
-        guard !models.isEmpty, process.availableModelsInfo.isEmpty else { return }
+        // The bootstrap cache is only a pre-ACP placeholder. An authoritative empty
+        // catalog is still authoritative and must not be replaced by cached defaults.
+        guard !process.hasAuthoritativeModelCatalog,
+              !models.isEmpty,
+              process.availableModelsInfo.isEmpty else { return }
         let previousBuiltInIDs = builtInModelIDs
         builtInModelIDs = Set(models.map(\.id))
 
@@ -5294,7 +5825,7 @@ final class ChatStore {
 
         let customIDs = availableModels.filter { customModelsByID[$0] != nil }
         availableModels = models.map(\.id) + customIDs.filter { !builtInModelIDs.contains($0) }
-        mergeCustomModels()
+        mergeCustomModels(allowMembership: true)
 
         guard !tabHasExplicitModel else { return }
         if case .legacyUnknown(let legacyModel) = tabModelIntent,
@@ -5315,7 +5846,7 @@ final class ChatStore {
     /// are selectable alongside the agent's built-in models. Without this they are only reachable
     /// by typing `/model <id>`, since the composer list is otherwise driven by the agent's
     /// advertised `modelState.availableModels`. Idempotent — safe to call on every resync.
-    private func mergeCustomModels() {
+    private func mergeCustomModels(allowMembership: Bool = true) {
         let previousCustomModelIDs = Set(customModelsByID.keys)
         let processModelIDs = Set(process.availableModelsInfo.map(\.id))
         availableModels.removeAll { previousCustomModelIDs.contains($0) && !processModelIDs.contains($0) }
@@ -5323,7 +5854,15 @@ final class ChatStore {
             modelDisplayNames.removeValue(forKey: removedID)
             modelContextTokens.removeValue(forKey: removedID)
         }
-        let customModels = CustomModelStore.load().models
+        let customSnapshot = customModelSnapshotLoader()
+        configuredCustomModelIDs = Set(customSnapshot.models.map(\.id))
+        // ACP owns the visible party list. Flat legacy models stay visible when
+        // advertised, but a separate last-moment dispatch gate blocks them.
+        quarantinedRuntimeModelIDs = CustomModelStore.quarantinedRuntimeModelIDs(from: customSnapshot)
+        if !process.hasAuthoritativeModelCatalog {
+            availableModels.removeAll { quarantinedRuntimeModelIDs.contains($0) }
+        }
+        let customModels = CustomModelStore.runtimeEligibleModels(from: customSnapshot)
         customModelsByID = [:]
         for model in customModels {
             customModelsByID[model.id] = model
@@ -5333,9 +5872,10 @@ final class ChatStore {
         })
 
         for model in customModels {
-            if !availableModels.contains(model.id) {
+            if allowMembership, !availableModels.contains(model.id) {
                 availableModels.append(model.id)
             }
+            guard allowMembership || availableModels.contains(model.id) else { continue }
             // Prefer the explicit display name, then the provider model name (what the connected
             // agent reports), then the table id — so the label is consistent before/after connect.
             let name = model.name.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -5390,33 +5930,86 @@ final class ChatStore {
         tabHasExplicitModel = false
     }
 
-    private func modelForProcessLaunch(fallbackSelection: SessionSelection?) -> String {
-        if tabHasExplicitModel,
-           !currentModel.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            return currentModel
+    private func modelForProcessLaunch(fallbackSelection: SessionSelection?) -> String? {
+        // Re-read immediately before launch. Settings, the CLI, or a text editor may
+        // have changed config after the picker was rendered.
+        let freshQuarantine = CustomModelStore.quarantinedRuntimeModelIDs(from: customModelSnapshotLoader())
+        quarantinedRuntimeModelIDs = freshQuarantine
+        let explicitModel = tabHasExplicitModel
+            && !currentModel.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            ? currentModel
+            : nil
+        let legacyModel: String?
+        if case .legacyUnknown(let model) = tabModelIntent {
+            legacyModel = model
+        } else {
+            legacyModel = nil
         }
-        if case .legacyUnknown(let model) = tabModelIntent,
-           availableModels.contains(model) {
-            currentModel = model
-            return model
+        // An explicit/restored route is authority, not a suggestion. If that exact
+        // route is quarantined, fail launch instead of repainting the picker and
+        // starting a different model behind the user's back. Only inherited state
+        // is eligible for fallback selection.
+        let projectDefaultModel = workspaceDefaultModel()
+        let restoredSelectionModel = fallbackSelection?.model
+        let requiredModel = Self.requiredLaunchModel(
+            explicitModel: explicitModel,
+            legacyModel: legacyModel,
+            restoredSelectionModel: restoredSelectionModel,
+            projectDefaultModel: projectDefaultModel
+        )
+        let selected = Self.firstSafeLaunchModel(
+            requiredModel: requiredModel,
+            fallbackCandidates: [
+                currentModel,
+            ],
+            availableModels: availableModels,
+            quarantinedModelIDs: freshQuarantine
+        )
+        if let selected {
+            currentModel = selected
         }
-        if let model = workspaceDefaultModel(), availableModels.contains(model) {
-            currentModel = model
-            return model
+        return selected
+    }
+
+    /// A tab/session choice is more specific than the workspace default it was
+    /// created under. Preserve that identity on restore; use the project default
+    /// only when the tab carries no model intent of its own.
+    nonisolated static func requiredLaunchModel(
+        explicitModel: String?,
+        legacyModel: String?,
+        restoredSelectionModel: String?,
+        projectDefaultModel: String?
+    ) -> String? {
+        explicitModel ?? legacyModel ?? restoredSelectionModel ?? projectDefaultModel
+    }
+
+    nonisolated static func firstSafeLaunchModel(
+        requiredModel: String? = nil,
+        fallbackCandidates: [String?],
+        availableModels: [String],
+        quarantinedModelIDs: Set<String>
+    ) -> String? {
+        func safe(_ model: String) -> Bool {
+            !model.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                && !quarantinedModelIDs.contains(model)
         }
-        if let model = fallbackSelection?.model,
-           availableModels.contains(model) {
-            currentModel = model
-            return model
+        if let requiredModel {
+            return safe(requiredModel) ? requiredModel : nil
         }
-        if availableModels.contains(currentModel) {
-            return currentModel
+        // ACP may report an exact current model while omitting it from an empty or
+        // filtered picker list. Quarantine owns dispatch safety; membership does not.
+        for candidate in fallbackCandidates.compactMap({ $0 }) where safe(candidate) {
+            return candidate
         }
-        if let first = availableModels.first {
-            currentModel = first
-            return first
-        }
-        return currentModel
+        return availableModels.first(where: safe)
+    }
+
+    nonisolated static func modelIDRequestedBySlashCommand(_ prompt: String) -> String? {
+        let parts = prompt.split(whereSeparator: \Character.isWhitespace)
+        guard parts.count >= 2,
+              parts[0].lowercased() == "/model" else { return nil }
+        let modelID = String(parts[1]).trimmingCharacters(in: .whitespacesAndNewlines)
+        return modelID.isEmpty ? nil : modelID
     }
 
     /// Resolves the effective per-project reasoning effort: an explicitly saved value
