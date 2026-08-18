@@ -215,9 +215,26 @@ It splits the remaining work into fork provenance, pinned candidate selection,
 fake-sentinel credential transport, native credential plus canonical bound
 provenance, fresh-process `session/load` continuation, hostile nonbillable
 loopback acceptance, signed candidate installation, and only then a separately
-reviewed paid matrix. Only Slice 4B.0 is preauthorized. No candidate install,
-credential-value read, provider Send, paid unlock, or Slice 5 work is authorized
-by that planning checkpoint.
+reviewed paid matrix. **Slice 4B.0 is accepted.** CLI PR
+[#1](https://github.com/schmitzjimmy1-star/grok-build/pull/1) merged normally as
+`7d8d04c7d48369f6ebb5c4b31a37e0ac20286ab1`; code-bearing candidate source is
+`003f95530228ffb7f7867c9365fc7a2c86dfd229`. Exact-head candidate-contract
+runs `32104684963` and `32104688174` passed. Independent candidate manifests
+have byte-identical canonical source/toolchain/build identity projection SHA-256
+`91a098b999d5f69c24efafe30d8096e2dfc0aad584d7b03d8fcc469e7ed15feb`, while
+each honestly binds its own different ad-hoc binary digest because retained
+upstream randomized compile-time dummy control flow prevents a whole-binary
+reproducibility claim. The source audit also repaired inherited provider-usage
+settlement and armed folder-trust reload defects before publication. No
+candidate was installed or activated; the official CLI remains untouched.
+
+Jimmy explicitly authorized sequential execution of 4B.1, then 4B.2, then
+4B.3 on 2026-08-18. Only **4B.1 pinned runtime selection and rollback** is
+active now. 4B.2 and 4B.3 remain locked until their immediate predecessors
+merge. 4B.1 uses disposable signed fixture candidates and FD-anchored
+inspected-equals-launched proof; the real ad-hoc 4B.0 artifacts must remain
+non-armable and uninstalled. No credential-value read, provider Send, paid
+unlock, candidate install, or Slice 5 work is authorized by this closeout.
 Jimmy authorized an eventual 10,000,000-token absolute testing ceiling on
 2026-08-17. The activation design permits at most 9,000,000 planned tokens and
 retains 1,000,000 as unreachable reserve. This supersedes the old ceiling only
