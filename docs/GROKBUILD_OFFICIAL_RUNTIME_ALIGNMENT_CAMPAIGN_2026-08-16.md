@@ -1,12 +1,12 @@
 # GrokBuild Official Runtime Alignment Campaign — 2026-08-16
 
-Status: **Slices 0–3 complete; Slice 4A nonbillable implementation complete inside Slice 4; paid activation locked.** Jimmy authorized a rigorous
+Status: **Slices 0–3 complete; Slice 4A nonbillable implementation complete inside Slice 4; Slice 4 activation campaign scoped; paid activation locked.** Jimmy authorized a rigorous
 merge-per-slice campaign on 2026-08-16. Every slice gets its own branch,
 explicit commits, ready pull request, exact-head required checks, normal merge,
 merged-main installation, and process-zero closeout before the next slice begins.
 
 Current code-bearing baseline and installed app: clean merge
-`d774b365f9281cef6c8d53e6b2746a7f9a9c52e1` (PR #118). The dist and installed
+`1660ee5e45fca7b1d7146ffc19d0714de866f501` (PR #121). The dist and installed
 executables match byte-for-byte. Installed CLI authority is
 `grok 1.0.4 (d846eb93d94d) [stable]`. Official 1.0.5 source informs this
 campaign, but no CLI upgrade is authorized.
@@ -35,6 +35,8 @@ Grok CLI.
 | **3** | **Session truth and recovery** | Consume typed `session/load` replay, reconcile the local presentation cache, and retire private root/child storage reads after a shadow-parity gate. | **Complete — PR #118** |
 | **4** | **Official provider and open-weight lane** | Use official provider definitions, resolve the keyless-endpoint credential hazard, and pilot one Keychain-backed auth helper without bundling a model runtime. | **Active** |
 | **4A** | **Hard pre-provider budget governor** | Define and prove an official-CLI-owned, atomic worst-case reservation boundary shared by parent, child, and retry sampling before any provider request; keep the app and harness projection-only. | **Nonbillable implementation complete — PR #120 merged and installed; paid locked** |
+| **4B** | **Activation supply chain and nonbillable lifecycle** | Publish and pin the exact fork candidate, prove non-executable credential materialization and canonical bound provenance, redesign continuation around fresh-process `session/load`, then pass hostile loopback lifecycle acceptance. | **Scoped — see activation campaign; implementation not started** |
+| **4C** | **Bounded paid matrix** | Run the frozen provider matrix only after exact installed 4B proof and a separate skeptical paid-unlock review. | **Locked** |
 | **5** | **Controls behave like controls** | Replace model-prompt control actions where official methods exist; separate cancel, worker cancel, and disconnect semantics. | Locked |
 | **6** | **Coordinator simplification** | Split transport/session/projection owners only after authority correction; evaluate workspace/profile process pooling without a default leader daemon. | Locked |
 
@@ -128,6 +130,16 @@ kill/restart/cancel, no-retry, and side-egress acceptance before any provider
 Send. The private CLI manifest and ledger are retained after process-zero for
 forensic reconciliation; only the app authorization sidecar is removed. Slice 5
 and Slice 6 remain locked.
+
+The exact merge-per-slice activation authority is now
+[`GROKBUILD_SLICE4_ACTIVATION_CAMPAIGN_2026-08-17.md`](GROKBUILD_SLICE4_ACTIVATION_CAMPAIGN_2026-08-17.md).
+It preauthorizes only Slice 4B.0 fork provenance and reproducible candidate
+contract work. Candidate selection, credential materialization, installation,
+provider traffic, and the paid lock remain separate later gates.
+Jimmy subsequently raised the eventual Slice 4 testing ceiling to 10,000,000
+tokens. The activation campaign reserves 1,000,000 as structurally unreachable
+and may allocate at most 9,000,000; this future authority does not alter the
+currently merged 4M/3M/1M contract or unlock provider execution.
 
 ## Slice 0 — Restore CLI execution ownership
 

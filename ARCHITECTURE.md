@@ -918,6 +918,15 @@ immutable one-allocation-per-process contract. Nonbillable loopback
 kill/restart/cancel/no-retry and side-egress proof must pass before any provider
 Send.
 
+The remaining supply-chain, credential, provenance, continuation, loopback, and
+installed-candidate work is governed by
+[`docs/GROKBUILD_SLICE4_ACTIVATION_CAMPAIGN_2026-08-17.md`](docs/GROKBUILD_SLICE4_ACTIVATION_CAMPAIGN_2026-08-17.md).
+That campaign preserves the projection-only app boundary: Swift may pin one exact
+candidate and materialize one explicitly selected Keychain credential through a
+nonpersistent child-only channel, but CLI still resolves the route, constructs
+auth, serializes and dispatches requests, owns sessions/tools/workers, and charges
+the durable ledger. Paid execution remains a later separately reviewed gate.
+
 The TOML parser is the one deliberate third-party SwiftPM exception to the lightweight default. Foundation and the Apple SDK expose no TOML 1.0 parser, while the previous line parser demonstrably misclassified valid nested/quoted/partial official Grok configuration and could corrupt it on save. `swift-toml` is pinned to an exact revision, statically linked, performs no I/O or networking, and is used only for parse validation; `THIRD_PARTY_NOTICES.md` ships in the app bundle. Grok CLI remains the sole owner of provider resolution, auth-helper execution/cache/timeout, inference, tools, sessions, and model-catalog membership.
 
 Opening Models must not synchronously query Keychain on the SwiftUI main actor. `SettingsBackgroundLoader` runs `ProviderStore.loadResult()` and `CustomModelStore.load()` on a detached task, then the pane applies the loaded snapshot on the main actor. This keeps navigation and clicks responsive even when Security.framework credential migration is slow.
