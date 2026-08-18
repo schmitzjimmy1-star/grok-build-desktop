@@ -108,7 +108,7 @@ evidence from a predecessor or begin while its predecessor remains unmerged.
 |---|---|---|---|
 | **4B.0** | **Fork provenance and reproducible candidate contract** | CLI publication metadata/build tooling and campaign docs only | `origin` fetch remains upstream while its push URL is deliberately invalid; Jimmy-owned `personal` is the only publication remote; upstream range-diff reviewed; source/base/toolchain/lockfile/build/binary/signature manifest schema proven; no install |
 | **4B.1** | **Pinned runtime selection and rollback** | App launch contract, unified resolver, harness/preflight candidate identity | Hostile tests prove `PATH`, ambient `GROK_CLI_PATH`, path swap, hash drift, wrong signature, and inspected/launched divergence all fail before ACP spawn; official CLI untouched |
-| **4B.2** | **Credential materialization feasibility and contract** | Fake-sentinel transport spike and non-secret shared schema only | One-shot inherited transport is proven read-once, bounded, nonpersistent, noninherited by children, absent from argv/env/files/logs/receipts; otherwise stop and redesign; no Keychain value read |
+| **4B.2** | **Credential materialization feasibility and contract** | Fake-sentinel transport spike and non-secret shared schema only | The real armed `posix_spawn` path proves one bounded fake transfer to a compiled cooperative receiver; receiver FD is closed before its nested exec and fake bytes are absent from argv/env/fixture files/stdout/stderr. This is not official-CLI, raw-fork, zeroization, provider, or Keychain proof; those remain 4B.3 gates. |
 | **4B.3** | **Native armed credential, bound provenance, and campaign-policy v3** | CLI credential consumer, Swift materializer, canonical provenance producer/verifiers, typed capability, versioned 10M/9M/1M authority | Exact managed-provider/config binding, route TOCTOU refusal, helper paths still disabled, fake credential loopback, canonical route/bound equality in Rust/Swift/Python, old/new policy mismatch refusal; ordinary unarmed helper behavior unchanged |
 | **4B.4** | **Fresh-process continuation contract** | Harness schema/evaluator/driver and app lazy-load choreography | Legacy continuation rejected at schema level; T1 new plus T2/T3 fresh-process `session/load` use three allocations, one backend, one ledger, no `session/resume`, no load-time prompt, no stale fallback, cleanup only after the group |
 | **4B.5** | **Nonbillable staged-candidate lifecycle and containment** | Test-only loopback provider, process driver, receipt/cleanup fixtures | Exact staged, noninstalled candidate survives normal, Stop, cancel, kill, restart, stream failure, missing usage, repeated provider correlation, redirect, and call-ceiling tests; foreign egress/helper/retry count is zero; authority retained honestly |
@@ -329,11 +329,18 @@ its own resolved config before reservation. It does not execute
 `auth.command`, refresh helpers, or 401 recovery while armed. A Keychain read
 proves only local materialization—not provider validity.
 
-4B.2 must first prove that Foundation `Process` and the child CLI preserve only
-the intended descriptor and do not leak it to model tools or subprocesses. If
-that proof fails, the slice stops. A macOS-native CLI Keychain consumer may be
-evaluated as a new design; environment secrets, temporary secret files, and an
-allowlisted executable helper are not acceptable fallbacks.
+4B.2 must first exercise the app's actual armed `posix_spawn` candidate launcher,
+not a substitute Foundation `Process` fixture. Its compiled cooperative receiver
+must see only stdio plus fixed FD 198, consume one bounded fake frame, close that
+FD before a nested exec, and emit no payload. The spike must explicitly retain
+Darwin's limits: `FD_CLOEXEC` does not prevent raw-fork inheritance, an arbitrary
+hostile child can escape a process group, and Swift value copies do not prove
+zeroization. Therefore 4B.2 is mechanism feasibility only. Slice 4B.3 must put
+the real Rust receiver before config/hooks/tools/subprocesses/network, close the
+FD before any fork, use consuming zeroizing storage, and re-prove the exact
+candidate/tool tree. A macOS-native CLI Keychain consumer may be evaluated as a
+new design; environment secrets, temporary secret files, and an allowlisted
+executable helper are not acceptable fallbacks.
 
 ### `HardTokenBoundProvenanceV1`
 

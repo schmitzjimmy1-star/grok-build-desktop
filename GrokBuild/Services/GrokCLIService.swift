@@ -127,7 +127,7 @@ enum BoundedProcess {
                     continuation.resume()
                 }
                 do {
-                    try process.run()
+                    try GrokChildProcessSpawnGate.run(process)
                 } catch {
                     clearHandlers()
                     continuation.resume(throwing: error)

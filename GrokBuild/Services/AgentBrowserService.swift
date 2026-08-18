@@ -314,7 +314,7 @@ enum AgentBrowserService {
         process.arguments = externalBrowserLaunchArguments(settings: settings)
         process.standardOutput = Pipe()
         process.standardError = Pipe()
-        try process.run()
+        try GrokChildProcessSpawnGate.run(process)
         recordAutoStartedExternalBrowserPID(process.processIdentifier)
         process.terminationHandler = { finished in
             forgetAutoStartedExternalBrowserPID(finished.processIdentifier)

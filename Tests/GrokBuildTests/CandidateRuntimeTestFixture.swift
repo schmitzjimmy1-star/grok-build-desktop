@@ -4,6 +4,14 @@ import XCTest
 @testable import GrokBuild
 
 struct CandidateRuntimeTestFixture {
+    enum CredentialReceiverBehavior: Int {
+        case success = 0
+        case malformedAcknowledgement = 1
+        case timeout = 2
+        case trailingReadyByte = 3
+        case forkBeforeClose = 4
+        case slowDripAcknowledgement = 5
+    }
     static let sourceSHA = "abcdef0123456789abcdef0123456789abcdef01"
     static let designatedRequirement = "identifier \"com.grokbuild.fixture\" and anchor apple generic"
 
@@ -79,6 +87,175 @@ struct CandidateRuntimeTestFixture {
                 signal(SIGTERM, SIG_IGN);
                 write(STDOUT_FILENO, "R", 1);
                 for (;;) pause();
+            }
+            """.write(to: source, atomically: true, encoding: .utf8)
+            let compiler = Process()
+            compiler.executableURL = URL(fileURLWithPath: "/usr/bin/xcrun")
+            compiler.arguments = ["--sdk", "macosx", "clang", "-arch", "arm64", source.path, "-o", staged.path]
+            try compiler.run()
+            compiler.waitUntilExit()
+            guard compiler.terminationStatus == 0 else {
+                throw CocoaError(.executableLoad)
+            }
+        }
+    }
+
+    static func makeCredentialReceiverExecutable(
+        behavior: CredentialReceiverBehavior = .success
+    ) throws -> Self {
+        let behaviorValue = behavior.rawValue
+        let acknowledgementType = behavior == .malformedAcknowledgement ? 9 : 2
+        return try makeFixture { staged, container in
+            let source = container.appendingPathComponent("fixture-credential-receiver.c")
+            try """
+            #include <errno.h>
+            #include <fcntl.h>
+            #include <poll.h>
+            #include <stdint.h>
+            #include <stdio.h>
+            #include <stdlib.h>
+            #include <string.h>
+            #include <sys/socket.h>
+            #include <sys/types.h>
+            #include <sys/wait.h>
+            #include <unistd.h>
+
+            extern char **environ;
+            enum { receiver_fd = 198, header_size = 48, max_payload = 4096 };
+            static const unsigned char magic[8] = {'G','B','C','T',0,0,0,1};
+
+            static int wait_readable(int fd) {
+                struct pollfd p = { .fd = fd, .events = POLLIN | POLLHUP };
+                int r;
+                do { r = poll(&p, 1, 2000); } while (r < 0 && errno == EINTR);
+                return r > 0 && (p.revents & (POLLIN | POLLHUP));
+            }
+            static int read_exact(int fd, unsigned char *out, size_t count) {
+                size_t offset = 0;
+                while (offset < count) {
+                    if (!wait_readable(fd)) return 0;
+                    ssize_t n = read(fd, out + offset, count - offset);
+                    if (n <= 0) return 0;
+                    offset += (size_t)n;
+                }
+                return 1;
+            }
+            static int write_exact(int fd, const unsigned char *bytes, size_t count) {
+                size_t offset = 0;
+                while (offset < count) {
+                    ssize_t n = write(fd, bytes + offset, count - offset);
+                    if (n <= 0) return 0;
+                    offset += (size_t)n;
+                }
+                return 1;
+            }
+            static uint32_t length_from(const unsigned char *header) {
+                return ((uint32_t)header[44] << 24) | ((uint32_t)header[45] << 16)
+                    | ((uint32_t)header[46] << 8) | (uint32_t)header[47];
+            }
+            static void make_header(unsigned char *out, unsigned char type,
+                                    const unsigned char *nonce, uint32_t length) {
+                memset(out, 0, header_size);
+                memcpy(out, magic, 8);
+                out[8] = type;
+                memcpy(out + 12, nonce, 32);
+                out[44] = (unsigned char)(length >> 24);
+                out[45] = (unsigned char)(length >> 16);
+                out[46] = (unsigned char)(length >> 8);
+                out[47] = (unsigned char)length;
+            }
+            static int contains_bytes(const char *haystack, const unsigned char *needle, size_t count) {
+                size_t length = strlen(haystack);
+                if (count == 0 || length < count) return 0;
+                for (size_t i = 0; i + count <= length; i++) {
+                    if (memcmp(haystack + i, needle, count) == 0) return 1;
+                }
+                return 0;
+            }
+            static int probe_mode(void) {
+                errno = 0;
+                return fcntl(receiver_fd, F_GETFD) == -1 && errno == EBADF ? 0 : 91;
+            }
+            static int fail(int code, unsigned char *payload, size_t count) {
+                if (payload) { memset(payload, 0, count); free(payload); }
+                close(receiver_fd);
+                return code;
+            }
+
+            int main(int argc, char **argv) {
+                if (argc == 2 && strcmp(argv[1], "--probe-fd") == 0) return probe_mode();
+                if (fcntl(receiver_fd, F_SETFD, FD_CLOEXEC) != 0) return 10;
+                int descriptor_limit = getdtablesize();
+                if (descriptor_limit > 1024) descriptor_limit = 1024;
+                for (int fd = 3; fd < descriptor_limit; fd++) {
+                    if (fd == receiver_fd) continue;
+                    if (fcntl(fd, F_GETFD) != -1 || errno != EBADF) return 11;
+                }
+                if (getenv("XAI_API_KEY") || getenv("OPENAI_API_KEY")
+                    || getenv("DYLD_INSERT_LIBRARIES")) return 29;
+                unsigned char header[header_size];
+                if (!read_exact(receiver_fd, header, sizeof(header))) return 12;
+                if (memcmp(header, magic, 8) != 0 || header[8] != 1
+                    || header[9] || header[10] || header[11]) return 13;
+                uint32_t length = length_from(header);
+                if (length == 0 || length > max_payload) return 14;
+                unsigned char *payload = malloc(length);
+                if (!payload || !read_exact(receiver_fd, payload, length)) return fail(15, payload, length);
+
+                if (\(behaviorValue) == 2) { sleep(3); return fail(18, payload, length); }
+                unsigned char response[header_size];
+                make_header(response, \(acknowledgementType), header + 12, length);
+                if (\(behaviorValue) == 5) {
+                    for (size_t i = 0; i < sizeof(response); i++) {
+                        if (write(receiver_fd, response + i, 1) != 1) return fail(28, payload, length);
+                        usleep(300000);
+                    }
+                }
+                if (!write_exact(receiver_fd, response, sizeof(response))) return fail(19, payload, length);
+
+                unsigned char commit[header_size];
+                if (!read_exact(receiver_fd, commit, sizeof(commit))) return fail(20, payload, length);
+                if (memcmp(commit, magic, 8) != 0 || commit[8] != 3
+                    || memcmp(commit + 12, header + 12, 32) != 0 || length_from(commit) != 0) {
+                    return fail(21, payload, length);
+                }
+                unsigned char trailing;
+                if (!wait_readable(receiver_fd) || read(receiver_fd, &trailing, 1) != 0) return fail(22, payload, length);
+                for (int i = 0; i < argc; i++) if (contains_bytes(argv[i], payload, length)) return fail(16, payload, length);
+                for (char **entry = environ; *entry; entry++) if (contains_bytes(*entry, payload, length)) return fail(17, payload, length);
+
+                pid_t leaking_child = -1;
+                if (\(behaviorValue) == 4) {
+                    leaking_child = fork();
+                    if (leaking_child == 0) { for (;;) pause(); }
+                    if (leaking_child < 0) return fail(23, payload, length);
+                    dprintf(STDOUT_FILENO, "D:%d\\n", leaking_child);
+                    if (argc > 1) {
+                        FILE *receipt = fopen(argv[1], "w");
+                        if (!receipt) return fail(26, payload, length);
+                        fprintf(receipt, "%d\\n", leaking_child);
+                        if (fclose(receipt) != 0) return fail(27, payload, length);
+                    }
+                }
+                memset(payload, 0, length);
+                free(payload);
+                make_header(response, 4, header + 12, 0);
+                if (!write_exact(receiver_fd, response, sizeof(response))) return fail(24, NULL, 0);
+                if (\(behaviorValue) == 3) write(receiver_fd, "X", 1);
+                if (leaking_child > 0) { for (;;) pause(); }
+                shutdown(receiver_fd, SHUT_WR);
+                close(receiver_fd);
+
+                pid_t probe = fork();
+                if (probe == 0) {
+                    execl(argv[0], argv[0], "--probe-fd", (char *)0);
+                    _exit(92);
+                }
+                int status = 0;
+                if (probe < 0 || waitpid(probe, &status, 0) != probe
+                    || !WIFEXITED(status) || WEXITSTATUS(status) != 0) return 25;
+                write(STDOUT_FILENO, "transport=fd-v1,result=ok\\n", 26);
+                return 0;
             }
             """.write(to: source, atomically: true, encoding: .utf8)
             let compiler = Process()

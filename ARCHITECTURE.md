@@ -1419,6 +1419,41 @@ Prefer extending existing test files. Test pure logic without launching real `gr
 
 ---
 
+## Slice 4B candidate launch and fake credential-transport boundary
+
+Armed candidate processes use `GrokCandidateProcessLauncher`, not Foundation
+`Process`. The launcher consumes the one-use candidate lease from Slice 4B.1,
+starts the exact copied executable suspended through `posix_spawn`, verifies the
+live CodeDirectory hash, and only then resumes it. Ordinary unarmed CLI launches
+and the installed official CLI remain on their existing paths.
+
+Slice 4B.2 adds a deliberately fake-only feasibility primitive on that exact
+launcher. An unnamed AF_UNIX stream socket is duplicated to fixed child FD 198;
+both raw endpoints are normalized above 198, and
+`POSIX_SPAWN_CLOEXEC_DEFAULT` applies only to the transport-enabled launch.
+The parent rejects fake bytes already present in argv or any proposed
+environment value before spawn, then supplies a positive environment allowlist.
+A bounded binary nonce/length frame, acknowledgement, commit, ready response,
+and peer EOF share one monotonic deadline. Any framing, timeout, peer, or EOF
+failure kills the launch process group and synchronously reaps the direct child.
+
+This is a compatibility proof with a compiled cooperative C receiver, not the
+production credential boundary. It proves the real app launcher can deliver one
+bounded fake byte sequence without argv, environment, file, stdout, or stderr
+persistence; unrelated non-CLOEXEC descriptors are excluded from the candidate
+exec, and the cooperative receiver closes FD 198 before its nested exec. Darwin
+`FD_CLOEXEC` is exec-bound, not fork-bound: a raw fork inherits the descriptor,
+and an arbitrary hostile child can escape a process group. Swift value storage
+also permits copies, so fixture wiping is best-effort only. Slice 4B.3 must put
+the Rust receiver before config, hooks, tools, subprocesses, or network; close
+the descriptor before any fork; introduce consuming single-owner zeroizing
+storage; and prove the actual candidate/tool tree and rollback. 4B.2 reads no
+Keychain value and does not touch provider helpers, live config, or provider
+routes.
+The receiver fixture is ad-hoc signed and admitted only through the existing
+Slice 4B.1 signature-verifier test seam; it is not evidence that the retained
+candidate or an installed Team-signed CLI consumed the channel.
+
 ## Related docs
 
 | Doc | Use |
