@@ -229,9 +229,9 @@ settlement and armed folder-trust reload defects before publication. No
 candidate was installed or activated; the official CLI remains untouched.
 
 Jimmy explicitly authorized sequential execution of 4B.1, then 4B.2, then
-4B.3 on 2026-08-18. **4B.1 pinned runtime selection and rollback has passed its
-local exit gate; publication is pending.** 4B.2 and 4B.3 remain locked until
-their immediate predecessors merge. 4B.1 uses disposable signed fixture
+4B.3 on 2026-08-18. **4B.1 pinned runtime selection and rollback is accepted
+through PR [#124](https://github.com/schmitzjimmy1-star/grok-build-desktop/pull/124).**
+4B.2 is next; 4B.3 remains locked until 4B.2 merges. 4B.1 uses disposable signed fixture
 candidates, a byte-identical one-shot execution copy held by FD, and
 suspended-child live CodeDirectory verification before user code as the Darwin
 inspected-equals-launched proof; the real ad-hoc 4B.0 artifacts remain

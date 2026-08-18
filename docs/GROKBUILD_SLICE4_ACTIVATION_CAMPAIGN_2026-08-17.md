@@ -1,6 +1,6 @@
 # GrokBuild Slice 4 Activation Campaign — 2026-08-17
 
-Status: **Slice 4B.0 accepted; Slice 4B.1 local exit gate passed and publication is pending; paid activation locked.** This document is the authority for completing
+Status: **Slices 4B.0 and 4B.1 accepted; Slice 4B.2 is next; paid activation locked.** This document is the authority for completing
 the official-provider and open-weight lane after the nonbillable Slice 4A hard-budget checkpoint. It
 does not authorize a provider request, credential-value read, live Grok config
 mutation, installed-CLI replacement, tag, release, or Slice 5 work.
@@ -120,8 +120,8 @@ evidence from a predecessor or begin while its predecessor remains unmerged.
 
 Slice 4B.0 is accepted. Jimmy explicitly authorized sequential execution of
 4B.1, then 4B.2, then 4B.3 on 2026-08-18. Merge-per-slice remains mandatory:
-only 4B.1 is active now, while 4B.2 and 4B.3 remain locked until each immediate
-predecessor is reviewed and merged.
+4B.1 is accepted, 4B.2 is next, and 4B.3 remains locked until 4B.2 is reviewed
+and merged.
 
 ### Scope
 
@@ -255,7 +255,7 @@ its digest. Ordinary launches continue to use the official CLI. Rollback occurs
 only after process-zero and means removing the acceptance selection—not
 overwriting, deleting, or silently downgrading the official installation.
 
-### 4B.1 local receipt — 2026-08-18
+### 4B.1 receipt — 2026-08-18
 
 - One strict runtime-selection sidecar binds the owner-private runtime root,
   digest-addressed candidate and provenance paths, and exact provenance hash.
@@ -300,9 +300,11 @@ overwriting, deleting, or silently downgrading the official installation.
   No candidate install, Keychain value read, live config mutation, provider
   request, or paid packet occurred.
 
-Publication, exact-head CI, normal merge, merged-main verification, ordinary
-installed-app rollback acceptance, and final process-zero remain the 4B.1
-publication gate. Slice 4B.2 must not begin before those receipts settle.
+PR [#124](https://github.com/schmitzjimmy1-star/grok-build-desktop/pull/124)
+is the 4B.1 publication vehicle. Its final head must pass the required app test
+and bundle check before a normal match-head merge; merged-main parity, ordinary
+installed-app rollback acceptance, and final process-zero close the slice.
+Slice 4B.2 must not begin before those receipts settle.
 
 ### `HardBudgetCredentialMaterializationV1`
 
