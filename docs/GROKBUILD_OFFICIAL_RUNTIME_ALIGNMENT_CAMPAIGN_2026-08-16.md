@@ -34,7 +34,7 @@ Grok CLI.
 | **2** | **Typed ACP control spine** | Add a version/capability-aware facade over each existing ACP connection; first methods are models, usage, session metadata, and bounded session updates. | **Complete — PR #116** |
 | **3** | **Session truth and recovery** | Consume typed `session/load` replay, reconcile the local presentation cache, and retire private root/child storage reads after a shadow-parity gate. | **Complete — PR #118** |
 | **4** | **Official provider and open-weight lane** | Use official provider definitions, resolve the keyless-endpoint credential hazard, and pilot one Keychain-backed auth helper without bundling a model runtime. | **Active** |
-| **4A** | **Hard pre-provider budget governor** | Define and prove an official-CLI-owned, atomic worst-case reservation boundary shared by parent, child, and retry sampling before any provider request; keep the app and harness projection-only. | **Nonbillable implementation complete — paid locked** |
+| **4A** | **Hard pre-provider budget governor** | Define and prove an official-CLI-owned, atomic worst-case reservation boundary shared by parent, child, and retry sampling before any provider request; keep the app and harness projection-only. | **Nonbillable implementation complete — PR #120 merged and installed; paid locked** |
 | **5** | **Controls behave like controls** | Replace model-prompt control actions where official methods exist; separate cancel, worker cancel, and disconnect semantics. | Locked |
 | **6** | **Coordinator simplification** | Split transport/session/projection owners only after authority correction; evaluate workspace/profile process pooling without a default leader daemon. | Locked |
 
@@ -106,7 +106,17 @@ Acceptance: full Swift **976/976**; focused ACP **90/90**; Python v2 harness
 shell/agent/pager checks remain retained; both repository diff checks are clean.
 Three skeptical reviewers returned **COMMIT** for the exact nonbillable app and
 harness tree and **NO-GO** for paid execution. No provider call, credential read,
-live config mutation, installed CLI upgrade, or app installation occurred.
+live config mutation, or installed CLI upgrade occurred during candidate proof.
+
+PR #120 passed required **Test and Build App** on exact head `88059e5` and
+merged normally as `7c9f8ae29426a39a23192ca57f99213af8f8f846`. Clean
+merged-main `make ship` independently passed **976/976**, installed that exact
+clean merge, and proved matching dist/install executable SHA-256
+`9ef7fa6f496c8278a17a33c4dd5feeb979becbec4153fb4838ea1abfed173882`, Team
+`DD2GCQJVB4`, deep/strict signing, and no quarantine. The installed CLI remained
+official `grok 1.0.4 (d846eb93d94d) [stable]`; no backend or provider path ran.
+Two process-zero samples settled at `2026-08-18T00:38:00Z` and
+`2026-08-18T00:38:05Z`.
 
 Paid execution remains blocked at the first harness branch. The next full Slice
 4 activation must install and prove the exact committed fork binary, generate and
