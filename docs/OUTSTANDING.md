@@ -208,6 +208,22 @@ per process, so the harness refuses the entire manifest before creating authorit
 Nonbillable loopback kill/restart/cancel/no-retry/side-egress proof must land
 before the first paid Send. Slice 5 remains locked.
 
+Three skeptical Terra Medium reconnaissance passes scoped the exact activation
+sequence on 2026-08-17. The canonical authority is
+[`GROKBUILD_SLICE4_ACTIVATION_CAMPAIGN_2026-08-17.md`](GROKBUILD_SLICE4_ACTIVATION_CAMPAIGN_2026-08-17.md).
+It splits the remaining work into fork provenance, pinned candidate selection,
+fake-sentinel credential transport, native credential plus canonical bound
+provenance, fresh-process `session/load` continuation, hostile nonbillable
+loopback acceptance, signed candidate installation, and only then a separately
+reviewed paid matrix. Only Slice 4B.0 is preauthorized. No candidate install,
+credential-value read, provider Send, paid unlock, or Slice 5 work is authorized
+by that planning checkpoint.
+Jimmy authorized an eventual 10,000,000-token absolute testing ceiling on
+2026-08-17. The activation design permits at most 9,000,000 planned tokens and
+retains 1,000,000 as unreachable reserve. This supersedes the old ceiling only
+after a versioned authority change passes the later 4B gates; it is not a paid
+unlock and does not change the current fail-closed 4M/3M/1M implementation.
+
 ## Visual Quiet — 2026-08-15 (Phase 6 welcome extraction authorized)
 
 Authorized spec is
