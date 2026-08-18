@@ -1,7 +1,6 @@
 # GrokBuild Slice 4 Activation Campaign — 2026-08-17
 
-Status: **Reconnaissance and planning review complete; implementation not
-started; paid activation locked.** This document is the authority for completing
+Status: **Slice 4B.0 accepted; Slice 4B.1 active; paid activation locked.** This document is the authority for completing
 the official-provider and open-weight lane after the nonbillable Slice 4A hard-budget checkpoint. It
 does not authorize a provider request, credential-value read, live Grok config
 mutation, installed-CLI replacement, tag, release, or Slice 5 work.
@@ -19,15 +18,16 @@ The app repository is clean at merge `1660ee5e45fca7b1d7146ffc19d0714de866f501`
 (PR #121). The installed app matches that merged-main build. Its installed
 runtime remains official `grok 1.0.4 (d846eb93d94d) [stable]`.
 
-The hard-budget CLI fork is clean at
-`03a28d484da91788931aec1aeb0f3aa0ca9a1368`, six commits over official 1.0.5
-base `9fabade`. Its only remote is upstream `xai-org/grok-build`, and that remote
-is still configured for both fetch and push; 4B.0 must mechanically disable its
-push URL before publication. The fork has not been published under Jimmy's GitHub account,
-built as a retained candidate artifact, installed, or exercised through the
-installed app. The current upstream delta after the pinned base is small and
-does not touch the hard-budget seam, but it must still be range-diffed and
-resolved before candidate publication.
+The hard-budget CLI fork is published and merged on Jimmy's `personal/main` at
+`7d8d04c7d48369f6ebb5c4b31a37e0ac20286ab1`, with code-bearing candidate
+source `003f95530228ffb7f7867c9365fc7a2c86dfd229` and docs-only final source
+`f96892e075acfa3ef13a9563a5f7c7a0178007ff`. `origin` fetch remains the
+official `xai-org/grok-build` repository while its push URL is the deliberately
+unsupported `no_push://xai-org/grok-build` sentinel; `personal` is Jimmy's fork.
+Two independent ad-hoc candidate artifacts and provenance manifests were built
+and retained as 4B.0 evidence. Neither candidate was installed or exercised
+through the installed app, and neither is armable under the signed-runtime
+contract.
 
 The paid harness refuses at its first branch before runtime discovery, app
 launch, authority creation, or provider work. It separately refuses the whole
@@ -118,7 +118,10 @@ evidence from a predecessor or begin while its predecessor remains unmerged.
 
 ## Slice 4B.0 — exact first authority
 
-Only 4B.0 is preauthorized by this planning checkpoint.
+Slice 4B.0 is accepted. Jimmy explicitly authorized sequential execution of
+4B.1, then 4B.2, then 4B.3 on 2026-08-18. Merge-per-slice remains mandatory:
+only 4B.1 is active now, while 4B.2 and 4B.3 remain locked until each immediate
+predecessor is reviewed and merged.
 
 ### Scope
 
@@ -167,6 +170,50 @@ source and candidate-manifest schema have stable commit IDs. Do not smuggle
 runtime selection into the provenance slice because it is "just one field."
 That is how tires leave the vehicle at highway speed.
 
+### 4B.0 receipt — 2026-08-18
+
+- CLI PR [#1](https://github.com/schmitzjimmy1-star/grok-build/pull/1)
+  passed exact-head `candidate-contract` runs `32104684963` and `32104688174`,
+  then merged normally as
+  `7d8d04c7d48369f6ebb5c4b31a37e0ac20286ab1`. The code-bearing candidate
+  source is `003f95530228ffb7f7867c9365fc7a2c86dfd229`; the docs-only final
+  head is `f96892e075acfa3ef13a9563a5f7c7a0178007ff`.
+- Independent candidate A binds binary SHA-256
+  `bafcef763d23a4ec99ec7ae14c9fd49a8655d0099f9513817d6040d21162bff5`
+  and manifest SHA-256
+  `771473e1bf970bc75305998ed181456b3283f9fba611b8f22e0dca6a80b0eb82`.
+  Candidate B binds binary SHA-256
+  `4763acd631b927b71cfa8594863fc19e9bb6873f7757ce7c7903eb3993b57287`
+  and manifest SHA-256
+  `dae8c7ad444ea5d2ce726cbb84f9fdfba9c471772126b9ec1521bb0dc3443bda`.
+  Both are 147,981,040-byte arm64 ad-hoc artifacts reporting
+  `1.0.5 (003f955)`.
+- The canonical `{source, toolchain, build}` identity projection from the two
+  independently generated manifests is byte-identical at SHA-256
+  `91a098b999d5f69c24efafe30d8096e2dfc0aad584d7b03d8fcc469e7ed15feb`.
+  Whole-binary bytes intentionally are not claimed reproducible: retained
+  upstream `cryptify::flow_stmt!` expansion uses randomized compile-time dummy
+  control flow, and schema v1 does not bind the Xcode SDK/linker. Each manifest
+  instead binds its own exact binary, size, architecture, build string, and
+  observed signing state. Candidate and manifest pieces may never be mixed.
+- The focused provenance suite passed 19/19 locally; the sampler hard-budget
+  suite passed 29/29 locally; both exact-head GitHub runs also passed candidate
+  provenance, formatting, compilation, sampler, process-race, agent, shell,
+  pager, and staged-candidate gates. Two completed security scans
+  (`4c4528c2-2274-4dff-84e5-b0819c0c2aad` and
+  `992b7377-7335-472b-8acd-a50ad6f6772c`) consumed 8,830,471 audit tokens and
+  reported zero reportable findings in their immutable scanned ranges.
+- The required source audit found two inherited Slice 4A prerequisites: a
+  provider-usage settlement refund and an armed folder-trust path that could
+  reload plugin MCP/hook execution. Both were repaired, tested, and rescanned
+  before publication. This was the only 4B.0 scope expansion; it did not
+  activate, install, or exercise the fork.
+- `origin` fetch is official upstream, `origin` push is mechanically disabled,
+  and `personal` is Jimmy's fork. A local upstream push dry run refused before
+  publication. No app launch, installed-CLI mutation, live config read/write,
+  Keychain value read, provider request, tag, release, or paid authority
+  occurred. The official installed CLI remains untouched.
+
 ## Design contracts for later slices
 
 These contracts guide later work; they do not authorize it.
@@ -183,7 +230,14 @@ Security.framework or an equivalently exact designated-requirement check, while
 the acceptance receipt records credential-free `codesign --verify --strict`,
 Team ID, and `codesign -d -r-` evidence. `HardBudgetLaunchContract` rechecks the file with
 no-follow, owner/private, regular-file, device/inode/size/hash, and signing
-validation immediately before process creation. `GrokProcess` and
+validation immediately before process creation. A path recheck alone is not
+the inspected-equals-launched proof because replacement can occur after the
+last pathname check. Slice 4B.1 must therefore use an FD-anchored execution
+lease for disposable signed fixture candidates and prove the inspected bytes
+are the launched bytes. The real 4B.0 candidates remain ad-hoc, refused, and
+non-armable until the separately authorized signed installation in 4B.6; 4B.1
+must not create a durable real-candidate install merely to make a fixture green.
+`GrokProcess` and
 `GrokCLIService` must share one resolver. Armed preflight, inspect, catalog, ACP,
 and provider execution must all name the same binary.
 
