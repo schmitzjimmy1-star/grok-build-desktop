@@ -291,8 +291,13 @@ live config/route identity. The live ACP capability now nests `v3Authority`
 (`authorityVersion`, typed provenance, digest) instead of top-level
 provenance/policy fields; Swift derives auth headers from `authScheme` and
 still treats historical v2 `isEnforcing` as the only packet-authorization path.
-Fail-closed `ArmedV3ResolvedSnapshot` types now refuse invented identity, but
-production startup still does not bind them. `SamplerActor` now caches one
+Fail-closed `ArmedV3ResolvedSnapshot` types refuse invented identity; CLI
+`agent::init::bootstrap` now calls `bind_measured_v3_authority_if_present` after
+`ModelsManager::from_config` to bind a complete unbound v3 env from independently
+observed catalog projection, live loopback route, packet bounds, and
+credential-free sampler fields, skipping bind on `LegacyManifestRefused` and
+no-oping when the hard-budget env is absent. Production `GrokProcess.start`
+still does not perform this bind. `SamplerActor` now caches one
 armed client and ignores route-changing updates. Live 4M/3M/1M packets still
 load the v1 governor through `HardTokenBudget::from_env`; ACP spawn accepts
 that live contract or an already-active v3 authority and still refuses an
