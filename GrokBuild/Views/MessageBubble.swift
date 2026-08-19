@@ -12,8 +12,19 @@ struct MessageBubble: View {
     /// Render one non-selectable, non-rich snapshot during that transaction so AppKit's
     /// selection overlay cannot feed back into the transcript LazyVStack layout.
     var isLayoutFrozen: Bool = false
+    /// When false, keep rich Markdown but drop AppKit text selection. Auto-follow
+    /// streaming and settlement use this instead of the plain-text freeze.
+    var allowsTextSelection: Bool = true
 
     var body: some View {
+        Group {
+            bubbleContent
+        }
+        .environment(\.allowsTranscriptTextSelection, allowsTextSelection)
+    }
+
+    @ViewBuilder
+    private var bubbleContent: some View {
         switch message.role {
         case .user:
             // Workbench W-2 (2026-08-08): the user's prompt is the task statement —
@@ -34,7 +45,7 @@ struct MessageBubble: View {
                             .lineSpacing(2)
                     } else {
                         Text(message.content)
-                            .textSelection(.enabled)
+                            .transcriptTextSelection()
                             .font(AppTheme.Typography.body)
                             .lineSpacing(2)
                     }
@@ -61,7 +72,7 @@ struct MessageBubble: View {
                             ?? StreamingMarkdownPresentation.make(message.content)
                         if !presentation.visibleText.isEmpty {
                             Text(presentation.visibleText)
-                                .textSelection(.enabled)
+                                .transcriptTextSelection()
                                 .font(AppTheme.Typography.body)
                                 .lineSpacing(3)
                                 .frame(maxWidth: .infinity, alignment: .leading)

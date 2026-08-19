@@ -31,7 +31,7 @@ xed .             # open Package.swift in Xcode (optional)
    For local iteration, `make run` relaunches `.build/GrokBuild.app`. For campaign
    or installed acceptance, quit every GrokBuild instance, `make ship`, then drive
    **`/Applications/GrokBuild.app` only** (`snapshot --app GrokBuild` is not proof
-   if the running exec is `.build` or `dist`). Default: **`user-grokbuild-computer-use` MCP**; fallback: `agent-desktop` directly or Orca `computer-use` CLI. Do not Shell `agent-desktop` or grok's in-session `grokbuild-computer-use` against GrokBuild while that Cursor MCP is driving. Service/persistence changes still need a live check of the user-visible outcome.
+   if the running exec is `.build` or `dist`). Default: **`user-grokbuild-computer-use` MCP**; fallback: `agent-desktop` directly or Orca `computer-use` CLI. Do not Shell `agent-desktop` or grok's in-session `grokbuild-computer-use` against GrokBuild while that Cursor MCP is driving. Service/persistence changes still need a live check of the user-visible outcome. Layout-loop proofs use a **short** transcript after Send; do not Computer-Use a huge restored Markdown overview while following a second Send.
 3. **`ARCHITECTURE.md`** — update source map, persistence, notifications, or common tasks → files when structure/flow changes.
 4. **`README.md`** — update when users would notice the change.
 5. **`BUILDING.md`** — update when build/packaging/scripts change.
