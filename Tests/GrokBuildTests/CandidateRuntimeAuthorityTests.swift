@@ -713,6 +713,9 @@ final class CandidateRuntimeAuthorityTests: XCTestCase {
     }
 
     func testSchema3AcceptanceGuardAttachesCredentialAuthorizationWithoutReadingKeychain() throws {
+        // Guard still parses packet selectors into credentialAuthorizationV3.
+        // Dispatch authority is ArmedV3DispatchExpectation, which cross-binds
+        // those selectors to the live custom model and provider.
         let fixture = try CandidateRuntimeTestFixture.make()
         defer { try? FileManager.default.removeItem(at: fixture.container) }
         CandidateRuntimeTestFixture.installSignatureOverride()

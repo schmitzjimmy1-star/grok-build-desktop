@@ -1315,7 +1315,7 @@ final class ACPClientContractTests: XCTestCase {
     }
 
     @MainActor
-    func testSchema3AcceptanceDispatchRefusesNativeRouteBeforeKeychainSpawn() async throws {
+    func testSchema3AcceptanceDispatchRefusesNativeRouteBeforeBind() async throws {
         let fixture = try CandidateRuntimeTestFixture.makeCredentialReceiverExecutable()
         defer { try? FileManager.default.removeItem(at: fixture.container) }
         CandidateRuntimeTestFixture.installSignatureOverride()
@@ -1385,8 +1385,8 @@ final class ACPClientContractTests: XCTestCase {
         await store.start(workspace: Workspace(name: "schema-3-native", path: fixture.container))
         let sent = await store.sendAndWait("Return SCHEMA-3-NATIVE")
         XCTAssertFalse(sent)
-        XCTAssertTrue(store.lastError?.contains("Armed credential launch stopped") == true)
-        XCTAssertFalse(store.lastError?.contains("schema-3 credential authorization") == true)
+        XCTAssertTrue(store.lastError?.contains("schema-3 credential authorization") == true)
+        XCTAssertFalse(store.lastError?.contains("Armed credential launch stopped") == true)
         XCTAssertEqual(observed.value, 0)
         XCTAssertNil(store.process.activeProcessGeneration)
         await store.shutdownPermanently()

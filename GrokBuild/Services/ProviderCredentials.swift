@@ -7,6 +7,17 @@ enum ProviderAuthScheme: String, Codable, CaseIterable, Sendable {
     case apiKeyHeader = "api-key"
     case bearerAndAPIKey = "bearer-and-api-key"
     case none
+
+    /// Canonical v3 `authScheme` used by `HardBudgetProvenanceV3` and armed Keychain
+    /// header derivation. `none` cannot arm.
+    var armedV3CanonicalScheme: String? {
+        switch self {
+        case .bearer: return "bearer"
+        case .apiKeyHeader: return "x_api_key"
+        case .bearerAndAPIKey: return "bearer_and_x_api_key"
+        case .none: return nil
+        }
+    }
 }
 
 /// Non-secret provenance for a provider credential. The credential value itself is kept in

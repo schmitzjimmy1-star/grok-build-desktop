@@ -1173,6 +1173,7 @@ final class ChatStore {
     /// It classifies a comparable workload; it does not schedule or infer tools.
     private var currentTurnObservedParallelToolExecution = false
     private let customModelSnapshotLoader: () -> CustomModelStore.Snapshot
+    private let providerSnapshotLoader: () -> [Provider]
     private let acceptanceBudgetResolver: (String) -> AcceptanceBudgetResolution
     private let acceptanceBudgetIsConfigured: () -> Bool
     private var acceptanceBudgetPollingTask: Task<Void, Never>?
@@ -1183,6 +1184,7 @@ final class ChatStore {
         process: GrokProcess? = nil,
         continuityKeyOverride: Data? = nil,
         customModelSnapshotLoader: @escaping () -> CustomModelStore.Snapshot = { CustomModelStore.load() },
+        providerSnapshotLoader: @escaping () -> [Provider] = { ProviderStore.load() },
         acceptanceBudgetResolver: @escaping (String) -> AcceptanceBudgetResolution = {
             AcceptanceBudgetGuard.resolve(prompt: $0)
         },
@@ -1193,6 +1195,7 @@ final class ChatStore {
         self.process = process ?? GrokProcess()
         self.continuityKeyOverride = continuityKeyOverride
         self.customModelSnapshotLoader = customModelSnapshotLoader
+        self.providerSnapshotLoader = providerSnapshotLoader
         self.acceptanceBudgetResolver = acceptanceBudgetResolver
         self.acceptanceBudgetIsConfigured = acceptanceBudgetIsConfigured
         applyBuiltInModelCatalog(GrokModelCatalog.cachedOrFallback())
@@ -3064,14 +3067,21 @@ final class ChatStore {
                 attachments: intent.fileAttachments
             )
             guard case .budget(let authorization) = acceptanceBudgetResolver(frozenPrompt),
-                  let credentialAuthorizationV3 = authorization.credentialAuthorizationV3,
+                  let lease = authorization.candidateExecutionLease,
+                  let boundAuthorization = ArmedV3DispatchExpectation.bindAuthorization(
+                    authorization: authorization,
+                    selectedModelID: intent.modelID ?? currentModel,
+                    customModelSnapshot: customModelSnapshotLoader(),
+                    providers: providerSnapshotLoader(),
+                    candidate: lease.identity
+                  ),
                   let launchContract = HardBudgetLaunchContract(
                     manifestPath: authorization.hardBudgetCLIManifestPath,
                     ledgerPath: authorization.hardBudgetLedgerPath,
                     allocationID: authorization.budget.allocationID,
                     expectedManifestSHA256: authorization.hardBudgetManifestSHA256,
-                    candidateExecutionLease: authorization.candidateExecutionLease,
-                    credentialAuthorizationV3: credentialAuthorizationV3
+                    candidateExecutionLease: lease,
+                    credentialAuthorizationV3: boundAuthorization
                   ) else {
                 lastError = "Acceptance dispatch stopped because the exact schema-3 credential authorization is unavailable."
                 return false

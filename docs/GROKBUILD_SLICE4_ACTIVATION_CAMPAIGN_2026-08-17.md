@@ -411,8 +411,10 @@ the live v1 contract or already-active v3 authority and still refuses an
 unbound v3 env. Production `GrokProcess.start` materializes a v3 contract
 through the dedicated Keychain client and `posix_spawn`s the leased candidate
 with FD 198/197; debug tests inject that client, schema-2 still fail-closes, and
-schema-3 packets attach `credentialAuthorizationV3` so Send can reach armed
-start. Native Grok routes still fail preflight. Armed
+schema-3 packets parse `credentialAuthorizationV3` selectors. Dispatch binds
+those selectors through `ArmedV3DispatchExpectation` to the live custom model
+and linked provider before `HardBudgetLaunchContract`. Native Grok routes fail
+that bind and still fail preflight if a contract is constructed directly. Armed
 mode omits the summary `OaiCompatClient`. Resolved models keep `model_provider`.
 `ResolvedConfigIdentityTracker` bumps generation only when the credential-free
 catalog projection changes. Live route observation now measures loopback
