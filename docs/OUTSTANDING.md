@@ -374,10 +374,10 @@ absolute ceiling. Paid 4C remains locked. The official CLI remains `grok 1.0.4 (
 **4B.4 is merged.** Desktop PR
 [#137](https://github.com/schmitzjimmy1-star/grok-build-desktop/pull/137)
 merged as `90782f2`. Installed `/Applications/GrokBuild.app` remains that 4B.4
-tree until 4B.5 `make ship`. **4B.5 is the current slice:** owner-local loopback
-lifecycle against signed digest-staged pager `f434fa4f…933b` /
-`1.0.5 (8226242)` / source `822624291de2b544605f439ad1349ae6bdc3cf10`. The pager
-is not installed over `~/.grok/bin/grok`. CLI hang repairs on
+tree until 4B.6 `make ship`. **4B.5 is accepted** as merge `324ff89` (PR #139):
+owner-local loopback lifecycle against signed digest-staged pager `f434fa4f…933b`
+/ `1.0.5 (8226242)` / source `822624291de2b544605f439ad1349ae6bdc3cf10`. The pager
+was not installed over `~/.grok/bin/grok`. CLI hang repairs on
 `cursor/official-runtime-s4b5-armed-turn-sampler`: 500ms Outstanding timeout
 (`65e887a`, PR [#5](https://github.com/schmitzjimmy1-star/grok-build/pull/5)),
 zero-tool `live_ids` drain skip (`9db8cb0`), after-turn workspace detach
@@ -385,9 +385,13 @@ zero-tool `live_ids` drain skip (`9db8cb0`), after-turn workspace detach
 `scripts/acceptance/harness/loopback_provider.py`,
 `scripts/acceptance/harness/candidate_process_driver.py`. Armed
 `session/prompt` timeout stays 90s. Kill-after-response-before-settlement is
-the loopback `hold_after_body` case in `Slice4B5LifecycleTests`. Hostile
-`setsid`/tool-tree remains a 4B.5 leftover or 4B.6 CLI rerun. Paid 4C stays
-locked. Do not `grok update`.
+the loopback `hold_after_body` case in `Slice4B5LifecycleTests`. **4B.6 is the
+current slice:** signed owner-private digest install via
+`scripts/acceptance/harness/candidate_install.py`, class-setup copy then rerun of
+the 4B.5 matrix against that copy, rollback of the selection sidecar only.
+Hostile `setsid`/tool-tree is the CLI leftover
+`hard_budget_receiver_closes_fd_before_raw_fork_and_setsid_descendant` on the
+pager-bin CI filter. Paid 4C stays locked. Do not `grok update`.
 
 PR [#124](https://github.com/schmitzjimmy1-star/grok-build-desktop/pull/124)
 passed required exact-head run `32123735441` and merged normally as

@@ -111,6 +111,35 @@ final class AcceptanceHarnessTests: XCTestCase {
         XCTAssertTrue(provider.contains("hold_after_body"))
     }
 
+    func testSlice4B6InstallPythonContracts() throws {
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/env")
+        process.arguments = ["python3", "-m", "unittest", "scripts.acceptance.tests.test_v3_install"]
+        process.currentDirectoryURL = Self.repoRoot
+        let output = Pipe()
+        process.standardOutput = output
+        process.standardError = output
+        try process.run()
+        process.waitUntilExit()
+        let text = String(decoding: output.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self)
+        XCTAssertEqual(process.terminationStatus, 0, text)
+        XCTAssertTrue(text.contains("OK"), text)
+
+        let installer = try String(
+            contentsOf: Self.repoRoot.appendingPathComponent("scripts/acceptance/harness/candidate_install.py"),
+            encoding: .utf8
+        )
+        XCTAssertTrue(installer.contains("Never replaces"))
+        XCTAssertTrue(installer.contains("candidate-runtime"))
+        XCTAssertFalse(installer.contains("grok update"))
+        XCTAssertTrue(installer.contains("O_EXCL"))
+        let runScript = try String(contentsOf: Self.runScript, encoding: .utf8)
+        let billableRange = try XCTUnwrap(runScript.range(of: "def _billable_v3"))
+        let mainRange = try XCTUnwrap(runScript.range(of: "if __name__"))
+        let billable = String(runScript[billableRange.lowerBound..<mainRange.lowerBound])
+        XCTAssertFalse(billable.contains("resume_saved_task()"))
+    }
+
     func testSlice6ManifestDryRunUsesQuarterMillionCeiling() throws {
         let manifest = Self.repoRoot
             .appendingPathComponent("scripts/acceptance/manifests/installed-slice6-packet-v1.json")
