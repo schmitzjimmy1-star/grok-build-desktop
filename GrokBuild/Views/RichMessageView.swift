@@ -3,6 +3,38 @@ import AppKit
 import WebKit
 import CryptoKit
 
+private struct TranscriptAllowsTextSelectionKey: EnvironmentKey {
+    static let defaultValue = true
+}
+
+extension EnvironmentValues {
+    var allowsTranscriptTextSelection: Bool {
+        get { self[TranscriptAllowsTextSelectionKey.self] }
+        set { self[TranscriptAllowsTextSelectionKey.self] = newValue }
+    }
+}
+
+extension View {
+    /// Honors `allowsTranscriptTextSelection` so auto-follow can drop AppKit
+    /// `SelectionOverlay` without replacing rich Markdown with plain `Text`.
+    func transcriptTextSelection() -> some View {
+        modifier(TranscriptTextSelectionModifier())
+    }
+}
+
+private struct TranscriptTextSelectionModifier: ViewModifier {
+    @Environment(\.allowsTranscriptTextSelection) private var allowed
+
+    @ViewBuilder
+    func body(content: Content) -> some View {
+        if allowed {
+            content.textSelection(.enabled)
+        } else {
+            content.textSelection(.disabled)
+        }
+    }
+}
+
 enum RichContentWidthClass: String, Hashable, Sendable {
     case regular
     case narrow
@@ -982,7 +1014,7 @@ struct RichMessageView: View {
                 Text(text)
                     .font(AppTheme.Typography.body)
                     .lineSpacing(4)
-                    .textSelection(.enabled)
+                    .transcriptTextSelection()
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .accessibilityLabel("Agent response: \(text)")
             }
@@ -1069,7 +1101,7 @@ private struct MarkdownTextView: View {
                 Text(text)
                     .font(AppTheme.Typography.body)
                     .lineSpacing(4)
-                    .textSelection(.enabled)
+                    .transcriptTextSelection()
                     .frame(maxWidth: .infinity, alignment: .leading)
             }
         }
@@ -1107,7 +1139,7 @@ private struct MarkdownTextView: View {
             Text(renderedInlineMarkdown(text))
                 .font(AppTheme.Typography.body)
                 .lineSpacing(4)
-                .textSelection(.enabled)
+                .transcriptTextSelection()
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .accessibleInlineMarkdown(text)
 
@@ -1115,7 +1147,7 @@ private struct MarkdownTextView: View {
             Text(renderedInlineMarkdown(text))
                 .font(headingFont(level: level))
                 .padding(.top, level == 1 ? 4 : 1)
-                .textSelection(.enabled)
+                .transcriptTextSelection()
                 .accessibleInlineMarkdown(text)
                 .accessibilityAddTraits(.isHeader)
                 .accessibilityLabel("Heading level \(level): \(InlineMarkdownPresentation.spokenText(text))")
@@ -1140,7 +1172,7 @@ private struct MarkdownTextView: View {
                     .italic()
                     .foregroundStyle(AppTheme.Palette.textMuted)
                     .lineSpacing(4)
-                    .textSelection(.enabled)
+                    .transcriptTextSelection()
                     .accessibleInlineMarkdown(text)
             }
             .padding(.vertical, 3)
@@ -1166,7 +1198,7 @@ private struct MarkdownTextView: View {
             Text(renderedInlineMarkdown(item.text))
                 .font(AppTheme.Typography.body)
                 .lineSpacing(3)
-                .textSelection(.enabled)
+                .transcriptTextSelection()
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .accessibleInlineMarkdown(item.text)
         }
@@ -1338,7 +1370,7 @@ private struct CodeBlockView: View {
                 Text(text)
                     .font(AppTheme.Typography.code)
                     .lineSpacing(3)
-                    .textSelection(.enabled)
+                    .transcriptTextSelection()
                     .padding(12)
             }
         }
@@ -1474,7 +1506,7 @@ private struct SizedLaTeXWebView: View {
                 Text(RichContentFallback.latex(source: latex))
                     .font(.caption)
                     .foregroundStyle(.secondary)
-                    .textSelection(.enabled)
+                    .transcriptTextSelection()
                     .fixedSize(horizontal: false, vertical: true)
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .padding(8)
