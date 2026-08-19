@@ -50,6 +50,57 @@ class Slice4B5LoopbackAndDriverContracts(unittest.TestCase):
         self.assertIn("data: [DONE]", rendered)
         self.assertNotIn('"object":"chat.completion"', rendered)
 
+        ordered = completion_to_sse(
+            {
+                "id": "s4b5-read-1",
+                "object": "chat.completion",
+                "created": 0,
+                "model": "loopback-model",
+                "choices": [
+                    {
+                        "index": 0,
+                        "message": {
+                            "role": "assistant",
+                            "content": None,
+                            "tool_calls": [
+                                {
+                                    "id": "call_read_1",
+                                    "type": "function",
+                                    "function": {
+                                        "name": "read_file",
+                                        "arguments": '{"target_file":"ONE.txt"}',
+                                    },
+                                }
+                            ],
+                        },
+                        "finish_reason": "tool_calls",
+                    }
+                ],
+                "usage": {"prompt_tokens": 1, "completion_tokens": 1, "total_tokens": 2, "simulated": True},
+            }
+        ).decode()
+        self.assertIn('"name":"read_file"', ordered)
+        self.assertIn("target_file", ordered)
+        self.assertNotIn("GrokBuild:read_file", ordered)
+
+        missing = completion_to_sse(
+            {
+                "id": "s4b5-chat-missing-usage",
+                "object": "chat.completion",
+                "created": 0,
+                "model": "loopback-model",
+                "choices": [
+                    {
+                        "index": 0,
+                        "message": {"role": "assistant", "content": "pong"},
+                        "finish_reason": "stop",
+                    }
+                ],
+            }
+        ).decode()
+        self.assertIn('"content":"pong"', missing)
+        self.assertNotIn('"usage"', missing)
+
         cluster = LoopbackCluster(mode="normal")
         identity = cluster.start()
         try:
@@ -180,11 +231,91 @@ class Slice4B5LoopbackAndDriverContracts(unittest.TestCase):
         finally:
             cluster.close()
 
-    def test_hold_mode_starts_without_connections(self) -> None:
-        cluster = LoopbackCluster(mode="hold")
-        cluster.start()
+    def test_hold_and_stream_fail_modes_start_without_connections(self) -> None:
+        for mode in ("hold", "stream_fail", "missing_usage", "hold_after_body"):
+            cluster = LoopbackCluster(mode=mode)
+            cluster.start()
+            try:
+                self.assertEqual(cluster.snapshot()["primary"]["connections"], 0)
+            finally:
+                cluster.close()
+
+    def test_hold_after_body_streams_pong_without_done(self) -> None:
+        cluster = LoopbackCluster(mode="hold_after_body")
+        identity = cluster.start()
         try:
-            self.assertEqual(cluster.snapshot()["primary"]["connections"], 0)
+            payload = json.dumps(
+                {
+                    "model": "loopback-model",
+                    "stream": True,
+                    "messages": [{"role": "user", "content": PROMPT}],
+                }
+            ).encode()
+            request = urllib.request.Request(
+                identity["baseUrl"] + "/chat/completions",
+                data=payload,
+                headers={
+                    "Accept": "text/event-stream",
+                    "Content-Type": "application/json",
+                    "Authorization": "Bearer S4B5-contract-END",
+                },
+                method="POST",
+            )
+            collected = bytearray()
+            finished = threading.Event()
+
+            def _read() -> None:
+                try:
+                    with urllib.request.urlopen(request, timeout=5) as response:
+                        while True:
+                            chunk = response.read(64)
+                            if not chunk:
+                                break
+                            collected.extend(chunk)
+                            if b'"content":"pong"' in collected:
+                                break
+                except Exception:
+                    pass
+                finally:
+                    finished.set()
+
+            thread = threading.Thread(target=_read, daemon=True)
+            thread.start()
+            self.assertTrue(finished.wait(timeout=5) or b'"content":"pong"' in collected)
+            self.assertIn(b'"content":"pong"', collected)
+            self.assertNotIn(b"data: [DONE]", collected)
+            self.assertEqual(cluster.snapshot()["redirect"]["connections"], 0)
+            self.assertEqual(cluster.snapshot()["retry"]["connections"], 0)
+        finally:
+            cluster.close()
+
+    def test_stream_fail_closes_after_truncated_chunk(self) -> None:
+        cluster = LoopbackCluster(mode="stream_fail")
+        identity = cluster.start()
+        try:
+            payload = json.dumps(
+                {
+                    "model": "loopback-model",
+                    "stream": True,
+                    "messages": [{"role": "user", "content": PROMPT}],
+                }
+            ).encode()
+            request = urllib.request.Request(
+                identity["baseUrl"] + "/chat/completions",
+                data=payload,
+                headers={
+                    "Accept": "text/event-stream",
+                    "Content-Type": "application/json",
+                },
+                method="POST",
+            )
+            try:
+                with urllib.request.urlopen(request, timeout=5) as response:
+                    body = response.read()
+            except Exception:
+                return
+            self.assertNotIn(b"data: [DONE]", body)
+            self.assertIn(b"po", body)
         finally:
             cluster.close()
 

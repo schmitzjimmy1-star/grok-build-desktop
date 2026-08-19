@@ -258,8 +258,8 @@ final class GrokArmedCredentialMaterializerTests: XCTestCase {
             "Signed pager E2E is owner-local and must not run in CI"
         )
 
-        let expectedSHA = "354b3b71306c04fdc43efc90193232d5409035871330387ebb86c4dc99693c98"
-        let expectedCLIBuild = "1.0.5 (d11dfed)"
+        let expectedSHA = "f434fa4f17160c8771d3b57bfc62499e252413c4d1fc5ab22bee1a18f2bc933b"
+        let expectedCLIBuild = "1.0.5 (8226242)"
         let officialCLI = URL(fileURLWithPath: NSHomeDirectory()).appendingPathComponent(".grok/bin/grok")
         let officialBefore = try sha256File(officialCLI)
 

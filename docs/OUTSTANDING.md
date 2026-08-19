@@ -371,6 +371,24 @@ continuation dry-run and `_billable_v3` are wired and still fail-closed at the
 absolute ceiling. Paid 4C remains locked. The official CLI remains `grok 1.0.4 (d846eb93d94d) [stable]`, SHA-256
 `39366f7756a090b735cc1df8c93a8c0c3c7871555cf6cbb28f9351ca82936485`.
 
+**4B.4 is merged.** Desktop PR
+[#137](https://github.com/schmitzjimmy1-star/grok-build-desktop/pull/137)
+merged as `90782f2`. Installed `/Applications/GrokBuild.app` remains that 4B.4
+tree until 4B.5 `make ship`. **4B.5 is the current slice:** owner-local loopback
+lifecycle against signed digest-staged pager `f434fa4f…933b` /
+`1.0.5 (8226242)` / source `822624291de2b544605f439ad1349ae6bdc3cf10`. The pager
+is not installed over `~/.grok/bin/grok`. CLI hang repairs on
+`cursor/official-runtime-s4b5-armed-turn-sampler`: 500ms Outstanding timeout
+(`65e887a`, PR [#5](https://github.com/schmitzjimmy1-star/grok-build/pull/5)),
+zero-tool `live_ids` drain skip (`9db8cb0`), after-turn workspace detach
+(`8226242`). Desktop harness: `Slice4B5LifecycleTests.swift`,
+`scripts/acceptance/harness/loopback_provider.py`,
+`scripts/acceptance/harness/candidate_process_driver.py`. Armed
+`session/prompt` timeout stays 90s. Kill-after-response-before-settlement is
+the loopback `hold_after_body` case in `Slice4B5LifecycleTests`. Hostile
+`setsid`/tool-tree remains a 4B.5 leftover or 4B.6 CLI rerun. Paid 4C stays
+locked. Do not `grok update`.
+
 PR [#124](https://github.com/schmitzjimmy1-star/grok-build-desktop/pull/124)
 passed required exact-head run `32123735441` and merged normally as
 `a8fb17fbfbc6bc5656148d7475bfff5a153eda11`. Merged-main `make ship` passed

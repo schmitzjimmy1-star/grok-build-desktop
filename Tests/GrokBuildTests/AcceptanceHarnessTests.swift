@@ -106,6 +106,9 @@ final class AcceptanceHarnessTests: XCTestCase {
         XCTAssertFalse(driver.contains("loopback-placeholder-not-live"))
         XCTAssertTrue(provider.contains("worker"))
         XCTAssertTrue(provider.contains("recovery"))
+        XCTAssertTrue(provider.contains("missing_usage"))
+        XCTAssertTrue(provider.contains("stream_fail"))
+        XCTAssertTrue(provider.contains("hold_after_body"))
     }
 
     func testSlice6ManifestDryRunUsesQuarterMillionCeiling() throws {

@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 import os
+import socket
 import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -34,6 +35,20 @@ CHAT_OK = {
         }
     ],
     "usage": SIMULATED_USAGE,
+}
+
+CHAT_MISSING_USAGE = {
+    "id": "s4b5-chat-missing-usage",
+    "object": "chat.completion",
+    "created": 0,
+    "model": "loopback-model",
+    "choices": [
+        {
+            "index": 0,
+            "message": {"role": "assistant", "content": "pong"},
+            "finish_reason": "stop",
+        }
+    ],
 }
 
 MODELS_OK = {
@@ -95,7 +110,7 @@ class _Handler(BaseHTTPRequestHandler):
         if length > 1_048_576:
             self._json(413, {"error": {"message": "too large", "simulated": True}})
             return
-        _ = self.rfile.read(length) if length else b""
+        raw = self.rfile.read(length) if length else b""
         mode = getattr(self.server, "mode", "normal")
         if mode == "hold":
             getattr(self.server, "held", threading.Event()).wait(timeout=30)
@@ -108,10 +123,59 @@ class _Handler(BaseHTTPRequestHandler):
             self.send_header("Content-Length", "0")
             self.end_headers()
             return
+        if mode == "stream_fail" and self.path.rstrip("/").endswith("/chat/completions"):
+            self.send_response(200)
+            self.send_header("Content-Type", "text/event-stream")
+            self.send_header("Cache-Control", "no-cache")
+            self.end_headers()
+            self.wfile.write(b'data: {"object":"chat.completion.chunk","choices":[{"delta":{"content":"po"')
+            self.wfile.flush()
+            self.close_connection = True
+            try:
+                self.connection.shutdown(socket.SHUT_RDWR)
+            except OSError:
+                pass
+            return
+        if mode == "hold_after_body" and self.path.rstrip("/").endswith("/chat/completions"):
+            # Content reaches the client, then the socket holds so settlement
+            # cannot complete before the owner-local kill window.
+            payload = completion_to_sse(
+                {
+                    "id": "s4b5-chat-hold-after-body",
+                    "object": "chat.completion",
+                    "created": 0,
+                    "model": "loopback-model",
+                    "choices": [
+                        {
+                            "index": 0,
+                            "message": {"role": "assistant", "content": "pong"},
+                            "finish_reason": None,
+                        }
+                    ],
+                },
+                include_done=False,
+            )
+            self.send_response(200)
+            self.send_header("Content-Type", "text/event-stream")
+            self.send_header("Cache-Control", "no-cache")
+            self.end_headers()
+            self.wfile.write(payload)
+            self.wfile.flush()
+            getattr(self.server, "held", threading.Event()).wait(timeout=30)
+            if getattr(self.server, "closed", False):
+                return
+            return
         if self.path.rstrip("/").endswith("/chat/completions"):
             body = getattr(self.server, "chat_body", CHAT_OK)
             if callable(body):
-                body = body()
+                try:
+                    request = json.loads(raw.decode()) if raw else {}
+                except json.JSONDecodeError:
+                    request = {}
+                try:
+                    body = body(request)
+                except TypeError:
+                    body = body()
             self._sse(completion_to_sse(body))
             return
         self._json(404, {"error": {"message": "not found", "simulated": True}})
@@ -143,7 +207,17 @@ class LoopbackCluster:
         chat_body: dict[str, Any] | None = None,
         status_path: Path | None = None,
     ) -> None:
-        if mode not in {"normal", "redirect", "hold", "ordered_reads", "worker", "recovery"}:
+        if mode not in {
+            "normal",
+            "redirect",
+            "hold",
+            "ordered_reads",
+            "worker",
+            "recovery",
+            "missing_usage",
+            "stream_fail",
+            "hold_after_body",
+        }:
             raise ValueError("unsupported loopback mode")
         self.mode = mode
         self.status_path = status_path
@@ -161,6 +235,8 @@ class LoopbackCluster:
             self.primary.chat_body = self._worker_script()  # type: ignore[attr-defined]
         elif mode == "recovery":
             self.primary.chat_body = self._recovery_script()  # type: ignore[attr-defined]
+        elif mode == "missing_usage":
+            self.primary.chat_body = CHAT_MISSING_USAGE  # type: ignore[attr-defined]
         self._threads: list[threading.Thread] = []
 
     def _server(self, name: str, mode: str) -> ThreadingHTTPServer:
@@ -238,9 +314,9 @@ class LoopbackCluster:
                                         "id": f"call_read_{calls['n']}",
                                         "type": "function",
                                         "function": {
-                                            "name": "GrokBuild:read_file",
+                                            "name": "read_file",
                                             "arguments": json.dumps(
-                                                {"path": files[index]},
+                                                {"target_file": files[index]},
                                                 separators=(",", ":"),
                                             ),
                                         },
@@ -259,22 +335,30 @@ class LoopbackCluster:
     def _worker_script(self):
         calls = {"n": 0}
 
-        def next_body() -> dict[str, Any]:
+        def next_body(request: dict[str, Any] | None = None) -> dict[str, Any]:
             calls["n"] += 1
             if calls["n"] <= 2:
                 name = "LEFT" if calls["n"] == 1 else "RIGHT"
                 return _tool_call(
                     f"s4b5-task-{calls['n']}",
                     f"call_task_{calls['n']}",
-                    "GrokBuild:task",
-                    {"description": name, "prompt": "reply pong"},
+                    "task",
+                    {
+                        "description": name,
+                        "prompt": "Reply with exactly the word pong.",
+                        "subagent_type": "general-purpose",
+                        "run_in_background": True,
+                    },
                 )
             if calls["n"] == 3:
                 return _tool_call(
                     "s4b5-wait-1",
                     "call_wait_1",
-                    "GrokBuild:wait_tasks",
-                    {},
+                    "wait_tasks",
+                    {
+                        "task_ids": _task_ids_from_request(request or {}),
+                        "mode": "wait_all",
+                    },
                 )
             return CHAT_OK
 
@@ -294,15 +378,15 @@ class LoopbackCluster:
                 return _tool_call(
                     f"s4b5-recovery-{calls['n']}",
                     f"call_recovery_{calls['n']}",
-                    "GrokBuild:read_file",
-                    {"path": files[index]},
+                    "read_file",
+                    {"target_file": files[index]},
                 )
             return CHAT_OK
 
         return next_body
 
 
-def completion_to_sse(payload: dict[str, Any]) -> bytes:
+def completion_to_sse(payload: dict[str, Any], *, include_done: bool = True) -> bytes:
     """Render a non-streaming chat.completion body as OpenAI SSE chunks.
 
     The armed sampler always sends ``stream: true`` and parses
@@ -312,13 +396,14 @@ def completion_to_sse(payload: dict[str, Any]) -> bytes:
     chat_id = str(payload.get("id") or "s4b5-chat")
     model = str(payload.get("model") or "loopback-model")
     created = int(payload.get("created") or 0)
+    include_usage = "usage" in payload
     usage = payload.get("usage") or SIMULATED_USAGE
     choices = payload.get("choices") or []
     events: list[dict[str, Any]] = []
     if choices:
         choice = choices[0]
         message = choice.get("message") or {}
-        finish = choice.get("finish_reason") or "stop"
+        finish = choice["finish_reason"] if "finish_reason" in choice else "stop"
         tool_calls = message.get("tool_calls") or []
         content = message.get("content")
         if tool_calls:
@@ -368,7 +453,6 @@ def completion_to_sse(payload: dict[str, Any]) -> bytes:
                             "finish_reason": finish,
                         }
                     ],
-                    "usage": usage,
                 }
             )
         else:
@@ -397,7 +481,6 @@ def completion_to_sse(payload: dict[str, Any]) -> bytes:
                     "created": created,
                     "model": model,
                     "choices": [],
-                    "usage": usage,
                 }
             )
     else:
@@ -408,14 +491,41 @@ def completion_to_sse(payload: dict[str, Any]) -> bytes:
                 "created": created,
                 "model": model,
                 "choices": [],
-                "usage": usage,
             }
         )
+    if include_usage and events:
+        events[-1]["usage"] = usage
     parts = [
         f"data: {json.dumps(event, separators=(',', ':'))}\n\n" for event in events
     ]
-    parts.append("data: [DONE]\n\n")
+    if include_done:
+        parts.append("data: [DONE]\n\n")
     return "".join(parts).encode()
+
+
+def _task_ids_from_request(request: dict[str, Any]) -> list[str]:
+    ids: list[str] = []
+    for message in request.get("messages") or []:
+        if not isinstance(message, dict):
+            continue
+        content = message.get("content")
+        if isinstance(content, str):
+            for token in ("subagent_id", "task_id"):
+                needle = f'"{token}":"'
+                start = 0
+                while True:
+                    index = content.find(needle, start)
+                    if index < 0:
+                        break
+                    begin = index + len(needle)
+                    end = content.find('"', begin)
+                    if end < 0:
+                        break
+                    value = content[begin:end]
+                    if value and value not in ids:
+                        ids.append(value)
+                    start = end + 1
+    return ids
 
 
 def _tool_call(chat_id: str, call_id: str, name: str, arguments: dict[str, Any]) -> dict[str, Any]:

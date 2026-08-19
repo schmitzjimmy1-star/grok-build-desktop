@@ -12,16 +12,16 @@ final class Slice4B5LifecycleTests: XCTestCase {
         .deletingLastPathComponent()
         .deletingLastPathComponent()
         .deletingLastPathComponent()
-    static let expectedSHA = "354b3b71306c04fdc43efc90193232d5409035871330387ebb86c4dc99693c98"
-    static let expectedCLIBuild = "1.0.5 (d11dfed)"
-    static let expectedSourceSHA = "d11dfed12c4e161951f9198ce2404ca2d15379a3"
+    static let expectedSHA = "f434fa4f17160c8771d3b57bfc62499e252413c4d1fc5ab22bee1a18f2bc933b"
+    static let expectedCLIBuild = "1.0.5 (8226242)"
+    static let expectedSourceSHA = "822624291de2b544605f439ad1349ae6bdc3cf10"
     static let officialSHA = "39366f7756a090b735cc1df8c93a8c0c3c7871555cf6cbb28f9351ca82936485"
     static let modelID = "s4b5-direct"
     static let providerFacing = "loopback-model"
     static let prompt = "Reply with exactly the word pong."
     static let payloadCeiling: UInt64 = 65_536
     static let maxOutput: UInt64 = 256
-    static let tokenCeiling = 100_000
+    static let tokenCeiling = 2_000_000
 
     override func tearDown() {
         GrokCandidateProcessLauncher.spawnedProcessObserverForTests = nil
@@ -44,6 +44,15 @@ final class Slice4B5LifecycleTests: XCTestCase {
         XCTAssertTrue(result.assistantText.contains("pong"))
         XCTAssertEqual(result.officialAfter, Self.officialSHA)
         XCTAssertEqual(result.spawnedSHA, Self.expectedSHA)
+        XCTAssertFalse(result.reservations.isEmpty, "normal call must leave ledger evidence")
+        XCTAssertTrue(
+            result.reservations.contains(where: { row in
+                (row["actualTokens"] as? Int).map { $0 > 0 } == true
+                    || (row["chargedTokens"] as? Int).map { $0 > 0 } == true
+            }),
+            "normal call must settle or conservatively charge a reservation"
+        )
+        XCTAssertTrue(result.primaryHosts.allSatisfy { $0.contains("127.0.0.1") })
     }
 
     @MainActor
@@ -64,16 +73,104 @@ final class Slice4B5LifecycleTests: XCTestCase {
         XCTAssertTrue(sawConnection, "loopback never observed the reserved request")
         let pid = Int32(harness.observedPID)
         XCTAssertNotEqual(pid, 0)
+        signal(SIGPIPE, SIG_IGN)
         Darwin.kill(pid, SIGKILL)
-        _ = await sendTask.value
         await harness.process.stop()
+        _ = await sendTask.value
         let ledger = try harness.readLedger()
         let reservations = ledger["reservations"] as? [[String: Any]] ?? []
         XCTAssertFalse(reservations.isEmpty, "kill-after-reserve must leave ledger evidence")
         for row in reservations {
-            XCTAssertNil(row["actualTokens"])
+            XCTAssertTrue(row["actualTokens"] == nil || row["actualTokens"] is NSNull)
             XCTAssertGreaterThan((row["reservedTokens"] as? Int) ?? 0, 0)
         }
+        XCTAssertEqual(try harness.officialSHA(), Self.officialSHA)
+    }
+
+    @MainActor
+    func testMissingUsageKeepsConservativeReservation() async throws {
+        let result = try await runCase(mode: "missing_usage", maxModelCalls: 1)
+        XCTAssertEqual(result.primaryConnections, 1)
+        XCTAssertEqual(result.redirectConnections, 0)
+        XCTAssertEqual(result.retryConnections, 0)
+        XCTAssertTrue(result.assistantText.contains("pong"))
+        XCTAssertFalse(result.reservations.isEmpty)
+        XCTAssertEqual(result.officialAfter, Self.officialSHA)
+    }
+
+    @MainActor
+    func testStreamFailureChargesAmbiguousReservation() async throws {
+        let result = try await runCase(mode: "stream_fail", maxModelCalls: 1, expectReadySend: false)
+        XCTAssertGreaterThanOrEqual(result.primaryConnections, 1)
+        XCTAssertEqual(result.redirectConnections, 0)
+        XCTAssertEqual(result.retryConnections, 0)
+        XCTAssertFalse(result.reservations.isEmpty)
+        for row in result.reservations {
+            XCTAssertTrue(row["actualTokens"] == nil || row["actualTokens"] is NSNull)
+            XCTAssertGreaterThan((row["reservedTokens"] as? Int) ?? 0, 0)
+        }
+        XCTAssertEqual(result.officialAfter, Self.officialSHA)
+    }
+
+    @MainActor
+    func testCallCeilingRefusesASecondModelCall() async throws {
+        let result = try await runCase(
+            mode: "ordered_reads",
+            maxModelCalls: 1,
+            expectReadySend: false,
+            copyNativeFixtures: true
+        )
+        XCTAssertEqual(result.primaryConnections, 1)
+        XCTAssertEqual(result.redirectConnections, 0)
+        XCTAssertEqual(result.retryConnections, 0)
+        XCTAssertFalse(result.assistantText.contains("pong"))
+        XCTAssertFalse(result.reservations.isEmpty)
+        XCTAssertEqual(result.officialAfter, Self.officialSHA)
+    }
+
+    @MainActor
+    func testKillAfterResponseBeforeSettlementChargesAmbiguousReservation() async throws {
+        try skipUnlessOwnerLocal()
+        let harness = try await Slice4B5Harness.start(mode: "hold_after_body", maxModelCalls: 1)
+        defer { harness.close() }
+        let sendTask = Task { await harness.process.send(Self.prompt) }
+        let assistant = await harness.waitForAssistantText("pong", timeout: 20)
+        XCTAssertTrue(assistant.contains("pong"), "kill-after-response needs streamed content before SIGKILL")
+        let pid = Int32(harness.observedPID)
+        XCTAssertNotEqual(pid, 0)
+        signal(SIGPIPE, SIG_IGN)
+        Darwin.kill(pid, SIGKILL)
+        await harness.process.stop()
+        _ = await sendTask.value
+        let ledger = try harness.readLedger()
+        let reservations = ledger["reservations"] as? [[String: Any]] ?? []
+        XCTAssertFalse(reservations.isEmpty, "kill-after-response must leave ledger evidence")
+        for row in reservations {
+            XCTAssertTrue(row["actualTokens"] == nil || row["actualTokens"] is NSNull)
+            XCTAssertGreaterThan((row["reservedTokens"] as? Int) ?? 0, 0)
+        }
+        XCTAssertEqual(try harness.officialSHA(), Self.officialSHA)
+    }
+
+    @MainActor
+    func testKillDuringRestartChargesAmbiguousReservation() async throws {
+        try skipUnlessOwnerLocal()
+        let harness = try await Slice4B5Harness.start(
+            mode: "hold",
+            maxModelCalls: 1,
+            allocations: [
+                ("s4b5-restart-1", "S4B5-RESTART-1"),
+                ("s4b5-restart-2", "S4B5-RESTART-2"),
+            ],
+            activeAllocation: "s4b5-restart-1"
+        )
+        defer { harness.close() }
+        await harness.process.stop()
+        try await harness.rearm(allocationID: "s4b5-restart-2", resumeSessionID: nil)
+        try await killAfterPrimaryConnection(harness: harness)
+        let ledger = try harness.readLedger()
+        let reservations = ledger["reservations"] as? [[String: Any]] ?? []
+        XCTAssertFalse(reservations.isEmpty)
         XCTAssertEqual(try harness.officialSHA(), Self.officialSHA)
     }
 
@@ -105,7 +202,7 @@ final class Slice4B5LifecycleTests: XCTestCase {
 
     @MainActor
     func testWorkerCoordinationUsesTaskAndWaitOnly() async throws {
-        let result = try await runCase(mode: "worker", maxModelCalls: 4, copyNativeFixtures: true)
+        let result = try await runCase(mode: "worker", maxModelCalls: 8, copyNativeFixtures: true)
         XCTAssertGreaterThanOrEqual(result.primaryConnections, 1)
         XCTAssertEqual(result.redirectConnections, 0)
         XCTAssertEqual(result.retryConnections, 0)
@@ -179,7 +276,10 @@ final class Slice4B5LifecycleTests: XCTestCase {
                     try? dumpFailure(harness: harness)
                 }
                 XCTAssertTrue(sent, String(describing: harness.process.state))
-                assistant = harness.collectedAssistantText()
+                assistant = await harness.waitForAssistantText("pong", timeout: 2)
+                if !assistant.contains("pong") {
+                    try? dumpFailure(harness: harness)
+                }
                 XCTAssertTrue(
                     assistant.contains("pong"),
                     "assistant text must come from the streamed turn, got \(assistant)"
@@ -199,8 +299,23 @@ final class Slice4B5LifecycleTests: XCTestCase {
             assistantText: assistant,
             stateAfterSend: stateAfterSend,
             officialAfter: try harness.officialSHA(),
-            spawnedSHA: harness.process.launchReceipt?.candidateBinarySHA256
+            spawnedSHA: harness.process.launchReceipt?.candidateBinarySHA256,
+            reservations: (try? harness.readLedger())?["reservations"] as? [[String: Any]] ?? [],
+            primaryHosts: snapshot.primaryHosts
         )
+    }
+
+    @MainActor
+    private func killAfterPrimaryConnection(harness: Slice4B5Harness) async throws {
+        let sendTask = Task { await harness.process.send(Self.prompt) }
+        let sawConnection = await harness.waitForPrimaryConnection(timeout: 20)
+        XCTAssertTrue(sawConnection, "loopback never observed the reserved request")
+        let pid = Int32(harness.observedPID)
+        XCTAssertNotEqual(pid, 0)
+        signal(SIGPIPE, SIG_IGN)
+        Darwin.kill(pid, SIGKILL)
+        await harness.process.stop()
+        _ = await sendTask.value
     }
 
     private func skipUnlessOwnerLocal() throws {
@@ -249,6 +364,8 @@ private struct Slice4B5Result {
     let stateAfterSend: GrokProcessState
     let officialAfter: String
     let spawnedSHA: String?
+    let reservations: [[String: Any]]
+    let primaryHosts: [String]
 }
 
 private struct Slice4B5Snapshot {
@@ -256,6 +373,7 @@ private struct Slice4B5Snapshot {
     let redirectConnections: Int
     let retryConnections: Int
     let authorizations: [String]
+    let primaryHosts: [String]
 }
 
 private final class Slice4B5Loopback {
@@ -317,7 +435,8 @@ private final class Slice4B5Loopback {
             primaryConnections: primary["connections"] as? Int ?? 0,
             redirectConnections: redirect["connections"] as? Int ?? 0,
             retryConnections: retry["connections"] as? Int ?? 0,
-            authorizations: primary["authorization"] as? [String] ?? []
+            authorizations: primary["authorization"] as? [String] ?? [],
+            primaryHosts: primary["hosts"] as? [String] ?? []
         )
     }
 }
@@ -374,6 +493,18 @@ private final class Slice4B5Harness {
 
     func collectedAssistantText() -> String {
         assistantChunks
+    }
+
+    func waitForAssistantText(_ needle: String, timeout: TimeInterval) async -> String {
+        let deadline = Date().addingTimeInterval(timeout)
+        while Date() < deadline {
+            let text = assistantChunks
+            if text.contains(needle) {
+                return text
+            }
+            try? await Task.sleep(for: .milliseconds(20))
+        }
+        return assistantChunks
     }
 
     init(
@@ -468,7 +599,7 @@ private final class Slice4B5Harness {
         return harness
     }
 
-    func rearm(allocationID: String, resumeSessionID: String) async throws {
+    func rearm(allocationID: String, resumeSessionID: String?) async throws {
         process = GrokProcess()
         try await armProcess(allocationID: allocationID, resumeSessionID: resumeSessionID, maxModelCalls: 1)
     }

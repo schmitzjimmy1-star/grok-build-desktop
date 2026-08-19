@@ -1,6 +1,6 @@
 # GrokBuild Slice 4 Activation Campaign — 2026-08-17
 
-Status: **Slices 4B.0 through 4B.3 accepted; Slice 4B.4 fresh-process continuation is in progress; paid activation locked.** This document is the authority for completing
+Status: **Slices 4B.0 through 4B.4 accepted; Slice 4B.5 nonbillable loopback lifecycle is in progress; paid activation locked.** This document is the authority for completing
 the official-provider and open-weight lane after the nonbillable Slice 4A hard-budget checkpoint. It
 does not authorize a provider request, credential-value read, live Grok config
 mutation, installed-CLI replacement, tag, release, or Slice 5 work.
@@ -121,8 +121,10 @@ evidence from a predecessor or begin while its predecessor remains unmerged.
 
 Slice 4B.0 is accepted. Jimmy explicitly authorized sequential execution of
 4B.1, then 4B.2, then 4B.3 on 2026-08-18. Merge-per-slice remains mandatory:
-4B.1 and 4B.2 are accepted. 4B.3 T5 merged as PR #136. 4B.4 is in progress.
-Paid activation remains locked.
+4B.1 and 4B.2 are accepted. 4B.3 T5 merged as PR #136. 4B.4 merged as PR #137
+(`90782f2`). **4B.5 is in progress** on
+`cursor/official-runtime-s4b5-loopback-lifecycle` against signed pager
+`f434fa4f…933b` / `1.0.5 (8226242)`. Paid activation remains locked.
 
 ### Scope
 
@@ -535,6 +537,27 @@ loopback providers with no real credential:
 Fake-provider price evidence is simulated and must be labeled that way. It can
 prove tokens, reservations, calls, and lifecycle; it cannot prove a live
 provider's billing or credential validity.
+
+### 4B.5 edit map (2026-08-19)
+
+Owner-local proofs live in these files. Do not retarget pager pins anywhere else.
+
+| Job | Edit here |
+|---|---|
+| Signed pager pin (`SHA` / `cliBuild` / source) | `Tests/GrokBuildTests/Slice4B5LifecycleTests.swift`, `Tests/GrokBuildTests/GrokArmedCredentialMaterializerTests.swift`, `scripts/acceptance/harness/candidate_process_driver.py` |
+| Loopback modes, SSE, tool wire names | `scripts/acceptance/harness/loopback_provider.py`, `scripts/acceptance/tests/test_v3_lifecycle.py` |
+| Armed spawn / 90s `session/prompt` | `GrokBuild/Services/GrokProcess.swift` (`armedSessionPromptTimeout`), `GrokArmedCredentialMaterializer.swift` |
+| CLI hang repairs (Outstanding, zero-tool freeze, after-turn detach) | CLI fork `crates/codegen/xai-grok-shell/src/session/acp_session_impl/{turn.rs,turn_end.rs}` and `acp_session.rs` on `cursor/official-runtime-s4b5-armed-turn-sampler` |
+| Kill-after-response-before-settlement | `loopback_provider.py` mode `hold_after_body`; `Slice4B5LifecycleTests.testKillAfterResponseBeforeSettlementChargesAmbiguousReservation` |
+| Hostile `setsid` / tool-tree | CLI spawn/process-group code in the grok-build fork; not the desktop harness. Still leftover. |
+| 4B.6 signed owner-private install | New desktop branch; `GrokCandidateRuntimeAuthority` / `scripts/acceptance/harness/candidate_runtime.py`; installed app launch, not `~/.grok/bin/grok` |
+| 4C paid unlock | `scripts/acceptance/run.py` `require_absolute_ceiling_support()` after three reviews of the exact 4B.6 tree |
+
+Staged pager identity for this pass: binary SHA-256
+`f434fa4f17160c8771d3b57bfc62499e252413c4d1fc5ab22bee1a18f2bc933b`,
+`cliBuild` `1.0.5 (8226242)`, source
+`822624291de2b544605f439ad1349ae6bdc3cf10`. Official CLI remains
+`39366f7756a090b735cc1df8c93a8c0c3c7871555cf6cbb28f9351ca82936485`.
 
 ## Paid unlock and execution
 
