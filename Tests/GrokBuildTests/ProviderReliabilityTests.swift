@@ -206,7 +206,13 @@ final class ProviderReliabilityTests: XCTestCase {
             )
             XCTAssertEqual(result.providers.map(\.id), [provider.id])
             XCTAssertNil(try store.credential(for: provider.id))
-            XCTAssertEqual(defaults.data(forKey: "grokbuild.customModelProviders"), encoded)
+            let persisted = try JSONDecoder().decode(
+                [Provider].self,
+                from: try XCTUnwrap(defaults.data(forKey: "grokbuild.customModelProviders"))
+            )
+            XCTAssertEqual(persisted.map(\.id), [provider.id])
+            XCTAssertEqual(persisted.map(\.baseURL), [provider.baseURL])
+            XCTAssertEqual(persisted.map(\.credentialMetadata.kind), [.none])
         }
     }
 
