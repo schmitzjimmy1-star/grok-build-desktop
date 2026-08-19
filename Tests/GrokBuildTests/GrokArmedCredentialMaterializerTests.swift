@@ -1,0 +1,276 @@
+import Darwin
+import Foundation
+import Security
+import XCTest
+@testable import GrokBuild
+
+final class GrokArmedCredentialMaterializerTests: XCTestCase {
+    private let account = "openrouter"
+
+    override func tearDown() {
+        GrokCandidateRuntimeAuthority.signatureVerifierOverrideForTests = nil
+        GrokCandidateProcessLauncher.spawnedProcessObserverForTests = nil
+        super.tearDown()
+    }
+
+    func testUsesExactGenericPasswordServiceAccountAndOneResult() throws {
+        final class QueryBox {
+            var query: [String: Any]?
+        }
+        let box = QueryBox()
+        let materializer = GrokArmedCredentialMaterializer(keychain: client { query, item in
+            box.query = query as NSDictionary as? [String: Any]
+            item?.pointee = [Data([0x00, 0xff, 0x7f])] as NSArray
+            return errSecSuccess
+        })
+
+        let transfer = try materializer.materialize(authorization: authorization())
+        XCTAssertEqual(transfer.byteCount, 3)
+        let query = try XCTUnwrap(box.query)
+        XCTAssertEqual(query[kSecClass as String] as? String, kSecClassGenericPassword as String)
+        XCTAssertEqual(query[kSecAttrService as String] as? String, GrokArmedCredentialMaterializer.keychainService)
+        XCTAssertEqual(query[kSecAttrAccount as String] as? String, account)
+        XCTAssertEqual(
+            query[kSecAttrAccessible as String] as? String,
+            kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly as String
+        )
+        XCTAssertEqual(query[kSecReturnData as String] as? Bool, true)
+        XCTAssertEqual(query[kSecMatchLimit as String] as? String, kSecMatchLimitAll as String)
+        XCTAssertEqual(query[kSecAttrSynchronizable as String] as? Bool, false)
+        XCTAssertEqual(authorization().keychainAccount, account)
+        XCTAssertEqual(authorization().authHeaderNames, ["authorization"])
+    }
+
+    func testAuthorizationDerivesAccountAndHeadersFromScheme() throws {
+        XCTAssertNil(GrokArmedCredentialAuthorizationV3(
+            managedProviderID: account,
+            authScheme: "oauth",
+            expectedProvenanceSHA256: String(repeating: "a", count: 64)
+        ))
+        XCTAssertNil(GrokArmedCredentialAuthorizationV3(
+            managedProviderID: account,
+            authScheme: "bearer",
+            expectedProvenanceSHA256: "not-a-digest"
+        ))
+        let both = try XCTUnwrap(GrokArmedCredentialAuthorizationV3(
+            managedProviderID: account,
+            authScheme: "bearer_and_x_api_key",
+            expectedProvenanceSHA256: String(repeating: "a", count: 64)
+        ))
+        XCTAssertEqual(both.keychainAccount, account)
+        XCTAssertEqual(both.authHeaderNames, ["authorization", "x-api-key"])
+        XCTAssertEqual(
+            try XCTUnwrap(GrokArmedCredentialAuthorizationV3(
+                managedProviderID: account,
+                authScheme: "x_api_key",
+                expectedProvenanceSHA256: String(repeating: "a", count: 64)
+            )).authHeaderNames,
+            ["x-api-key"]
+        )
+    }
+
+    func testRejectsMissingErrorMultipleEmptyInvalidAndOversizeResponses() throws {
+        let failures: [(OSStatus, AnyObject?, GrokArmedCredentialMaterializer.MaterializationError)] = [
+            (errSecItemNotFound, nil, .itemNotFound),
+            (errSecAuthFailed, nil, .keychainReadFailed),
+            (errSecSuccess, [Data([1]), Data([2])] as NSArray, .multipleCredentials),
+            (errSecSuccess, [Data()] as NSArray, .invalidCredential),
+            (errSecSuccess, ["not-data"] as NSArray, .invalidCredential),
+            (
+                errSecSuccess,
+                [Data(repeating: 1, count: GrokArmedCredentialMaterializer.maximumByteCount + 1)] as NSArray,
+                .credentialTooLarge
+            ),
+        ]
+        for (status, item, expected) in failures {
+            let materializer = GrokArmedCredentialMaterializer(keychain: client { _, result in
+                result?.pointee = item as CFTypeRef?
+                return status
+            })
+            XCTAssertThrowsError(try materializer.materialize(authorization: authorization())) { error in
+                XCTAssertEqual(error as? GrokArmedCredentialMaterializer.MaterializationError, expected)
+            }
+        }
+    }
+
+    func testTransferConsumesOnlyOnceWithoutReturningCredentialBytes() throws {
+        let original = [UInt8]([0xff, 0xfe, 0x80, 0x00, 0x7f])
+        let materializer = GrokArmedCredentialMaterializer(keychain: client { _, item in
+            item?.pointee = [Data(original)] as NSArray
+            return errSecSuccess
+        })
+        let transfer = try materializer.materialize(authorization: authorization())
+        var channel = try GrokCredentialTransportV1.prepare(transfer: transfer)
+        channel.closeParent()
+        channel.closeChild()
+        channel.bestEffortWipe()
+        XCTAssertEqual(transfer.byteCount, 0)
+        XCTAssertThrowsError(try GrokCredentialTransportV1.prepare(transfer: transfer)) { error in
+            XCTAssertEqual(error as? GrokArmedCredentialTransfer.TransferError, .alreadyConsumed)
+        }
+    }
+
+    func testMaterializationFailureCannotCreateCandidateProcess() throws {
+        final class PIDBox { var value: pid_t = 0 }
+        let observed = PIDBox()
+        GrokCandidateProcessLauncher.spawnedProcessObserverForTests = { observed.value = $0 }
+        let materializer = GrokArmedCredentialMaterializer(keychain: client { _, _ in errSecItemNotFound })
+
+        XCTAssertThrowsError(try materializer.materialize(authorization: authorization())) { error in
+            XCTAssertEqual(error as? GrokArmedCredentialMaterializer.MaterializationError, .itemNotFound)
+        }
+        XCTAssertEqual(observed.value, 0)
+    }
+
+    func testV3PreflightRefusesEveryOrdinaryToolOrHelperDetour() {
+        let authorization = authorization()
+        XCTAssertNil(GrokArmedCredentialLaunchPreflight.refusalMessage(
+            authorization: authorization,
+            browserEnabled: false,
+            computerUseEnabled: false,
+            requestedMCPServerNames: [],
+            authBoundary: .officialHelper
+        ))
+        for refusal in [
+            GrokArmedCredentialLaunchPreflight.refusalMessage(
+                authorization: authorization,
+                browserEnabled: true,
+                computerUseEnabled: false,
+                requestedMCPServerNames: [],
+                authBoundary: .officialHelper
+            ),
+            GrokArmedCredentialLaunchPreflight.refusalMessage(
+                authorization: authorization,
+                browserEnabled: false,
+                computerUseEnabled: true,
+                requestedMCPServerNames: [],
+                authBoundary: .officialHelper
+            ),
+            GrokArmedCredentialLaunchPreflight.refusalMessage(
+                authorization: authorization,
+                browserEnabled: false,
+                computerUseEnabled: false,
+                requestedMCPServerNames: ["external"],
+                authBoundary: .officialHelper
+            ),
+            GrokArmedCredentialLaunchPreflight.refusalMessage(
+                authorization: authorization,
+                browserEnabled: false,
+                computerUseEnabled: false,
+                requestedMCPServerNames: [],
+                authBoundary: .nativeSession
+            ),
+        ] {
+            XCTAssertNotNil(refusal)
+        }
+    }
+
+    func testV3TransferUsesCandidateDescriptorAndLeaksSentinelNowhere() throws {
+        let fixture = try CandidateRuntimeTestFixture.makeCredentialReceiverExecutable()
+        defer { try? FileManager.default.removeItem(at: fixture.container) }
+        CandidateRuntimeTestFixture.installSignatureOverride()
+        let lease = try XCTUnwrap(GrokCandidateRuntimeAuthority.acquireLease(
+            selectionPath: fixture.selection.path,
+            expectedCLIBuild: fixture.cliBuild
+        ))
+        let sentinel = Array("S4B3-MATERIALIZER-\(UUID().uuidString)-END".utf8)
+        let materializer = GrokArmedCredentialMaterializer(keychain: client { _, item in
+            item?.pointee = [Data(sentinel)] as NSArray
+            return errSecSuccess
+        })
+        let transfer = try materializer.materialize(authorization: authorization())
+        let arguments = ["agent", "stdio"]
+        let environment = ["HOME": fixture.container.path, "PATH": "/usr/bin:/bin"]
+        XCTAssertFalse(GrokCredentialTransportV1.argumentsOrEnvironmentContainTransfer(
+            transfer,
+            arguments: arguments,
+            environment: environment
+        ))
+
+        let launched = try GrokCandidateProcessLauncher.spawn(
+            lease: lease,
+            arguments: arguments,
+            environment: environment,
+            currentDirectory: fixture.container,
+            credentialTransferV3: transfer
+        )
+        try launched.standardInput.close()
+        let output = try launched.standardOutput.fileHandleForReading.readToEnd() ?? Data()
+        let error = try launched.standardError.fileHandleForReading.readToEnd() ?? Data()
+        waitForProcessExit(launched.process)
+        XCTAssertEqual(output, Data("transport=fd-v1,result=ok\n".utf8))
+        XCTAssertTrue(error.isEmpty)
+        XCTAssertNil(output.range(of: Data(sentinel)))
+        XCTAssertNil(error.range(of: Data(sentinel)))
+
+        let receipt = GrokLaunchReceipt(options: GrokLaunchOptions())
+        XCTAssertNil(Data(String(describing: receipt).utf8).range(of: Data(sentinel)))
+        for relative in try FileManager.default.subpathsOfDirectory(atPath: fixture.container.path) {
+            let url = fixture.container.appendingPathComponent(relative)
+            guard let data = try? Data(contentsOf: url) else { continue }
+            XCTAssertNil(data.range(of: Data(sentinel)), "sentinel persisted in \(relative)")
+        }
+    }
+
+    func testV3TransferRejectsContaminatedArgumentsOrEnvironmentWithoutSpawningOrLeakingError() throws {
+        let fixture = try CandidateRuntimeTestFixture.makeCredentialReceiverExecutable()
+        defer { try? FileManager.default.removeItem(at: fixture.container) }
+        CandidateRuntimeTestFixture.installSignatureOverride()
+        let lease = try XCTUnwrap(GrokCandidateRuntimeAuthority.acquireLease(
+            selectionPath: fixture.selection.path,
+            expectedCLIBuild: fixture.cliBuild
+        ))
+        let sentinelText = "S4B3-CONTAMINATED-\(UUID().uuidString)-END"
+        let sentinel = Array(sentinelText.utf8)
+        let materializer = GrokArmedCredentialMaterializer(keychain: client { _, item in
+            item?.pointee = [Data(sentinel)] as NSArray
+            return errSecSuccess
+        })
+        final class PIDBox { var value: pid_t = 0 }
+        let observed = PIDBox()
+        GrokCandidateProcessLauncher.spawnedProcessObserverForTests = { observed.value = $0 }
+
+        let contaminatedInputs: [(arguments: [String], environment: [String: String])] = [
+            (["agent", "--token=\(sentinelText)"], ["HOME": fixture.container.path, "PATH": "/usr/bin:/bin"]),
+            (["agent", "stdio"], ["HOME": fixture.container.path, "PATH": "/usr/bin:/bin", "TOKEN": sentinelText]),
+        ]
+        for input in contaminatedInputs {
+            let transfer = try materializer.materialize(authorization: authorization())
+            XCTAssertThrowsError(try GrokCandidateProcessLauncher.spawn(
+                lease: lease,
+                arguments: input.arguments,
+                environment: input.environment,
+                currentDirectory: fixture.container,
+                credentialTransferV3: transfer
+            )) { error in
+                guard case .credentialTransportFailed? = error as? GrokCandidateProcessLauncher.LaunchError else {
+                    return XCTFail("expected generic credential transport refusal")
+                }
+                XCTAssertFalse(error.localizedDescription.contains(sentinelText))
+            }
+            XCTAssertEqual(transfer.byteCount, 0)
+        }
+        XCTAssertEqual(observed.value, 0)
+    }
+
+    private func authorization() -> GrokArmedCredentialAuthorizationV3 {
+        try! XCTUnwrap(GrokArmedCredentialAuthorizationV3(
+            managedProviderID: account,
+            authScheme: "bearer",
+            expectedProvenanceSHA256: String(repeating: "a", count: 64)
+        ))
+    }
+
+    private func client(
+        _ body: @escaping GrokArmedCredentialKeychainClient.CopyMatching
+    ) -> GrokArmedCredentialKeychainClient {
+        GrokArmedCredentialKeychainClient(copyMatching: body)
+    }
+
+    private func waitForProcessExit(_ process: GrokManagedProcess) {
+        for _ in 0..<200 where process.isRunning {
+            usleep(10_000)
+        }
+        XCTAssertFalse(process.isRunning)
+    }
+}

@@ -270,7 +270,39 @@ discovery. The official CLI remains unchanged at `grok 1.0.4
 The exact next slice is 4B.3: the real Rust credential consumer, consuming
 zeroization, Keychain/provider binding, canonical route-bound provenance,
 campaign-policy v3, and hostile nonbillable tool-tree proof. Paid activation
-and Slice 4B.4 remain locked.
+and Slice 4B.4 remain locked. A 2026-08-18 Cursor checkpoint made the
+builder-to-active-to-claim-to-armed-sampler type-state unbypassable in the dirty
+CLI/app trees, added independent Python `provenance_v3` golden parity, and
+renamed Swift's expected digest field. A later same-day checkpoint wired pager
+FD-198 receive into the one-shot owner, `bind_and_install_v3_authority`, and
+the armed sampler on fake loopback Chat/Responses/Messages only, with mismatch
+and remote-host cases proving zero loopback connections. The armed constructor
+now takes only `SamplerConfig` and uses the registered authority's budget;
+same-provenance alternate ledgers refuse before credential claim. Schema-2 packets still
+stop before materialization, the live v2 capability decoder will not treat a v3
+projection as enforcing, ACP spawn still fail-closes without a live
+candidate/config/route identity, and paid remains locked. The CLI now also
+refuses hard-linked v3 manifest, ledger, and lock files the same way Swift
+already refuses hard-linked 4B.1 sidecars. Armed v3 launches now inherit the
+inspected executable on FD 197; the child measures those bytes plus a compiled
+40-hex source commit after the credential handshake and still does not bind a
+live config/route identity. The live ACP capability now nests `v3Authority`
+(`authorityVersion`, typed provenance, digest) instead of top-level
+provenance/policy fields; Swift derives auth headers from `authScheme` and
+still treats historical v2 `isEnforcing` as the only packet-authorization path.
+Fail-closed `ArmedV3ResolvedSnapshot` types now refuse invented identity, but
+production startup still does not bind them. `SamplerActor` now caches one
+armed client and ignores route-changing updates. ACP spawn now requires an
+already-active v3 authority and does not reopen the v3 manifest. Armed mode
+omits the summary sampling client. Resolved models keep `model_provider`.
+`ResolvedConfigIdentityTracker` now bumps generation from a credential-free
+catalog projection, not `synced_at`. Live route observation now measures
+loopback endpoint SHA, a deterministic `v3.<sha256>` route id, Darwin `fd_v1`,
+selected-model `resolved-managed-provider`, the 64KiB serializer ceiling, and
+the five lexical `GrokBuild:` isolation IDs. Conservative request bound is
+derived live as payload + output cap; allocation ceiling and max model calls
+must come from the frozen packet. Golden 8192/route-1/two-tool/12288
+values are not copied into actual. Production startup still does not bind.
 
 PR [#124](https://github.com/schmitzjimmy1-star/grok-build-desktop/pull/124)
 passed required exact-head run `32123735441` and merged normally as
@@ -284,10 +316,11 @@ version and SHA remained unchanged. The required architecture receipt is a
 docs-only successor and deliberately does not trigger another ship merely to
 chase its documentation stamp.
 Jimmy authorized an eventual 10,000,000-token absolute testing ceiling on
-2026-08-17. The activation design permits at most 9,000,000 planned tokens and
-retains 1,000,000 as unreachable reserve. This supersedes the old ceiling only
-after a versioned authority change passes the later 4B gates; it is not a paid
-unlock and does not change the current fail-closed 4M/3M/1M implementation.
+2026-08-17. On 2026-08-18 he raised the versioned v3 campaign policy to
+20M/19M/1M: absolute 20,000,000, allocatable 19,000,000, unreachable reserve
+1,000,000. This supersedes the 10M design only after that versioned authority
+passes the later 4B gates; it is not a paid unlock and does not change the
+current fail-closed 4M/3M/1M implementation.
 
 ## Visual Quiet — 2026-08-15 (Phase 6 welcome extraction authorized)
 

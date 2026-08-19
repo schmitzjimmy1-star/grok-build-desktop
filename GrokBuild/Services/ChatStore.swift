@@ -2399,6 +2399,23 @@ final class ChatStore {
             && enabledBuiltInToolNames.contains(BuiltInToolConnection.browser.rawValue)
         computerUseSettings.enabled = computerUseSettings.enabled
             && enabledBuiltInToolNames.contains(BuiltInToolConnection.computerUse.rawValue)
+        let requestedMCPServerNames = selectedPromptMCPNames.union(enabledBuiltInToolNames)
+        if let refusal = GrokArmedCredentialLaunchPreflight.refusalMessage(
+            authorization: hardBudgetLaunchContract?.credentialAuthorizationV3,
+            browserEnabled: browserSettings.enabled,
+            computerUseEnabled: computerUseSettings.enabled,
+            requestedMCPServerNames: requestedMCPServerNames,
+            authBoundary: routeContractForLaunch.authBoundary
+        ) {
+            // This check intentionally precedes every Browser/Computer installer,
+            // external-browser launch, and MCP catalog helper. The materialized
+            // descriptor path gets one candidate process, not a preparatory tool
+            // tree from ordinary app startup.
+            connectionWatchdogTask?.cancel()
+            connectionState = .failed(refusal)
+            lastError = "Armed credential launch stopped before any helper or candidate process was created."
+            return
+        }
         if browserSettings.enabled {
             do {
                 try BrowserSkillInstaller.installIfNeeded(settings: browserSettings)
@@ -2422,7 +2439,6 @@ final class ChatStore {
             AgentBrowserService.browserMCPConfig(settings: browserSettings),
             ComputerUseService.computerUseMCPConfig(settings: computerUseSettings)
         ].compactMap { $0 }
-        let requestedMCPServerNames = selectedPromptMCPNames.union(enabledBuiltInToolNames)
         var knownConfiguredMCPServerNames: Set<String> = []
         if !requestedMCPServerNames.isEmpty {
             do {
@@ -3048,14 +3064,16 @@ final class ChatStore {
                 attachments: intent.fileAttachments
             )
             guard case .budget(let authorization) = acceptanceBudgetResolver(frozenPrompt),
+                  let credentialAuthorizationV3 = authorization.credentialAuthorizationV3,
                   let launchContract = HardBudgetLaunchContract(
                     manifestPath: authorization.hardBudgetCLIManifestPath,
                     ledgerPath: authorization.hardBudgetLedgerPath,
                     allocationID: authorization.budget.allocationID,
                     expectedManifestSHA256: authorization.hardBudgetManifestSHA256,
-                    candidateExecutionLease: authorization.candidateExecutionLease
+                    candidateExecutionLease: authorization.candidateExecutionLease,
+                    credentialAuthorizationV3: credentialAuthorizationV3
                   ) else {
-                lastError = "Acceptance dispatch stopped because the launch budget does not authorize this exact final payload."
+                lastError = "Acceptance dispatch stopped because the exact schema-3 credential authorization is unavailable."
                 return false
             }
             let previousGeneration = process.activeProcessGeneration

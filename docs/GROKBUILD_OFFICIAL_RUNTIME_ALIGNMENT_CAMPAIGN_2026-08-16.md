@@ -137,9 +137,10 @@ It preauthorizes only Slice 4B.0 fork provenance and reproducible candidate
 contract work. Candidate selection, credential materialization, installation,
 provider traffic, and the paid lock remain separate later gates.
 Jimmy subsequently raised the eventual Slice 4 testing ceiling to 10,000,000
-tokens. The activation campaign reserves 1,000,000 as structurally unreachable
-and may allocate at most 9,000,000; this future authority does not alter the
-currently merged 4M/3M/1M contract or unlock provider execution.
+tokens. On 2026-08-18 he raised that eventual ceiling to 20,000,000 with a
+19,000,000 allocatable cap; details live in the Slice 4 activation campaign.
+The live merged contract remains 4M/3M/1M until versioned v3 is complete end to
+end. This future authority does not unlock provider execution.
 
 ## Slice 0 — Restore CLI execution ownership
 

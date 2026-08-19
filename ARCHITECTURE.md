@@ -1276,6 +1276,7 @@ make ship      # Apple Development install to /Applications/GrokBuild.app
 | `scripts/notarize.sh` | Present but unused. `make notarize` is refused on this personal line. |
 | `scripts/grokbuild-install-update.sh` | In-app replace + relaunch |
 | `scripts/acceptance/run.py` | Agentic acceptance harness: versioned manifests, dry-run default, fixture rejection, `--billable` installed UI only; Slice 6 packet ceiling 250k |
+| `scripts/acceptance/harness/provenance_v3.py` | Independent 4B.3 canonical provenance and nested `v3Authority` verifier; does not mutate v2 |
 
 **SPM targets:** `GrokBuild` (app), `GrokBuildComputerUseCore` (shared Computer Use contract library), `GrokBuildComputerUseMCP` (MCP helper), `GrokBuildTests`.
 
@@ -1323,7 +1324,8 @@ spawn/ACP/session/model/MCP readiness, submit/dispatch/first-chunk/settled bound
 using only stage, time, and PID. It never records prompts, response bodies, tool
 arguments, credentials, URLs, or environment contents.
 | **Public README screenshots (2026-08-13 campaign Slice 7)** | `docs/images/grokbuild-app.png` (signed-installed New chat), `docs/images/grokbuild-run-inspector.png` (settled multi-tool/two-child Run inspector); first-screenful copy in `README.md` |
-| **Agentic acceptance harness** | `scripts/acceptance/run.py`, `scripts/acceptance/schema/v1.json`, `scripts/acceptance/manifests/installed-three-route-v1.json`, `scripts/acceptance/manifests/installed-slice6-packet-v1.json`; dry-run default, `--billable` after preflight, fixture-mode rejection, exact-ID cleanup, Slice 6 250k Stop packet |
+| **Agentic acceptance harness** | `scripts/acceptance/run.py`, `scripts/acceptance/schema/v1.json`, `scripts/acceptance/manifests/installed-three-route-v1.json`, `scripts/acceptance/manifests/installed-slice6-packet-v1.json`; dry-run default, `--billable` after preflight, fixture-mode rejection, exact-ID cleanup, Slice 6 250k Stop packet; independent v3 provenance verifier in `scripts/acceptance/harness/provenance_v3.py` |
+| **Armed v3 credential / provenance (4B.3 in progress)** | `GrokArmedCredentialMaterializer.swift`, `HardBudgetProvenanceV3.swift`, nested ACP `v3Authority`, fail-closed `ArmedV3ResolvedSnapshot`, `TrackedConfigGeneration` / `ResolvedConfigIdentityTracker`, live `ArmedV3LiveRouteCore` plus `ArmedV3PacketBoundsObservation` (loopback endpoint SHA, deterministic `v3.<sha256>` route id, 64KiB serializer ceiling, Darwin `fd_v1`, five-tool isolation, derived conservative bound), selected-model `resolved-managed-provider` source kind, preserved `ModelEntry.model_provider`, omitted armed summary client, spawn requires already-active authority, one cached armed `SamplingClient` per sampler actor, CLI pager FD-198 owner install, `bind_and_install_v3_authority`, `SamplingClient::new_with_armed_v3` / `from_process_config` |
 | **Add/remove project** | `WorkspaceStore`, `WorkspacePicker` |
 | **Browser tools** | `AgentBrowserService`, `BrowserSettingsStore`, settings `.browser` (agent-browser CLI over MCP) |
 | **Session agent** | `GrokAgentProfiles`, `GrokCLIService.listAgents`, settings `.agents` |
@@ -1399,6 +1401,8 @@ make test    # Tests/GrokBuildTests/
 | `SettingsTabTests.swift` | Settings destination metadata/grouping, selected-pane-only lifecycle, shared value-state/status/accessibility reducers, adaptive rows, explicit persistence, and the six-priority-pane parent-draft/cancellation source contract |
 | `LifecycleAndSubprocessTests.swift` | Coalesced streaming Settings reconnects, exact apply/fork receipts, process-LRU identity safety, store/process release, one-shot subprocess hygiene, and restored-empty Resume chrome vs New chat |
 | `AcceptanceHarnessTests.swift` | Agentic `scripts/acceptance/` harness: dry-run default, `--billable` fail-closed without a run ID, guessed-cleanup refusal, fixture-mode reject/accept cases at zero provider cost, Resume-then-Send labels, installed-exec refuse of `.build` / `dist`, Slice 6 250k Stop packet |
+| `GrokArmedCredentialMaterializerTests.swift` | Fake Keychain materializer query, one-Data result, wipe, and Browser/Computer/MCP preflight refusal |
+| `HardBudgetProvenanceV3Tests.swift` | Independent Swift canonical bytes/digest parity with Rust plus hostile missing/extra/reorder/4M-policy refusal |
 
 Prefer extending existing test files. Test pure logic without launching real `grok` when possible.
 
@@ -1453,6 +1457,73 @@ routes.
 The receiver fixture is ad-hoc signed and admitted only through the existing
 Slice 4B.1 signature-verifier test seam; it is not evidence that the retained
 candidate or an installed Team-signed CLI consumed the channel.
+
+**Armed v3 authority checkpoint (Slice 4B.3, in progress, nonbillable).** The CLI
+owns one immutable `ActiveHardTokenV3Authority` produced only by
+`V3AuthorityBuilder` parsing a schema-v3 expectation, binding the live
+candidate/config/route, and registering that object once via
+`bind_and_install_v3_authority`. Manifest, ledger, and lock artifacts must be
+one owner-held private regular file (`O_NOFOLLOW`, owner, mode `0600`,
+`nlink == 1`), matching the app's 4B.1 sidecar rule. Armed v3 Darwin launches
+duplicate the held lease descriptor onto fixed child FD 197 after FD 198, still
+under `POSIX_SPAWN_CLOEXEC_DEFAULT`. Schema-2 fake transport does not inherit
+197. After the GBCT READY exchange, and still before telemetry, config, or any
+fork, the pager hashes that read-only regular descriptor with `pread`, combines
+it with `VERSION_WITH_COMMIT` and the compiled 40-hex `SOURCE_COMMIT_SHA`, and
+stores one `CandidateIdentityV1`. It does not hash `current_exe()`. Production
+`bind_and_install_v3_authority` still waits for a credential-free config/route
+snapshot; ACP spawn remains fail-closed. Fail-closed `ArmedV3ResolvedSnapshot`
+accepts only independently observed candidate/config/route/loopback sampler
+fields and refuses empty defaults, remote hosts, and secret-bearing configs.
+ACP spawn requires an already-registered v3 authority and does not reopen
+`V3AuthorityBuilder::from_env()`. Armed session setup omits the summary
+`OaiCompatClient` entirely; titles use the local text fallback. Production
+`run_agent_command` still does not call `bind_actual`. Resolved `ModelEntry`
+keeps the declared `model_provider` after provider defaults merge.
+`ResolvedConfigIdentityTracker` bumps `TrackedConfigGeneration` only when the
+credential-free catalog projection changes; empty catalogs stay unset. That
+projection omits keys and extra headers. Live route observation now measures
+loopback endpoint SHA-256, a deterministic `v3.<sha256>` route id, Darwin
+`fd_v1`, the selected model's `model_provider` as `resolved-managed-provider`,
+the live 64KiB serializer ceiling (enforced on armed serialize), and the five
+lexical `GrokBuild:` isolation IDs. Packet bounds derive the conservative
+request as live payload + observed `max_completion_tokens`; allocation ceiling
+and max model calls must come from the frozen packet envelope. Golden
+12288/20000/1 envelopes that cannot cover that ceiling refuse. Production startup
+still does not bind the snapshot. `SamplerActor` lazily constructs one armed `SamplingClient` and clones it for
+later requests, so a second submit cannot reclaim the one-shot owner. Route-changing
+`UpdateConfig` is ignored while that client is cached.
+The Darwin pager receives GBCT v1 on FD 198,
+installs the one-shot `ArmedCredentialOwner`, and wipes that owner before any
+`process::exit`. The armed sampler constructor takes only `SamplerConfig` and uses the sole
+registered authority's budget. It requires an exact loopback base URL whose endpoint SHA-256
+matches the bound route, and the one-shot owner. `SamplingClient::from_process_config`
+is the process construction seam: registered v3 uses the armed constructor,
+otherwise the ordinary unarmed constructor. A bare provenance document, digest
+string, or `None` budget cannot construct a client. `com.grokbuild/hardTokenBudget`
+is unarmed and non-enforcing until registration. Swift `HardBudgetProvenanceV3` and
+`scripts/acceptance/harness/provenance_v3.py` independently verify the CLI
+canonical bytes and digest `5052a528…0f950`; they do not originate live
+route/config provenance. `GrokArmedCredentialAuthorizationV3.expectedProvenanceSHA256`
+is an expected digest, not live authority. The live ACP capability is a broad
+operational object. When an active authority exists, it nests `v3Authority` with
+exactly `authorityVersion`, the typed provenance object, and `provenanceSha256`.
+It does not emit `provenanceCanonicalJson`, `authHeaderNames`, or duplicate
+top-level provenance/policy. Swift `ExecutionCapability` parses that nested
+object strictly, re-canonicalizes the typed provenance, and derives headers from
+`authScheme`. It remains unreferenced by launch, Keychain, and `isEnforcing`.
+`GrokArmedCredentialAuthorizationV3` has no caller-supplied header name; the
+Keychain account equals the managed provider ID after source-kind, provider,
+scheme, and digest cross-bind. The historical live
+`GrokBuildHardTokenBudgetCapability.isEnforcing` decoder still requires
+capability v2 / ledger v3 / bound-method v1, so a live v3 projection cannot
+authorize a packet. Schema-2 acceptance send stops before Keychain
+materialization or candidate spawn. Fake-credential loopback Chat/Responses/Messages
+proof is the authorized consumer; ACP spawn still fail-closes until a live
+candidate/config/route identity is supplied to `bind_actual`. Paid activation,
+real Keychain reads, helper execution, candidate install, real provider hosts,
+and Slice 4B.4 remain locked. The live acceptance policy remains 4M/3M/1M until
+this v3 20M/19M/1M chain is complete.
 
 ## Related docs
 

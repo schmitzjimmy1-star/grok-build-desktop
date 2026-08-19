@@ -25,6 +25,7 @@ struct HardBudgetLaunchContract: Sendable, Equatable {
     let allocationID: String
     let expectedManifestSHA256: String
     let candidateExecutionLease: GrokCandidateExecutionLease
+    let credentialAuthorizationV3: GrokArmedCredentialAuthorizationV3?
     private let manifestIdentity: HardBudgetAuthorityFileIdentity
     private let ledgerIdentity: HardBudgetAuthorityFileIdentity
 
@@ -33,7 +34,8 @@ struct HardBudgetLaunchContract: Sendable, Equatable {
         ledgerPath: String,
         allocationID: String,
         expectedManifestSHA256: String,
-        candidateExecutionLease: GrokCandidateExecutionLease?
+        candidateExecutionLease: GrokCandidateExecutionLease?,
+        credentialAuthorizationV3: GrokArmedCredentialAuthorizationV3? = nil
     ) {
         guard NSString(string: manifestPath).isAbsolutePath,
               NSString(string: ledgerPath).isAbsolutePath,
@@ -54,6 +56,7 @@ struct HardBudgetLaunchContract: Sendable, Equatable {
         self.allocationID = allocationID
         self.expectedManifestSHA256 = expectedManifestSHA256
         self.candidateExecutionLease = candidateExecutionLease
+        self.credentialAuthorizationV3 = credentialAuthorizationV3
         self.manifestIdentity = manifestIdentity
         self.ledgerIdentity = ledgerIdentity
     }
@@ -1575,7 +1578,10 @@ final class GrokProcess: @unchecked Sendable {
         availableModelsInfo.removeAll()
         hasAuthoritativeModelCatalog = false
 
-        guard options.hardBudgetLaunchContract?.filesRemainValid != false else {
+        let hasLegacyHardBudgetContract = options.hardBudgetLaunchContract != nil
+            && options.hardBudgetLaunchContract?.credentialAuthorizationV3 == nil
+        guard !hasLegacyHardBudgetContract,
+              options.hardBudgetLaunchContract?.filesRemainValid != false else {
             var receipt = GrokLaunchReceipt(
                 options: options,
                 workspaceID: workspace.id,
@@ -1586,7 +1592,11 @@ final class GrokProcess: @unchecked Sendable {
             rejectLaunchModelReceipt(identity: launchIdentity)
             activeProcessGeneration = nil
             mcpServerStatuses = MCPReadinessPolicy.failedStatuses(for: options.mcpServers)
-            state = .failed("Acceptance authority changed after authorization. No Grok process was launched.")
+            state = .failed(
+                hasLegacyHardBudgetContract
+                    ? "Schema-2 acceptance cannot launch a candidate credential path. No Grok process was launched."
+                    : "Acceptance authority changed after authorization. No Grok process was launched."
+            )
             return
         }
 
@@ -1640,11 +1650,29 @@ final class GrokProcess: @unchecked Sendable {
         let launched: GrokCandidateSpawnResult
         do {
             if let contract = options.hardBudgetLaunchContract {
+                var credentialTransfer: GrokArmedCredentialTransfer?
+                defer { credentialTransfer?.discard() }
+                if let authorization = contract.credentialAuthorizationV3 {
+                    credentialTransfer = try GrokArmedCredentialMaterializer().materialize(
+                        authorization: authorization
+                    )
+                } else {
+                    credentialTransfer = nil
+                }
+                // A Keychain read is not authority to spawn. Re-observe every
+                // immutable sidecar and the held candidate after materialization
+                // and immediately before the descriptor can cross the exec
+                // boundary; discard the one-use transfer on any drift.
+                guard contract.filesRemainValid else {
+                    credentialTransfer?.discard()
+                    throw GrokCandidateProcessLauncher.LaunchError.authorityChanged
+                }
                 launched = try GrokCandidateProcessLauncher.spawn(
                     lease: contract.candidateExecutionLease,
                     arguments: args,
                     environment: environment,
-                    currentDirectory: workspace.path
+                    currentDirectory: workspace.path,
+                    credentialTransferV3: credentialTransfer
                 )
             } else {
                 guard let cli = Self.locateGrokCLI() else {

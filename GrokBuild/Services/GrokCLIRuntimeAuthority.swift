@@ -73,6 +73,10 @@ final class GrokCandidateExecutionLease: @unchecked Sendable, Equatable {
         return true
     }
 
+    func duplicateHeldReadOnlyDescriptor() -> Int32 {
+        fcntl(descriptor, F_DUPFD_CLOEXEC, GrokCredentialTransportV1.receiverFileDescriptor + 1)
+    }
+
     fileprivate func claimForSpawn() -> Bool {
         lock.lock()
         defer { lock.unlock() }
@@ -489,7 +493,7 @@ enum GrokCandidateRuntimeAuthority {
         return data.map { String(format: "%02x", $0) }.joined()
     }
 
-    fileprivate struct FileSnapshot: Equatable {
+    struct FileSnapshot: Equatable {
         let device: UInt64
         let inode: UInt64
         let size: Int64
@@ -497,7 +501,7 @@ enum GrokCandidateRuntimeAuthority {
         let architecture: String
     }
 
-    fileprivate static func fileSnapshot(descriptor: Int32) -> FileSnapshot? {
+    static func fileSnapshot(descriptor: Int32) -> FileSnapshot? {
         var metadata = stat()
         guard fstat(descriptor, &metadata) == 0,
               metadata.st_uid == getuid(),
@@ -724,15 +728,28 @@ enum GrokCandidateProcessLauncher {
         arguments: [String],
         environment: [String: String],
         currentDirectory: URL,
-        credentialTransport: GrokCredentialTransportPayload? = nil
+        credentialTransport: GrokCredentialTransportPayload? = nil,
+        credentialTransferV3: GrokArmedCredentialTransfer? = nil
     ) throws -> GrokCandidateSpawnResult {
         guard lease.heldFileRemainsValid else { throw LaunchError.authorityChanged }
+        guard credentialTransport == nil || credentialTransferV3 == nil else {
+            throw LaunchError.credentialTransportFailed
+        }
         if let credentialTransport,
            GrokCredentialTransportV1.argumentsOrEnvironmentContainPayload(
                credentialTransport,
                arguments: arguments,
                environment: environment
            ) {
+            throw LaunchError.credentialTransportFailed
+        }
+        if let credentialTransferV3,
+           GrokCredentialTransportV1.argumentsOrEnvironmentContainTransfer(
+               credentialTransferV3,
+               arguments: arguments,
+               environment: environment
+           ) {
+            credentialTransferV3.discard()
             throw LaunchError.credentialTransportFailed
         }
         guard lease.claimForSpawn() else { throw LaunchError.leaseAlreadyConsumed }
@@ -757,6 +774,8 @@ enum GrokCandidateProcessLauncher {
         var transportChannel: GrokCredentialTransportV1.PreparedChannel?
         if let credentialTransport {
             transportChannel = try GrokCredentialTransportV1.prepare(payload: credentialTransport)
+        } else if let credentialTransferV3 {
+            transportChannel = try GrokCredentialTransportV1.prepare(transfer: credentialTransferV3)
         }
         defer {
             if var channel = transportChannel {
@@ -798,6 +817,27 @@ enum GrokCandidateProcessLauncher {
                 throw LaunchError.fileActionFailed(EINVAL)
             }
         }
+        var identityParentDescriptor: Int32 = -1
+        defer {
+            if identityParentDescriptor >= 0 {
+                Darwin.close(identityParentDescriptor)
+                identityParentDescriptor = -1
+            }
+        }
+        if credentialTransferV3 != nil {
+            identityParentDescriptor = lease.duplicateHeldReadOnlyDescriptor()
+            guard identityParentDescriptor >= GrokCredentialTransportV1.receiverFileDescriptor + 1 else {
+                throw LaunchError.fileActionFailed(errno)
+            }
+            do {
+                try GrokCredentialTransportV1.installChildIdentityDescriptor(
+                    identityParentDescriptor,
+                    actions: &actions
+                )
+            } catch {
+                throw LaunchError.fileActionFailed(EINVAL)
+            }
+        }
         actionCode = currentDirectory.path.withCString {
             posix_spawn_file_actions_addchdir(&actions, $0)
         }
@@ -810,7 +850,7 @@ enum GrokCandidateProcessLauncher {
         guard attributeCode == 0 else { throw LaunchError.fileActionFailed(attributeCode) }
         defer { posix_spawnattr_destroy(&attributes) }
         var spawnFlags = Int16(POSIX_SPAWN_START_SUSPENDED)
-        if credentialTransport != nil {
+        if credentialTransport != nil || credentialTransferV3 != nil {
             spawnFlags |= Int16(POSIX_SPAWN_CLOEXEC_DEFAULT | POSIX_SPAWN_SETPGROUP)
             guard posix_spawnattr_setpgroup(&attributes, 0) == 0 else {
                 throw LaunchError.fileActionFailed(EINVAL)
@@ -821,7 +861,7 @@ enum GrokCandidateProcessLauncher {
 
         let executablePath = lease.executionPath
         let argv = [executablePath] + arguments
-        let launchEnvironment = credentialTransport == nil
+        let launchEnvironment = credentialTransport == nil && credentialTransferV3 == nil
             ? environment
             : GrokCredentialTransportV1.sanitizedEnvironment(environment)
         let env = launchEnvironment.sorted { $0.key < $1.key }.map { "\($0.key)=\($0.value)" }

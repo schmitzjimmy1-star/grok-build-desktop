@@ -35,8 +35,76 @@ struct GrokCredentialTransportPayload: Sendable {
     }
 }
 
+/// A consuming transfer. It has no string representation. Only this source
+/// file's descriptor transport can borrow its bytes, while the eventual Rust
+/// receiver remains the zeroizing owner.
+final class GrokArmedCredentialTransfer: @unchecked Sendable {
+    private let lock = NSLock()
+    private var bytes: [UInt8]?
+
+    init(bytes: [UInt8]) {
+        self.bytes = bytes
+    }
+
+    deinit { discard() }
+
+    enum TransferError: Error, Equatable {
+        case alreadyConsumed
+    }
+
+    var byteCount: Int {
+        lock.lock()
+        defer { lock.unlock() }
+        return bytes?.count ?? 0
+    }
+
+    fileprivate func contains(_ candidate: [UInt8]) -> Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        guard let bytes, !candidate.isEmpty, candidate.count >= bytes.count else { return false }
+        for offset in 0...(candidate.count - bytes.count) {
+            if candidate[offset..<(offset + bytes.count)].elementsEqual(bytes) { return true }
+        }
+        return false
+    }
+
+    /// Has no result value and lends an unsafe buffer only to this file's
+    /// descriptor framing implementation. The pointer expires at callback
+    /// return; the owning Swift buffer is wiped after return or throw.
+    fileprivate func consumeForDescriptorTransport(
+        _ body: (UnsafeBufferPointer<UInt8>) throws -> Void
+    ) throws {
+        lock.lock()
+        guard var owned = bytes else {
+            lock.unlock()
+            throw TransferError.alreadyConsumed
+        }
+        bytes = nil
+        lock.unlock()
+        defer { Self.wipe(&owned) }
+        try owned.withUnsafeBufferPointer { buffer in
+            try body(buffer)
+        }
+    }
+
+    func discard() {
+        lock.lock()
+        defer { lock.unlock() }
+        guard var value = bytes else { return }
+        bytes = nil
+        Self.wipe(&value)
+    }
+
+    private static func wipe(_ bytes: inout [UInt8]) {
+        _ = bytes.withUnsafeMutableBytes { raw in
+            raw.initializeMemory(as: UInt8.self, repeating: 0)
+        }
+    }
+}
+
 enum GrokCredentialTransportV1 {
     static let receiverFileDescriptor: Int32 = 198
+    static let identityFileDescriptor: Int32 = 197
     static let timeoutMilliseconds: Int32 = 2_000
 
     enum TransportError: Error {
@@ -96,6 +164,31 @@ enum GrokCredentialTransportV1 {
     private static let headerByteCount = 48
 
     static func prepare(payload: GrokCredentialTransportPayload) throws -> PreparedChannel {
+        try prepare(bytes: payload.bytes)
+    }
+
+    /// Reserved for the schema-3 armed path. The transfer is consumed by the
+    /// frame writer, never converted to a String, and cannot be reused after a
+    /// failed or successful prepare.
+    static func prepare(transfer: GrokArmedCredentialTransfer) throws -> PreparedChannel {
+        var prepared: PreparedChannel?
+        try transfer.consumeForDescriptorTransport { bytes in
+            prepared = try prepare(bytes: bytes)
+        }
+        guard let prepared else { throw TransportError.frameWriteFailed }
+        return prepared
+    }
+
+    private static func prepare(bytes: [UInt8]) throws -> PreparedChannel {
+        try bytes.withUnsafeBufferPointer { buffer in
+            try prepare(bytes: buffer)
+        }
+    }
+
+    private static func prepare(bytes: UnsafeBufferPointer<UInt8>) throws -> PreparedChannel {
+        guard !bytes.isEmpty, bytes.count <= GrokCredentialTransportPayload.maximumByteCount else {
+            throw TransportError.frameWriteFailed
+        }
         var rawDescriptors: [Int32] = [-1, -1]
         guard socketpair(AF_UNIX, SOCK_STREAM, 0, &rawDescriptors) == 0 else {
             throw TransportError.socketPairFailed
@@ -139,8 +232,8 @@ enum GrokCredentialTransportV1 {
         guard SecRandomCopyBytes(kSecRandomDefault, nonce.count, &nonce) == errSecSuccess else {
             throw TransportError.randomFailed
         }
-        var frame = header(type: credentialType, nonce: nonce, payloadLength: payload.bytes.count)
-        frame.append(contentsOf: payload.bytes)
+        var frame = header(type: credentialType, nonce: nonce, payloadLength: bytes.count)
+        frame.append(contentsOf: bytes)
         #if DEBUG
         switch outboundFrameFaultForTests {
         case .none: break
@@ -186,6 +279,15 @@ enum GrokCredentialTransportV1 {
         }
     }
 
+    static func argumentsOrEnvironmentContainTransfer(
+        _ transfer: GrokArmedCredentialTransfer,
+        arguments: [String],
+        environment: [String: String]
+    ) -> Bool {
+        let candidates = arguments + environment.flatMap { [$0.key, $0.value] }
+        return candidates.contains { transfer.contains(Array($0.utf8)) }
+    }
+
     static func installChildDescriptor(
         _ childDescriptor: Int32,
         parentDescriptor: Int32,
@@ -195,6 +297,19 @@ enum GrokCredentialTransportV1 {
             posix_spawn_file_actions_adddup2(&actions, childDescriptor, receiverFileDescriptor),
             posix_spawn_file_actions_addclose(&actions, childDescriptor),
             posix_spawn_file_actions_addclose(&actions, parentDescriptor),
+        ]
+        for code in codes {
+            guard code == 0 else { throw TransportError.descriptorPolicyFailed }
+        }
+    }
+
+    static func installChildIdentityDescriptor(
+        _ parentDuplicate: Int32,
+        actions: inout posix_spawn_file_actions_t?
+    ) throws {
+        let codes = [
+            posix_spawn_file_actions_adddup2(&actions, parentDuplicate, identityFileDescriptor),
+            posix_spawn_file_actions_addclose(&actions, parentDuplicate),
         ]
         for code in codes {
             guard code == 0 else { throw TransportError.descriptorPolicyFailed }
