@@ -159,12 +159,27 @@ class Slice4B5LoopbackAndDriverContracts(unittest.TestCase):
         with self.assertRaisesRegex(HarnessError, "non-loopback"):
             exact_loopback_endpoint_sha256("https://openrouter.ai/api/v1", "chat_completions")
 
+    def test_official_and_staged_pins_are_distinct_constants(self) -> None:
+        self.assertEqual(
+            OFFICIAL_CLI_SHA256,
+            "39366f7756a090b735cc1df8c93a8c0c3c7871555cf6cbb28f9351ca82936485",
+        )
+        self.assertEqual(
+            STAGED_PAGER_SHA256,
+            "f434fa4f17160c8771d3b57bfc62499e252413c4d1fc5ab22bee1a18f2bc933b",
+        )
+        self.assertNotEqual(OFFICIAL_CLI_SHA256, STAGED_PAGER_SHA256)
+
     def test_official_cli_digest_is_the_untouched_1_0_4_binary(self) -> None:
+        if not OFFICIAL_CLI.is_file():
+            self.skipTest("official ~/.grok/bin/grok is owner-local and is not on CI runners")
         digest = require_official_cli_untouched()
         self.assertEqual(digest, OFFICIAL_CLI_SHA256)
         self.assertEqual(digest, require_official_cli_untouched(digest))
 
     def test_driver_refuses_to_treat_official_cli_as_the_staged_pager(self) -> None:
+        if not OFFICIAL_CLI.is_file():
+            self.skipTest("official ~/.grok/bin/grok is owner-local and is not on CI runners")
         self.assertNotEqual(sha256_bytes(OFFICIAL_CLI.read_bytes()), STAGED_PAGER_SHA256)
 
     def test_config_projection_omits_the_placeholder_key(self) -> None:
