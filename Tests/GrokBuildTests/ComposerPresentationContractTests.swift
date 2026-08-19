@@ -167,4 +167,18 @@ final class ComposerPresentationContractTests: XCTestCase {
             "identifier must stay on ChatComposerAccessibility so the contract has one owner"
         )
     }
+
+    func testCampaignComputerUseSurfacesKeepStableIdentifiers() throws {
+        let contentView = try source("GrokBuild/ContentView.swift")
+        let settingsView = try source("GrokBuild/Views/SettingsView.swift")
+        let appPane = try source("GrokBuild/Views/Settings/AppUpdatesSettingsPane.swift")
+        XCTAssertTrue(contentView.contains("accessibilityIdentifier(\"grok-upgrade-banner\")"))
+        XCTAssertTrue(contentView.contains("accessibilityIdentifier(\"grok-upgrade-banner-open\")"))
+        XCTAssertTrue(contentView.contains("accessibilityIdentifier(\"grok-upgrade-banner-dismiss\")"))
+        XCTAssertTrue(contentView.contains(".accessibilityElement(children: .contain)"))
+        XCTAssertTrue(settingsView.contains(".accessibilityIdentifier(tab.accessibilityIdentifier)"))
+        XCTAssertTrue(appPane.contains("accessibilityIdentifier(\"grok-app-build-identity\")"))
+        XCTAssertTrue(appPane.contains(".accessibilityElement(children: .contain)"))
+        XCTAssertFalse(appPane.contains("accessibilityLabel(\"Build identity\")"))
+    }
 }

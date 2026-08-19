@@ -118,6 +118,9 @@ enum GrokCredentialTransportV1 {
 
     #if DEBUG
     static var socketPairCreatedObserverForTests: (() -> Void)?
+    /// Injected pause after ACK so tests can prove ACK/READY/EOF each get a
+    /// fresh `timeoutMilliseconds` budget instead of one shared deadline.
+    static var handshakeInterphaseDelayMillisecondsForTests: Int32 = 0
     enum OutboundFrameFaultForTests {
         case none
         case badMagic
@@ -318,20 +321,23 @@ enum GrokCredentialTransportV1 {
 
     /// Runs only after the suspended child has passed the dynamic CDHash gate.
     /// The payload is buffered but not usable by the fixture until COMMIT.
+    /// Each phase (credential send, ACK, COMMIT/READY, EOF) gets its own
+    /// `timeoutMilliseconds` budget so scheduler load cannot collapse later
+    /// phases. Hostile peers that stall one phase still fail at 2s.
     static func completeHandshake(_ channel: inout PreparedChannel) throws {
         defer {
             channel.closeParent()
             channel.bestEffortWipe()
         }
-        guard sendExactlyOnce(channel.parentDescriptor, bytes: channel.frame) else {
-            throw TransportError.frameWriteFailed
-        }
-        let deadline = DispatchTime.now().uptimeNanoseconds
-            + UInt64(timeoutMilliseconds) * 1_000_000
+        try sendExactly(
+            channel.parentDescriptor,
+            bytes: channel.frame,
+            deadlineNanoseconds: phaseDeadline()
+        )
         let acknowledgement = try readExact(
             channel.parentDescriptor,
             count: headerByteCount,
-            deadlineNanoseconds: deadline
+            deadlineNanoseconds: phaseDeadline()
         )
         guard validate(
             acknowledgement,
@@ -341,27 +347,49 @@ enum GrokCredentialTransportV1 {
         ) else {
             throw TransportError.peerProtocolFailed
         }
+        #if DEBUG
+        delayHandshakeInterphaseForTests()
+        #endif
 
         var commit = header(type: commitType, nonce: channel.nonce, payloadLength: 0)
         defer { _ = commit.withUnsafeMutableBytes { $0.initializeMemory(as: UInt8.self, repeating: 0) } }
-        guard sendExactlyOnce(channel.parentDescriptor, bytes: commit),
-              shutdown(channel.parentDescriptor, SHUT_WR) == 0 else {
+        try sendExactly(
+            channel.parentDescriptor,
+            bytes: commit,
+            deadlineNanoseconds: phaseDeadline()
+        )
+        guard shutdown(channel.parentDescriptor, SHUT_WR) == 0 else {
             throw TransportError.frameWriteFailed
         }
         let ready = try readExact(
             channel.parentDescriptor,
             count: headerByteCount,
-            deadlineNanoseconds: deadline
+            deadlineNanoseconds: phaseDeadline()
         )
         guard validate(ready, type: readyType, nonce: channel.nonce, payloadLength: 0) else {
             throw TransportError.peerProtocolFailed
         }
         var trailing: UInt8 = 0
-        guard pollReadable(channel.parentDescriptor, deadlineNanoseconds: deadline),
+        guard pollReadable(channel.parentDescriptor, deadlineNanoseconds: phaseDeadline()),
               Darwin.read(channel.parentDescriptor, &trailing, 1) == 0 else {
             throw TransportError.peerProtocolFailed
         }
     }
+
+    private static func phaseDeadline() -> UInt64 {
+        DispatchTime.now().uptimeNanoseconds + UInt64(timeoutMilliseconds) * 1_000_000
+    }
+
+    #if DEBUG
+    private static func delayHandshakeInterphaseForTests() {
+        var remaining = handshakeInterphaseDelayMillisecondsForTests
+        while remaining > 0 {
+            let slice = min(remaining, 50)
+            usleep(useconds_t(slice) * 1_000)
+            remaining -= slice
+        }
+    }
+    #endif
 
     private static func header(type: UInt8, nonce: [UInt8], payloadLength: Int) -> [UInt8] {
         precondition(nonce.count == 32)
@@ -391,11 +419,35 @@ enum GrokCredentialTransportV1 {
         return length == UInt32(payloadLength)
     }
 
-    private static func sendExactlyOnce(_ descriptor: Int32, bytes: [UInt8]) -> Bool {
-        bytes.withUnsafeBytes { raw in
-            guard let base = raw.baseAddress else { return false }
-            let sent = Darwin.send(descriptor, base, raw.count, MSG_DONTWAIT)
-            return sent == raw.count
+    private static func sendExactly(
+        _ descriptor: Int32,
+        bytes: [UInt8],
+        deadlineNanoseconds: UInt64
+    ) throws {
+        var offset = 0
+        try bytes.withUnsafeBytes { raw in
+            guard let base = raw.baseAddress else {
+                throw TransportError.frameWriteFailed
+            }
+            while offset < raw.count {
+                guard pollWritable(descriptor, deadlineNanoseconds: deadlineNanoseconds) else {
+                    throw TransportError.peerTimeout
+                }
+                let sent = Darwin.send(
+                    descriptor,
+                    base.advanced(by: offset),
+                    raw.count - offset,
+                    MSG_DONTWAIT
+                )
+                if sent < 0 {
+                    if errno == EAGAIN || errno == EWOULDBLOCK {
+                        continue
+                    }
+                    throw TransportError.frameWriteFailed
+                }
+                guard sent > 0 else { throw TransportError.frameWriteFailed }
+                offset += sent
+            }
         }
     }
 
@@ -421,6 +473,18 @@ enum GrokCredentialTransportV1 {
     }
 
     private static func pollReadable(_ descriptor: Int32, deadlineNanoseconds: UInt64) -> Bool {
+        poll(descriptor, events: Int16(POLLIN | POLLHUP), deadlineNanoseconds: deadlineNanoseconds)
+    }
+
+    private static func pollWritable(_ descriptor: Int32, deadlineNanoseconds: UInt64) -> Bool {
+        poll(descriptor, events: Int16(POLLOUT), deadlineNanoseconds: deadlineNanoseconds)
+    }
+
+    private static func poll(
+        _ descriptor: Int32,
+        events: Int16,
+        deadlineNanoseconds: UInt64
+    ) -> Bool {
         let now = DispatchTime.now().uptimeNanoseconds
         guard now < deadlineNanoseconds else { return false }
         let remainingNanoseconds = deadlineNanoseconds - now
@@ -428,12 +492,12 @@ enum GrokCredentialTransportV1 {
             UInt64(Int32.max),
             max(1, (remainingNanoseconds + 999_999) / 1_000_000)
         ))
-        var pollDescriptor = pollfd(fd: descriptor, events: Int16(POLLIN | POLLHUP), revents: 0)
+        var pollDescriptor = pollfd(fd: descriptor, events: events, revents: 0)
         var result: Int32
         repeat {
-            result = poll(&pollDescriptor, 1, timeoutMilliseconds)
+            result = Darwin.poll(&pollDescriptor, 1, timeoutMilliseconds)
         } while result < 0 && errno == EINTR
-        return result > 0 && (pollDescriptor.revents & Int16(POLLIN | POLLHUP)) != 0
+        return result > 0 && (pollDescriptor.revents & events) != 0
     }
 
     private static func contains(

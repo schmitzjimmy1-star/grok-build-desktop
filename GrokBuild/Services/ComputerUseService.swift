@@ -83,6 +83,7 @@ enum ComputerUseService {
         }
 
         for candidate in [
+            "\(NSHomeDirectory())/.grokbuild/computer-use/agent-desktop",
             "/opt/homebrew/bin/agent-desktop",
             "/usr/local/bin/agent-desktop",
             "\(NSHomeDirectory())/.local/bin/agent-desktop",

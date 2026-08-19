@@ -318,7 +318,14 @@ attach `credentialAuthorizationV3` from the packet's managed provider, scheme,
 and bound provenance digest. Schema-2 packets still supply `nil`. Native Grok
 routes fail preflight before Keychain. Desktop PR
 [#132](https://github.com/schmitzjimmy1-star/grok-build-desktop/pull/132) merged
-as `f7afc701edfe0786a5de25a2aa2c65f49f5d8458`. `SamplerActor` now caches one
+as `f7afc701edfe0786a5de25a2aa2c65f49f5d8458`. Schema-3 packet attach merged as
+[#133](https://github.com/schmitzjimmy1-star/grok-build-desktop/pull/133)
+`8c00db225aa3aac69a7a08c0090091b7230fe40a`. `GrokCredentialTransportV1`
+handshake phases (credential send, ACK, COMMIT/READY, EOF) each keep a fresh
+2s budget so full-suite `make ship` load cannot collapse later phases; hostile
+timeout and slow-drip still fail the ACK phase at 2s. `make ship` locates
+`agent-desktop` at `~/.grokbuild/computer-use/agent-desktop` when Homebrew is
+absent. `SamplerActor` now caches one
 armed client and ignores route-changing updates. Live 4M/3M/1M packets still
 load the v1 governor through `HardTokenBudget::from_env`; ACP spawn accepts
 that live contract or an already-active v3 authority and still refuses an

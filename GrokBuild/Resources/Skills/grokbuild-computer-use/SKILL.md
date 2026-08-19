@@ -44,6 +44,17 @@ When the user asks to use the computer:
 
 Do not guess coordinates when a snapshot ref is available.
 
+## Campaign acceptance
+
+Drive `/Applications/GrokBuild.app` only. Do not also Shell `agent-desktop` or grok's in-session `grokbuild-computer-use` against the same GrokBuild window.
+
+- Settings tabs: `grok-settings-tab-app`, `grok-settings-tab-computerUse`, and `grok-settings-tab-<rawValue>` for the rest.
+- Installed identity: `grok-app-build-identity` (Settings → App).
+- Upgrade banner: `grok-upgrade-banner`. Click `grok-upgrade-banner-dismiss` if it is in the way. Never click `grok-upgrade-banner-open` / **Updates Available** during acceptance; that opens the CLI/app update panel.
+- Keep official grok CLI at the campaign pin. Do not click **Update grok CLI**.
+
+Packaging looks for `agent-desktop` at `~/.grokbuild/computer-use/agent-desktop` when Homebrew is missing. `AGENT_DESKTOP_PATH` still wins when set.
+
 ## Permissions
 
 Computer Use depends on macOS permissions:

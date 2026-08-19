@@ -14,6 +14,8 @@ swift build       # debug build
 xed .             # open Package.swift in Xcode (optional)
 ```
 
+`make ship` / `make app` copy `agent-desktop` into the bundle. If `/opt/homebrew/bin/agent-desktop` is missing, packaging uses `~/.grokbuild/computer-use/agent-desktop` (Cursor Computer Use install). `AGENT_DESKTOP_PATH` still overrides.
+
 ## Before UI work
 
 1. Read `ARCHITECTURE.md` for file layout.

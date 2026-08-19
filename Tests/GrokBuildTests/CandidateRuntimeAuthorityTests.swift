@@ -13,6 +13,7 @@ final class CandidateRuntimeAuthorityTests: XCTestCase {
         GrokCandidateProcessLauncher.spawnedProcessObserverForTests = nil
         GrokCredentialTransportV1.outboundFrameFaultForTests = .none
         GrokCredentialTransportV1.socketPairCreatedObserverForTests = nil
+        GrokCredentialTransportV1.handshakeInterphaseDelayMillisecondsForTests = 0
         super.tearDown()
     }
 
@@ -246,6 +247,59 @@ final class CandidateRuntimeAuthorityTests: XCTestCase {
         let output = try launched.standardOutput.fileHandleForReading.readToEnd() ?? Data()
         waitForExit(launched.process)
         XCTAssertEqual(output, Data("transport=fd-v1,result=ok\n".utf8))
+    }
+
+    func testCredentialHandshakeSurvivesInterphaseDelayThatWouldExhaustASharedDeadline() throws {
+        GrokCredentialTransportV1.handshakeInterphaseDelayMillisecondsForTests = 1_800
+        let fixture = try CandidateRuntimeTestFixture.makeCredentialReceiverExecutable()
+        defer { try? FileManager.default.removeItem(at: fixture.container) }
+        CandidateRuntimeTestFixture.installSignatureOverride()
+        let lease = try XCTUnwrap(GrokCandidateRuntimeAuthority.acquireLease(
+            selectionPath: fixture.selection.path,
+            expectedCLIBuild: fixture.cliBuild
+        ))
+        let payload = try XCTUnwrap(GrokCredentialTransportPayload(Array("phase-budget".utf8)))
+        let launched = try GrokCandidateProcessLauncher.spawn(
+            lease: lease,
+            arguments: [],
+            environment: ["HOME": fixture.container.path, "PATH": "/usr/bin:/bin"],
+            currentDirectory: fixture.container,
+            credentialTransport: payload
+        )
+        try launched.standardInput.close()
+        let output = try launched.standardOutput.fileHandleForReading.readToEnd() ?? Data()
+        waitForExit(launched.process)
+        XCTAssertEqual(output, Data("transport=fd-v1,result=ok\n".utf8))
+    }
+
+    func testCredentialHandshakeRepeatsWithoutSharedDeadlineFlake() throws {
+        let fixture = try CandidateRuntimeTestFixture.makeCredentialReceiverExecutable()
+        defer { try? FileManager.default.removeItem(at: fixture.container) }
+        for round in 1...8 {
+            CandidateRuntimeTestFixture.installSignatureOverride()
+            let lease = try XCTUnwrap(GrokCandidateRuntimeAuthority.acquireLease(
+                selectionPath: fixture.selection.path,
+                expectedCLIBuild: fixture.cliBuild
+            ))
+            let payload = try XCTUnwrap(GrokCredentialTransportPayload(
+                Array("repeat-\(round)".utf8)
+            ))
+            let launched = try GrokCandidateProcessLauncher.spawn(
+                lease: lease,
+                arguments: [],
+                environment: ["HOME": fixture.container.path, "PATH": "/usr/bin:/bin"],
+                currentDirectory: fixture.container,
+                credentialTransport: payload
+            )
+            try launched.standardInput.close()
+            let output = try launched.standardOutput.fileHandleForReading.readToEnd() ?? Data()
+            waitForExit(launched.process)
+            XCTAssertEqual(
+                output,
+                Data("transport=fd-v1,result=ok\n".utf8),
+                "round \(round) failed"
+            )
+        }
     }
 
     func testFakeCredentialTransportRejectsMalformedTruncatedTrailingAndDuplicateFrames() throws {

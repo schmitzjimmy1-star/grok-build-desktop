@@ -35,6 +35,19 @@ final class SettingsTabTests: XCTestCase {
         )
     }
 
+    func testSettingsTabsExposeStableAccessibilityIdentifiers() {
+        let identifiers = SettingsTab.allCases.map(\.accessibilityIdentifier)
+        XCTAssertEqual(identifiers.count, Set(identifiers).count)
+        XCTAssertEqual(SettingsTab.app.accessibilityIdentifier, "grok-settings-tab-app")
+        XCTAssertEqual(
+            SettingsTab.computerUse.accessibilityIdentifier,
+            "grok-settings-tab-computerUse"
+        )
+        for tab in SettingsTab.allCases {
+            XCTAssertEqual(tab.accessibilityIdentifier, "grok-settings-tab-\(tab.rawValue)")
+        }
+    }
+
     func testAllTabsHaveSystemImages() {
         for tab in SettingsTab.allCases {
             XCTAssertFalse(tab.systemImage.isEmpty, "\(tab) missing systemImage")

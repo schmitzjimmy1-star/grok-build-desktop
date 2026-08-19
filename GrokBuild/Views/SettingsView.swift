@@ -39,6 +39,10 @@ enum SettingsTab: String, Hashable, CaseIterable, Identifiable {
         }
     }
 
+    var accessibilityIdentifier: String {
+        "grok-settings-tab-\(rawValue)"
+    }
+
     var systemImage: String {
         switch self {
         case .agents: return "person.2"
@@ -252,6 +256,7 @@ struct SettingsView: View {
                             }
                         }
                         .foregroundStyle(selectedTab == tab ? Color.primary : Color.secondary)
+                        .accessibilityIdentifier(tab.accessibilityIdentifier)
                         .accessibilityLabel(tab.title)
                         .accessibilityHint("Open the \(tab.title) settings pane.")
                         .accessibilityAddTraits(selectedTab == tab ? [.isSelected] : [])
