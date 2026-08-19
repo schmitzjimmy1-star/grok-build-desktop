@@ -53,6 +53,15 @@
 > CLI upgrade and provider/config/credential mutation remain unauthorized.
 > Slice 5 and later work remain locked.
 >
+> **2026-08-19 stop-the-line (not 4B.4, not 4C):** a restored rich Markdown
+> transcript plus a second Send pinned GrokBuild's main thread at 100% in SwiftUI
+> `NSHostingView.layout` / `SelectionOverlay` / `ChatTranscriptLayout.IdentifiedMessageBlock`
+> while grok sat idle. Repair is a separate branch from `main`
+> (`cursor/transcript-selection-scroll-settlement`): suspend AppKit text selection
+> during auto-follow streaming and settlement, and skip per-chunk follow scrolls
+> when already attached. Do not mix this into the 4B.4 PR. Do not Computer-Use the
+> huge T1 overview to prove it; use a short transcript. Paid 4C stays locked.
+>
 > Prior campaigns: 2026-08-15 Visual Quiet complete and merged through `3947136` (PR #113);
 > 2026-08-14 Residual Closeout (Phases 0–6) complete and merged as `4613bde` (PR #94);
 > 2026-08-13 campaign (Slices 0–7) closed at merge `c0895ee` (PR #86).
@@ -1882,7 +1891,10 @@ restore/Resume of the populated T1 tab then reproduced the pin at
 The bounded follow-up separates selectable transcript content from
 Resume/Continue/recovery-Send transactions, gives message blocks composite
 identities, coalesces settled-scroll requests, removes selectable settled tool
-output from the lazy transcript, and epsilon-gates table width. This remains the
+output from the lazy transcript, and epsilon-gates table width. Settled
+assistant `RichMessageView` still used per-block AppKit text selection during
+auto-follow; the 2026-08-19 second-Send pin is the leftover of that class and is
+repaired on a separate `main` branch, not Slice 7 and not stacked on 4B.4. This remains the
 Slice 6 stop-the-line repair, not Slice 7. Slice 7, releases, tags, origin,
 force-push, branch deletion, and configuration changes remain forbidden.
 
