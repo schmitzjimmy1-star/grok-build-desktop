@@ -97,7 +97,8 @@ enum GrokArmedCredentialLaunchPreflight {
     }
 }
 
-/// Dedicated materialization boundary for a future v3 armed packet. Do not use
+/// Dedicated materialization boundary for a future v3 armed packet. Production
+/// `GrokProcess.start` must not call this. Do not use
 /// `KeychainProviderCredentialStore`: it converts secret data into a String and
 /// accepts the normal settings/auth-helper path, neither of which is valid here.
 struct GrokArmedCredentialMaterializer: Sendable {

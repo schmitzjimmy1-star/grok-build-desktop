@@ -1325,7 +1325,7 @@ using only stage, time, and PID. It never records prompts, response bodies, tool
 arguments, credentials, URLs, or environment contents.
 | **Public README screenshots (2026-08-13 campaign Slice 7)** | `docs/images/grokbuild-app.png` (signed-installed New chat), `docs/images/grokbuild-run-inspector.png` (settled multi-tool/two-child Run inspector); first-screenful copy in `README.md` |
 | **Agentic acceptance harness** | `scripts/acceptance/run.py`, `scripts/acceptance/schema/v1.json`, `scripts/acceptance/manifests/installed-three-route-v1.json`, `scripts/acceptance/manifests/installed-slice6-packet-v1.json`; dry-run default, `--billable` after preflight, fixture-mode rejection, exact-ID cleanup, Slice 6 250k Stop packet; independent v3 provenance verifier in `scripts/acceptance/harness/provenance_v3.py` |
-| **Armed v3 credential / provenance (4B.3 in progress)** | `GrokArmedCredentialMaterializer.swift`, `HardBudgetProvenanceV3.swift`, nested ACP `v3Authority`, fail-closed `ArmedV3ResolvedSnapshot`, `TrackedConfigGeneration` / `ResolvedConfigIdentityTracker`, live `ArmedV3LiveRouteCore` plus `ArmedV3PacketBoundsObservation` (loopback endpoint SHA, deterministic `v3.<sha256>` route id, 64KiB serializer ceiling, Darwin `fd_v1`, five-tool isolation, derived conservative bound), selected-model `resolved-managed-provider` source kind, preserved `ModelEntry.model_provider`, omitted armed summary client, spawn requires already-active authority, one cached armed `SamplingClient` per sampler actor, CLI pager FD-198 owner install, `bind_and_install_v3_authority`, `SamplingClient::new_with_armed_v3` / `from_process_config` |
+| **Armed v3 credential / provenance (4B.3 in progress)** | `GrokArmedCredentialMaterializer.swift`, `HardBudgetProvenanceV3.swift`, nested ACP `v3Authority`, fail-closed `ArmedV3ResolvedSnapshot`, `TrackedConfigGeneration` / `ResolvedConfigIdentityTracker`, live `ArmedV3LiveRouteCore` plus `ArmedV3PacketBoundsObservation` (loopback endpoint SHA, deterministic `v3.<sha256>` route id, 64KiB serializer ceiling, Darwin `fd_v1`, five-tool isolation, derived conservative bound), selected-model `resolved-managed-provider` source kind, preserved `ModelEntry.model_provider`, omitted armed summary client, spawn requires already-active authority, production `GrokProcess.start` refuses live Keychain / FD-198, one cached armed `SamplingClient` per sampler actor, CLI pager FD-198 owner install, `bind_and_install_v3_authority`, `SamplingClient::new_with_armed_v3` / `from_process_config` |
 | **Add/remove project** | `WorkspaceStore`, `WorkspacePicker` |
 | **Browser tools** | `AgentBrowserService`, `BrowserSettingsStore`, settings `.browser` (agent-browser CLI over MCP) |
 | **Session agent** | `GrokAgentProfiles`, `GrokCLIService.listAgents`, settings `.agents` |
@@ -1401,7 +1401,7 @@ make test    # Tests/GrokBuildTests/
 | `SettingsTabTests.swift` | Settings destination metadata/grouping, selected-pane-only lifecycle, shared value-state/status/accessibility reducers, adaptive rows, explicit persistence, and the six-priority-pane parent-draft/cancellation source contract |
 | `LifecycleAndSubprocessTests.swift` | Coalesced streaming Settings reconnects, exact apply/fork receipts, process-LRU identity safety, store/process release, one-shot subprocess hygiene, and restored-empty Resume chrome vs New chat |
 | `AcceptanceHarnessTests.swift` | Agentic `scripts/acceptance/` harness: dry-run default, `--billable` fail-closed without a run ID, guessed-cleanup refusal, fixture-mode reject/accept cases at zero provider cost, Resume-then-Send labels, installed-exec refuse of `.build` / `dist`, Slice 6 250k Stop packet |
-| `GrokArmedCredentialMaterializerTests.swift` | Fake Keychain materializer query, one-Data result, wipe, and Browser/Computer/MCP preflight refusal |
+| `GrokArmedCredentialMaterializerTests.swift` | Fake Keychain materializer query, one-Data result, wipe, Browser/Computer/MCP preflight refusal, and production `GrokProcess.start` v3 Keychain lock |
 | `HardBudgetProvenanceV3Tests.swift` | Independent Swift canonical bytes/digest parity with Rust plus hostile missing/extra/reorder/4M-policy refusal |
 
 Prefer extending existing test files. Test pure logic without launching real `grok` when possible.
@@ -1472,11 +1472,12 @@ fork, the pager hashes that read-only regular descriptor with `pread`, combines
 it with `VERSION_WITH_COMMIT` and the compiled 40-hex `SOURCE_COMMIT_SHA`, and
 stores one `CandidateIdentityV1`. It does not hash `current_exe()`. Production
 `bind_and_install_v3_authority` still waits for a credential-free config/route
-snapshot; ACP spawn remains fail-closed. Fail-closed `ArmedV3ResolvedSnapshot`
+snapshot; live 4M/3M/1M packets still load the v1 governor, and unbound v3
+spawn remains fail-closed. Fail-closed `ArmedV3ResolvedSnapshot`
 accepts only independently observed candidate/config/route/loopback sampler
 fields and refuses empty defaults, remote hosts, and secret-bearing configs.
-ACP spawn requires an already-registered v3 authority and does not reopen
-`V3AuthorityBuilder::from_env()`. Armed session setup omits the summary
+ACP spawn accepts the live v1 contract or an already-registered v3 authority
+and still refuses an unbound v3 env. Armed session setup omits the summary
 `OaiCompatClient` entirely; titles use the local text fallback. Production
 `run_agent_command` still does not call `bind_actual`. Resolved `ModelEntry`
 keeps the declared `model_provider` after provider defaults merge.
@@ -1514,13 +1515,18 @@ object strictly, re-canonicalizes the typed provenance, and derives headers from
 `authScheme`. It remains unreferenced by launch, Keychain, and `isEnforcing`.
 `GrokArmedCredentialAuthorizationV3` has no caller-supplied header name; the
 Keychain account equals the managed provider ID after source-kind, provider,
-scheme, and digest cross-bind. The historical live
+scheme, and digest cross-bind. Production `GrokProcess.start` fail-closes
+schema-2 contracts and any v3 authorization before a live Keychain read or
+candidate FD-198 spawn; fake-sentinel transport stays on
+`GrokCandidateProcessLauncher` with an injected keychain client. The historical live
 `GrokBuildHardTokenBudgetCapability.isEnforcing` decoder still requires
 capability v2 / ledger v3 / bound-method v1, so a live v3 projection cannot
 authorize a packet. Schema-2 acceptance send stops before Keychain
 materialization or candidate spawn. Fake-credential loopback Chat/Responses/Messages
-proof is the authorized consumer; ACP spawn still fail-closes until a live
-candidate/config/route identity is supplied to `bind_actual`. Paid activation,
+proof is the authorized consumer. Live 4M/3M/1M packets still load the v1
+governor through `HardTokenBudget::from_env` and ACP spawn. A complete v3
+environment still fail-closes until a live candidate/config/route identity is
+supplied to `bind_actual`. Paid activation,
 real Keychain reads, helper execution, candidate install, real provider hosts,
 and Slice 4B.4 remain locked. The live acceptance policy remains 4M/3M/1M until
 this v3 20M/19M/1M chain is complete.

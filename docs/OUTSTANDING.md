@@ -280,8 +280,9 @@ and remote-host cases proving zero loopback connections. The armed constructor
 now takes only `SamplerConfig` and uses the registered authority's budget;
 same-provenance alternate ledgers refuse before credential claim. Schema-2 packets still
 stop before materialization, the live v2 capability decoder will not treat a v3
-projection as enforcing, ACP spawn still fail-closes without a live
-candidate/config/route identity, and paid remains locked. The CLI now also
+projection as enforcing, live 4M/3M/1M packets still load the v1 governor,
+unbound v3 spawn still fail-closes, production `GrokProcess.start` refuses live
+Keychain materialization, and paid remains locked. The CLI now also
 refuses hard-linked v3 manifest, ledger, and lock files the same way Swift
 already refuses hard-linked 4B.1 sidecars. Armed v3 launches now inherit the
 inspected executable on FD 197; the child measures those bytes plus a compiled
@@ -292,8 +293,10 @@ provenance/policy fields; Swift derives auth headers from `authScheme` and
 still treats historical v2 `isEnforcing` as the only packet-authorization path.
 Fail-closed `ArmedV3ResolvedSnapshot` types now refuse invented identity, but
 production startup still does not bind them. `SamplerActor` now caches one
-armed client and ignores route-changing updates. ACP spawn now requires an
-already-active v3 authority and does not reopen the v3 manifest. Armed mode
+armed client and ignores route-changing updates. Live 4M/3M/1M packets still
+load the v1 governor through `HardTokenBudget::from_env`; ACP spawn accepts
+that live contract or an already-active v3 authority and still refuses an
+unbound v3 env. Armed mode
 omits the summary sampling client. Resolved models keep `model_provider`.
 `ResolvedConfigIdentityTracker` now bumps generation from a credential-free
 catalog projection, not `synced_at`. Live route observation now measures
@@ -302,7 +305,8 @@ selected-model `resolved-managed-provider`, the 64KiB serializer ceiling, and
 the five lexical `GrokBuild:` isolation IDs. Conservative request bound is
 derived live as payload + output cap; allocation ceiling and max model calls
 must come from the frozen packet. Golden 8192/route-1/two-tool/12288
-values are not copied into actual. Production startup still does not bind.
+values are not copied into actual. Production `GrokProcess.start` still does
+not bind and refuses live Keychain materialization.
 
 PR [#124](https://github.com/schmitzjimmy1-star/grok-build-desktop/pull/124)
 passed required exact-head run `32123735441` and merged normally as
