@@ -1580,7 +1580,9 @@ final class GrokProcess: @unchecked Sendable {
 
         let hasLegacyHardBudgetContract = options.hardBudgetLaunchContract != nil
             && options.hardBudgetLaunchContract?.credentialAuthorizationV3 == nil
+        let hasLockedArmedV3Contract = options.hardBudgetLaunchContract?.credentialAuthorizationV3 != nil
         guard !hasLegacyHardBudgetContract,
+              !hasLockedArmedV3Contract,
               options.hardBudgetLaunchContract?.filesRemainValid != false else {
             var receipt = GrokLaunchReceipt(
                 options: options,
@@ -1592,11 +1594,15 @@ final class GrokProcess: @unchecked Sendable {
             rejectLaunchModelReceipt(identity: launchIdentity)
             activeProcessGeneration = nil
             mcpServerStatuses = MCPReadinessPolicy.failedStatuses(for: options.mcpServers)
-            state = .failed(
-                hasLegacyHardBudgetContract
-                    ? "Schema-2 acceptance cannot launch a candidate credential path. No Grok process was launched."
-                    : "Acceptance authority changed after authorization. No Grok process was launched."
-            )
+            let failure: String
+            if hasLegacyHardBudgetContract {
+                failure = "Schema-2 acceptance cannot launch a candidate credential path. No Grok process was launched."
+            } else if hasLockedArmedV3Contract {
+                failure = "Armed v3 Keychain materialization remains locked. No Grok process was launched."
+            } else {
+                failure = "Acceptance authority changed after authorization. No Grok process was launched."
+            }
+            state = .failed(failure)
             return
         }
 
@@ -1649,63 +1655,39 @@ final class GrokProcess: @unchecked Sendable {
         )
         let launched: GrokCandidateSpawnResult
         do {
-            if let contract = options.hardBudgetLaunchContract {
-                var credentialTransfer: GrokArmedCredentialTransfer?
-                defer { credentialTransfer?.discard() }
-                if let authorization = contract.credentialAuthorizationV3 {
-                    credentialTransfer = try GrokArmedCredentialMaterializer().materialize(
-                        authorization: authorization
-                    )
-                } else {
-                    credentialTransfer = nil
-                }
-                // A Keychain read is not authority to spawn. Re-observe every
-                // immutable sidecar and the held candidate after materialization
-                // and immediately before the descriptor can cross the exec
-                // boundary; discard the one-use transfer on any drift.
-                guard contract.filesRemainValid else {
-                    credentialTransfer?.discard()
-                    throw GrokCandidateProcessLauncher.LaunchError.authorityChanged
-                }
-                launched = try GrokCandidateProcessLauncher.spawn(
-                    lease: contract.candidateExecutionLease,
-                    arguments: args,
-                    environment: environment,
-                    currentDirectory: workspace.path,
-                    credentialTransferV3: credentialTransfer
+            // Dormant 4B.3: production start never reads Keychain and never
+            // posix_spawns a candidate with FD 198. Fake-sentinel proof stays
+            // on GrokCandidateProcessLauncher with an injected keychain client.
+            guard let cli = Self.locateGrokCLI() else {
+                var receipt = GrokLaunchReceipt(
+                    options: options,
+                    workspaceID: workspace.id,
+                    processGeneration: launchGeneration
                 )
-            } else {
-                guard let cli = Self.locateGrokCLI() else {
-                    var receipt = GrokLaunchReceipt(
-                        options: options,
-                        workspaceID: workspace.id,
-                        processGeneration: launchGeneration
-                    )
-                    receipt.outcome = .failed
-                    launchReceipt = receipt
-                    rejectLaunchModelReceipt(identity: launchIdentity)
-                    activeProcessGeneration = nil
-                    mcpServerStatuses = MCPReadinessPolicy.failedStatuses(for: options.mcpServers)
-                    state = .failed("Could not locate the `grok` CLI. Run `grok login` or set GROK_CLI_PATH.")
-                    return
-                }
-                let proc = Process()
-                proc.executableURL = cli
-                proc.currentDirectoryURL = workspace.path
-                proc.environment = environment
-                proc.arguments = args
-                let input = Pipe(), output = Pipe(), errorOutput = Pipe()
-                proc.standardInput = input
-                proc.standardOutput = output
-                proc.standardError = errorOutput
-                try GrokChildProcessSpawnGate.run(proc)
-                launched = GrokCandidateSpawnResult(
-                    process: GrokManagedProcess(proc),
-                    standardInput: input.fileHandleForWriting,
-                    standardOutput: output,
-                    standardError: errorOutput
-                )
+                receipt.outcome = .failed
+                launchReceipt = receipt
+                rejectLaunchModelReceipt(identity: launchIdentity)
+                activeProcessGeneration = nil
+                mcpServerStatuses = MCPReadinessPolicy.failedStatuses(for: options.mcpServers)
+                state = .failed("Could not locate the `grok` CLI. Run `grok login` or set GROK_CLI_PATH.")
+                return
             }
+            let proc = Process()
+            proc.executableURL = cli
+            proc.currentDirectoryURL = workspace.path
+            proc.environment = environment
+            proc.arguments = args
+            let input = Pipe(), output = Pipe(), errorOutput = Pipe()
+            proc.standardInput = input
+            proc.standardOutput = output
+            proc.standardError = errorOutput
+            try GrokChildProcessSpawnGate.run(proc)
+            launched = GrokCandidateSpawnResult(
+                process: GrokManagedProcess(proc),
+                standardInput: input.fileHandleForWriting,
+                standardOutput: output,
+                standardError: errorOutput
+            )
         } catch {
             var receipt = GrokLaunchReceipt(
                 options: options,

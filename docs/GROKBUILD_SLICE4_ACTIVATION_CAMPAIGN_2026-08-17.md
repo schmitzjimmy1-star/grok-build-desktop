@@ -396,8 +396,9 @@ before `process::exit`. `bind_and_install_v3_authority` plus the armed
 constructor are the authorized fake-loopback consumer: Chat/Responses/Messages
 send the one-shot sentinel only to an exact loopback URL whose endpoint SHA-256
 matches the bound route. Remote hosts and route drift refuse before any
-connection. ACP spawn still fail-closes without a live candidate/config/route
-identity. The live v2 capability decoder will not treat a v3 projection as
+connection. Live 4M/3M/1M packets still load the v1 governor; unbound v3
+still fail-closes until a live candidate/config/route identity is supplied to
+`bind_actual`. The live v2 capability decoder will not treat a v3 projection as
 enforcing. The CLI `open_private_file` path now refuses hard-linked manifest,
 ledger, and lock artifacts (`nlink == 1`), matching the app sidecar contract.
 Armed v3 `posix_spawn` now duplicates the held lease descriptor onto child FD
@@ -405,8 +406,10 @@ Armed v3 `posix_spawn` now duplicates the held lease descriptor onto child FD
 `SOURCE_COMMIT_SHA` into `CandidateIdentityV1` and still does not call
 `bind_actual` with an invented config or route. Hashing `current_exe()` remains
 out of bounds. Fail-closed `ArmedV3ResolvedSnapshot` types refuse empty
-defaults, remote hosts, and secret-bearing sampler configs. ACP spawn now
-requires already-active v3 authority and does not reopen `from_env()`. Armed
+defaults, remote hosts, and secret-bearing sampler configs. ACP spawn accepts
+the live v1 contract or already-active v3 authority and still refuses an
+unbound v3 env. Production `GrokProcess.start` refuses live Keychain
+materialization and candidate FD-198 spawn. Armed
 mode omits the summary `OaiCompatClient`. Resolved models keep `model_provider`.
 `ResolvedConfigIdentityTracker` bumps generation only when the credential-free
 catalog projection changes. Live route observation now measures loopback

@@ -1,3 +1,4 @@
+import CryptoKit
 import Darwin
 import Foundation
 import Security
@@ -120,6 +121,54 @@ final class GrokArmedCredentialMaterializerTests: XCTestCase {
             XCTAssertEqual(error as? GrokArmedCredentialMaterializer.MaterializationError, .itemNotFound)
         }
         XCTAssertEqual(observed.value, 0)
+    }
+
+    @MainActor
+    func testProductionStartRefusesArmedV3KeychainMaterializationWithoutSpawning() async throws {
+        let fixture = try CandidateRuntimeTestFixture.makeCredentialReceiverExecutable()
+        defer { try? FileManager.default.removeItem(at: fixture.container) }
+        CandidateRuntimeTestFixture.installSignatureOverride()
+        let lease = try XCTUnwrap(GrokCandidateRuntimeAuthority.acquireLease(
+            selectionPath: fixture.selection.path,
+            expectedCLIBuild: fixture.cliBuild
+        ))
+        let manifest = fixture.container.appendingPathComponent("manifest.json")
+        let ledger = fixture.container.appendingPathComponent("ledger.json")
+        let manifestData = Data("{\"campaign\":\"locked-v3\"}".utf8)
+        try manifestData.write(to: manifest)
+        try Data("{}".utf8).write(to: ledger)
+        try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: manifest.path)
+        try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: ledger.path)
+        let manifestSHA = SHA256.hash(data: manifestData)
+            .map { String(format: "%02x", $0) }
+            .joined()
+        let contract = try XCTUnwrap(HardBudgetLaunchContract(
+            manifestPath: manifest.path,
+            ledgerPath: ledger.path,
+            allocationID: "packet-locked",
+            expectedManifestSHA256: manifestSHA,
+            candidateExecutionLease: lease,
+            credentialAuthorizationV3: authorization()
+        ))
+
+        final class PIDBox { var value: pid_t = 0 }
+        let observed = PIDBox()
+        GrokCandidateProcessLauncher.spawnedProcessObserverForTests = { observed.value = $0 }
+        GrokProcess.cliOverrideForTests = URL(fileURLWithPath: "/usr/bin/true")
+        defer { GrokProcess.cliOverrideForTests = nil }
+
+        let process = GrokProcess()
+        await process.start(
+            workspace: Workspace(name: "locked-v3", path: fixture.container),
+            options: GrokLaunchOptions(hardBudgetLaunchContract: contract)
+        )
+        XCTAssertEqual(observed.value, 0)
+        XCTAssertNil(process.activeProcessGeneration)
+        XCTAssertEqual(
+            process.state,
+            .failed("Armed v3 Keychain materialization remains locked. No Grok process was launched.")
+        )
+        XCTAssertEqual(process.launchReceipt?.outcome, .failed)
     }
 
     func testV3PreflightRefusesEveryOrdinaryToolOrHelperDetour() {
