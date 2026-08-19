@@ -1325,7 +1325,7 @@ using only stage, time, and PID. It never records prompts, response bodies, tool
 arguments, credentials, URLs, or environment contents.
 | **Public README screenshots (2026-08-13 campaign Slice 7)** | `docs/images/grokbuild-app.png` (signed-installed New chat), `docs/images/grokbuild-run-inspector.png` (settled multi-tool/two-child Run inspector); first-screenful copy in `README.md` |
 | **Agentic acceptance harness** | `scripts/acceptance/run.py`, `scripts/acceptance/schema/v1.json`, `scripts/acceptance/manifests/installed-three-route-v1.json`, `scripts/acceptance/manifests/installed-slice6-packet-v1.json`; dry-run default, `--billable` after preflight, fixture-mode rejection, exact-ID cleanup, Slice 6 250k Stop packet; independent v3 provenance verifier in `scripts/acceptance/harness/provenance_v3.py` |
-| **Armed v3 credential / provenance (4B.3 in progress)** | `GrokArmedCredentialMaterializer.swift`, `HardBudgetProvenanceV3.swift`, nested ACP `v3Authority`, fail-closed `ArmedV3ResolvedSnapshot`, `TrackedConfigGeneration` / `ResolvedConfigIdentityTracker`, live `ArmedV3LiveRouteCore` plus `ArmedV3PacketBoundsObservation` (loopback endpoint SHA, deterministic `v3.<sha256>` route id, 64KiB serializer ceiling, Darwin `fd_v1`, five-tool isolation, derived conservative bound), selected-model `resolved-managed-provider` source kind, preserved `ModelEntry.model_provider`, omitted armed summary client, spawn requires already-active authority, production `GrokProcess.start` refuses live Keychain / FD-198, one cached armed `SamplingClient` per sampler actor, CLI pager FD-198 owner install, `bind_and_install_v3_authority`, `SamplingClient::new_with_armed_v3` / `from_process_config` |
+| **Armed v3 credential / provenance (4B.3 in progress)** | `GrokArmedCredentialMaterializer.swift`, `HardBudgetProvenanceV3.swift`, nested ACP `v3Authority`, fail-closed `ArmedV3ResolvedSnapshot`, `TrackedConfigGeneration` / `ResolvedConfigIdentityTracker`, live `ArmedV3LiveRouteCore` plus `ArmedV3PacketBoundsObservation` (loopback endpoint SHA, deterministic `v3.<sha256>` route id, 64KiB serializer ceiling, Darwin `fd_v1`, five-tool isolation, derived conservative bound), selected-model `resolved-managed-provider` source kind, preserved `ModelEntry.model_provider`, omitted armed summary client, spawn requires already-active authority, production `GrokProcess.start` refuses live Keychain / FD-198, one cached armed `SamplingClient` per sampler actor, CLI pager FD-198 owner install, `agent::init::bootstrap` `bind_measured_v3_authority_if_present`, `bind_and_install_v3_authority`, `SamplingClient::new_with_armed_v3` / `from_process_config` |
 | **Add/remove project** | `WorkspaceStore`, `WorkspacePicker` |
 | **Browser tools** | `AgentBrowserService`, `BrowserSettingsStore`, settings `.browser` (agent-browser CLI over MCP) |
 | **Session agent** | `GrokAgentProfiles`, `GrokCLIService.listAgents`, settings `.agents` |
@@ -1470,16 +1470,25 @@ under `POSIX_SPAWN_CLOEXEC_DEFAULT`. Schema-2 fake transport does not inherit
 197. After the GBCT READY exchange, and still before telemetry, config, or any
 fork, the pager hashes that read-only regular descriptor with `pread`, combines
 it with `VERSION_WITH_COMMIT` and the compiled 40-hex `SOURCE_COMMIT_SHA`, and
-stores one `CandidateIdentityV1`. It does not hash `current_exe()`. Production
-`bind_and_install_v3_authority` still waits for a credential-free config/route
-snapshot; live 4M/3M/1M packets still load the v1 governor, and unbound v3
-spawn remains fail-closed. Fail-closed `ArmedV3ResolvedSnapshot`
+stores one `CandidateIdentityV1`. It does not hash `current_exe()`. CLI
+`agent::init::bootstrap`, after `ModelsManager::from_config`, calls
+`bind_measured_v3_authority_if_present`, which no-ops when the hard-budget env
+is absent, skips bind on `LegacyManifestRefused` so live 4M/3M/1M v1 packets
+still load the v1 governor at spawn, and on a complete unbound v3 env
+independently observes the catalog projection, selected-model live loopback
+route, manifest packet bounds, and credential-free sampler, claims the
+already-measured candidate, `ArmedV3ResolvedSnapshot::try_resolve`, then
+`bind_and_install_v3_authority(snapshot.binding().clone())`. It fail-closes on
+mismatch, a missing candidate, or incomplete env, and does not invent OpenRouter
+goldens, SuperGrok, official 1.0.4 bytes, or copy secrets via
+`sampling_config_for_model`. Unbound v3 spawn remains fail-closed when bind does
+not run. Fail-closed `ArmedV3ResolvedSnapshot`
 accepts only independently observed candidate/config/route/loopback sampler
 fields and refuses empty defaults, remote hosts, and secret-bearing configs.
 ACP spawn accepts the live v1 contract or an already-registered v3 authority
 and still refuses an unbound v3 env. Armed session setup omits the summary
-`OaiCompatClient` entirely; titles use the local text fallback. Production
-`run_agent_command` still does not call `bind_actual`. Resolved `ModelEntry`
+`OaiCompatClient` entirely; titles use the local text fallback. Measured v3 bind
+runs in bootstrap, not in `run_agent_command`. Resolved `ModelEntry`
 keeps the declared `model_provider` after provider defaults merge.
 `ResolvedConfigIdentityTracker` bumps `TrackedConfigGeneration` only when the
 credential-free catalog projection changes; empty catalogs stay unset. That
@@ -1490,8 +1499,9 @@ the live 64KiB serializer ceiling (enforced on armed serialize), and the five
 lexical `GrokBuild:` isolation IDs. Packet bounds derive the conservative
 request as live payload + observed `max_completion_tokens`; allocation ceiling
 and max model calls must come from the frozen packet envelope. Golden
-12288/20000/1 envelopes that cannot cover that ceiling refuse. Production startup
-still does not bind the snapshot. `SamplerActor` lazily constructs one armed `SamplingClient` and clones it for
+12288/20000/1 envelopes that cannot cover that ceiling refuse. Bootstrap bind
+uses only independently observed fields; digest `5052a528…0f950` remains a
+verifier golden, not a live invented route. `SamplerActor` lazily constructs one armed `SamplingClient` and clones it for
 later requests, so a second submit cannot reclaim the one-shot owner. Route-changing
 `UpdateConfig` is ignored while that client is cached.
 The Darwin pager receives GBCT v1 on FD 198,
@@ -1524,9 +1534,10 @@ capability v2 / ledger v3 / bound-method v1, so a live v3 projection cannot
 authorize a packet. Schema-2 acceptance send stops before Keychain
 materialization or candidate spawn. Fake-credential loopback Chat/Responses/Messages
 proof is the authorized consumer. Live 4M/3M/1M packets still load the v1
-governor through `HardTokenBudget::from_env` and ACP spawn. A complete v3
-environment still fail-closes until a live candidate/config/route identity is
-supplied to `bind_actual`. Paid activation,
+governor through `HardTokenBudget::from_env` and ACP spawn. A complete unbound
+v3 environment fail-closes at bootstrap when observation, candidate claim, or
+snapshot resolution does not succeed. Production `GrokProcess.start` still does
+not perform this bind. Paid activation,
 real Keychain reads, helper execution, candidate install, real provider hosts,
 and Slice 4B.4 remain locked. The live acceptance policy remains 4M/3M/1M until
 this v3 20M/19M/1M chain is complete.

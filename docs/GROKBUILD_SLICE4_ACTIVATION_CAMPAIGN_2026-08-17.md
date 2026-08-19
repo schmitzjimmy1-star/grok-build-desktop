@@ -396,9 +396,9 @@ before `process::exit`. `bind_and_install_v3_authority` plus the armed
 constructor are the authorized fake-loopback consumer: Chat/Responses/Messages
 send the one-shot sentinel only to an exact loopback URL whose endpoint SHA-256
 matches the bound route. Remote hosts and route drift refuse before any
-connection. Live 4M/3M/1M packets still load the v1 governor; unbound v3
-still fail-closes until a live candidate/config/route identity is supplied to
-`bind_actual`. The live v2 capability decoder will not treat a v3 projection as
+connection. Live 4M/3M/1M packets still load the v1 governor; unbound v3 still
+fail-closes at bootstrap when `bind_measured_v3_authority_if_present` cannot
+observe and resolve a complete candidate/config/route snapshot. The live v2 capability decoder will not treat a v3 projection as
 enforcing. The CLI `open_private_file` path now refuses hard-linked manifest,
 ledger, and lock artifacts (`nlink == 1`), matching the app sidecar contract.
 Armed v3 `posix_spawn` now duplicates the held lease descriptor onto child FD
@@ -418,7 +418,13 @@ selected-model `resolved-managed-provider`, the live 64KiB serializer ceiling,
 and the five lexical `GrokBuild:` isolation IDs. Conservative request bound is
 derived as live payload + observed output cap. Allocation ceiling and max model
 calls must come from the frozen packet envelope. Golden 8192/route-1/two-tool
-packet numbers are refused as actual. Production startup still does not call `bind_actual`. The live ACP capability now nests a strict three-field
+packet numbers are refused as actual. CLI `agent::init::bootstrap` now calls
+`bind_measured_v3_authority_if_present` after `ModelsManager::from_config` to
+bind complete unbound v3 envs from independently observed fields; it no-ops
+without hard-budget env, skips bind on `LegacyManifestRefused`, and does not
+invent OpenRouter goldens, SuperGrok, official 1.0.4 bytes, or copy secrets via
+`sampling_config_for_model`. Production `GrokProcess.start` still does not
+perform this bind. The live ACP capability now nests a strict three-field
 `v3Authority` object instead of top-level provenance/policy fields. Swift
 re-canonicalizes the typed provenance, derives headers from `authScheme`, and
 still refuses to treat a v3 projection as historical v2 enforcement. Paid
