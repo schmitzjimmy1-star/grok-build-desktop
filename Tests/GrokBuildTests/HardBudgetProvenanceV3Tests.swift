@@ -141,4 +141,70 @@ final class HardBudgetProvenanceV3Tests: XCTestCase {
             expectedProvenanceSHA256: String(repeating: "0", count: 64)
         ))
     }
+
+    func testInitializeProvenanceParserRequiresNestedAuthorityAndMatchingDigest() throws {
+        let provenance = try V3.Provenance.fromCanonicalJSON(Data(golden.utf8))
+        let provenanceObject = try JSONSerialization.jsonObject(with: Data(golden.utf8))
+        let capability: [String: Any] = [
+            "capabilityVersion": 3,
+            "v3Authority": [
+                "authorityVersion": 3,
+                "provenance": provenanceObject,
+                "provenanceSha256": try provenance.sha256(),
+            ],
+        ]
+        XCTAssertEqual(
+            V3.ExecutionCapability.parseInitializeProvenance(capability)?.campaignID,
+            "campaign-v3"
+        )
+        var drifted = capability
+        var authority = try XCTUnwrap(drifted["v3Authority"] as? [String: Any])
+        authority["provenanceSha256"] = String(repeating: "0", count: 64)
+        drifted["v3Authority"] = authority
+        XCTAssertNil(V3.ExecutionCapability.parseInitializeProvenance(drifted))
+        XCTAssertNil(V3.ExecutionCapability.parseInitializeProvenance(nil))
+
+        let expectation = ArmedV3DispatchExpectation(
+            campaignID: provenance.campaignID,
+            allocationID: provenance.allocationID,
+            selectedModelID: "gpt-41-mini",
+            managedProviderID: provenance.route.providerID,
+            providerFacingModel: provenance.route.providerFacingModel,
+            authScheme: provenance.route.authScheme,
+            apiBackend: provenance.route.apiBackend,
+            authBoundary: .officialHelper,
+            candidate: GrokCandidateRuntimeIdentity(
+                binaryPath: "/tmp/pager",
+                provenancePath: "/tmp/prov.json",
+                provenanceSHA256: String(repeating: "b", count: 64),
+                binarySHA256: provenance.candidate.binarySHA256,
+                binarySize: 1,
+                architecture: "arm64",
+                sourceSHA: provenance.candidate.sourceCommitSHA,
+                cliBuild: provenance.candidate.cliBuild,
+                signature: GrokCandidateSignatureReceipt(
+                    teamIdentifier: "DD2GCQJVB4",
+                    designatedRequirement: "fixture"
+                )
+            ),
+            frozenRoute: AcceptanceHardBudgetRoute(
+                model: provenance.route.providerFacingModel,
+                endpointSHA256: provenance.route.endpointSHA256,
+                apiBackend: provenance.route.apiBackend,
+                requestBoundTokens: 12_288,
+                maxPayloadBytes: 8_192,
+                maxOutputTokens: 4_096,
+                boundProvenanceSHA256: try provenance.sha256(),
+                managedProviderID: provenance.route.providerID,
+                authScheme: provenance.route.authScheme
+            ),
+            credentialAuthorizationV3: try XCTUnwrap(GrokArmedCredentialAuthorizationV3(
+                managedProviderID: provenance.route.providerID,
+                authScheme: provenance.route.authScheme,
+                expectedProvenanceSHA256: try provenance.sha256()
+            ))
+        )
+        XCTAssertTrue(expectation.admitsInitializeMetadata(capability))
+        XCTAssertFalse(expectation.admitsInitializeMetadata(drifted))
+    }
 }

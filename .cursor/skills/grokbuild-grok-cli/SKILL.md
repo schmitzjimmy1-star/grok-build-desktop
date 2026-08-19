@@ -46,10 +46,15 @@ Ordinary unarmed `GrokProcess.start` still locates the official CLI.
 An armed v3 `HardBudgetLaunchContract` materializes one Keychain item through
 `GrokArmedCredentialMaterializer` and `posix_spawn`s the leased candidate with
 FD 198/197. Debug tests inject the Keychain client.
-`AcceptanceBudgetGuard` schema-3 packets attach `credentialAuthorizationV3`
-from the packet route; schema-2 packets still supply `nil`. Ordinary Send
-without an acceptance harness does not read Keychain. Native Grok routes fail
-preflight before a live Keychain read.
+`AcceptanceBudgetGuard` schema-3 packets parse `credentialAuthorizationV3`
+selectors; `ArmedV3DispatchExpectation` cross-binds them to the live custom
+model and linked provider before `HardBudgetLaunchContract`. Spawn rechecks
+that latch before `posix_spawn`. Armed `initialize` requires a matching nested
+`v3Authority` before `.ready`. Schema-3 packets require 20M/19M/1M and cannot
+ride the live v1/v2 4M governor; schema-2 stays 4M/3M/1M. Schema-2 packets
+still supply `nil`. Ordinary
+Send without an acceptance harness does not read Keychain. Native Grok routes
+fail that bind (and still fail preflight if a contract is constructed directly).
 
 ## Auth & status bar
 

@@ -225,6 +225,43 @@ final class ACPClientContractTests: XCTestCase {
             packets: [acceptanceBudget(packetID: "only", marker: "ONLY", promptHash: "3a4726dafd3f6c5e45b1c6a41a7e948aeedcb39387ffdaef1f8b666f407e1236", tokenAllocation: 10, maxModelCalls: 1)]
         )
         XCTAssertFalse(schema3MissingSelector.isValid)
+        let schema3WithLiveV1Ceiling = AcceptanceBudgetManifest(
+            schemaVersion: 3,
+            runID: "run",
+            campaignTokenCeiling: 4_000_000,
+            emergencyReserveTokens: 1_000_000,
+            hardBudgetManifestSHA256: hardBudgetSHA,
+            expectedCLIBuild: "grokbuild-fork",
+            packets: [acceptanceBudget(
+                packetID: "only",
+                marker: "ONLY",
+                promptHash: "3a4726dafd3f6c5e45b1c6a41a7e948aeedcb39387ffdaef1f8b666f407e1236",
+                tokenAllocation: 10,
+                maxModelCalls: 1,
+                route: AcceptanceHardBudgetRoute(
+                    model: "grok-4.6",
+                    endpointSHA256: hardBudgetSHA,
+                    apiBackend: "responses",
+                    requestBoundTokens: 100,
+                    maxPayloadBytes: 80,
+                    maxOutputTokens: 20,
+                    boundProvenanceSHA256: hardBudgetSHA,
+                    managedProviderID: "openrouter",
+                    authScheme: "bearer"
+                )
+            )]
+        )
+        XCTAssertFalse(schema3WithLiveV1Ceiling.isValid)
+        let schema2WithV3Ceiling = AcceptanceBudgetManifest(
+            schemaVersion: 2,
+            runID: "run",
+            campaignTokenCeiling: 20_000_000,
+            emergencyReserveTokens: 1_000_000,
+            hardBudgetManifestSHA256: hardBudgetSHA,
+            expectedCLIBuild: "grokbuild-fork",
+            packets: [acceptanceBudget(packetID: "only", marker: "ONLY", promptHash: "3a4726dafd3f6c5e45b1c6a41a7e948aeedcb39387ffdaef1f8b666f407e1236", tokenAllocation: 10, maxModelCalls: 1)]
+        )
+        XCTAssertFalse(schema2WithV3Ceiling.isValid)
         let schema2WithSelector = AcceptanceBudgetManifest(
             schemaVersion: 2,
             runID: "run",
@@ -255,7 +292,7 @@ final class ACPClientContractTests: XCTestCase {
         let schema3 = AcceptanceBudgetManifest(
             schemaVersion: 3,
             runID: "run",
-            campaignTokenCeiling: 4_000_000,
+            campaignTokenCeiling: 20_000_000,
             emergencyReserveTokens: 1_000_000,
             hardBudgetManifestSHA256: hardBudgetSHA,
             expectedCLIBuild: "grokbuild-fork",
@@ -511,6 +548,16 @@ final class ACPClientContractTests: XCTestCase {
         var widenedTools = value
         widenedTools["allowedToolIds"] = GrokBuildHardTokenBudgetCapability.allowedToolIDs + ["Bash"]
         XCTAssertFalse(try XCTUnwrap(GrokBuildHardTokenBudgetCapability.parse(widenedTools)).isEnforcing)
+        let v3Packet = try XCTUnwrap(GrokArmedCredentialAuthorizationV3(
+            managedProviderID: "openrouter",
+            authScheme: "bearer",
+            expectedProvenanceSHA256: sha
+        ))
+        XCTAssertFalse(capability.authorizes(acceptanceAuthorization(
+            budget: budget,
+            campaignTokenCeiling: 20_000_000,
+            credentialAuthorizationV3: v3Packet
+        )))
     }
 
     func testLiveV3CapabilityProjectionIsNotEnforcingOnHistoricalV2Decoder() throws {
@@ -589,6 +636,21 @@ final class ACPClientContractTests: XCTestCase {
             route: acceptanceRoute()
         )
         XCTAssertFalse(capability.authorizes(acceptanceAuthorization(budget: budget)))
+        let v3Packet = try XCTUnwrap(GrokArmedCredentialAuthorizationV3(
+            managedProviderID: "openrouter",
+            authScheme: "bearer",
+            expectedProvenanceSHA256: sha
+        ))
+        XCTAssertTrue(capability.authorizes(acceptanceAuthorization(
+            budget: budget,
+            campaignTokenCeiling: 20_000_000,
+            credentialAuthorizationV3: v3Packet
+        )))
+        XCTAssertFalse(capability.authorizes(acceptanceAuthorization(
+            budget: budget,
+            campaignTokenCeiling: 4_000_000,
+            credentialAuthorizationV3: v3Packet
+        )))
     }
 
     func testHardBudgetReceiptPreservesHistoricalDecodeButNewEvidenceCarriesContainment() throws {
@@ -1315,7 +1377,7 @@ final class ACPClientContractTests: XCTestCase {
     }
 
     @MainActor
-    func testSchema3AcceptanceDispatchRefusesNativeRouteBeforeKeychainSpawn() async throws {
+    func testSchema3AcceptanceDispatchRefusesNativeRouteBeforeBind() async throws {
         let fixture = try CandidateRuntimeTestFixture.makeCredentialReceiverExecutable()
         defer { try? FileManager.default.removeItem(at: fixture.container) }
         CandidateRuntimeTestFixture.installSignatureOverride()
@@ -1372,6 +1434,7 @@ final class ACPClientContractTests: XCTestCase {
             acceptanceBudgetResolver: { _ in
                 .budget(self.acceptanceAuthorization(
                     budget: budget,
+                    campaignTokenCeiling: 20_000_000,
                     manifestSHA256: manifestSHA,
                     cliManifestPath: cliManifest.path,
                     ledgerPath: ledger.path,
@@ -1385,8 +1448,8 @@ final class ACPClientContractTests: XCTestCase {
         await store.start(workspace: Workspace(name: "schema-3-native", path: fixture.container))
         let sent = await store.sendAndWait("Return SCHEMA-3-NATIVE")
         XCTAssertFalse(sent)
-        XCTAssertTrue(store.lastError?.contains("Armed credential launch stopped") == true)
-        XCTAssertFalse(store.lastError?.contains("schema-3 credential authorization") == true)
+        XCTAssertTrue(store.lastError?.contains("schema-3 credential authorization") == true)
+        XCTAssertFalse(store.lastError?.contains("Armed credential launch stopped") == true)
         XCTAssertEqual(observed.value, 0)
         XCTAssertNil(store.process.activeProcessGeneration)
         await store.shutdownPermanently()
