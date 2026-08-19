@@ -643,6 +643,7 @@ final class CandidateRuntimeAuthorityTests: XCTestCase {
         XCTAssertEqual(authorized.expectedCLIBuild, fixture.cliBuild)
         XCTAssertEqual(authorized.candidateExecutionLease?.identity.binarySHA256,
                        CandidateRuntimeTestFixture.sha256(try Data(contentsOf: fixture.candidate)))
+        XCTAssertNil(authorized.credentialAuthorizationV3)
         for index in completeArguments.indices.dropFirst() {
             var missing = completeArguments
             missing.remove(at: index)
@@ -651,6 +652,73 @@ final class CandidateRuntimeAuthorityTests: XCTestCase {
             duplicate.append(completeArguments[index])
             XCTAssertEqual(AcceptanceBudgetGuard.resolve(prompt: prompt, arguments: duplicate), .blocked)
         }
+    }
+
+    func testSchema3AcceptanceGuardAttachesCredentialAuthorizationWithoutReadingKeychain() throws {
+        let fixture = try CandidateRuntimeTestFixture.make()
+        defer { try? FileManager.default.removeItem(at: fixture.container) }
+        CandidateRuntimeTestFixture.installSignatureOverride()
+
+        let prompt = "Return EXACT-V3"
+        let promptSHA = CandidateRuntimeTestFixture.sha256(Data(prompt.utf8))
+        let provenanceSHA = String(repeating: "c", count: 64)
+        let cliManifest = fixture.container.appendingPathComponent("hard-budget-manifest.json")
+        let cliManifestData = Data("{\"campaignId\":\"schema-3\"}".utf8)
+        try cliManifestData.write(to: cliManifest)
+        let ledger = fixture.container.appendingPathComponent("hard-budget-ledger.json")
+        try Data("{}".utf8).write(to: ledger)
+        for path in [cliManifest.path, ledger.path] {
+            try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: path)
+        }
+        let authorization = fixture.container.appendingPathComponent("authorization.json")
+        let manifest = AcceptanceBudgetManifest(
+            schemaVersion: 3,
+            runID: "schema-3",
+            campaignTokenCeiling: 4_000_000,
+            emergencyReserveTokens: 1_000_000,
+            hardBudgetManifestSHA256: CandidateRuntimeTestFixture.sha256(cliManifestData),
+            expectedCLIBuild: fixture.cliBuild,
+            packets: [AcceptanceTurnBudget(
+                packetID: "packet",
+                allocationID: "allocation",
+                marker: "EXACT-V3",
+                promptHash: promptSHA,
+                tokenAllocation: 100,
+                maxModelCalls: 1,
+                route: AcceptanceHardBudgetRoute(
+                    model: "deepseek/deepseek-v4-flash-0731",
+                    endpointSHA256: String(repeating: "a", count: 64),
+                    apiBackend: "chat_completions",
+                    requestBoundTokens: 100,
+                    maxPayloadBytes: 80,
+                    maxOutputTokens: 20,
+                    boundProvenanceSHA256: provenanceSHA,
+                    managedProviderID: "openrouter",
+                    authScheme: "bearer"
+                )
+            )]
+        )
+        try JSONEncoder().encode(manifest).write(to: authorization)
+        try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: authorization.path)
+
+        let resolution = AcceptanceBudgetGuard.resolve(
+            prompt: prompt,
+            arguments: [
+                "app",
+                "\(AcceptanceBudgetGuard.argumentPrefix)\(authorization.path)",
+                "\(AcceptanceBudgetGuard.cliManifestArgumentPrefix)\(cliManifest.path)",
+                "\(AcceptanceBudgetGuard.ledgerArgumentPrefix)\(ledger.path)",
+                "\(GrokCandidateRuntimeAuthority.selectionArgumentPrefix)\(fixture.selection.path)",
+            ]
+        )
+        guard case .budget(let authorized) = resolution else {
+            return XCTFail("Schema-3 runtime authority was not accepted: \(resolution)")
+        }
+        XCTAssertEqual(authorized.credentialAuthorizationV3?.keychainAccount, "openrouter")
+        XCTAssertEqual(authorized.credentialAuthorizationV3?.authScheme, "bearer")
+        XCTAssertEqual(authorized.credentialAuthorizationV3?.expectedProvenanceSHA256, provenanceSHA)
+        XCTAssertEqual(authorized.candidateExecutionLease?.identity.binarySHA256,
+                       CandidateRuntimeTestFixture.sha256(try Data(contentsOf: fixture.candidate)))
     }
 
     private struct Fixture {
