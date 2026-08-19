@@ -52,6 +52,10 @@ final class ChatTranscriptLayoutTests: XCTestCase {
             contentsOf: repositoryRoot.appendingPathComponent("GrokBuild/Views/MessageBubble.swift"),
             encoding: .utf8
         )
+        let richSource = try String(
+            contentsOf: repositoryRoot.appendingPathComponent("GrokBuild/Views/RichMessageView.swift"),
+            encoding: .utf8
+        )
 
         XCTAssertTrue(chatSource.contains("guard autoScrollTask == nil else"))
         XCTAssertTrue(chatSource.contains("autoScrollTrailingPassRequested = true"))
@@ -70,9 +74,69 @@ final class ChatTranscriptLayoutTests: XCTestCase {
             "composer, slash, goal, workflow, research, create-skill, and imagine sends share the recovery boundary"
         )
         XCTAssertTrue(chatSource.contains("isLayoutFrozen: transcriptSessionTransitionInProgress"))
+        XCTAssertTrue(chatSource.contains("allowsTextSelection: allowsTranscriptTextSelection"))
+        XCTAssertTrue(chatSource.contains("ChatTranscriptSelectionPolicy.shouldSuspendSelection("))
+        XCTAssertTrue(
+            chatSource.contains("ChatTranscriptScrollPolicy.shouldPerformImmediateFollowScroll("),
+            "attached stream revisions must skip per-chunk scrollTo and keep the coalesced settlement window"
+        )
         XCTAssertTrue(bubbleSource.contains("if isLayoutFrozen"))
         XCTAssertTrue(bubbleSource.contains("isLayoutFrozen: Bool = false"))
-        XCTAssertTrue(bubbleSource.contains(".textSelection(.enabled)"))
+        XCTAssertTrue(bubbleSource.contains("allowsTextSelection: Bool = true"))
+        XCTAssertTrue(bubbleSource.contains(".transcriptTextSelection()"))
+        XCTAssertTrue(bubbleSource.contains(".environment(\\.allowsTranscriptTextSelection, allowsTextSelection)"))
+        XCTAssertFalse(
+            bubbleSource.contains(".textSelection(.enabled)"),
+            "MessageBubble must honor the follow/settle selection suspend instead of mounting SelectionOverlay unconditionally"
+        )
+        XCTAssertTrue(richSource.contains("func transcriptTextSelection()"))
+        XCTAssertGreaterThanOrEqual(
+            richSource.components(separatedBy: ".transcriptTextSelection()").count - 1,
+            8,
+            "settled Markdown blocks must honor the same selection suspend as MessageBubble"
+        )
+        XCTAssertEqual(
+            richSource.components(separatedBy: ".textSelection(.enabled)").count - 1,
+            1,
+            "the only enabled SelectionOverlay in RichMessageView is the environment-gated modifier"
+        )
+    }
+
+    func testTranscriptSelectionSuspendsOnlyWhileFollowingLiveOrSettlingTurns() {
+        XCTAssertFalse(
+            ChatTranscriptSelectionPolicy.shouldSuspendSelection(
+                isFollowingBottom: true,
+                isStreaming: false,
+                isSettlingAutoScroll: false
+            )
+        )
+        XCTAssertTrue(
+            ChatTranscriptSelectionPolicy.shouldSuspendSelection(
+                isFollowingBottom: true,
+                isStreaming: true,
+                isSettlingAutoScroll: false
+            )
+        )
+        XCTAssertTrue(
+            ChatTranscriptSelectionPolicy.shouldSuspendSelection(
+                isFollowingBottom: true,
+                isStreaming: false,
+                isSettlingAutoScroll: true
+            )
+        )
+        XCTAssertFalse(
+            ChatTranscriptSelectionPolicy.shouldSuspendSelection(
+                isFollowingBottom: false,
+                isStreaming: true,
+                isSettlingAutoScroll: true
+            ),
+            "a detached reader keeps copy while a live turn continues below"
+        )
+    }
+
+    func testImmediateFollowScrollSkipsWhenAlreadyAttached() {
+        XCTAssertFalse(ChatTranscriptScrollPolicy.shouldPerformImmediateFollowScroll(isAttached: true))
+        XCTAssertTrue(ChatTranscriptScrollPolicy.shouldPerformImmediateFollowScroll(isAttached: false))
     }
 
     func testDetachedTranscriptStopsFollowingAndCountsNewContent() {

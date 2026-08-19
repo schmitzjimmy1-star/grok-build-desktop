@@ -236,6 +236,26 @@ enum ChatTranscriptScrollPolicy {
     static func jumpLabel(unreadCount: Int) -> String {
         unreadCount > 0 ? "Jump to latest (\(unreadCount) new)" : "Jump to latest"
     }
+
+    /// An already-attached reader does not need a per-chunk `scrollTo` while the
+    /// bounded settlement window keeps the true bottom in view. Immediate follow
+    /// remains for the first attach, when content has grown off-screen.
+    static func shouldPerformImmediateFollowScroll(isAttached: Bool) -> Bool {
+        !isAttached
+    }
+}
+
+/// AppKit `SelectionOverlay` on settled per-block Markdown feeds back into
+/// `LazyVStack` layout on macOS 26. Freeze selection only while the transcript is
+/// auto-following a live or settling turn; a reader who scrolled away keeps copy.
+enum ChatTranscriptSelectionPolicy {
+    static func shouldSuspendSelection(
+        isFollowingBottom: Bool,
+        isStreaming: Bool,
+        isSettlingAutoScroll: Bool
+    ) -> Bool {
+        isFollowingBottom && (isStreaming || isSettlingAutoScroll)
+    }
 }
 
 enum ComposerModelMenuLayout {
@@ -358,6 +378,18 @@ struct ChatView: View {
 
     private var browserToolsEnabled: Bool { store.isBuiltInToolEnabled(.browser) }
     private var computerUseEnabled: Bool { store.isBuiltInToolEnabled(.computerUse) }
+
+    private var isFollowingTranscriptBottom: Bool {
+        transcriptIsAttachedToBottom || !transcriptHasUserScrolled
+    }
+
+    private var allowsTranscriptTextSelection: Bool {
+        !ChatTranscriptSelectionPolicy.shouldSuspendSelection(
+            isFollowingBottom: isFollowingTranscriptBottom,
+            isStreaming: store.isStreaming,
+            isSettlingAutoScroll: autoScrollTask != nil
+        )
+    }
 
     @State private var cachedCustomSubagentNames: [String] = []
     @State private var showSavedWorkflows = false
@@ -833,7 +865,8 @@ struct ChatView: View {
                                         streamingPresentation: msg.id == store.streamingMessageID
                                             ? store.streamingPresentation
                                             : nil,
-                                        isLayoutFrozen: transcriptSessionTransitionInProgress
+                                        isLayoutFrozen: transcriptSessionTransitionInProgress,
+                                        allowsTextSelection: allowsTranscriptTextSelection
                                     )
                                     .id(msg.id)
                                 }
@@ -978,18 +1011,19 @@ struct ChatView: View {
                         )
                     }
                 }
-                // Follows every streamed chunk — thinking AND answer. A streaming answer
-                // grows the existing message's content (no count/isGrokking change), so
-                // without this the answer streams below the fold behind the thinking chip.
-                // Throttled to ~12/sec so it follows live, with a trailing scroll so the
-                // final token always lands the true bottom in view.
+                // Follows streamed thinking and answer. A streaming answer grows
+                // the existing message (no count/isGrokking change), so settlement
+                // still keeps the true bottom attached. An already-attached viewport
+                // skips the per-chunk scrollTo; unattached first-follow stays throttled.
                 .onChange(of: store.streamRevision) { _, _ in
                     guard transcriptIsAttachedToBottom || !transcriptHasUserScrolled else {
                         recordTranscriptContentChange()
                         return
                     }
                     let now = Date()
-                    if now.timeIntervalSince(lastAutoScroll) > 0.08 {
+                    if ChatTranscriptScrollPolicy.shouldPerformImmediateFollowScroll(
+                        isAttached: transcriptIsAttachedToBottom
+                    ), now.timeIntervalSince(lastAutoScroll) > 0.08 {
                         lastAutoScroll = now
                         scrollToBottom(proxy: proxy, instant: true)
                     }
