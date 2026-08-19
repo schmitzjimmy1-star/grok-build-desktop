@@ -1,6 +1,6 @@
 # GrokBuild Slice 4 Activation Campaign — 2026-08-17
 
-Status: **Slices 4B.0 through 4B.4 accepted; Slice 4B.5 nonbillable loopback lifecycle is in progress; paid activation locked.** This document is the authority for completing
+Status: **Slices 4B.0 through 4B.5 accepted; Slice 4B.6 signed owner-private install is in progress; paid activation locked.** This document is the authority for completing
 the official-provider and open-weight lane after the nonbillable Slice 4A hard-budget checkpoint. It
 does not authorize a provider request, credential-value read, live Grok config
 mutation, installed-CLI replacement, tag, release, or Slice 5 work.
@@ -122,9 +122,9 @@ evidence from a predecessor or begin while its predecessor remains unmerged.
 Slice 4B.0 is accepted. Jimmy explicitly authorized sequential execution of
 4B.1, then 4B.2, then 4B.3 on 2026-08-18. Merge-per-slice remains mandatory:
 4B.1 and 4B.2 are accepted. 4B.3 T5 merged as PR #136. 4B.4 merged as PR #137
-(`90782f2`). **4B.5 is in progress** on
-`cursor/official-runtime-s4b5-loopback-lifecycle` against signed pager
-`f434fa4f…933b` / `1.0.5 (8226242)`. Paid activation remains locked.
+(`90782f2`). **4B.5 is accepted** as merge `324ff89` (PR #139) against signed pager
+`f434fa4f…933b` / `1.0.5 (8226242)`. **4B.6 is in progress** on
+`cursor/official-runtime-s4b6-signed-install`. Paid activation remains locked.
 
 ### Scope
 
@@ -549,8 +549,8 @@ Owner-local proofs live in these files. Do not retarget pager pins anywhere else
 | Armed spawn / 90s `session/prompt` | `GrokBuild/Services/GrokProcess.swift` (`armedSessionPromptTimeout`), `GrokArmedCredentialMaterializer.swift` |
 | CLI hang repairs (Outstanding, zero-tool freeze, after-turn detach) | CLI fork `crates/codegen/xai-grok-shell/src/session/acp_session_impl/{turn.rs,turn_end.rs}` and `acp_session.rs` on `cursor/official-runtime-s4b5-armed-turn-sampler` |
 | Kill-after-response-before-settlement | `loopback_provider.py` mode `hold_after_body`; `Slice4B5LifecycleTests.testKillAfterResponseBeforeSettlementChargesAmbiguousReservation` |
-| Hostile `setsid` / tool-tree | CLI spawn/process-group code in the grok-build fork; not the desktop harness. Still leftover. |
-| 4B.6 signed owner-private install | New desktop branch; `GrokCandidateRuntimeAuthority` / `scripts/acceptance/harness/candidate_runtime.py`; installed app launch, not `~/.grok/bin/grok` |
+| Hostile `setsid` / tool-tree | CLI spawn/process-group code in the grok-build fork. 4B.6 leftover: `hard_budget_receiver_closes_fd_before_raw_fork_and_setsid_descendant` on the pager-bin `hard_budget` CI filter. Darwin post-enrollment `setsid()` escape remains the known 4B.2 limit. |
+| 4B.6 signed owner-private install | `scripts/acceptance/harness/candidate_install.py`; owner-local `Slice4B5LifecycleTests` install a copy first; ordinary lookup never scans `candidate-runtime`; not `~/.grok/bin/grok` |
 | 4C paid unlock | `scripts/acceptance/run.py` `require_absolute_ceiling_support()` after three reviews of the exact 4B.6 tree |
 
 Staged pager identity for this pass: binary SHA-256

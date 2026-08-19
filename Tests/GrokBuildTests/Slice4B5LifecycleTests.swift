@@ -22,6 +22,23 @@ final class Slice4B5LifecycleTests: XCTestCase {
     static let payloadCeiling: UInt64 = 65_536
     static let maxOutput: UInt64 = 256
     static let tokenCeiling = 2_000_000
+    private static var installedSelectionPath: String?
+    private static var installError: String?
+
+    override class func setUp() {
+        super.setUp()
+        let source = ProcessInfo.processInfo.environment["GROKBUILD_SLICE4B3_RUNTIME_SELECTION"] ?? ""
+        let inCI = ProcessInfo.processInfo.environment["CI"] != nil
+            || ProcessInfo.processInfo.environment["GITHUB_ACTIONS"] == "true"
+        guard !source.isEmpty, !inCI else { return }
+        do {
+            let installed = try installOwnerPrivateCopy(from: source)
+            installedSelectionPath = installed
+            _ = setenv("GROKBUILD_SLICE4B6_INSTALLED_SELECTION", installed, 1)
+        } catch {
+            installError = String(describing: error)
+        }
+    }
 
     override func tearDown() {
         GrokCandidateProcessLauncher.spawnedProcessObserverForTests = nil
@@ -326,6 +343,96 @@ final class Slice4B5LifecycleTests: XCTestCase {
                 || ProcessInfo.processInfo.environment["GITHUB_ACTIONS"] == "true",
             "Signed pager lifecycle is owner-local and must not run in CI"
         )
+        if let installError = Self.installError {
+            XCTFail("4B.6 owner-private install failed: \(installError)")
+        }
+    }
+
+    func testSlice4B6InstalledSelectionIsLeasableAndDistinctFromOfficialCLI() throws {
+        try skipUnlessOwnerLocal()
+        let path = try XCTUnwrap(Self.installedSelectionPath)
+        XCTAssertTrue(FileManager.default.fileExists(atPath: path))
+        let lease = try XCTUnwrap(
+            GrokCandidateRuntimeAuthority.acquireLease(
+                selectionPath: path,
+                expectedCLIBuild: Self.expectedCLIBuild
+            )
+        )
+        XCTAssertEqual(lease.identity.binarySHA256, Self.expectedSHA)
+        XCTAssertEqual(lease.identity.cliBuild, Self.expectedCLIBuild)
+        XCTAssertNotEqual(
+            URL(fileURLWithPath: lease.identity.binaryPath).resolvingSymlinksInPath().path,
+            URL(fileURLWithPath: NSHomeDirectory()).appendingPathComponent(".grok/bin/grok").path
+        )
+        XCTAssertEqual(
+            try sha256File(URL(fileURLWithPath: NSHomeDirectory()).appendingPathComponent(".grok/bin/grok")),
+            Self.officialSHA
+        )
+    }
+
+    func testSlice4B6OrdinaryResolverNeverScansCandidateRuntime() throws {
+        let url = Self.repoRoot.appendingPathComponent("GrokBuild/Services/GrokCLIRuntimeAuthority.swift")
+        let source = try String(contentsOf: url, encoding: .utf8)
+        let lookupStart = try XCTUnwrap(source.range(of: "enum GrokCLIRuntimeResolver"))
+        let lookupEnd = try XCTUnwrap(source.range(of: "enum GrokCandidateRuntimeAuthority"))
+        let lookup = String(source[lookupStart.lowerBound..<lookupEnd.lowerBound])
+        XCTAssertFalse(lookup.contains("candidate-runtime"))
+        XCTAssertFalse(lookup.contains("Application Support/GrokBuild/candidate"))
+        XCTAssertTrue(lookup.contains(".grok/bin/grok"))
+        XCTAssertTrue(source.contains("never scans"))
+        let located = GrokCLIRuntimeResolver.locateOfficial(
+            testOverride: URL(fileURLWithPath: "/usr/bin/true"),
+            arguments: ["app"]
+        )
+        XCTAssertEqual(located?.path, "/usr/bin/true")
+        XCTAssertFalse(located?.path.contains("candidate-runtime") == true)
+    }
+
+    func testSlice4B6PaidUnlockStaysLockedInHarnessSource() throws {
+        let runScript = try String(
+            contentsOf: Self.repoRoot.appendingPathComponent("scripts/acceptance/run.py"),
+            encoding: .utf8
+        )
+        let preflight = try String(
+            contentsOf: Self.repoRoot.appendingPathComponent("scripts/acceptance/harness/preflight_v2.py"),
+            encoding: .utf8
+        )
+        XCTAssertTrue(preflight.contains("cannot prove the absolute 4,000,000-token ceiling"))
+        let billableRange = try XCTUnwrap(runScript.range(of: "def _billable_v3"))
+        let mainRange = try XCTUnwrap(runScript.range(of: "if __name__"))
+        let billable = String(runScript[billableRange.lowerBound..<mainRange.lowerBound])
+        XCTAssertFalse(billable.contains("resume_saved_task()"))
+        XCTAssertTrue(billable.contains("governed_fresh_process_load"))
+        XCTAssertTrue(runScript.contains("require_absolute_ceiling_support()"))
+    }
+
+    private static func installOwnerPrivateCopy(from source: String) throws -> String {
+        let dest = FileManager.default.temporaryDirectory
+            .appendingPathComponent("grokbuild-s4b6-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: dest, withIntermediateDirectories: true)
+        try FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: dest.path)
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/env")
+        process.currentDirectoryURL = repoRoot
+        process.arguments = [
+            "python3", "-m", "scripts.acceptance.harness.candidate_install",
+            "install",
+            "--source", source,
+            "--dest", dest.path,
+        ]
+        let stdout = Pipe()
+        let stderr = Pipe()
+        process.standardOutput = stdout
+        process.standardError = stderr
+        try process.run()
+        process.waitUntilExit()
+        let out = String(decoding: stdout.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        let err = String(decoding: stderr.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self)
+        guard process.terminationStatus == 0, !out.isEmpty else {
+            throw Slice4B5Error.failed("4B.6 install failed: \(err)\(out)")
+        }
+        return out
     }
 
     @MainActor
@@ -587,7 +694,9 @@ private final class Slice4B5Harness {
             officialBefore: try sha256File(officialURL),
             process: GrokProcess(),
             previousHome: previousHome,
-            selectionPath: ProcessInfo.processInfo.environment["GROKBUILD_SLICE4B3_RUNTIME_SELECTION"] ?? "",
+            selectionPath: ProcessInfo.processInfo.environment["GROKBUILD_SLICE4B6_INSTALLED_SELECTION"]
+                ?? ProcessInfo.processInfo.environment["GROKBUILD_SLICE4B3_RUNTIME_SELECTION"]
+                ?? "",
             sentinel: Array("S4B5-\(UUID().uuidString)-END".utf8),
             allocations: allocations
         )

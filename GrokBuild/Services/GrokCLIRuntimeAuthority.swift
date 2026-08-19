@@ -89,6 +89,7 @@ final class GrokCandidateExecutionLease: @unchecked Sendable, Equatable {
 /// The single ordinary-runtime lookup policy. Armed launches never call this
 /// resolver: they carry an inspected candidate lease instead. Any acceptance
 /// authority argument makes ordinary CLI discovery fail closed across the app.
+/// Ordinary lookup never scans `~/Library/Application Support/GrokBuild/candidate-runtime`.
 enum GrokCLIRuntimeResolver {
     static func locateOfficial(
         testOverride: URL? = nil,

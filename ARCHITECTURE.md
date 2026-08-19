@@ -624,6 +624,8 @@ Do **not** commit exported plist files from repo root (`.gitignore`).
 | `~/Library/Application Support/GrokBuild/Transcripts/<local-session-uuid>.json` | Owner-only v2 transcript body for one local tab. The envelope carries its schema and monotonic dirty generation; writes use a serialized temporary-sibling atomic replacement. |
 | `~/Library/Application Support/GrokBuild/Transcripts/<local-session-uuid>.metadata.json` | Owner-only metadata sidecar: local tab ID, schema, generation, message/restorable-message counts, and modified date. Restore selection and counts read this sidecar without parsing message bodies. |
 | `~/Library/Application Support/GrokBuild/Transcripts/legacy-v1-migration.json` | Owner-only keyed migration-complete marker. It is written only after the complete v1 dictionary is copied and verified; legacy preferences remain untouched for rollback. |
+| `~/Library/Application Support/GrokBuild/candidate-runtime/<sha256>/` | Slice 4B.6 owner-private signed pager (`xai-grok-pager`) plus `candidate-provenance-v1.json`. Ordinary `GrokProcess.start` never scans this directory. Armed launch requires `--grokbuild-acceptance-runtime-selection-file=` plus budget/manifest/ledger together. |
+| `~/Library/Application Support/GrokBuild/candidate-runtime/runtime-selection.json` | Acceptance selection sidecar (0600, `O_EXCL`). Rollback unlinks only this file after two empty process-zero samples and writes `rollback-receipt-v1.json`; the digest-addressed pager stays. Never written under `~/.grok`. |
 
 ---
 
@@ -956,7 +958,13 @@ immutable one-allocation-per-process contract. Nonbillable loopback
 kill/restart/cancel/no-retry and side-egress proof must pass before any provider
 Send. Slice 4B.5 owner-local proofs are `Slice4B5LifecycleTests` plus
 `scripts/acceptance/harness/loopback_provider.py` against a signed digest-staged
-pager; they skip in CI and never replace `~/.grok/bin/grok`.
+pager; they skip in CI and never replace `~/.grok/bin/grok`. Slice 4B.6
+byte-copies that same signed pager into an owner-private
+`~/Library/Application Support/GrokBuild/candidate-runtime/<sha256>/` tree
+(`scripts/acceptance/harness/candidate_install.py`). Owner-local lifecycle tests
+install a copy first, then rerun the 4B.5 matrix against the installed
+selection. Ordinary CLI lookup still never scans that directory. Paid 4C stays
+locked.
 
 The remaining supply-chain, credential, provenance, continuation, loopback, and
 installed-candidate work is governed by
@@ -1414,8 +1422,8 @@ make test    # Tests/GrokBuildTests/
 | `OpenRouterOAuthTests.swift` | PKCE/authorization/exchange parsing plus real loopback capture and a cancellation-safe timeout |
 | `SettingsTabTests.swift` | Settings destination metadata/grouping, selected-pane-only lifecycle, shared value-state/status/accessibility reducers, adaptive rows, explicit persistence, and the six-priority-pane parent-draft/cancellation source contract |
 | `LifecycleAndSubprocessTests.swift` | Coalesced streaming Settings reconnects, exact apply/fork receipts, process-LRU identity safety, store/process release, one-shot subprocess hygiene, and restored-empty Resume chrome vs New chat |
-| `AcceptanceHarnessTests.swift` | Agentic `scripts/acceptance/` harness: dry-run default, `--billable` fail-closed without a run ID, guessed-cleanup refusal, fixture-mode reject/accept cases at zero provider cost, Resume-then-Send labels, installed-exec refuse of `.build` / `dist`, Slice 6 250k Stop packet, 4B.4 fresh-process continuation schema/receipt/governed-load driver contracts, schema-3 dry-run, schema-3 `--billable` still ceiling-locked, and 4B.5 loopback/driver source pins |
-| `Slice4B5LifecycleTests.swift` | Owner-local (`GROKBUILD_SLICE4B3_RUNTIME_SELECTION`) nonbillable staged-pager loopback: normal sentinel, redirect/retry zero, stop/cancel, kill-after-reserve, kill-after-response-before-settlement (`hold_after_body`), kill-during-restart, missing usage, stream failure, call ceiling, ordered reads, worker/wait, recovery, continuation `session/load`; skips in CI; never replaces `~/.grok/bin/grok` |
+| `AcceptanceHarnessTests.swift` | Agentic `scripts/acceptance/` harness: dry-run default, `--billable` fail-closed without a run ID, guessed-cleanup refusal, fixture-mode reject/accept cases at zero provider cost, Resume-then-Send labels, installed-exec refuse of `.build` / `dist`, Slice 6 250k Stop packet, 4B.4 fresh-process continuation schema/receipt/governed-load driver contracts, schema-3 dry-run, schema-3 `--billable` still ceiling-locked, 4B.5 loopback/driver source pins, and 4B.6 install/rollback/paid-lock Python contracts |
+| `Slice4B5LifecycleTests.swift` | Owner-local (`GROKBUILD_SLICE4B3_RUNTIME_SELECTION`) nonbillable staged-pager loopback: 4B.6 class setup byte-copies the signed pager into an owner-private dest, then reruns normal sentinel, redirect/retry zero, stop/cancel, kill-after-reserve, kill-after-response-before-settlement (`hold_after_body`), kill-during-restart, missing usage, stream failure, call ceiling, ordered reads, worker/wait, recovery, continuation `session/load` against that installed copy; plus CI-safe resolver/paid-lock pins; skips the live pager matrix in CI; never replaces `~/.grok/bin/grok` |
 | `GrokArmedCredentialMaterializerTests.swift` | Fake Keychain materializer query, one-Data result, wipe, Browser/Computer/MCP preflight refusal, production `GrokProcess.start` v3 spawn with an injected client against the cooperative receiver, and an env-gated signed digest-staged pager E2E (`GROKBUILD_SLICE4B3_RUNTIME_SELECTION`; skips in CI) |
 | `HardBudgetProvenanceV3Tests.swift` | Independent Swift canonical bytes/digest parity with Rust plus hostile missing/extra/reorder/4M-policy refusal |
 

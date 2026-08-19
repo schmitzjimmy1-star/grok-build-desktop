@@ -59,6 +59,7 @@ Focused tests: `swift test --filter AcceptanceHarnessTests`.
 |--------|---------|
 | [`acceptance/run.py`](acceptance/run.py) | Versioned agentic acceptance harness. Dry-run default; `--fixture` for zero-cost rejection; `--billable` for installed-UI Sends after preflight. |
 | [`acceptance/harness/provenance_v3.py`](acceptance/harness/provenance_v3.py) | Independent 4B.3 canonical provenance verifier, including nested `v3Authority` projection checks. Historical v2 schemas stay in `authority_v2.py`. |
+| [`acceptance/harness/candidate_install.py`](acceptance/harness/candidate_install.py) | Slice 4B.6 signed pager install/rollback. Byte-copies into an owner-private digest directory; never writes `~/.grok/bin/grok`. Rollback removes only `runtime-selection.json` after two empty process-zero samples. |
 
 ## Packaging scripts
 
