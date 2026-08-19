@@ -447,6 +447,26 @@ enum HardBudgetProvenanceV3 {
             }
             return ExecutionCapability(provenance: provenance)
         }
+
+        /// Nested `v3Authority` plus digest check only. Dispatch compares the
+        /// Swift-observable subset; it does not invent a live `ResolvedRouteBound`.
+        static func parseInitializeProvenance(_ value: Any?) -> Provenance? {
+            guard let object = value as? [String: Any],
+                  (try? StrictJSON.uint64(object["capabilityVersion"])) == version,
+                  let authority = try? StrictJSON.object(object["v3Authority"], keys: [
+                    "authorityVersion", "provenance", "provenanceSha256",
+                  ]),
+                  (try? StrictJSON.uint64(authority["authorityVersion"])) == authorityVersion,
+                  let provenance = try? Provenance.parse(try StrictJSON.required(authority["provenance"])),
+                  let digest = try? StrictJSON.string(authority["provenanceSha256"]),
+                  (try? provenance.verifySHA256(digest)) != nil,
+                  provenance.configIdentity.sourceKind == "resolved-managed-provider",
+                  provenance.configIdentity.managedProviderID == provenance.route.providerID,
+                  provenance.route.canonicalAuthHeaderNames != nil else {
+                return nil
+            }
+            return provenance
+        }
     }
 
     static func canonicalAuthHeaderNames(_ scheme: String) -> [String]? {

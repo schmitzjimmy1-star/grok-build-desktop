@@ -178,6 +178,26 @@ final class ArmedV3DispatchExpectationTests: XCTestCase {
         ))
     }
 
+    func testSpawnAdmissionRefusesModelAndMCPDrift() throws {
+        let expectation = try XCTUnwrap(ArmedV3DispatchExpectation.tryMake(
+            authorization: authorization(),
+            selectedModelID: modelID,
+            customModel: matchingCustomModel(),
+            provider: matchingProvider(),
+            candidate: matchingCandidate()
+        ))
+        XCTAssertNil(expectation.spawnAdmissionRefusal(options: GrokLaunchOptions(model: modelID)))
+        XCTAssertNotNil(expectation.spawnAdmissionRefusal(options: GrokLaunchOptions(model: "grok-4.6")))
+        XCTAssertNotNil(expectation.spawnAdmissionRefusal(options: GrokLaunchOptions(
+            model: modelID,
+            mcpGatewayEnabled: true
+        )))
+        XCTAssertNotNil(expectation.spawnAdmissionRefusal(options: GrokLaunchOptions(
+            model: modelID,
+            allowedMCPServerNames: ["grokbuild-browser"]
+        )))
+    }
+
     private func matchingCustomModel(
         model: String? = nil,
         providerID: String = "openrouter"

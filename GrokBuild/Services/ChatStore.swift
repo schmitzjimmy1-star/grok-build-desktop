@@ -2393,6 +2393,15 @@ final class ChatStore {
             customModel: customModelsByID[modelForLaunch],
             isKnownNativeModel: !configuredCustomModelIDs.contains(modelForLaunch)
         )
+        if let expectation = hardBudgetLaunchContract?.dispatchExpectation,
+           expectation.selectedModelID != modelForLaunch
+            || expectation.authBoundary != routeContractForLaunch.authBoundary
+            || hardBudgetLaunchContract?.filesRemainValid == false {
+            connectionWatchdogTask?.cancel()
+            connectionState = .failed("Acceptance route changed after authorization. No Grok process was launched.")
+            lastError = "Acceptance dispatch stopped because the frozen route changed or external MCP tools were attached."
+            return
+        }
         let expectedEffectiveModelForLaunch = customModelsByID[modelForLaunch]?.model
             .trimmingCharacters(in: .whitespacesAndNewlines)
         let reasoningEffortForLaunch = modelSupportsReasoningEffort(modelForLaunch) ? workspaceReasoningEffort : ""
@@ -3068,7 +3077,7 @@ final class ChatStore {
             )
             guard case .budget(let authorization) = acceptanceBudgetResolver(frozenPrompt),
                   let lease = authorization.candidateExecutionLease,
-                  let boundAuthorization = ArmedV3DispatchExpectation.bindAuthorization(
+                  let expectation = ArmedV3DispatchExpectation.bind(
                     authorization: authorization,
                     selectedModelID: intent.modelID ?? currentModel,
                     customModelSnapshot: customModelSnapshotLoader(),
@@ -3081,7 +3090,8 @@ final class ChatStore {
                     allocationID: authorization.budget.allocationID,
                     expectedManifestSHA256: authorization.hardBudgetManifestSHA256,
                     candidateExecutionLease: lease,
-                    credentialAuthorizationV3: boundAuthorization
+                    credentialAuthorizationV3: expectation.credentialAuthorizationV3,
+                    dispatchExpectation: expectation
                   ) else {
                 lastError = "Acceptance dispatch stopped because the exact schema-3 credential authorization is unavailable."
                 return false

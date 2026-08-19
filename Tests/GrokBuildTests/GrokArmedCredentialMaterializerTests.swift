@@ -178,6 +178,38 @@ final class GrokArmedCredentialMaterializerTests: XCTestCase {
     }
 
     @MainActor
+    func testProductionStartRefusesModelDriftAfterDispatchLatch() async throws {
+        let fixture = try CandidateRuntimeTestFixture.makeCredentialReceiverExecutable()
+        defer { try? FileManager.default.removeItem(at: fixture.container) }
+        let contract = try makeArmedContract(
+            fixture: fixture,
+            allocationID: "packet-drift",
+            latchDispatch: true
+        )
+        GrokProcess.armedKeychainClientForTests = client { _, item in
+            item?.pointee = [Data([0x01])] as NSArray
+            return errSecSuccess
+        }
+        final class PIDBox { var value: pid_t = 0 }
+        let observed = PIDBox()
+        GrokCandidateProcessLauncher.spawnedProcessObserverForTests = { observed.value = $0 }
+        let process = GrokProcess()
+        await process.start(
+            workspace: Workspace(name: "drift-v3", path: fixture.container),
+            options: GrokLaunchOptions(
+                model: "grok-4.6",
+                hardBudgetLaunchContract: contract
+            )
+        )
+        XCTAssertEqual(observed.value, 0)
+        XCTAssertNil(process.activeProcessGeneration)
+        XCTAssertEqual(
+            process.state,
+            .failed("Acceptance route changed after authorization. No Grok process was launched.")
+        )
+    }
+
+    @MainActor
     func testProductionStartSpawnsCandidateWithInjectedKeychainNotOfficialCLI() async throws {
         let fixture = try CandidateRuntimeTestFixture.makeCredentialReceiverExecutable()
         defer { try? FileManager.default.removeItem(at: fixture.container) }
@@ -385,7 +417,8 @@ final class GrokArmedCredentialMaterializerTests: XCTestCase {
 
     private func makeArmedContract(
         fixture: CandidateRuntimeTestFixture,
-        allocationID: String
+        allocationID: String,
+        latchDispatch: Bool = false
     ) throws -> HardBudgetLaunchContract {
         CandidateRuntimeTestFixture.installSignatureOverride()
         let lease = try XCTUnwrap(GrokCandidateRuntimeAuthority.acquireLease(
@@ -402,13 +435,73 @@ final class GrokArmedCredentialMaterializerTests: XCTestCase {
         let manifestSHA = SHA256.hash(data: manifestData)
             .map { String(format: "%02x", $0) }
             .joined()
+        let expectation: ArmedV3DispatchExpectation?
+        if latchDispatch {
+            let modelID = "deepseek-deepseek-v4-flash-0731"
+            let providerFacing = "deepseek/deepseek-v4-flash-0731"
+            let provenanceSHA = String(repeating: "a", count: 64)
+            let route = AcceptanceHardBudgetRoute(
+                model: providerFacing,
+                endpointSHA256: provenanceSHA,
+                apiBackend: "chat_completions",
+                requestBoundTokens: 100,
+                maxPayloadBytes: 80,
+                maxOutputTokens: 20,
+                boundProvenanceSHA256: provenanceSHA,
+                managedProviderID: account,
+                authScheme: "bearer"
+            )
+            let packet = AcceptanceTurnBudget(
+                packetID: allocationID,
+                allocationID: allocationID,
+                marker: "EXACT-V3",
+                promptHash: String(repeating: "1", count: 64),
+                tokenAllocation: 100,
+                maxModelCalls: 1,
+                route: route
+            )
+            let authorization = AcceptanceBudgetAuthorization(
+                runID: "schema-3",
+                campaignTokenCeiling: 4_000_000,
+                emergencyReserveTokens: 1_000_000,
+                hardBudgetManifestSHA256: manifestSHA,
+                expectedCLIBuild: fixture.cliBuild,
+                budget: packet,
+                authorizationManifestPath: "/tmp/authorization.json",
+                hardBudgetCLIManifestPath: manifest.path,
+                hardBudgetLedgerPath: ledger.path,
+                candidateExecutionLease: lease,
+                credentialAuthorizationV3: route.credentialAuthorizationV3
+            )
+            expectation = try XCTUnwrap(ArmedV3DispatchExpectation.tryMake(
+                authorization: authorization,
+                selectedModelID: modelID,
+                customModel: CustomModel(
+                    id: modelID,
+                    model: providerFacing,
+                    baseURL: "https://openrouter.ai/api/v1",
+                    apiBackend: .chatCompletions,
+                    providerID: account
+                ),
+                provider: Provider(
+                    id: account,
+                    name: "OpenRouter",
+                    baseURL: "https://openrouter.ai/api/v1",
+                    authScheme: .bearer
+                ),
+                candidate: lease.identity
+            ))
+        } else {
+            expectation = nil
+        }
         return try XCTUnwrap(HardBudgetLaunchContract(
             manifestPath: manifest.path,
             ledgerPath: ledger.path,
             allocationID: allocationID,
             expectedManifestSHA256: manifestSHA,
             candidateExecutionLease: lease,
-            credentialAuthorizationV3: authorization()
+            credentialAuthorizationV3: expectation?.credentialAuthorizationV3 ?? authorization(),
+            dispatchExpectation: expectation
         ))
     }
 

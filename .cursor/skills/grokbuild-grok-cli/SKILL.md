@@ -48,10 +48,11 @@ An armed v3 `HardBudgetLaunchContract` materializes one Keychain item through
 FD 198/197. Debug tests inject the Keychain client.
 `AcceptanceBudgetGuard` schema-3 packets parse `credentialAuthorizationV3`
 selectors; `ArmedV3DispatchExpectation` cross-binds them to the live custom
-model and linked provider before `HardBudgetLaunchContract`. Schema-2 packets
-still supply `nil`. Ordinary Send without an acceptance harness does not read
-Keychain. Native Grok routes fail that bind (and still fail preflight if a
-contract is constructed directly).
+model and linked provider before `HardBudgetLaunchContract`. Spawn rechecks
+that latch before `posix_spawn`. Armed `initialize` requires a matching nested
+`v3Authority` before `.ready`. Schema-2 packets still supply `nil`. Ordinary
+Send without an acceptance harness does not read Keychain. Native Grok routes
+fail that bind (and still fail preflight if a contract is constructed directly).
 
 ## Auth & status bar
 

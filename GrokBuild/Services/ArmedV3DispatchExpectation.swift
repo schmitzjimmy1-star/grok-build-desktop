@@ -15,6 +15,7 @@ struct ArmedV3DispatchExpectation: Equatable, Sendable {
     let providerFacingModel: String
     let authScheme: String
     let apiBackend: String
+    let authBoundary: ModelRouteContract.AuthBoundary
     let candidate: GrokCandidateRuntimeIdentity
     let frozenRoute: AcceptanceHardBudgetRoute
     let credentialAuthorizationV3: GrokArmedCredentialAuthorizationV3
@@ -68,6 +69,7 @@ struct ArmedV3DispatchExpectation: Equatable, Sendable {
             providerFacingModel: liveProviderFacing,
             authScheme: liveScheme,
             apiBackend: route.apiBackend,
+            authBoundary: routeContract.authBoundary,
             candidate: candidate,
             frozenRoute: route,
             credentialAuthorizationV3: packetAuthorization
@@ -75,6 +77,29 @@ struct ArmedV3DispatchExpectation: Equatable, Sendable {
     }
 
     /// Resolves the live custom-model snapshot and linked provider, then binds.
+    static func bind(
+        authorization: AcceptanceBudgetAuthorization,
+        selectedModelID: String,
+        customModelSnapshot: CustomModelStore.Snapshot,
+        providers: [Provider],
+        candidate: GrokCandidateRuntimeIdentity
+    ) -> ArmedV3DispatchExpectation? {
+        let customModel = CustomModelStore.runtimeEligibleModels(from: customModelSnapshot)
+            .first { $0.id == selectedModelID }
+        guard let customModel,
+              let providerID = customModel.providerID,
+              let provider = providers.first(where: { $0.id == providerID }) else {
+            return nil
+        }
+        return tryMake(
+            authorization: authorization,
+            selectedModelID: selectedModelID,
+            customModel: customModel,
+            provider: provider,
+            candidate: candidate
+        )
+    }
+
     static func bindAuthorization(
         authorization: AcceptanceBudgetAuthorization,
         selectedModelID: String,
@@ -82,20 +107,42 @@ struct ArmedV3DispatchExpectation: Equatable, Sendable {
         providers: [Provider],
         candidate: GrokCandidateRuntimeIdentity
     ) -> GrokArmedCredentialAuthorizationV3? {
-        let customModel = CustomModelStore.runtimeEligibleModels(from: customModelSnapshot)
-            .first { $0.id == selectedModelID }
-        guard let customModel,
-              let providerID = customModel.providerID,
-              let provider = providers.first(where: { $0.id == providerID }),
-              let expectation = tryMake(
-                authorization: authorization,
-                selectedModelID: selectedModelID,
-                customModel: customModel,
-                provider: provider,
-                candidate: candidate
-              ) else {
-            return nil
+        bind(
+            authorization: authorization,
+            selectedModelID: selectedModelID,
+            customModelSnapshot: customModelSnapshot,
+            providers: providers,
+            candidate: candidate
+        )?.credentialAuthorizationV3
+    }
+
+    /// CLI-produced nested `v3Authority` must match Swift-observable identity.
+    /// This does not invent `configIdentity` or live serializer bounds.
+    func admitsInitializeMetadata(_ value: Any?) -> Bool {
+        guard let provenance = HardBudgetProvenanceV3.ExecutionCapability.parseInitializeProvenance(value) else {
+            return false
         }
-        return expectation.credentialAuthorizationV3
+        return provenance.campaignID == campaignID
+            && provenance.allocationID == allocationID
+            && provenance.candidate.cliBuild == candidate.cliBuild
+            && provenance.candidate.binarySHA256 == candidate.binarySHA256
+            && provenance.candidate.sourceCommitSHA == candidate.sourceSHA
+            && provenance.route.providerID == managedProviderID
+            && provenance.route.authScheme == authScheme
+            && provenance.route.providerFacingModel == providerFacingModel
+            && provenance.route.endpointSHA256 == frozenRoute.endpointSHA256
+            && provenance.route.apiBackend == apiBackend
+            && provenance.configIdentity.managedProviderID == managedProviderID
+    }
+
+    func spawnAdmissionRefusal(options: GrokLaunchOptions) -> String? {
+        let mcpNames = Set(options.mcpServers.map(\.name)).union(options.allowedMCPServerNames)
+        guard options.model == selectedModelID,
+              authBoundary == .officialHelper,
+              !options.mcpGatewayEnabled,
+              mcpNames.isEmpty else {
+            return "Acceptance route changed after authorization. No Grok process was launched."
+        }
+        return nil
     }
 }

@@ -26,6 +26,7 @@ struct HardBudgetLaunchContract: Sendable, Equatable {
     let expectedManifestSHA256: String
     let candidateExecutionLease: GrokCandidateExecutionLease
     let credentialAuthorizationV3: GrokArmedCredentialAuthorizationV3?
+    let dispatchExpectation: ArmedV3DispatchExpectation?
     private let manifestIdentity: HardBudgetAuthorityFileIdentity
     private let ledgerIdentity: HardBudgetAuthorityFileIdentity
 
@@ -35,7 +36,8 @@ struct HardBudgetLaunchContract: Sendable, Equatable {
         allocationID: String,
         expectedManifestSHA256: String,
         candidateExecutionLease: GrokCandidateExecutionLease?,
-        credentialAuthorizationV3: GrokArmedCredentialAuthorizationV3? = nil
+        credentialAuthorizationV3: GrokArmedCredentialAuthorizationV3? = nil,
+        dispatchExpectation: ArmedV3DispatchExpectation? = nil
     ) {
         guard NSString(string: manifestPath).isAbsolutePath,
               NSString(string: ledgerPath).isAbsolutePath,
@@ -51,14 +53,26 @@ struct HardBudgetLaunchContract: Sendable, Equatable {
               let ledgerIdentity = HardBudgetAuthorityFileIdentity.capture(path: ledgerPath),
               let candidateExecutionLease,
               candidateExecutionLease.heldFileRemainsValid else { return nil }
+        if let dispatchExpectation {
+            guard dispatchExpectation.credentialAuthorizationV3 == credentialAuthorizationV3,
+                  dispatchExpectation.authBoundary == .officialHelper else { return nil }
+        }
         self.manifestPath = manifestPath
         self.ledgerPath = ledgerPath
         self.allocationID = allocationID
         self.expectedManifestSHA256 = expectedManifestSHA256
         self.candidateExecutionLease = candidateExecutionLease
         self.credentialAuthorizationV3 = credentialAuthorizationV3
+        self.dispatchExpectation = dispatchExpectation
         self.manifestIdentity = manifestIdentity
         self.ledgerIdentity = ledgerIdentity
+    }
+
+    func spawnAdmissionRefusal(options: GrokLaunchOptions) -> String? {
+        guard filesRemainValid else {
+            return "Acceptance authority changed after authorization. No Grok process was launched."
+        }
+        return dispatchExpectation?.spawnAdmissionRefusal(options: options)
     }
 
     var filesRemainValid: Bool {
@@ -1116,6 +1130,7 @@ final class GrokProcess: @unchecked Sendable {
     private var completedSessionReplay: ACPSessionReplayTranscript?
     private(set) var sessionId: String?
     private(set) var launchReceipt: GrokLaunchReceipt?
+    private var activeHardBudgetLaunchContract: HardBudgetLaunchContract?
     private(set) var mcpServerStatuses: [MCPServerStatus] = []
     private(set) var observedCLIConfiguredMCPServerNames: [String] = []
     private var configuredMCPServerNames: [String] = []
@@ -1577,6 +1592,7 @@ final class GrokProcess: @unchecked Sendable {
         )
         availableModelsInfo.removeAll()
         hasAuthoritativeModelCatalog = false
+        activeHardBudgetLaunchContract = options.hardBudgetLaunchContract
 
         let hasLegacyHardBudgetContract = options.hardBudgetLaunchContract != nil
             && options.hardBudgetLaunchContract?.credentialAuthorizationV3 == nil
@@ -1643,6 +1659,16 @@ final class GrokProcess: @unchecked Sendable {
         )
         let launched: GrokCandidateSpawnResult
         do {
+            if let refusal = options.hardBudgetLaunchContract?.spawnAdmissionRefusal(options: options) {
+                failBeforeSpawn(
+                    options: options,
+                    workspace: workspace,
+                    launchGeneration: launchGeneration,
+                    launchIdentity: launchIdentity,
+                    message: refusal
+                )
+                return
+            }
             if let contract = options.hardBudgetLaunchContract,
                let authorization = contract.credentialAuthorizationV3 {
                 launched = try Self.spawnArmedV3Candidate(
@@ -1864,6 +1890,7 @@ final class GrokProcess: @unchecked Sendable {
 
         activeProcessGeneration = nil
         isStopDraining = false
+        activeHardBudgetLaunchContract = nil
         readerTask?.cancel()
         readerTask = nil
         stdout?.fileHandleForReading.readabilityHandler = nil
@@ -2741,6 +2768,16 @@ final class GrokProcess: @unchecked Sendable {
         hardTokenBudgetCapability = GrokBuildHardTokenBudgetCapability.parse(
             meta?[GrokBuildHardTokenBudgetCapability.metadataKey]
         )
+        if let expectation = activeHardBudgetLaunchContract?.dispatchExpectation {
+            guard expectation.admitsInitializeMetadata(
+                meta?[GrokBuildHardTokenBudgetCapability.metadataKey]
+            ) else {
+                throw ACPControlError.invalidStandardResponse(
+                    method: "initialize",
+                    reason: "armed v3 initialize lacked a matching nested v3Authority"
+                )
+            }
+        }
         if let generation = activeProcessGeneration {
             acpControlCapabilities.reset(generation: generation, agentVersion: acpAgentVersion)
         }
@@ -3671,8 +3708,9 @@ final class GrokProcess: @unchecked Sendable {
         )
         receipt.outcome = .failed
         launchReceipt = receipt
-        rejectLaunchModelReceipt(identity: launchIdentity)
+            rejectLaunchModelReceipt(identity: launchIdentity)
         activeProcessGeneration = nil
+        activeHardBudgetLaunchContract = nil
         mcpServerStatuses = MCPReadinessPolicy.failedStatuses(for: options.mcpServers)
         state = .failed(message)
     }
@@ -3686,6 +3724,9 @@ final class GrokProcess: @unchecked Sendable {
         currentDirectory: URL
     ) throws -> GrokCandidateSpawnResult {
         let mcpNames = Set(options.mcpServers.map(\.name)).union(options.allowedMCPServerNames)
+        if let refusal = contract.spawnAdmissionRefusal(options: options) {
+            throw ArmedV3StartError.preflight(refusal)
+        }
         if options.mcpGatewayEnabled {
             throw ArmedV3StartError.preflight(
                 "Armed credential launch refuses Browser, Computer Use, MCP, and non-managed-provider detours."
@@ -3696,7 +3737,7 @@ final class GrokProcess: @unchecked Sendable {
             browserEnabled: mcpNames.contains("grokbuild-browser"),
             computerUseEnabled: mcpNames.contains("grokbuild-computer-use"),
             requestedMCPServerNames: mcpNames,
-            authBoundary: .officialHelper
+            authBoundary: contract.dispatchExpectation?.authBoundary ?? .officialHelper
         ) {
             throw ArmedV3StartError.preflight(refusal)
         }

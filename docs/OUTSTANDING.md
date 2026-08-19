@@ -318,7 +318,10 @@ contracts still fail closed. Schema-3 `AcceptanceBudgetGuard` packets still pars
 and bound provenance digest. `ArmedV3DispatchExpectation` cross-binds those
 selectors to the live selected custom model and linked provider before
 `HardBudgetLaunchContract`; packet-only authorization is not dispatch authority.
-Swift does not invent CLI `configIdentity` or a provenance digest. Schema-2
+Spawn rechecks that frozen route (model, empty MCP, `officialHelper`, file
+identity) immediately before candidate `posix_spawn`. ACP `initialize` must
+present a nested `v3Authority` whose Swift-observable fields match that latch
+before `.ready`. Swift does not invent CLI `configIdentity` or a provenance digest. Schema-2
 packets still supply `nil`. Native Grok routes fail that bind (and still fail
 preflight if a contract is constructed directly). Desktop PR
 [#132](https://github.com/schmitzjimmy1-star/grok-build-desktop/pull/132) merged

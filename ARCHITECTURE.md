@@ -1328,7 +1328,7 @@ using only stage, time, and PID. It never records prompts, response bodies, tool
 arguments, credentials, URLs, or environment contents.
 | **Public README screenshots (2026-08-13 campaign Slice 7)** | `docs/images/grokbuild-app.png` (signed-installed New chat), `docs/images/grokbuild-run-inspector.png` (settled multi-tool/two-child Run inspector); first-screenful copy in `README.md` |
 | **Agentic acceptance harness** | `scripts/acceptance/run.py`, `scripts/acceptance/schema/v1.json`, `scripts/acceptance/manifests/installed-three-route-v1.json`, `scripts/acceptance/manifests/installed-slice6-packet-v1.json`; dry-run default, `--billable` after preflight, fixture-mode rejection, exact-ID cleanup, Slice 6 250k Stop packet; independent v3 provenance verifier in `scripts/acceptance/harness/provenance_v3.py` |
-| **Armed v3 credential / provenance (4B.3 in progress)** | `ArmedV3DispatchExpectation.swift`, `GrokArmedCredentialMaterializer.swift`, `HardBudgetProvenanceV3.swift`, nested ACP `v3Authority`, fail-closed `ArmedV3ResolvedSnapshot`, `TrackedConfigGeneration` / `ResolvedConfigIdentityTracker`, live `ArmedV3LiveRouteCore` plus `ArmedV3PacketBoundsObservation` (loopback endpoint SHA, deterministic `v3.<sha256>` route id, 64KiB serializer ceiling, Darwin `fd_v1`, five-tool isolation, derived conservative bound), selected-model `resolved-managed-provider` source kind, preserved `ModelEntry.model_provider`, omitted armed summary client, spawn requires already-active authority, production `GrokProcess.start` materializes v3 via the dedicated Keychain client then `posix_spawn`s the leased candidate with FD 198/197 (debug tests inject the client; schema-2 stays fail-closed; schema-3 packets carry selectors, and `ArmedV3DispatchExpectation` cross-binds them to the live custom model + provider before `HardBudgetLaunchContract`), one cached armed `SamplingClient` per sampler actor, CLI pager FD-198 owner install, `agent::init::bootstrap` `bind_measured_v3_authority_if_present`, `bind_and_install_v3_authority`, `SamplingClient::new_with_armed_v3` / `from_process_config` |
+| **Armed v3 credential / provenance (4B.3 in progress)** | `ArmedV3DispatchExpectation.swift`, `GrokArmedCredentialMaterializer.swift`, `HardBudgetProvenanceV3.swift`, nested ACP `v3Authority`, fail-closed `ArmedV3ResolvedSnapshot`, `TrackedConfigGeneration` / `ResolvedConfigIdentityTracker`, live `ArmedV3LiveRouteCore` plus `ArmedV3PacketBoundsObservation` (loopback endpoint SHA, deterministic `v3.<sha256>` route id, 64KiB serializer ceiling, Darwin `fd_v1`, five-tool isolation, derived conservative bound), selected-model `resolved-managed-provider` source kind, preserved `ModelEntry.model_provider`, omitted armed summary client, spawn requires already-active authority, production `GrokProcess.start` materializes v3 via the dedicated Keychain client then `posix_spawn`s the leased candidate with FD 198/197 (debug tests inject the client; schema-2 stays fail-closed; schema-3 packets carry selectors, and `ArmedV3DispatchExpectation` cross-binds them to the live custom model + provider before `HardBudgetLaunchContract`; spawn rechecks that latch (model, empty MCP, `officialHelper`, file identity) immediately before `posix_spawn`, and `initialize` must present a matching nested `v3Authority` before `.ready`), one cached armed `SamplingClient` per sampler actor, CLI pager FD-198 owner install, `agent::init::bootstrap` `bind_measured_v3_authority_if_present`, `bind_and_install_v3_authority`, `SamplingClient::new_with_armed_v3` / `from_process_config` |
 | **Add/remove project** | `WorkspaceStore`, `WorkspacePicker` |
 | **Browser tools** | `AgentBrowserService`, `BrowserSettingsStore`, settings `.browser` (agent-browser CLI over MCP) |
 | **Session agent** | `GrokAgentProfiles`, `GrokCLIService.listAgents`, settings `.agents` |
@@ -1529,7 +1529,10 @@ exactly `authorityVersion`, the typed provenance object, and `provenanceSha256`.
 It does not emit `provenanceCanonicalJson`, `authHeaderNames`, or duplicate
 top-level provenance/policy. Swift `ExecutionCapability` parses that nested
 object strictly, re-canonicalizes the typed provenance, and derives headers from
-`authScheme`. It remains unreferenced by launch, Keychain, and `isEnforcing`.
+`authScheme`. The full `ExecutionExpectation` match remains unreferenced by
+launch and Keychain. Armed `initialize` uses `parseInitializeProvenance` plus
+the Swift-observable `ArmedV3DispatchExpectation` subset, not an invented
+`ResolvedRouteBound`. `isEnforcing` stays the only historical v2 packet path.
 `GrokArmedCredentialAuthorizationV3` has no caller-supplied header name; the
 Keychain account equals the managed provider ID after source-kind, provider,
 scheme, and digest cross-bind. Production `GrokProcess.start` fail-closes
@@ -1541,7 +1544,11 @@ live items. Schema-3 `AcceptanceBudgetGuard` packets still parse
 Dispatch does not treat that packet object as authority: `ArmedV3DispatchExpectation`
 cross-binds those selectors to the live selected custom model and linked
 provider (`authBoundary == .officialHelper`) and only then fills
-`HardBudgetLaunchContract`. Swift does not invent `configIdentity` or a
+`HardBudgetLaunchContract`, including the live `dispatchExpectation`. Spawn
+rechecks that latch plus file identity immediately before `posix_spawn`. After
+ACP `initialize`, an armed contract refuses `.ready` unless nested `v3Authority`
+matches the Swift-observable campaign, candidate, provider, scheme, model,
+endpoint SHA, and apiBackend. Swift does not invent `configIdentity` or a
 provenance digest. Schema-2 packets still supply `nil`, so ordinary Send
 without an acceptance harness does not Keychain. Native Grok routes fail the
 dispatch bind (no matching managed provider) and still fail preflight if a
