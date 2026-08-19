@@ -1,6 +1,6 @@
 # GrokBuild Slice 4 Activation Campaign — 2026-08-17
 
-Status: **Slices 4B.0 through 4B.2 accepted; Slice 4B.3 T5 production-start E2E is proven locally against the signed digest-staged pager; 4B.4 is next after this closeout merges; paid activation locked.** This document is the authority for completing
+Status: **Slices 4B.0 through 4B.3 accepted; Slice 4B.4 fresh-process continuation is in progress; paid activation locked.** This document is the authority for completing
 the official-provider and open-weight lane after the nonbillable Slice 4A hard-budget checkpoint. It
 does not authorize a provider request, credential-value read, live Grok config
 mutation, installed-CLI replacement, tag, release, or Slice 5 work.
@@ -121,8 +121,8 @@ evidence from a predecessor or begin while its predecessor remains unmerged.
 
 Slice 4B.0 is accepted. Jimmy explicitly authorized sequential execution of
 4B.1, then 4B.2, then 4B.3 on 2026-08-18. Merge-per-slice remains mandatory:
-4B.1 and 4B.2 are accepted. 4B.3 T5 is proven locally and is the remaining
-4B.3 closeout. 4B.4 is next after that merge. Paid activation remains locked.
+4B.1 and 4B.2 are accepted. 4B.3 T5 merged as PR #136. 4B.4 is in progress.
+Paid activation remains locked.
 
 ### Scope
 
@@ -457,6 +457,16 @@ live provider, candidate install, or paid proof. The ad-hoc original
 `25181a88…0df98` remains evidence-only and is not the T5 binary.
 4B.4 is the exact next slice after this closeout merges. Paid activation
 remains locked.
+
+PR [#136](https://github.com/schmitzjimmy1-star/grok-build-desktop/pull/136)
+merged the T5 closeout as `1aeebdf`. 4B.4 tab-select is wired: schema_v3 rejects
+`resumeAfterQuit`, `session/resume`, and `resume_saved_task`; receipts require
+three allocations, one backend, and one ledger; `governed_fresh_process_load`
+selects the retained tab by AX UUID and cannot call the ungoverned saved-task
+chrome; acceptance `session/load` refuses stale `session/new` fallback; and
+`resumeTaskSession` refuses during acceptance so packet Send owns allocated
+load. Ordinary consumer Resume is unchanged. A schema-3 billable runner remains
+unwired. Paid activation remains locked.
 
 ### `HardTokenBoundProvenanceV1`
 

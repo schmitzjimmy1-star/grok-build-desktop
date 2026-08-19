@@ -144,6 +144,36 @@ final class AcceptanceHarnessTests: XCTestCase {
         XCTAssertTrue(text.contains("OK"), text)
     }
 
+    func testSlice4B4FreshProcessContinuationRejectsLegacyResume() throws {
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/env")
+        process.arguments = ["python3", "-m", "unittest", "scripts.acceptance.tests.test_v3_continuation"]
+        process.currentDirectoryURL = Self.repoRoot
+        let output = Pipe()
+        process.standardOutput = output
+        process.standardError = output
+        try process.run()
+        process.waitUntilExit()
+        let text = String(decoding: output.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self)
+        XCTAssertEqual(process.terminationStatus, 0, text)
+        XCTAssertTrue(text.contains("OK"), text)
+
+        let driver = try String(
+            contentsOf: Self.repoRoot.appendingPathComponent("scripts/acceptance/harness/driver.py"),
+            encoding: .utf8
+        )
+        XCTAssertTrue(driver.contains("def governed_fresh_process_load"))
+        let governed = driver[
+            driver.range(of: "def governed_fresh_process_load")!.lowerBound
+            ..< driver.range(of: "def resume_saved_task")!.lowerBound
+        ]
+        XCTAssertFalse(governed.contains("resume_saved_task()"))
+        XCTAssertFalse(governed.contains("Resume current task"))
+        XCTAssertFalse(governed.contains("not live-wired yet"))
+        XCTAssertTrue(governed.contains("session/load"))
+        XCTAssertTrue(governed.contains("_select_retained_tab"))
+    }
+
     func testSlice4HarnessUsesOnlyAppOwnedEvidenceAndAllowlistedV2Rows() throws {
         let preflight = try String(
             contentsOf: Self.repoRoot.appendingPathComponent("scripts/acceptance/harness/preflight.py"),

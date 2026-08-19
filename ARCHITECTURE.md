@@ -427,14 +427,15 @@ One `ChatStore` per live session tab. Owns a `GrokProcess`.
 | Method | When |
 |--------|------|
 | `prepare(workspace:)` | Lazy restore — set workspace, no process spawn |
-| `start(workspace:resumeSession:)` | Full start + optional resume |
-| `restartProcess(resumeSessionID:)` | Build `GrokLaunchOptions`, spawn process, inject MCP |
+| `start(workspace:resumeSession:)` | Full start + optional resume. A configured acceptance campaign stays idle and never warm-starts an unallocated CLI |
+| `restartProcess(resumeSessionID:)` | Build `GrokLaunchOptions`, spawn process, inject MCP. Acceptance requires a `hardBudgetLaunchContract`; missing one fails closed |
 | `reloadConfiguration()` | Settings changed — restart with new MCP/env |
 | `startNewSession()` | Fresh grok session (same project) |
 | `resumeSession(_:)` | Load existing grok session id |
+| `resumeTaskSession()` | Ordinary no-prompt ACP `session/load`. During acceptance it refuses so ungoverned **Resume current task** cannot start an unallocated process; T2/T3 load happens on packet Send with the contract |
 | `shutdown()` | Stop process (app update / prepare for shutdown) |
 | `retryConnection()` | Restart after CLI update |
-| `send(_:)` | User message → ACP prompt (attachments become plain paths under `Attached file(s):`, not `@` reads) |
+| `send(_:)` | User message → ACP prompt (attachments become plain paths under `Attached file(s):`, not `@` reads). Acceptance Send prelaunches a fresh allocated process with `resumeSessionID` so T2/T3 use `session/load` without a load-time prompt |
 
 ### `restartProcess` — what gets injected
 
@@ -1153,7 +1154,7 @@ Minimum size **1100×720** and default logical canvas **1440×900** (`MainWindow
 | File | Role |
 |------|------|
 | `AppTheme.swift` | Cool-neutral canvas, typography, layout widths, radii, semantic accent/foreground/warning/link tokens, app-owned primary/chrome button styles, reusable matte surface, and `TitlebarGlyph` / `titlebarControl` so transparent-titlebar icons stay readable on Dark |
-| `SidebarView.swift` | Navigation-only (Codex parity Slice 1): New chat/Sessions/Plugins/Security rail, selected-project session list, pins, on-demand filter, model/running/last-used metadata, hover/context rename and close actions, and an account row that opens Settings (`grok-sidebar-account-settings`). Filter and the **Session dashboard** bell live in `ChatTopBar`, to the right of the session title. Command-comma still works. The former permanent Activity lane, Agents hub, and Connections sections were removed; their capabilities live in the Run inspector / session dashboard, Settings → Agents, and the composer MCP menu |
+| `SidebarView.swift` | Navigation-only (Codex parity Slice 1): New chat/Sessions/Plugins/Security rail, selected-project session list, pins, on-demand filter, model/running/last-used metadata, hover/context rename and close actions, and an account row that opens Settings (`grok-sidebar-account-settings`). Session rows expose `grok-sidebar-session-row-<tabUUID>` and accessibility value equal to that UUID so 4B.4 continuation can select one retained tab. Filter and the **Session dashboard** bell live in `ChatTopBar`, to the right of the session title. Command-comma still works. The former permanent Activity lane, Agents hub, and Connections sections were removed; their capabilities live in the Run inspector / session dashboard, Settings → Agents, and the composer MCP menu |
 | `ChatView.swift` | Centered work transcript, Ask/Build/Review welcome on genuine New chat, **Loading saved conversation…** plus Resume/Start/Browse on restored tabs (including empty-hydrate); owns composite transcript-block identity, coalesced settled scrolling, and the non-selectable restore-transition snapshot; hosts thin `topBar` / `composer` / `headerReviewToggle` wrappers |
 | `ChatTopBar.swift` | Workbench header and project menu just under the traffic lights. Session title stays leading; Filter, Session dashboard, and More actions sit to the right with a gap. Tasks / Review / Run inspector remain ChatView-owned slots. No header hairline. Icons use `TitlebarGlyph` (baked near-white on Dark). Settings is not in this bar. |
 | `ChatComposer.swift` | One-to-eight-line matte composer envelope, file/MCP chips, Describe a task editor. Identifier `grok-message-composer`, label **Message composer**; empty accessibility value is **Describe a task** via `ChatComposerAccessibility` |
@@ -1280,6 +1281,9 @@ make ship      # Apple Development install to /Applications/GrokBuild.app
 | `scripts/grokbuild-install-update.sh` | In-app replace + relaunch |
 | `scripts/acceptance/run.py` | Agentic acceptance harness: versioned manifests, dry-run default, fixture rejection, `--billable` installed UI only; Slice 6 packet ceiling 250k |
 | `scripts/acceptance/harness/provenance_v3.py` | Independent 4B.3 canonical provenance and nested `v3Authority` verifier; does not mutate v2 |
+| `scripts/acceptance/harness/schema_v3.py` | 4B.4 fresh-process continuation schema: `session/load` only; `resumeAfterQuit` / `session/resume` / `resume_saved_task` fail closed |
+| `scripts/acceptance/harness/receipts_v3.py` | 4B.4 continuation evaluator: three allocations, one backend, one ledger; stale `session/new` fallback, load-time prompt, and early cleanup fail closed |
+| `scripts/acceptance/harness/driver.py` | Installed-app UI driver. `governed_fresh_process_load` selects the retained tab by AX UUID after an allocated launch and never clicks ungoverned Resume; later packet Send performs native `session/load`. `resume_saved_task` remains the consumer-only v1 path |
 
 **SPM targets:** `GrokBuild` (app), `GrokBuildComputerUseCore` (shared Computer Use contract library), `GrokBuildComputerUseMCP` (MCP helper), `GrokBuildTests`.
 
@@ -1403,7 +1407,7 @@ make test    # Tests/GrokBuildTests/
 | `OpenRouterOAuthTests.swift` | PKCE/authorization/exchange parsing plus real loopback capture and a cancellation-safe timeout |
 | `SettingsTabTests.swift` | Settings destination metadata/grouping, selected-pane-only lifecycle, shared value-state/status/accessibility reducers, adaptive rows, explicit persistence, and the six-priority-pane parent-draft/cancellation source contract |
 | `LifecycleAndSubprocessTests.swift` | Coalesced streaming Settings reconnects, exact apply/fork receipts, process-LRU identity safety, store/process release, one-shot subprocess hygiene, and restored-empty Resume chrome vs New chat |
-| `AcceptanceHarnessTests.swift` | Agentic `scripts/acceptance/` harness: dry-run default, `--billable` fail-closed without a run ID, guessed-cleanup refusal, fixture-mode reject/accept cases at zero provider cost, Resume-then-Send labels, installed-exec refuse of `.build` / `dist`, Slice 6 250k Stop packet |
+| `AcceptanceHarnessTests.swift` | Agentic `scripts/acceptance/` harness: dry-run default, `--billable` fail-closed without a run ID, guessed-cleanup refusal, fixture-mode reject/accept cases at zero provider cost, Resume-then-Send labels, installed-exec refuse of `.build` / `dist`, Slice 6 250k Stop packet, and 4B.4 fresh-process continuation schema/receipt/governed-load driver contracts |
 | `GrokArmedCredentialMaterializerTests.swift` | Fake Keychain materializer query, one-Data result, wipe, Browser/Computer/MCP preflight refusal, production `GrokProcess.start` v3 spawn with an injected client against the cooperative receiver, and an env-gated signed digest-staged pager E2E (`GROKBUILD_SLICE4B3_RUNTIME_SELECTION`; skips in CI) |
 | `HardBudgetProvenanceV3Tests.swift` | Independent Swift canonical bytes/digest parity with Rust plus hostile missing/extra/reorder/4M-policy refusal |
 
@@ -1576,8 +1580,11 @@ that SHA. A 2026-08-19 local DEBUG run passed in 17.445s, fail-closed before
 `GROKBUILD_SLICE4B3_RUNTIME_SELECTION` points at that owner-private selection
 file. That is not live Keychain, live provider, or install proof. Paid
 activation, live provider hosts, helper execution, candidate install, and
-ad-hoc 4B.0 arming remain locked. 4B.4 is next after this 4B.3 T5 closeout
-merges. Live unarmed and schema-2 packets stay on the 4M/3M/1M v1 governor.
+ad-hoc 4B.0 arming remain locked. 4B.4 tab-select is wired:
+`governed_fresh_process_load` selects the retained tab by AX UUID, ungoverned
+`resumeTaskSession` refuses during acceptance, and packet Send prelaunches the
+allocated process with `session/load`. A schema-3 billable runner and paid 4C
+remain locked. Live unarmed and schema-2 packets stay on the 4M/3M/1M v1 governor.
 Schema-3 armed desktop packets use versioned 20M/19M/1M and refuse that mix.
 CLI `HardTokenBudget::from_env` vs v3 authority in the child remains a fork
 follow-up.

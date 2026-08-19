@@ -2267,6 +2267,10 @@ final class ChatStore {
                 : "No resumable saved task is available."
             return false
         }
+        guard !acceptanceBudgetIsConfigured() else {
+            lastError = "Acceptance session/load must follow an allocated packet dispatch, not ungoverned Resume."
+            return false
+        }
         await restartProcess(resumeSessionID: backendID)
         return connectionState == .ready && process.sessionId == backendID
     }
@@ -3419,6 +3423,10 @@ final class ChatStore {
     /// the loaded review-only connection before clearing its binding.
     private func continueFrozenSendAfterReplayMismatchIfNeeded() async {
         guard continuityRequiresRecovery else { return }
+        guard !acceptanceBudgetIsConfigured() else {
+            lastError = "Acceptance session/load cannot fall back to a new backend."
+            return
+        }
         guard await continueAsNew() else { return }
         await restartProcess()
     }

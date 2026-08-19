@@ -488,6 +488,13 @@ enum GrokSessionLoadError {
         if ns.userInfo["acpErrorCode"] as? String == "FS_NOT_FOUND" { return true }
         return ns.localizedDescription.localizedCaseInsensitiveContains("path not found")
     }
+
+    /// Acceptance / armed v3 loads cannot invent a new backend when `session/load`
+    /// misses. Ordinary unarmed Resume still uses the historical stale fallback.
+    static func staleFallbackRefusal(hardBudget: HardBudgetLaunchContract?) -> String? {
+        guard hardBudget != nil else { return nil }
+        return "Acceptance session/load cannot fall back to session/new"
+    }
 }
 
 // MARK: - Typed ACP Models
@@ -1769,6 +1776,14 @@ final class GrokProcess: @unchecked Sendable {
                     launchOutcome = .loaded
                 } catch {
                     guard GrokSessionLoadError.isStaleSessionMissing(error) else { throw error }
+                    if let refusal = GrokSessionLoadError.staleFallbackRefusal(
+                        hardBudget: options.hardBudgetLaunchContract
+                    ) {
+                        throw ACPControlError.invalidStandardResponse(
+                            method: "session/load",
+                            reason: refusal
+                        )
+                    }
                     staleResumeSessionID = resumeSessionID
                     try await createSession(workspace: workspace, mcpServers: options.mcpServers)
                     sessionLoadStartedFreshFallback = true

@@ -849,6 +849,7 @@ final class SubprocessHygieneTests: XCTestCase {
         let method = String(source[start.lowerBound..<end.lowerBound])
 
         XCTAssertTrue(method.contains("guard canResumeTaskSession, let backendID = durableGrokSessionID"))
+        XCTAssertTrue(method.contains("acceptanceBudgetIsConfigured()"))
         XCTAssertTrue(method.contains("await restartProcess(resumeSessionID: backendID)"))
         XCTAssertTrue(method.contains("process.sessionId == backendID"))
         XCTAssertFalse(method.contains("send("), "Resume loads the exact saved backend; it must not send a provider prompt")

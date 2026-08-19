@@ -591,7 +591,8 @@ private struct SessionSidebarRow: View {
             }
             .buttonStyle(.plain)
             .accessibilityLabel(SessionSidebarMetadata.accessibilityLabel(for: session))
-            .accessibilityIdentifier("grok-sidebar-session-row")
+            .accessibilityIdentifier("grok-sidebar-session-row-\(session.id.uuidString)")
+            .accessibilityValue(session.id.uuidString)
             .accessibilityAddTraits(isSelected ? .isSelected : [])
             .accessibilityRemoveTraits(isSelected ? [] : .isSelected)
             .accessibilityAction(named: "Rename session") {

@@ -57,6 +57,13 @@ ride the live v1/v2 4M governor; schema-2 stays 4M/3M/1M. Schema-2 packets
 still supply `nil`. Ordinary
 Send without an acceptance harness does not read Keychain. Native Grok routes
 fail that bind (and still fail preflight if a contract is constructed directly).
+4B.4 acceptance `session/load` cannot fall back to `session/new`; ordinary
+unarmed Resume still can. During acceptance, `resumeTaskSession` refuses so
+**Resume current task** cannot start an unallocated process. T2/T3 select the
+retained tab through `governed_fresh_process_load`, then packet Send
+prelaunches the allocated process with `resumeSessionID` (`session/load`).
+Legacy continuation (`resumeAfterQuit`, `resume_saved_task`) is rejected at
+schema.
 
 ## Auth & status bar
 
