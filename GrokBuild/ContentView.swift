@@ -1931,6 +1931,8 @@ private struct UpdatesBanner: View {
                         .font(.callout.weight(.semibold))
                 }
                 .buttonStyle(.plain)
+                .accessibilityIdentifier("grok-upgrade-banner-open")
+                .accessibilityHint("Opens the update panel. Do not use during campaign acceptance.")
 
                 Text(subtitle)
                     .font(.caption)
@@ -1946,12 +1948,15 @@ private struct UpdatesBanner: View {
             }
             .buttonStyle(.plain)
             .help("Dismiss until next launch")
+            .accessibilityIdentifier("grok-upgrade-banner-dismiss")
             .accessibilityLabel("Dismiss upgrade notice")
             .accessibilityHint("Hides this notice until the next launch.")
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 10)
         .background(.regularMaterial)
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("grok-upgrade-banner")
         .overlay(alignment: .bottom) {
             Divider()
         }

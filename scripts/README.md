@@ -161,7 +161,7 @@ These are copied into the app bundle during packaging; they are not usually run 
 
 | Script | Purpose |
 |--------|---------|
-| [`bundle-agent-desktop.sh`](bundle-agent-desktop.sh) | Locate `agent-desktop` on the system (or `AGENT_DESKTOP_PATH`) and copy it into `Contents/MacOS/` for Computer Use. Called by both build scripts. |
+| [`bundle-agent-desktop.sh`](bundle-agent-desktop.sh) | Locate `agent-desktop` (`AGENT_DESKTOP_PATH`, then `~/.grokbuild/computer-use/agent-desktop`, Homebrew/local bins, `$PATH`) and copy it into `Contents/MacOS/` for Computer Use. Called by both build scripts. |
 | [`grokbuild-browser-mcp`](grokbuild-browser-mcp) | Python MCP stdio server exposing browser tools via `agent-browser`. Copied to `Contents/Resources/grokbuild-browser-mcp`. |
 
 **`bundle-agent-desktop.sh`**

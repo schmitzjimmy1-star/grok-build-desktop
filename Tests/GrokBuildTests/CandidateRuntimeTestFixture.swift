@@ -128,7 +128,10 @@ struct CandidateRuntimeTestFixture {
             static int wait_readable(int fd) {
                 struct pollfd p = { .fd = fd, .events = POLLIN | POLLHUP };
                 int r;
-                do { r = poll(&p, 1, 2000); } while (r < 0 && errno == EINTR);
+                /* Fresh 4s per read so a DEBUG parent interphase delay of 1.8s
+                   cannot starve COMMIT on a loaded CI runner. Hostile parent
+                   phases still fail at the Swift 2s budget. */
+                do { r = poll(&p, 1, 15000); } while (r < 0 && errno == EINTR);
                 return r > 0 && (p.revents & (POLLIN | POLLHUP));
             }
             static int read_exact(int fd, unsigned char *out, size_t count) {

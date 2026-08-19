@@ -1441,8 +1441,12 @@ both raw endpoints are normalized above 198, and
 The parent rejects fake bytes already present in argv or any proposed
 environment value before spawn, then supplies a positive environment allowlist.
 A bounded binary nonce/length frame, acknowledgement, commit, ready response,
-and peer EOF share one monotonic deadline. Any framing, timeout, peer, or EOF
-failure kills the launch process group and synchronously reaps the direct child.
+and peer EOF each get a fresh 2s phase budget. A stalling hostile peer still
+fails that phase at 2s; scheduler load during `make test` / `make ship` cannot
+collapse later phases into the leftover of an earlier one. Sends poll for
+`POLLOUT` and finish partial writes inside the same phase budget. Any framing,
+timeout, peer, or EOF failure kills the launch process group and synchronously
+reaps the direct child.
 
 This is a compatibility proof with a compiled cooperative C receiver, not the
 production credential boundary. It proves the real app launcher can deliver one

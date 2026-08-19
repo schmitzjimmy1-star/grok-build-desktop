@@ -118,6 +118,10 @@ final class VisualQuietBundleTests: XCTestCase {
 
         XCTAssertTrue(packaging.contains("ERROR: Missing GrokBuildComputerUseMCP helper binary"))
         XCTAssertTrue(packaging.contains("$SCRIPT_DIR/bundle-agent-desktop.sh"))
+        let bundler = try source("scripts/bundle-agent-desktop.sh")
+        XCTAssertTrue(bundler.contains("${HOME}/.grokbuild/computer-use/agent-desktop"))
+        let computerUse = try source("GrokBuild/Services/ComputerUseService.swift")
+        XCTAssertTrue(computerUse.contains("/.grokbuild/computer-use/agent-desktop"))
         XCTAssertTrue(packaging.contains("grokbuild-install-update.sh"))
         XCTAssertTrue(packaging.contains("GrokBuild/Resources/Skills"))
         XCTAssertTrue(packageManifest.contains("Resources/Skills/grokbuild-browser-control"))

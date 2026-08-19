@@ -13,6 +13,7 @@ final class GrokArmedCredentialMaterializerTests: XCTestCase {
         GrokCandidateProcessLauncher.spawnedProcessObserverForTests = nil
         GrokProcess.cliOverrideForTests = nil
         GrokProcess.armedKeychainClientForTests = nil
+        GrokCredentialTransportV1.handshakeInterphaseDelayMillisecondsForTests = 0
         super.tearDown()
     }
 

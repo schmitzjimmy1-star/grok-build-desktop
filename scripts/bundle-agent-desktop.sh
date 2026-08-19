@@ -11,6 +11,7 @@ if [ -n "${AGENT_DESKTOP_PATH:-}" ] && [ -x "${AGENT_DESKTOP_PATH}" ]; then
     SRC="${AGENT_DESKTOP_PATH}"
 else
     for candidate in \
+        "${HOME}/.grokbuild/computer-use/agent-desktop" \
         /opt/homebrew/bin/agent-desktop \
         /usr/local/bin/agent-desktop \
         "${HOME}/.local/bin/agent-desktop" \

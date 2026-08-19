@@ -117,6 +117,8 @@ struct AppUpdatesSettingsPane: View {
                         }
                     }
                     .frame(maxWidth: .infinity, alignment: .leading)
+                    .accessibilityElement(children: .contain)
+                    .accessibilityIdentifier("grok-app-build-identity")
                 }
 
                 updatesCard(title: "Automatic Checks", systemImage: "clock.arrow.circlepath") {
