@@ -464,10 +464,15 @@ final class CandidateRuntimeAuthorityTests: XCTestCase {
             candidateExecutionLease: lease
         ))
         let armedEnvironment = GrokProcessLaunchEnvironment.resolved(
-            base: ["GROK_CLI_PATH": "/usr/bin/false"],
+            base: [
+                "GROK_CLI_PATH": "/usr/bin/false",
+                "XAI_API_KEY": "must-not-cross",
+            ],
             hardBudget: contract
         )
         XCTAssertEqual(armedEnvironment["GROK_HARD_TOKEN_BUDGET_ALLOCATION"], "packet-one")
+        XCTAssertNil(armedEnvironment["GROK_CLI_PATH"])
+        XCTAssertNil(armedEnvironment["XAI_API_KEY"])
         XCTAssertTrue(contract.filesRemainValid)
         let first = try GrokCandidateProcessLauncher.spawn(
             lease: lease,

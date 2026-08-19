@@ -67,6 +67,18 @@ schema. Schema-3 continuation dry-run and `_billable_v3` exist in
 `scripts/acceptance/run.py` and still refuse `--billable` at the absolute
 ceiling; paid 4C stays locked.
 
+4B.5 owner-local lifecycle uses a signed digest-staged pager
+(`1.0.5 (8226242)`, binary SHA-256
+`f434fa4f17160c8771d3b57bfc62499e252413c4d1fc5ab22bee1a18f2bc933b`) selected
+through `GROKBUILD_SLICE4B3_RUNTIME_SELECTION`. It never replaces
+`~/.grok/bin/grok`. Armed `session/prompt` waits at most 90s
+(`GrokProcess.armedSessionPromptTimeout`). The pager source
+`822624291de2b544605f439ad1349ae6bdc3cf10` detaches after-turn workspace work
+and skips the 120s `live_ids` drain on zero-tool turns so ACP can return after
+loopback `pong`. Tests: `Slice4B5LifecycleTests`, including
+`hold_after_body` kill-after-response-before-settlement. 4B.6 signed install and 4C
+paid Send remain locked.
+
 ## Auth & status bar
 
 - `GrokProcess.needsAuthentication` drives login banner and menu header.

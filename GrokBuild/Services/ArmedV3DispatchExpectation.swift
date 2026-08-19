@@ -63,7 +63,16 @@ struct ArmedV3DispatchExpectation: Equatable, Sendable {
             customModel: customModel,
             isKnownNativeModel: false
         )
-        guard routeContract.authBoundary == .officialHelper else { return nil }
+        // 4B.5: CLI armed v3 samples only exact loopback. OpenRouter remains
+        // the managed-provider Keychain account; Ollama-style local endpoints
+        // stay refused. Credential transport is still FD 198 / officialHelper.
+        let isArmedLoopbackOfficialHelper = liveProviderID == "openrouter"
+            && ProviderEndpointPolicy.locality(ofBaseURL: customModel.baseURL) == .loopback
+            && ProviderEndpointPolicy.locality(ofBaseURL: provider.baseURL) == .loopback
+            && !customModel.hasInlineKey
+        guard routeContract.authBoundary == .officialHelper || isArmedLoopbackOfficialHelper else {
+            return nil
+        }
         return ArmedV3DispatchExpectation(
             campaignID: authorization.runID,
             allocationID: authorization.budget.allocationID,
@@ -72,7 +81,7 @@ struct ArmedV3DispatchExpectation: Equatable, Sendable {
             providerFacingModel: liveProviderFacing,
             authScheme: liveScheme,
             apiBackend: route.apiBackend,
-            authBoundary: routeContract.authBoundary,
+            authBoundary: .officialHelper,
             candidate: candidate,
             frozenRoute: route,
             credentialAuthorizationV3: packetAuthorization
@@ -122,20 +131,40 @@ struct ArmedV3DispatchExpectation: Equatable, Sendable {
     /// CLI-produced nested `v3Authority` must match Swift-observable identity.
     /// This does not invent `configIdentity` or live serializer bounds.
     func admitsInitializeMetadata(_ value: Any?) -> Bool {
+        initializeAdmissionRefusal(value) == nil
+    }
+
+    /// Credential-free reason the nested `v3Authority` was refused. Does not
+    /// invent `configIdentity` or live serializer bounds.
+    func initializeAdmissionRefusal(_ value: Any?) -> String? {
         guard let provenance = HardBudgetProvenanceV3.ExecutionCapability.parseInitializeProvenance(value) else {
-            return false
+            guard let object = value as? [String: Any] else {
+                return "armed v3 initialize lacked a matching nested v3Authority"
+            }
+            let keys = object.keys.sorted().joined(separator: ",")
+            let armed = object["armed"].map { String(describing: $0) } ?? "missing"
+            let error = object["error"] as? String ?? "none"
+            let hasAuthority = object["v3Authority"] != nil
+            return "armed v3 initialize lacked a matching nested v3Authority (armed=\(armed) error=\(error) hasAuthority=\(hasAuthority) keys=\(keys))"
         }
-        return provenance.campaignID == campaignID
-            && provenance.allocationID == allocationID
-            && provenance.candidate.cliBuild == candidate.cliBuild
-            && provenance.candidate.binarySHA256 == candidate.binarySHA256
-            && provenance.candidate.sourceCommitSHA == candidate.sourceSHA
-            && provenance.route.providerID == managedProviderID
-            && provenance.route.authScheme == authScheme
-            && provenance.route.providerFacingModel == providerFacingModel
-            && provenance.route.endpointSHA256 == frozenRoute.endpointSHA256
-            && provenance.route.apiBackend == apiBackend
-            && provenance.configIdentity.managedProviderID == managedProviderID
+        var mismatches: [String] = []
+        if provenance.campaignID != campaignID { mismatches.append("campaignId") }
+        if provenance.allocationID != allocationID { mismatches.append("allocationId") }
+        if provenance.candidate.cliBuild != candidate.cliBuild { mismatches.append("cliBuild") }
+        if provenance.candidate.binarySHA256 != candidate.binarySHA256 { mismatches.append("binarySha256") }
+        if provenance.candidate.sourceCommitSHA != candidate.sourceSHA { mismatches.append("sourceCommitSha") }
+        if provenance.route.providerID != managedProviderID { mismatches.append("providerId") }
+        if provenance.route.authScheme != authScheme { mismatches.append("authScheme") }
+        if provenance.route.providerFacingModel != providerFacingModel { mismatches.append("providerFacingModel") }
+        if provenance.route.endpointSHA256 != frozenRoute.endpointSHA256 { mismatches.append("endpointSha256") }
+        if provenance.route.apiBackend != apiBackend { mismatches.append("apiBackend") }
+        if provenance.configIdentity.managedProviderID != managedProviderID {
+            mismatches.append("configManagedProviderId")
+        }
+        guard mismatches.isEmpty else {
+            return "armed v3 initialize v3Authority mismatched \(mismatches.joined(separator: ","))"
+        }
+        return nil
     }
 
     func spawnAdmissionRefusal(options: GrokLaunchOptions) -> String? {

@@ -486,6 +486,25 @@ final class ACPClientContractTests: XCTestCase {
             XCTAssertNil(ordinary[key])
         }
 
+        let leaked = GrokProcessLaunchEnvironment.scrubArmedAuthSources(from: [
+            "PATH": "/usr/bin",
+            "HOME": "/tmp/isolated",
+            "XAI_API_KEY": "must-not-cross",
+            "OPENROUTER_API_KEY": "must-not-cross",
+            "CUSTOM_API_KEY": "must-not-cross",
+            "GROK_CONFIG": "{\"models\":{}}",
+            "GROK_AUTH_PROVIDER_COMMAND": "/usr/bin/false",
+            "GROK_MAX_RETRIES": "3",
+        ])
+        XCTAssertEqual(leaked["PATH"], "/usr/bin")
+        XCTAssertEqual(leaked["HOME"], "/tmp/isolated")
+        XCTAssertNil(leaked["XAI_API_KEY"])
+        XCTAssertNil(leaked["OPENROUTER_API_KEY"])
+        XCTAssertNil(leaked["CUSTOM_API_KEY"])
+        XCTAssertNil(leaked["GROK_CONFIG"])
+        XCTAssertNil(leaked["GROK_AUTH_PROVIDER_COMMAND"])
+        XCTAssertNil(leaked["GROK_MAX_RETRIES"])
+
         XCTAssertNil(HardBudgetLaunchContract(
             manifestPath: manifest.path,
             ledgerPath: ledger.path,

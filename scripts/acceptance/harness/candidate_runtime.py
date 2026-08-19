@@ -159,7 +159,8 @@ def _codesign_probe(path: Path) -> tuple[str, str, str]:
     if details.returncode != 0 or requirement.returncode != 0 or architecture.returncode != 0:
         raise HarnessError("candidate signing or architecture receipt is unavailable")
     team_match = re.search(r"^TeamIdentifier=(.+)$", details.stderr, re.MULTILINE)
-    requirement_match = re.search(r"designated => (.+)$", requirement.stderr, re.MULTILINE)
+    requirement_text = "\n".join((requirement.stdout, requirement.stderr))
+    requirement_match = re.search(r"designated => (.+)$", requirement_text, re.MULTILINE)
     archs = architecture.stdout.split()
     if not team_match or not requirement_match or len(archs) != 1:
         raise HarnessError("candidate signing or architecture receipt is ambiguous")
