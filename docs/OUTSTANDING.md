@@ -281,8 +281,8 @@ now takes only `SamplerConfig` and uses the registered authority's budget;
 same-provenance alternate ledgers refuse before credential claim. Schema-2 packets still
 stop before materialization, the live v2 capability decoder will not treat a v3
 projection as enforcing, live 4M/3M/1M packets still load the v1 governor,
-unbound v3 spawn still fail-closes, production `GrokProcess.start` refuses live
-Keychain materialization, and paid remains locked. The CLI now also
+unbound v3 spawn still fail-closes, production `GrokProcess.start` materializes
+v3 through the dedicated Keychain client then candidate `posix_spawn`, and paid remains locked. The CLI now also
 refuses hard-linked v3 manifest, ledger, and lock files the same way Swift
 already refuses hard-linked 4B.1 sidecars. Armed v3 launches now inherit the
 inspected executable on FD 197; the child measures those bytes plus a compiled
@@ -296,8 +296,25 @@ Fail-closed `ArmedV3ResolvedSnapshot` types refuse invented identity; CLI
 `ModelsManager::from_config` to bind a complete unbound v3 env from independently
 observed catalog projection, live loopback route, packet bounds, and
 credential-free sampler fields, skipping bind on `LegacyManifestRefused` and
-no-oping when the hard-budget env is absent. Production `GrokProcess.start`
-still does not perform this bind. `SamplerActor` now caches one
+no-oping when the hard-budget env is absent. CLI PR
+[#4](https://github.com/schmitzjimmy1-star/grok-build/pull/4) merged as
+`f87a874a142b507b31428561b2b3b43995198cd4` after required `candidate-contract`
+run `32216015180`. Desktop docs PR
+[#131](https://github.com/schmitzjimmy1-star/grok-build-desktop/pull/131) merged
+as `55333d70aacf04e7c7b3687aa5637de859a9d700`. A local candidate built from
+bind-wire HEAD `86f0c700dfb40323dc103d58803c2639e0c919eb` (not the merge SHA)
+proved `cliBuild` `1.0.5 (86f0c70)`, binary SHA-256
+`25181a88be266820e1247fe368aa355271f853491004591e8ce2ae2e1030df98`, and ACP
+`initialize` nested `v3Authority` with `authorityVersion` 3, `armed` true, and
+provenance SHA-256
+`a07968cd81232937d7bf3baaef877c56fa5b138b8392e25caa206514711fca6b` using a fake
+FD-198 GBCT sentinel plus measured FD 197. That E2E did not use
+`GrokProcess.start` or live Keychain. Production `GrokProcess.start` now
+materializes a v3 contract through `GrokArmedCredentialMaterializer` and
+`posix_spawn`s the leased candidate with FD 198/197; debug tests must inject a
+Keychain client, and release builds use `SecItemCopyMatching`. Schema-2
+contracts still fail closed. `AcceptanceBudgetGuard.credentialAuthorizationV3`
+remains `nil`, so ordinary Send does not read Keychain. `SamplerActor` now caches one
 armed client and ignores route-changing updates. Live 4M/3M/1M packets still
 load the v1 governor through `HardTokenBudget::from_env`; ACP spawn accepts
 that live contract or an already-active v3 authority and still refuses an
@@ -310,8 +327,10 @@ selected-model `resolved-managed-provider`, the 64KiB serializer ceiling, and
 the five lexical `GrokBuild:` isolation IDs. Conservative request bound is
 derived live as payload + output cap; allocation ceiling and max model calls
 must come from the frozen packet. Golden 8192/route-1/two-tool/12288
-values are not copied into actual. Production `GrokProcess.start` still does
-not bind and refuses live Keychain materialization.
+values are not copied into actual. Paid activation, live provider dispatch,
+ad-hoc 4B.0 arming, hostile `setsid`/tool-tree proof, and Slice 4B.4 remain
+locked. The official CLI remains `grok 1.0.4 (d846eb93d94d) [stable]`, SHA-256
+`39366f7756a090b735cc1df8c93a8c0c3c7871555cf6cbb28f9351ca82936485`.
 
 PR [#124](https://github.com/schmitzjimmy1-star/grok-build-desktop/pull/124)
 passed required exact-head run `32123735441` and merged normally as

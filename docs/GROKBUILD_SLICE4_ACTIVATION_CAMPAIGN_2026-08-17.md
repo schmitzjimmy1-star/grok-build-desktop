@@ -408,8 +408,10 @@ Armed v3 `posix_spawn` now duplicates the held lease descriptor onto child FD
 out of bounds. Fail-closed `ArmedV3ResolvedSnapshot` types refuse empty
 defaults, remote hosts, and secret-bearing sampler configs. ACP spawn accepts
 the live v1 contract or already-active v3 authority and still refuses an
-unbound v3 env. Production `GrokProcess.start` refuses live Keychain
-materialization and candidate FD-198 spawn. Armed
+unbound v3 env. Production `GrokProcess.start` materializes a v3 contract
+through the dedicated Keychain client and `posix_spawn`s the leased candidate
+with FD 198/197; debug tests inject that client, schema-2 still fail-closes, and
+ordinary Send still has `credentialAuthorizationV3 = nil`. Armed
 mode omits the summary `OaiCompatClient`. Resolved models keep `model_provider`.
 `ResolvedConfigIdentityTracker` bumps generation only when the credential-free
 catalog projection changes. Live route observation now measures loopback
@@ -423,8 +425,11 @@ packet numbers are refused as actual. CLI `agent::init::bootstrap` now calls
 bind complete unbound v3 envs from independently observed fields; it no-ops
 without hard-budget env, skips bind on `LegacyManifestRefused`, and does not
 invent OpenRouter goldens, SuperGrok, official 1.0.4 bytes, or copy secrets via
-`sampling_config_for_model`. Production `GrokProcess.start` still does not
-perform this bind. The live ACP capability now nests a strict three-field
+`sampling_config_for_model`. Production `GrokProcess.start` now materializes
+v3 and launches the leased candidate; it still does not invent bind identity.
+CLI PR #4 merged as `f87a874` after `candidate-contract` run `32216015180`;
+desktop docs PR #131 merged as `55333d70`. Local E2E used candidate `86f0c70`
+(`1.0.5 (86f0c70)`, binary SHA-256 `25181a88…0df98`), not merge `f87a874`. The live ACP capability now nests a strict three-field
 `v3Authority` object instead of top-level provenance/policy fields. Swift
 re-canonicalizes the typed provenance, derives headers from `authScheme`, and
 still refuses to treat a v3 projection as historical v2 enforcement. Paid

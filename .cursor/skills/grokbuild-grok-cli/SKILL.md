@@ -42,6 +42,13 @@ UpdateChecker.checkAppRelease()   // unused on this personal line; install with 
 UpdateChecker.checkGrokCLI()      // grok update --check --json
 ```
 
+Ordinary unarmed `GrokProcess.start` still locates the official CLI.
+An armed v3 `HardBudgetLaunchContract` materializes one Keychain item through
+`GrokArmedCredentialMaterializer` and `posix_spawn`s the leased candidate with
+FD 198/197. Debug tests inject the Keychain client.
+`AcceptanceBudgetGuard.credentialAuthorizationV3` remains `nil`, so ordinary
+Send does not read Keychain.
+
 ## Auth & status bar
 
 - `GrokProcess.needsAuthentication` drives login banner and menu header.

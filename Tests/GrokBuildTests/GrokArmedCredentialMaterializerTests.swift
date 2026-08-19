@@ -11,6 +11,8 @@ final class GrokArmedCredentialMaterializerTests: XCTestCase {
     override func tearDown() {
         GrokCandidateRuntimeAuthority.signatureVerifierOverrideForTests = nil
         GrokCandidateProcessLauncher.spawnedProcessObserverForTests = nil
+        GrokProcess.cliOverrideForTests = nil
+        GrokProcess.armedKeychainClientForTests = nil
         super.tearDown()
     }
 
@@ -124,38 +126,16 @@ final class GrokArmedCredentialMaterializerTests: XCTestCase {
     }
 
     @MainActor
-    func testProductionStartRefusesArmedV3KeychainMaterializationWithoutSpawning() async throws {
+    func testProductionStartRefusesArmedV3WithoutInjectedKeychainAndDoesNotSpawn() async throws {
         let fixture = try CandidateRuntimeTestFixture.makeCredentialReceiverExecutable()
         defer { try? FileManager.default.removeItem(at: fixture.container) }
-        CandidateRuntimeTestFixture.installSignatureOverride()
-        let lease = try XCTUnwrap(GrokCandidateRuntimeAuthority.acquireLease(
-            selectionPath: fixture.selection.path,
-            expectedCLIBuild: fixture.cliBuild
-        ))
-        let manifest = fixture.container.appendingPathComponent("manifest.json")
-        let ledger = fixture.container.appendingPathComponent("ledger.json")
-        let manifestData = Data("{\"campaign\":\"locked-v3\"}".utf8)
-        try manifestData.write(to: manifest)
-        try Data("{}".utf8).write(to: ledger)
-        try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: manifest.path)
-        try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: ledger.path)
-        let manifestSHA = SHA256.hash(data: manifestData)
-            .map { String(format: "%02x", $0) }
-            .joined()
-        let contract = try XCTUnwrap(HardBudgetLaunchContract(
-            manifestPath: manifest.path,
-            ledgerPath: ledger.path,
-            allocationID: "packet-locked",
-            expectedManifestSHA256: manifestSHA,
-            candidateExecutionLease: lease,
-            credentialAuthorizationV3: authorization()
-        ))
+        let contract = try makeArmedContract(fixture: fixture, allocationID: "packet-locked")
 
         final class PIDBox { var value: pid_t = 0 }
         let observed = PIDBox()
         GrokCandidateProcessLauncher.spawnedProcessObserverForTests = { observed.value = $0 }
         GrokProcess.cliOverrideForTests = URL(fileURLWithPath: "/usr/bin/true")
-        defer { GrokProcess.cliOverrideForTests = nil }
+        GrokProcess.armedKeychainClientForTests = nil
 
         let process = GrokProcess()
         await process.start(
@@ -166,9 +146,101 @@ final class GrokArmedCredentialMaterializerTests: XCTestCase {
         XCTAssertNil(process.activeProcessGeneration)
         XCTAssertEqual(
             process.state,
-            .failed("Armed v3 Keychain materialization remains locked. No Grok process was launched.")
+            .failed("Armed v3 tests must inject a Keychain client. Live Keychain was not read. No Grok process was launched.")
         )
         XCTAssertEqual(process.launchReceipt?.outcome, .failed)
+    }
+
+    @MainActor
+    func testProductionStartMaterializationFailureDoesNotSpawnOfficialOrCandidate() async throws {
+        let fixture = try CandidateRuntimeTestFixture.makeCredentialReceiverExecutable()
+        defer { try? FileManager.default.removeItem(at: fixture.container) }
+        let contract = try makeArmedContract(fixture: fixture, allocationID: "packet-missing")
+        GrokProcess.armedKeychainClientForTests = client { _, _ in errSecItemNotFound }
+        GrokProcess.cliOverrideForTests = URL(fileURLWithPath: "/usr/bin/true")
+
+        final class PIDBox { var value: pid_t = 0 }
+        let observed = PIDBox()
+        GrokCandidateProcessLauncher.spawnedProcessObserverForTests = { observed.value = $0 }
+
+        let process = GrokProcess()
+        await process.start(
+            workspace: Workspace(name: "missing-v3", path: fixture.container),
+            options: GrokLaunchOptions(hardBudgetLaunchContract: contract)
+        )
+        XCTAssertEqual(observed.value, 0)
+        XCTAssertNil(process.activeProcessGeneration)
+        XCTAssertEqual(
+            process.state,
+            .failed("Armed v3 credential materialization failed. No Grok process was launched.")
+        )
+    }
+
+    @MainActor
+    func testProductionStartSpawnsCandidateWithInjectedKeychainNotOfficialCLI() async throws {
+        let fixture = try CandidateRuntimeTestFixture.makeCredentialReceiverExecutable()
+        defer { try? FileManager.default.removeItem(at: fixture.container) }
+        let contract = try makeArmedContract(fixture: fixture, allocationID: "packet-spawn")
+        let sentinel = Array("S4B3-START-\(UUID().uuidString)-END".utf8)
+        GrokProcess.armedKeychainClientForTests = client { _, item in
+            item?.pointee = [Data(sentinel)] as NSArray
+            return errSecSuccess
+        }
+        GrokProcess.cliOverrideForTests = URL(fileURLWithPath: "/usr/bin/true")
+
+        final class PIDBox { var value: pid_t = 0 }
+        let observed = PIDBox()
+        GrokCandidateProcessLauncher.spawnedProcessObserverForTests = { observed.value = $0 }
+
+        let process = GrokProcess()
+        await process.start(
+            workspace: Workspace(name: "spawn-v3", path: fixture.container),
+            options: GrokLaunchOptions(hardBudgetLaunchContract: contract)
+        )
+        XCTAssertNotEqual(observed.value, 0)
+        XCTAssertEqual(
+            process.launchReceipt?.candidateBinarySHA256,
+            contract.candidateExecutionLease.identity.binarySHA256
+        )
+        XCTAssertNil(Data(String(describing: process.launchReceipt as Any).utf8).range(of: Data(sentinel)))
+        if case .failed(let message) = process.state {
+            XCTAssertFalse(message.contains("Keychain materialization remains locked"))
+            XCTAssertFalse(message.contains(String(decoding: sentinel, as: UTF8.self)))
+        } else {
+            XCTFail("expected ACP startup failure after the credential receiver exited")
+        }
+        await process.stop()
+    }
+
+    @MainActor
+    func testProductionStartRefusesArmedV3MCPDetourWithoutSpawning() async throws {
+        let fixture = try CandidateRuntimeTestFixture.makeCredentialReceiverExecutable()
+        defer { try? FileManager.default.removeItem(at: fixture.container) }
+        let contract = try makeArmedContract(fixture: fixture, allocationID: "packet-mcp")
+        GrokProcess.armedKeychainClientForTests = client { _, item in
+            item?.pointee = [Data([0x01])] as NSArray
+            return errSecSuccess
+        }
+
+        final class PIDBox { var value: pid_t = 0 }
+        let observed = PIDBox()
+        GrokCandidateProcessLauncher.spawnedProcessObserverForTests = { observed.value = $0 }
+
+        let process = GrokProcess()
+        await process.start(
+            workspace: Workspace(name: "mcp-v3", path: fixture.container),
+            options: GrokLaunchOptions(
+                mcpServers: [
+                    MCPServerConfig(name: "external", command: "/usr/bin/true")
+                ],
+                hardBudgetLaunchContract: contract
+            )
+        )
+        XCTAssertEqual(observed.value, 0)
+        XCTAssertEqual(
+            process.state,
+            .failed("Armed credential launch refuses Browser, Computer Use, MCP, and non-managed-provider detours.")
+        )
     }
 
     func testV3PreflightRefusesEveryOrdinaryToolOrHelperDetour() {
@@ -307,6 +379,35 @@ final class GrokArmedCredentialMaterializerTests: XCTestCase {
             managedProviderID: account,
             authScheme: "bearer",
             expectedProvenanceSHA256: String(repeating: "a", count: 64)
+        ))
+    }
+
+    private func makeArmedContract(
+        fixture: CandidateRuntimeTestFixture,
+        allocationID: String
+    ) throws -> HardBudgetLaunchContract {
+        CandidateRuntimeTestFixture.installSignatureOverride()
+        let lease = try XCTUnwrap(GrokCandidateRuntimeAuthority.acquireLease(
+            selectionPath: fixture.selection.path,
+            expectedCLIBuild: fixture.cliBuild
+        ))
+        let manifest = fixture.container.appendingPathComponent("manifest.json")
+        let ledger = fixture.container.appendingPathComponent("ledger.json")
+        let manifestData = Data("{\"campaign\":\"\(allocationID)\"}".utf8)
+        try manifestData.write(to: manifest)
+        try Data("{}".utf8).write(to: ledger)
+        try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: manifest.path)
+        try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: ledger.path)
+        let manifestSHA = SHA256.hash(data: manifestData)
+            .map { String(format: "%02x", $0) }
+            .joined()
+        return try XCTUnwrap(HardBudgetLaunchContract(
+            manifestPath: manifest.path,
+            ledgerPath: ledger.path,
+            allocationID: allocationID,
+            expectedManifestSHA256: manifestSHA,
+            candidateExecutionLease: lease,
+            credentialAuthorizationV3: authorization()
         ))
     }
 
