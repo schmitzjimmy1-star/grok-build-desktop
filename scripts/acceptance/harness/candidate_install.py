@@ -119,14 +119,14 @@ def rollback_signed_install(
 ) -> dict[str, Any]:
     """Remove only the acceptance selection after two empty process-zero samples.
 
-    The digest-addressed pager and provenance stay. The official CLI is never
-    overwritten or deleted.
+    The two samples must carry distinct timestamps. The digest-addressed pager
+    and provenance stay. The official CLI is never overwritten or deleted.
     """
     selection_path = Path(selection_path)
     _refuse_official_cli_overlap(selection_path)
     before = _official_digest_or_missing()
     if not _valid_process_zero_samples(process_zero_samples):
-        raise HarnessError("rollback requires two empty process-zero samples")
+        raise HarnessError("rollback requires two empty process-zero samples with distinct timestamps")
     if not selection_path.is_file():
         raise HarnessError("rollback requires an existing selection sidecar")
     document = json.loads(selection_path.read_text())
@@ -306,15 +306,18 @@ def _canonical_json(value: dict[str, Any]) -> bytes:
 def _valid_process_zero_samples(samples: list[dict[str, Any]] | None) -> bool:
     if not isinstance(samples, list) or len(samples) != 2:
         return False
+    stamps: list[str] = []
     for sample in samples:
-        if not isinstance(sample, dict) or not isinstance(sample.get("at"), str):
+        stamp = sample.get("at") if isinstance(sample, dict) else None
+        if not isinstance(stamp, str) or not stamp:
             return False
+        stamps.append(stamp)
         pids = sample.get("pids")
         if not isinstance(pids, dict) or not pids:
             return False
         if any(not isinstance(values, list) or values for values in pids.values()):
             return False
-    return True
+    return stamps[0] != stamps[1]
 
 
 def _official_digest_or_missing() -> str | None:
