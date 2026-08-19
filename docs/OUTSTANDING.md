@@ -267,10 +267,11 @@ discovery. The official CLI remains unchanged at `grok 1.0.4
 (d846eb93d94d) [stable]`, SHA-256
 `39366f7756a090b735cc1df8c93a8c0c3c7871555cf6cbb28f9351ca82936485`.
 
-The exact next slice is 4B.3: the real Rust credential consumer, consuming
-zeroization, Keychain/provider binding, canonical route-bound provenance,
-campaign-policy v3, and hostile nonbillable tool-tree proof. Paid activation
-and Slice 4B.4 remain locked. A 2026-08-18 Cursor checkpoint made the
+The exact next slice is 4B.4 after the 4B.3 T5 closeout merges: fresh-process
+`session/load` continuation. 4B.3 T5 production `GrokProcess.start` is proven
+locally against the signed digest-staged pager SHA-256 `14da2ef7…e68701` with a
+fake Keychain sentinel; CI skips that E2E. Hostile `setsid`/tool-tree proof
+stays 4B.5. Paid activation remains locked. A 2026-08-18 Cursor checkpoint made the
 builder-to-active-to-claim-to-armed-sampler type-state unbypassable in the dirty
 CLI/app trees, added independent Python `provenance_v3` golden parity, and
 renamed Swift's expected digest field. A later same-day checkpoint wired pager
@@ -346,9 +347,13 @@ selected-model `resolved-managed-provider`, the 64KiB serializer ceiling, and
 the five lexical `GrokBuild:` isolation IDs. Conservative request bound is
 derived live as payload + output cap; allocation ceiling and max model calls
 must come from the frozen packet. Golden 8192/route-1/two-tool/12288
-values are not copied into actual. Paid activation, live provider dispatch,
-ad-hoc 4B.0 arming, hostile `setsid`/tool-tree proof, and Slice 4B.4 remain
-locked. The official CLI remains `grok 1.0.4 (d846eb93d94d) [stable]`, SHA-256
+values are not copied into actual. Production `GrokProcess.start` T5 now leases
+the signed digest-staged pager `14da2ef7…e68701` without the fixture signature
+override, injects a fake sentinel, and fail-closes ACP before `.ready`. A
+2026-08-19 local DEBUG run passed in 17.445s; the official CLI SHA was
+unchanged. Paid activation, live provider dispatch, ad-hoc 4B.0 arming, and
+hostile `setsid`/tool-tree proof remain locked. 4B.4 is next after this closeout
+merges. The official CLI remains `grok 1.0.4 (d846eb93d94d) [stable]`, SHA-256
 `39366f7756a090b735cc1df8c93a8c0c3c7871555cf6cbb28f9351ca82936485`.
 
 PR [#124](https://github.com/schmitzjimmy1-star/grok-build-desktop/pull/124)

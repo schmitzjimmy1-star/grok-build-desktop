@@ -246,6 +246,92 @@ final class GrokArmedCredentialMaterializerTests: XCTestCase {
     }
 
     @MainActor
+    func testProductionStartSpawnsSignedStagedPagerWithFakeSentinel() async throws {
+        let selectionPath = ProcessInfo.processInfo.environment["GROKBUILD_SLICE4B3_RUNTIME_SELECTION"] ?? ""
+        try XCTSkipIf(
+            selectionPath.isEmpty,
+            "Set GROKBUILD_SLICE4B3_RUNTIME_SELECTION to the signed digest-staged pager selection file"
+        )
+        try XCTSkipIf(
+            ProcessInfo.processInfo.environment["CI"] != nil
+                || ProcessInfo.processInfo.environment["GITHUB_ACTIONS"] == "true",
+            "Signed pager E2E is owner-local and must not run in CI"
+        )
+
+        let expectedSHA = "14da2ef77ea00cbea6d8b2cf3ad9d6511eb530a53d23777109e6f382a7e68701"
+        let expectedCLIBuild = "1.0.5 (86f0c70)"
+        let officialCLI = URL(fileURLWithPath: NSHomeDirectory()).appendingPathComponent(".grok/bin/grok")
+        let officialBefore = try sha256File(officialCLI)
+
+        let workspace = FileManager.default.temporaryDirectory
+            .appendingPathComponent("grokbuild-t5-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: workspace, withIntermediateDirectories: true)
+        try FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: workspace.path)
+        defer { try? FileManager.default.removeItem(at: workspace) }
+
+        let previousHome = getenv("HOME").map { String(cString: $0) }
+        XCTAssertEqual(setenv("HOME", workspace.path, 1), 0)
+        defer {
+            if let previousHome {
+                setenv("HOME", previousHome, 1)
+            } else {
+                unsetenv("HOME")
+            }
+        }
+
+        let contract = try makeArmedContract(
+            selectionPath: selectionPath,
+            expectedCLIBuild: expectedCLIBuild,
+            workspace: workspace,
+            allocationID: "packet-t5-pager",
+            latchDispatch: true
+        )
+        XCTAssertEqual(contract.candidateExecutionLease.identity.binarySHA256, expectedSHA)
+        XCTAssertEqual(contract.candidateExecutionLease.identity.cliBuild, expectedCLIBuild)
+        XCTAssertEqual(contract.candidateExecutionLease.identity.signature.teamIdentifier, "DD2GCQJVB4")
+
+        let sentinel = Array("S4B3-T5-\(UUID().uuidString)-END".utf8)
+        GrokProcess.armedKeychainClientForTests = client { _, item in
+            item?.pointee = [Data(sentinel)] as NSArray
+            return errSecSuccess
+        }
+        GrokProcess.cliOverrideForTests = URL(fileURLWithPath: "/usr/bin/true")
+
+        final class PIDBox { var value: pid_t = 0 }
+        let observed = PIDBox()
+        GrokCandidateProcessLauncher.spawnedProcessObserverForTests = { observed.value = $0 }
+
+        let process = GrokProcess()
+        await process.start(
+            workspace: Workspace(name: "t5-pager", path: workspace),
+            options: GrokLaunchOptions(
+                model: "deepseek-deepseek-v4-flash-0731",
+                hardBudgetLaunchContract: contract
+            )
+        )
+        XCTAssertNotEqual(observed.value, 0)
+        XCTAssertEqual(process.launchReceipt?.candidateBinarySHA256, expectedSHA)
+        XCTAssertEqual(process.launchReceipt?.candidateCLIBuild, expectedCLIBuild)
+        XCTAssertEqual(process.launchReceipt?.candidateTeamIdentifier, "DD2GCQJVB4")
+        XCTAssertNil(Data(String(describing: process.launchReceipt as Any).utf8).range(of: Data(sentinel)))
+        if case .failed(let message) = process.state {
+            XCTAssertFalse(message.contains("Keychain materialization remains locked"))
+            XCTAssertFalse(message.contains(String(decoding: sentinel, as: UTF8.self)))
+            XCTAssertFalse(message.lowercased().contains("could not locate the `grok` cli"))
+        } else {
+            XCTFail("expected fail-closed ACP startup against the staged pager, not a ready session")
+        }
+        await process.stop()
+
+        let officialAfter = try sha256File(officialCLI)
+        XCTAssertEqual(officialBefore, officialAfter)
+        XCTAssertEqual(
+            officialAfter,
+            "39366f7756a090b735cc1df8c93a8c0c3c7871555cf6cbb28f9351ca82936485"
+        )
+    }
+
+    @MainActor
     func testProductionStartRefusesArmedV3MCPDetourWithoutSpawning() async throws {
         let fixture = try CandidateRuntimeTestFixture.makeCredentialReceiverExecutable()
         defer { try? FileManager.default.removeItem(at: fixture.container) }
@@ -421,12 +507,28 @@ final class GrokArmedCredentialMaterializerTests: XCTestCase {
         latchDispatch: Bool = false
     ) throws -> HardBudgetLaunchContract {
         CandidateRuntimeTestFixture.installSignatureOverride()
-        let lease = try XCTUnwrap(GrokCandidateRuntimeAuthority.acquireLease(
+        return try makeArmedContract(
             selectionPath: fixture.selection.path,
-            expectedCLIBuild: fixture.cliBuild
+            expectedCLIBuild: fixture.cliBuild,
+            workspace: fixture.container,
+            allocationID: allocationID,
+            latchDispatch: latchDispatch
+        )
+    }
+
+    private func makeArmedContract(
+        selectionPath: String,
+        expectedCLIBuild: String,
+        workspace: URL,
+        allocationID: String,
+        latchDispatch: Bool = false
+    ) throws -> HardBudgetLaunchContract {
+        let lease = try XCTUnwrap(GrokCandidateRuntimeAuthority.acquireLease(
+            selectionPath: selectionPath,
+            expectedCLIBuild: expectedCLIBuild
         ))
-        let manifest = fixture.container.appendingPathComponent("manifest.json")
-        let ledger = fixture.container.appendingPathComponent("ledger.json")
+        let manifest = workspace.appendingPathComponent("manifest.json")
+        let ledger = workspace.appendingPathComponent("ledger.json")
         let manifestData = Data("{\"campaign\":\"\(allocationID)\"}".utf8)
         try manifestData.write(to: manifest)
         try Data("{}".utf8).write(to: ledger)
@@ -465,7 +567,7 @@ final class GrokArmedCredentialMaterializerTests: XCTestCase {
                 campaignTokenCeiling: 20_000_000,
                 emergencyReserveTokens: 1_000_000,
                 hardBudgetManifestSHA256: manifestSHA,
-                expectedCLIBuild: fixture.cliBuild,
+                expectedCLIBuild: expectedCLIBuild,
                 budget: packet,
                 authorizationManifestPath: "/tmp/authorization.json",
                 hardBudgetCLIManifestPath: manifest.path,
@@ -516,5 +618,10 @@ final class GrokArmedCredentialMaterializerTests: XCTestCase {
             usleep(10_000)
         }
         XCTAssertFalse(process.isRunning)
+    }
+
+    private func sha256File(_ url: URL) throws -> String {
+        let data = try Data(contentsOf: url)
+        return SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()
     }
 }
