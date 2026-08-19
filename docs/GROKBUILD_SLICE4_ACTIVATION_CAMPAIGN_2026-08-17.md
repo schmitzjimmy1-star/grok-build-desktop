@@ -1,6 +1,6 @@
 # GrokBuild Slice 4 Activation Campaign — 2026-08-17
 
-Status: **Slices 4B.0 through 4B.2 accepted; Slice 4B.3 is next; paid activation locked.** This document is the authority for completing
+Status: **Slices 4B.0 through 4B.2 accepted; Slice 4B.3 T5 production-start E2E is proven locally against the signed digest-staged pager; 4B.4 is next after this closeout merges; paid activation locked.** This document is the authority for completing
 the official-provider and open-weight lane after the nonbillable Slice 4A hard-budget checkpoint. It
 does not authorize a provider request, credential-value read, live Grok config
 mutation, installed-CLI replacement, tag, release, or Slice 5 work.
@@ -121,7 +121,8 @@ evidence from a predecessor or begin while its predecessor remains unmerged.
 
 Slice 4B.0 is accepted. Jimmy explicitly authorized sequential execution of
 4B.1, then 4B.2, then 4B.3 on 2026-08-18. Merge-per-slice remains mandatory:
-4B.1 and 4B.2 are accepted, and 4B.3 is next. Paid activation remains locked.
+4B.1 and 4B.2 are accepted. 4B.3 T5 is proven locally and is the remaining
+4B.3 closeout. 4B.4 is next after that merge. Paid activation remains locked.
 
 ### Scope
 
@@ -438,8 +439,24 @@ desktop docs PR #131 merged as `55333d70`. Local E2E used candidate `86f0c70`
 (`1.0.5 (86f0c70)`, binary SHA-256 `25181a88…0df98`), not merge `f87a874`. The live ACP capability now nests a strict three-field
 `v3Authority` object instead of top-level provenance/policy fields. Swift
 re-canonicalizes the typed provenance, derives headers from `authScheme`, and
-still refuses to treat a v3 projection as historical v2 enforcement. Paid
-activation remains locked.
+still refuses to treat a v3 projection as historical v2 enforcement.
+
+T5 production `GrokProcess.start` now has an owner-local, env-gated E2E
+(`GROKBUILD_SLICE4B3_RUNTIME_SELECTION`) against the Apple Development signed,
+digest-staged pager at binary SHA-256
+`14da2ef77ea00cbea6d8b2cf3ad9d6511eb530a53d23777109e6f382a7e68701`,
+`cliBuild` `1.0.5 (86f0c70)`, Team `DD2GCQJVB4`. A 2026-08-19 local DEBUG run
+passed in 17.445s: lease without the fixture signature override, fake Keychain
+sentinel, `posix_spawn` of that SHA (not `/usr/bin/true`, not
+`~/.grok/bin/grok`), fail-closed ACP startup, sentinel absent from the launch
+receipt, leftover `.grokbuild-exec-*` copies reaped, and official CLI still
+`grok 1.0.4 (d846eb93d94d) [stable]` SHA-256
+`39366f7756a090b735cc1df8c93a8c0c3c7871555cf6cbb28f9351ca82936485`. The test
+skips in CI and whenever the selection file is unset. It is not live Keychain,
+live provider, candidate install, or paid proof. The ad-hoc original
+`25181a88…0df98` remains evidence-only and is not the T5 binary.
+4B.4 is the exact next slice after this closeout merges. Paid activation
+remains locked.
 
 ### `HardTokenBoundProvenanceV1`
 

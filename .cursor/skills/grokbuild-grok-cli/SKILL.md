@@ -45,8 +45,10 @@ UpdateChecker.checkGrokCLI()      // grok update --check --json
 Ordinary unarmed `GrokProcess.start` still locates the official CLI.
 An armed v3 `HardBudgetLaunchContract` materializes one Keychain item through
 `GrokArmedCredentialMaterializer` and `posix_spawn`s the leased candidate with
-FD 198/197. Debug tests inject the Keychain client.
-`AcceptanceBudgetGuard` schema-3 packets parse `credentialAuthorizationV3`
+FD 198/197. Debug tests inject the Keychain client. The owner-local T5 E2E
+(`GROKBUILD_SLICE4B3_RUNTIME_SELECTION`) leases the signed digest-staged pager
+and drives that same production start path; it skips in CI and never reads live
+Keychain. `AcceptanceBudgetGuard` schema-3 packets parse `credentialAuthorizationV3`
 selectors; `ArmedV3DispatchExpectation` cross-binds them to the live custom
 model and linked provider before `HardBudgetLaunchContract`. Spawn rechecks
 that latch before `posix_spawn`. Armed `initialize` requires a matching nested

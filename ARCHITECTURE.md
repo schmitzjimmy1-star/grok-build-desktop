@@ -1328,7 +1328,7 @@ using only stage, time, and PID. It never records prompts, response bodies, tool
 arguments, credentials, URLs, or environment contents.
 | **Public README screenshots (2026-08-13 campaign Slice 7)** | `docs/images/grokbuild-app.png` (signed-installed New chat), `docs/images/grokbuild-run-inspector.png` (settled multi-tool/two-child Run inspector); first-screenful copy in `README.md` |
 | **Agentic acceptance harness** | `scripts/acceptance/run.py`, `scripts/acceptance/schema/v1.json`, `scripts/acceptance/manifests/installed-three-route-v1.json`, `scripts/acceptance/manifests/installed-slice6-packet-v1.json`; dry-run default, `--billable` after preflight, fixture-mode rejection, exact-ID cleanup, Slice 6 250k Stop packet; independent v3 provenance verifier in `scripts/acceptance/harness/provenance_v3.py` |
-| **Armed v3 credential / provenance (4B.3 in progress)** | `ArmedV3DispatchExpectation.swift`, `GrokArmedCredentialMaterializer.swift`, `HardBudgetProvenanceV3.swift`, nested ACP `v3Authority`, fail-closed `ArmedV3ResolvedSnapshot`, `TrackedConfigGeneration` / `ResolvedConfigIdentityTracker`, live `ArmedV3LiveRouteCore` plus `ArmedV3PacketBoundsObservation` (loopback endpoint SHA, deterministic `v3.<sha256>` route id, 64KiB serializer ceiling, Darwin `fd_v1`, five-tool isolation, derived conservative bound), selected-model `resolved-managed-provider` source kind, preserved `ModelEntry.model_provider`, omitted armed summary client, spawn requires already-active authority, production `GrokProcess.start` materializes v3 via the dedicated Keychain client then `posix_spawn`s the leased candidate with FD 198/197 (debug tests inject the client; schema-2 stays fail-closed; schema-3 packets carry selectors, and `ArmedV3DispatchExpectation` cross-binds them to the live custom model + provider before `HardBudgetLaunchContract`; spawn rechecks that latch (model, empty MCP, `officialHelper`, file identity) immediately before `posix_spawn`, and `initialize` must present a matching nested `v3Authority` before `.ready`; schema-3 uses 20M/19M/1M and refuses the live v1 4M governor), one cached armed `SamplingClient` per sampler actor, CLI pager FD-198 owner install, `agent::init::bootstrap` `bind_measured_v3_authority_if_present`, `bind_and_install_v3_authority`, `SamplingClient::new_with_armed_v3` / `from_process_config` |
+| **Armed v3 credential / provenance (4B.3 T5 proven locally)** | `ArmedV3DispatchExpectation.swift`, `GrokArmedCredentialMaterializer.swift`, `HardBudgetProvenanceV3.swift`, nested ACP `v3Authority`, fail-closed `ArmedV3ResolvedSnapshot`, `TrackedConfigGeneration` / `ResolvedConfigIdentityTracker`, live `ArmedV3LiveRouteCore` plus `ArmedV3PacketBoundsObservation` (loopback endpoint SHA, deterministic `v3.<sha256>` route id, 64KiB serializer ceiling, Darwin `fd_v1`, five-tool isolation, derived conservative bound), selected-model `resolved-managed-provider` source kind, preserved `ModelEntry.model_provider`, omitted armed summary client, spawn requires already-active authority, production `GrokProcess.start` materializes v3 via the dedicated Keychain client then `posix_spawn`s the leased candidate with FD 198/197 (debug tests inject the client; schema-2 stays fail-closed; schema-3 packets carry selectors, and `ArmedV3DispatchExpectation` cross-binds them to the live custom model + provider before `HardBudgetLaunchContract`; spawn rechecks that latch (model, empty MCP, `officialHelper`, file identity) immediately before `posix_spawn`, and `initialize` must present a matching nested `v3Authority` before `.ready`; schema-3 uses 20M/19M/1M and refuses the live v1 4M governor), one cached armed `SamplingClient` per sampler actor, CLI pager FD-198 owner install, `agent::init::bootstrap` `bind_measured_v3_authority_if_present`, `bind_and_install_v3_authority`, `SamplingClient::new_with_armed_v3` / `from_process_config` |
 | **Add/remove project** | `WorkspaceStore`, `WorkspacePicker` |
 | **Browser tools** | `AgentBrowserService`, `BrowserSettingsStore`, settings `.browser` (agent-browser CLI over MCP) |
 | **Session agent** | `GrokAgentProfiles`, `GrokCLIService.listAgents`, settings `.agents` |
@@ -1404,7 +1404,7 @@ make test    # Tests/GrokBuildTests/
 | `SettingsTabTests.swift` | Settings destination metadata/grouping, selected-pane-only lifecycle, shared value-state/status/accessibility reducers, adaptive rows, explicit persistence, and the six-priority-pane parent-draft/cancellation source contract |
 | `LifecycleAndSubprocessTests.swift` | Coalesced streaming Settings reconnects, exact apply/fork receipts, process-LRU identity safety, store/process release, one-shot subprocess hygiene, and restored-empty Resume chrome vs New chat |
 | `AcceptanceHarnessTests.swift` | Agentic `scripts/acceptance/` harness: dry-run default, `--billable` fail-closed without a run ID, guessed-cleanup refusal, fixture-mode reject/accept cases at zero provider cost, Resume-then-Send labels, installed-exec refuse of `.build` / `dist`, Slice 6 250k Stop packet |
-| `GrokArmedCredentialMaterializerTests.swift` | Fake Keychain materializer query, one-Data result, wipe, Browser/Computer/MCP preflight refusal, and production `GrokProcess.start` v3 spawn with an injected client |
+| `GrokArmedCredentialMaterializerTests.swift` | Fake Keychain materializer query, one-Data result, wipe, Browser/Computer/MCP preflight refusal, production `GrokProcess.start` v3 spawn with an injected client against the cooperative receiver, and an env-gated signed digest-staged pager E2E (`GROKBUILD_SLICE4B3_RUNTIME_SELECTION`; skips in CI) |
 | `HardBudgetProvenanceV3Tests.swift` | Independent Swift canonical bytes/digest parity with Rust plus hostile missing/extra/reorder/4M-policy refusal |
 
 Prefer extending existing test files. Test pure logic without launching real `grok` when possible.
@@ -1465,7 +1465,7 @@ The receiver fixture is ad-hoc signed and admitted only through the existing
 Slice 4B.1 signature-verifier test seam; it is not evidence that the retained
 candidate or an installed Team-signed CLI consumed the channel.
 
-**Armed v3 authority checkpoint (Slice 4B.3, in progress, nonbillable).** The CLI
+**Armed v3 authority checkpoint (Slice 4B.3, T5 proven locally, nonbillable).** The CLI
 owns one immutable `ActiveHardTokenV3Authority` produced only by
 `V3AuthorityBuilder` parsing a schema-v3 expectation, binding the live
 candidate/config/route, and registering that object once via
@@ -1566,12 +1566,21 @@ v3 environment fail-closes at bootstrap when observation, candidate claim, or
 snapshot resolution does not succeed. CLI bootstrap bind is proven on a local
 `86f0c70` candidate (`1.0.5 (86f0c70)`, binary SHA-256 `25181a88…0df98`) via
 fake FD 198 plus measured FD 197; merge SHA `f87a874` is not that candidate's
-compiled `SOURCE_COMMIT_SHA`. Paid activation,
-live provider hosts, helper execution, candidate install, ad-hoc 4B.0 arming,
-and Slice 4B.4 remain locked. Live unarmed and schema-2 packets stay on the
-4M/3M/1M v1 governor. Schema-3 armed desktop packets use versioned 20M/19M/1M
-and refuse that mix. CLI `HardTokenBudget::from_env` vs v3 authority in the
-child remains a fork follow-up.
+compiled `SOURCE_COMMIT_SHA`. Production `GrokProcess.start` T5 now also
+leases the Apple Development signed digest-staged copy of that pager
+(binary SHA-256
+`14da2ef77ea00cbea6d8b2cf3ad9d6511eb530a53d23777109e6f382a7e68701`) without the
+fixture signature override, injects a fake Keychain sentinel, and `posix_spawn`s
+that SHA. A 2026-08-19 local DEBUG run passed in 17.445s, fail-closed before
+`.ready`, left the official CLI bytes unchanged, and skipped CI unless
+`GROKBUILD_SLICE4B3_RUNTIME_SELECTION` points at that owner-private selection
+file. That is not live Keychain, live provider, or install proof. Paid
+activation, live provider hosts, helper execution, candidate install, and
+ad-hoc 4B.0 arming remain locked. 4B.4 is next after this 4B.3 T5 closeout
+merges. Live unarmed and schema-2 packets stay on the 4M/3M/1M v1 governor.
+Schema-3 armed desktop packets use versioned 20M/19M/1M and refuse that mix.
+CLI `HardTokenBudget::from_env` vs v3 authority in the child remains a fork
+follow-up.
 
 ## Related docs
 
