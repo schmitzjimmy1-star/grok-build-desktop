@@ -875,8 +875,11 @@ OpenAI-compatible provider URLs; not a replacement for grok-native models. Offic
 **Acceptance budget boundary (Official Runtime Alignment Slice 4).**
 `AcceptanceBudgetGuard` is opt-in through one owner-only launch manifest and
 requires the exact SHA-256 of the final submitted prompt after MCP/file attachment
-blocks plus positive packet token/call allocations. Missing, malformed, ambiguous,
-or mismatched manifests block Send. The reactive `x.ai/session/usage` Stop remains
+blocks plus positive packet token/call allocations. Schema-2 packets never
+supply a Keychain selector. Schema-3 packets bind `managedProviderID`,
+`authScheme`, and `boundProvenanceSHA256` into `GrokArmedCredentialAuthorizationV3`
+so Send can hand a v3 contract to `GrokProcess.start`. Missing, malformed, ambiguous,
+or mismatched manifests block Send. The live ceiling remains 4M/3M/1M. The reactive `x.ai/session/usage` Stop remains
 defense in depth, not the hard provider-billing cap.
 
 **Hard-budget fork checkpoint (Slice 4A).** The pinned 1.0.5 CLI fork owns one
@@ -1325,7 +1328,7 @@ using only stage, time, and PID. It never records prompts, response bodies, tool
 arguments, credentials, URLs, or environment contents.
 | **Public README screenshots (2026-08-13 campaign Slice 7)** | `docs/images/grokbuild-app.png` (signed-installed New chat), `docs/images/grokbuild-run-inspector.png` (settled multi-tool/two-child Run inspector); first-screenful copy in `README.md` |
 | **Agentic acceptance harness** | `scripts/acceptance/run.py`, `scripts/acceptance/schema/v1.json`, `scripts/acceptance/manifests/installed-three-route-v1.json`, `scripts/acceptance/manifests/installed-slice6-packet-v1.json`; dry-run default, `--billable` after preflight, fixture-mode rejection, exact-ID cleanup, Slice 6 250k Stop packet; independent v3 provenance verifier in `scripts/acceptance/harness/provenance_v3.py` |
-| **Armed v3 credential / provenance (4B.3 in progress)** | `GrokArmedCredentialMaterializer.swift`, `HardBudgetProvenanceV3.swift`, nested ACP `v3Authority`, fail-closed `ArmedV3ResolvedSnapshot`, `TrackedConfigGeneration` / `ResolvedConfigIdentityTracker`, live `ArmedV3LiveRouteCore` plus `ArmedV3PacketBoundsObservation` (loopback endpoint SHA, deterministic `v3.<sha256>` route id, 64KiB serializer ceiling, Darwin `fd_v1`, five-tool isolation, derived conservative bound), selected-model `resolved-managed-provider` source kind, preserved `ModelEntry.model_provider`, omitted armed summary client, spawn requires already-active authority, production `GrokProcess.start` materializes v3 via the dedicated Keychain client then `posix_spawn`s the leased candidate with FD 198/197 (debug tests inject the client; schema-2 and MCP/Browser/Computer detours still fail closed), one cached armed `SamplingClient` per sampler actor, CLI pager FD-198 owner install, `agent::init::bootstrap` `bind_measured_v3_authority_if_present`, `bind_and_install_v3_authority`, `SamplingClient::new_with_armed_v3` / `from_process_config` |
+| **Armed v3 credential / provenance (4B.3 in progress)** | `GrokArmedCredentialMaterializer.swift`, `HardBudgetProvenanceV3.swift`, nested ACP `v3Authority`, fail-closed `ArmedV3ResolvedSnapshot`, `TrackedConfigGeneration` / `ResolvedConfigIdentityTracker`, live `ArmedV3LiveRouteCore` plus `ArmedV3PacketBoundsObservation` (loopback endpoint SHA, deterministic `v3.<sha256>` route id, 64KiB serializer ceiling, Darwin `fd_v1`, five-tool isolation, derived conservative bound), selected-model `resolved-managed-provider` source kind, preserved `ModelEntry.model_provider`, omitted armed summary client, spawn requires already-active authority, production `GrokProcess.start` materializes v3 via the dedicated Keychain client then `posix_spawn`s the leased candidate with FD 198/197 (debug tests inject the client; schema-2 stays fail-closed; schema-3 packets attach `credentialAuthorizationV3`), one cached armed `SamplingClient` per sampler actor, CLI pager FD-198 owner install, `agent::init::bootstrap` `bind_measured_v3_authority_if_present`, `bind_and_install_v3_authority`, `SamplingClient::new_with_armed_v3` / `from_process_config` |
 | **Add/remove project** | `WorkspaceStore`, `WorkspacePicker` |
 | **Browser tools** | `AgentBrowserService`, `BrowserSettingsStore`, settings `.browser` (agent-browser CLI over MCP) |
 | **Session agent** | `GrokAgentProfiles`, `GrokCLIService.listAgents`, settings `.agents` |
@@ -1529,8 +1532,10 @@ scheme, and digest cross-bind. Production `GrokProcess.start` fail-closes
 schema-2 contracts. A v3 authorization materializes through
 `GrokArmedCredentialMaterializer` and `posix_spawn`s the leased candidate with
 FD 198/197; debug tests must inject the Keychain client so XCTest never reads
-live items. `AcceptanceBudgetGuard.credentialAuthorizationV3` remains `nil`, so
-ordinary Send still does not Keychain. Fake-sentinel transport stays on
+live items. Schema-3 `AcceptanceBudgetGuard` packets now attach
+`credentialAuthorizationV3`; schema-2 packets still supply `nil`, so ordinary
+Send without an acceptance harness does not Keychain. Native Grok routes still
+fail preflight before a live Keychain read. Fake-sentinel transport stays on
 `GrokCandidateProcessLauncher`. The historical live
 `GrokBuildHardTokenBudgetCapability.isEnforcing` decoder still requires
 capability v2 / ledger v3 / bound-method v1, so a live v3 projection cannot

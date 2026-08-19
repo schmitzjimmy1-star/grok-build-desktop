@@ -30,6 +30,9 @@ struct AcceptanceHardBudgetRoute: Codable, Equatable, Sendable {
     let maxPayloadBytes: Int
     let maxOutputTokens: Int
     let boundProvenanceSHA256: String
+    /// Schema-3-only Keychain selector. Schema-2 packets must leave these nil.
+    let managedProviderID: String?
+    let authScheme: String?
 
     var isValid: Bool {
         let shaPattern = #"^[0-9a-f]{64}$"#
@@ -43,6 +46,37 @@ struct AcceptanceHardBudgetRoute: Codable, Equatable, Sendable {
             && !overflow
             && conservativeBound <= requestBoundTokens
             && boundProvenanceSHA256.range(of: shaPattern, options: .regularExpression) != nil
+    }
+
+    var credentialAuthorizationV3: GrokArmedCredentialAuthorizationV3? {
+        guard let managedProviderID, let authScheme else { return nil }
+        return GrokArmedCredentialAuthorizationV3(
+            managedProviderID: managedProviderID,
+            authScheme: authScheme,
+            expectedProvenanceSHA256: boundProvenanceSHA256
+        )
+    }
+
+    init(
+        model: String,
+        endpointSHA256: String,
+        apiBackend: String,
+        requestBoundTokens: Int,
+        maxPayloadBytes: Int,
+        maxOutputTokens: Int,
+        boundProvenanceSHA256: String,
+        managedProviderID: String? = nil,
+        authScheme: String? = nil
+    ) {
+        self.model = model
+        self.endpointSHA256 = endpointSHA256
+        self.apiBackend = apiBackend
+        self.requestBoundTokens = requestBoundTokens
+        self.maxPayloadBytes = maxPayloadBytes
+        self.maxOutputTokens = maxOutputTokens
+        self.boundProvenanceSHA256 = boundProvenanceSHA256
+        self.managedProviderID = managedProviderID
+        self.authScheme = authScheme
     }
 }
 
@@ -65,7 +99,19 @@ struct AcceptanceBudgetManifest: Codable, Equatable, Sendable {
             let (sum, overflow) = partial.addingReportingOverflow(packet.tokenAllocation)
             partial = overflow ? Int.max : sum
         }
-        return schemaVersion == 2
+        let packetsMatchSchema: Bool
+        switch schemaVersion {
+        case 2:
+            packetsMatchSchema = packets.allSatisfy {
+                $0.route.managedProviderID == nil && $0.route.authScheme == nil
+            }
+        case 3:
+            packetsMatchSchema = packets.allSatisfy { $0.route.credentialAuthorizationV3 != nil }
+        default:
+            packetsMatchSchema = false
+        }
+        return (schemaVersion == 2 || schemaVersion == 3)
+            && packetsMatchSchema
             && !runID.isEmpty
             && campaignTokenCeiling == 4_000_000
             && emergencyReserveTokens == 1_000_000
@@ -106,7 +152,7 @@ struct AcceptanceBudgetAuthorization: Equatable, Sendable {
     let candidateExecutionLease: GrokCandidateExecutionLease?
     /// Schema-3-only, non-secret Keychain selector. Schema-2 resolution never
     /// supplies it, so legacy acceptance packets cannot materialize a secret.
-    let credentialAuthorizationV3: GrokArmedCredentialAuthorizationV3? = nil
+    let credentialAuthorizationV3: GrokArmedCredentialAuthorizationV3?
 
     var spendableTokenCeiling: Int? {
         let (value, overflow) = campaignTokenCeiling.subtractingReportingOverflow(emergencyReserveTokens)
@@ -176,6 +222,13 @@ enum AcceptanceBudgetGuard {
             return .blocked
         }
         guard let budget = manifest.budget(for: prompt) else { return .blocked }
+        let credentialAuthorizationV3: GrokArmedCredentialAuthorizationV3?
+        if manifest.schemaVersion == 3 {
+            guard let authorization = budget.route.credentialAuthorizationV3 else { return .blocked }
+            credentialAuthorizationV3 = authorization
+        } else {
+            credentialAuthorizationV3 = nil
+        }
         return .budget(AcceptanceBudgetAuthorization(
             runID: manifest.runID,
             campaignTokenCeiling: manifest.campaignTokenCeiling,
@@ -186,7 +239,8 @@ enum AcceptanceBudgetGuard {
             authorizationManifestPath: manifestPaths[0],
             hardBudgetCLIManifestPath: cliManifestPaths[0],
             hardBudgetLedgerPath: ledgerPaths[0],
-            candidateExecutionLease: candidateExecutionLease
+            candidateExecutionLease: candidateExecutionLease,
+            credentialAuthorizationV3: credentialAuthorizationV3
         ))
     }
 

@@ -1,4 +1,5 @@
 import CryptoKit
+import Security
 import XCTest
 @testable import GrokBuild
 
@@ -54,7 +55,8 @@ final class ACPClientContractTests: XCTestCase {
         authorizationManifestPath: String = "/private/tmp/grokbuild-authorization.json",
         cliManifestPath: String = "/private/tmp/grokbuild-cli-manifest.json",
         ledgerPath: String = "/private/tmp/grokbuild-ledger.json",
-        candidateExecutionLease: GrokCandidateExecutionLease? = nil
+        candidateExecutionLease: GrokCandidateExecutionLease? = nil,
+        credentialAuthorizationV3: GrokArmedCredentialAuthorizationV3? = nil
     ) -> AcceptanceBudgetAuthorization {
         AcceptanceBudgetAuthorization(
             runID: runID,
@@ -66,7 +68,8 @@ final class ACPClientContractTests: XCTestCase {
             authorizationManifestPath: authorizationManifestPath,
             hardBudgetCLIManifestPath: cliManifestPath,
             hardBudgetLedgerPath: ledgerPath,
-            candidateExecutionLease: candidateExecutionLease
+            candidateExecutionLease: candidateExecutionLease,
+            credentialAuthorizationV3: credentialAuthorizationV3
         )
     }
 
@@ -211,6 +214,75 @@ final class ACPClientContractTests: XCTestCase {
                 arguments: ["app", "--grokbuild-acceptance-budget-file=/does/not/exist"]
             ),
             .blocked
+        )
+        let schema3MissingSelector = AcceptanceBudgetManifest(
+            schemaVersion: 3,
+            runID: "run",
+            campaignTokenCeiling: 4_000_000,
+            emergencyReserveTokens: 1_000_000,
+            hardBudgetManifestSHA256: hardBudgetSHA,
+            expectedCLIBuild: "grokbuild-fork",
+            packets: [acceptanceBudget(packetID: "only", marker: "ONLY", promptHash: "3a4726dafd3f6c5e45b1c6a41a7e948aeedcb39387ffdaef1f8b666f407e1236", tokenAllocation: 10, maxModelCalls: 1)]
+        )
+        XCTAssertFalse(schema3MissingSelector.isValid)
+        let schema2WithSelector = AcceptanceBudgetManifest(
+            schemaVersion: 2,
+            runID: "run",
+            campaignTokenCeiling: 4_000_000,
+            emergencyReserveTokens: 1_000_000,
+            hardBudgetManifestSHA256: hardBudgetSHA,
+            expectedCLIBuild: "grokbuild-fork",
+            packets: [acceptanceBudget(
+                packetID: "only",
+                marker: "ONLY",
+                promptHash: "3a4726dafd3f6c5e45b1c6a41a7e948aeedcb39387ffdaef1f8b666f407e1236",
+                tokenAllocation: 10,
+                maxModelCalls: 1,
+                route: AcceptanceHardBudgetRoute(
+                    model: "grok-4.6",
+                    endpointSHA256: hardBudgetSHA,
+                    apiBackend: "responses",
+                    requestBoundTokens: 100,
+                    maxPayloadBytes: 80,
+                    maxOutputTokens: 20,
+                    boundProvenanceSHA256: hardBudgetSHA,
+                    managedProviderID: "openrouter",
+                    authScheme: "bearer"
+                )
+            )]
+        )
+        XCTAssertFalse(schema2WithSelector.isValid)
+        let schema3 = AcceptanceBudgetManifest(
+            schemaVersion: 3,
+            runID: "run",
+            campaignTokenCeiling: 4_000_000,
+            emergencyReserveTokens: 1_000_000,
+            hardBudgetManifestSHA256: hardBudgetSHA,
+            expectedCLIBuild: "grokbuild-fork",
+            packets: [acceptanceBudget(
+                packetID: "only",
+                marker: "ONLY",
+                promptHash: "3a4726dafd3f6c5e45b1c6a41a7e948aeedcb39387ffdaef1f8b666f407e1236",
+                tokenAllocation: 10,
+                maxModelCalls: 1,
+                route: AcceptanceHardBudgetRoute(
+                    model: "grok-4.6",
+                    endpointSHA256: hardBudgetSHA,
+                    apiBackend: "responses",
+                    requestBoundTokens: 100,
+                    maxPayloadBytes: 80,
+                    maxOutputTokens: 20,
+                    boundProvenanceSHA256: hardBudgetSHA,
+                    managedProviderID: "openrouter",
+                    authScheme: "bearer"
+                )
+            )]
+        )
+        XCTAssertTrue(schema3.isValid)
+        XCTAssertEqual(schema3.packets[0].route.credentialAuthorizationV3?.keychainAccount, "openrouter")
+        XCTAssertEqual(
+            schema3.packets[0].route.credentialAuthorizationV3?.expectedProvenanceSHA256,
+            hardBudgetSHA
         )
     }
 
@@ -1238,6 +1310,84 @@ final class ACPClientContractTests: XCTestCase {
         let sent = await store.sendAndWait("Return NO-FORK-BUDGET")
         XCTAssertFalse(sent)
         XCTAssertTrue(store.lastError?.contains("schema-3 credential authorization") == true)
+        XCTAssertNil(store.process.activeProcessGeneration)
+        await store.shutdownPermanently()
+    }
+
+    @MainActor
+    func testSchema3AcceptanceDispatchRefusesNativeRouteBeforeKeychainSpawn() async throws {
+        let fixture = try CandidateRuntimeTestFixture.makeCredentialReceiverExecutable()
+        defer { try? FileManager.default.removeItem(at: fixture.container) }
+        CandidateRuntimeTestFixture.installSignatureOverride()
+        defer { GrokCandidateRuntimeAuthority.signatureVerifierOverrideForTests = nil }
+        let lease = try XCTUnwrap(GrokCandidateRuntimeAuthority.acquireLease(
+            selectionPath: fixture.selection.path,
+            expectedCLIBuild: fixture.cliBuild
+        ))
+        let cliManifest = fixture.container.appendingPathComponent("cli-manifest.json")
+        let cliManifestData = Data("{\"campaign\":\"schema-3-native\"}".utf8)
+        try cliManifestData.write(to: cliManifest)
+        try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: cliManifest.path)
+        let ledger = fixture.container.appendingPathComponent("ledger.json")
+        try Data("{}".utf8).write(to: ledger)
+        try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: ledger.path)
+        let manifestSHA = SHA256.hash(data: cliManifestData)
+            .map { String(format: "%02x", $0) }
+            .joined()
+        let provenanceSHA = String(repeating: "d", count: 64)
+        let v3 = try XCTUnwrap(GrokArmedCredentialAuthorizationV3(
+            managedProviderID: "openrouter",
+            authScheme: "bearer",
+            expectedProvenanceSHA256: provenanceSHA
+        ))
+        let budget = acceptanceBudget(
+            packetID: "schema-3-native",
+            marker: "SCHEMA-3-NATIVE",
+            promptHash: String(repeating: "0", count: 64),
+            tokenAllocation: 10,
+            maxModelCalls: 1,
+            route: AcceptanceHardBudgetRoute(
+                model: "grok-4.6",
+                endpointSHA256: provenanceSHA,
+                apiBackend: "responses",
+                requestBoundTokens: 100,
+                maxPayloadBytes: 80,
+                maxOutputTokens: 20,
+                boundProvenanceSHA256: provenanceSHA,
+                managedProviderID: "openrouter",
+                authScheme: "bearer"
+            )
+        )
+        final class PIDBox { var value: pid_t = 0 }
+        let observed = PIDBox()
+        GrokCandidateProcessLauncher.spawnedProcessObserverForTests = { observed.value = $0 }
+        defer { GrokCandidateProcessLauncher.spawnedProcessObserverForTests = nil }
+        GrokProcess.armedKeychainClientForTests = GrokArmedCredentialKeychainClient { _, item in
+            item?.pointee = [Data([0x01])] as NSArray
+            return errSecSuccess
+        }
+        defer { GrokProcess.armedKeychainClientForTests = nil }
+
+        let store = ChatStore(
+            acceptanceBudgetResolver: { _ in
+                .budget(self.acceptanceAuthorization(
+                    budget: budget,
+                    manifestSHA256: manifestSHA,
+                    cliManifestPath: cliManifest.path,
+                    ledgerPath: ledger.path,
+                    candidateExecutionLease: lease,
+                    credentialAuthorizationV3: v3
+                ))
+            },
+            acceptanceBudgetIsConfigured: { true }
+        )
+        store.bindTabSession(UUID(), savedModel: "grok-4.6")
+        await store.start(workspace: Workspace(name: "schema-3-native", path: fixture.container))
+        let sent = await store.sendAndWait("Return SCHEMA-3-NATIVE")
+        XCTAssertFalse(sent)
+        XCTAssertTrue(store.lastError?.contains("Armed credential launch stopped") == true)
+        XCTAssertFalse(store.lastError?.contains("schema-3 credential authorization") == true)
+        XCTAssertEqual(observed.value, 0)
         XCTAssertNil(store.process.activeProcessGeneration)
         await store.shutdownPermanently()
     }
