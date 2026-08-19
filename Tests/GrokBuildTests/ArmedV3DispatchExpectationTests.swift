@@ -103,6 +103,31 @@ final class ArmedV3DispatchExpectationTests: XCTestCase {
         ))
     }
 
+    func testLoopbackOpenRouterManagedProviderBindsAsOfficialHelper() {
+        let loopback = "http://127.0.0.1:9/v1"
+        let expectation = ArmedV3DispatchExpectation.tryMake(
+            authorization: authorization(),
+            selectedModelID: modelID,
+            customModel: CustomModel(
+                id: modelID,
+                model: providerFacing,
+                baseURL: loopback,
+                apiBackend: .chatCompletions,
+                providerID: "openrouter"
+            ),
+            provider: Provider(
+                id: "openrouter",
+                name: "OpenRouter",
+                baseURL: loopback,
+                authScheme: .bearer
+            ),
+            candidate: matchingCandidate()
+        )
+        XCTAssertEqual(expectation?.authBoundary, .officialHelper)
+        XCTAssertEqual(expectation?.managedProviderID, "openrouter")
+        XCTAssertEqual(expectation?.providerFacingModel, providerFacing)
+    }
+
     func testLocalEndpointWithoutOfficialHelperRefuses() {
         XCTAssertNil(ArmedV3DispatchExpectation.tryMake(
             authorization: authorization(

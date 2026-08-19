@@ -297,6 +297,24 @@ struct GrokBuildHardTokenBudgetCapability: Sendable, Equatable {
             && status.remainingTokens >= budget.tokenAllocation
     }
 
+    /// The GrokBuild fork advertises the capability on
+    /// `initialize.agentCapabilities._meta`. Ordinary result `_meta` is also
+    /// accepted so a later CLI move does not silently un-arm dispatch.
+    static func advertisedValue(fromInitializeResult result: [String: Any]?) -> Any? {
+        let key = metadataKey
+        if let direct = (result?["_meta"] as? [String: Any])?[key] {
+            return direct
+        }
+        let capabilities = result?["agentCapabilities"] as? [String: Any]
+        if let nested = (capabilities?["_meta"] as? [String: Any])?[key] {
+            return nested
+        }
+        if let nested = (capabilities?["meta"] as? [String: Any])?[key] {
+            return nested
+        }
+        return nil
+    }
+
     static func parse(_ value: Any?) -> GrokBuildHardTokenBudgetCapability? {
         guard let object = value as? [String: Any],
               let capabilityVersion = nonnegativeInteger(object["capabilityVersion"]),

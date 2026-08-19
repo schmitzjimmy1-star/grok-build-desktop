@@ -130,6 +130,23 @@ enum GrokProcessLaunchEnvironment {
         "GROK_HARD_TOKEN_BUDGET_ALLOCATION",
     ]
 
+    /// Armed v3 forbids config, resolver, injector, query, retry, and
+    /// environment auth. The child may inherit only FD 198 plus the explicit
+    /// hard-budget contract. These names are credential-free selectors.
+    static let armedAuthEnvironmentKeys = [
+        "XAI_API_KEY",
+        "GROK_API_KEY",
+        "OPENAI_API_KEY",
+        "OPENROUTER_API_KEY",
+        "ANTHROPIC_API_KEY",
+        "GROK_AUTH_PROVIDER_COMMAND",
+        "GROK_AUTH_PROVIDER_LABEL",
+        "GROK_CONFIG",
+        "GROK_CONFIG_PATH",
+        "GROK_CLI_CHAT_PROXY_BASE_URL",
+        "GROK_MAX_RETRIES",
+    ]
+
     static func resolved(
         base: [String: String],
         hardBudget contract: HardBudgetLaunchContract?
@@ -138,11 +155,23 @@ enum GrokProcessLaunchEnvironment {
         hardBudgetKeys.forEach { environment.removeValue(forKey: $0) }
         if let contract {
             environment.removeValue(forKey: "GROK_CLI_PATH")
+            environment = scrubArmedAuthSources(from: environment)
             environment[hardBudgetKeys[0]] = contract.ledgerPath
             environment[hardBudgetKeys[1]] = contract.manifestPath
             environment[hardBudgetKeys[2]] = contract.allocationID
         }
         return environment
+    }
+
+    static func scrubArmedAuthSources(from environment: [String: String]) -> [String: String] {
+        var scrubbed = environment
+        for key in armedAuthEnvironmentKeys {
+            scrubbed.removeValue(forKey: key)
+        }
+        for key in environment.keys where key.uppercased().contains("API_KEY") {
+            scrubbed.removeValue(forKey: key)
+        }
+        return scrubbed
     }
 }
 
@@ -1070,6 +1099,9 @@ final class GrokProcess: @unchecked Sendable {
     /// manufactures completion: expiry emits a typed bridge failure and the run
     /// remains visibly incomplete.
     private static let turnCompletionReceiptWatchdog: Duration = .seconds(180)
+    /// Armed v3 `session/prompt` must not hang XCTest or the UI when the CLI
+    /// fail-closes without a JSON-RPC result. Unarmed prompts stay unbounded.
+    static let armedSessionPromptTimeout: Duration = .seconds(90)
     /// A cancellation is advisory; receipt delivery gets one short chance before
     /// hard teardown. This is deliberately not a completion wait or provider retry.
     private static let stopReceiptDrainWindow: Duration = .milliseconds(150)
@@ -2355,13 +2387,23 @@ final class GrokProcess: @unchecked Sendable {
         let req: [String: Any] = ["jsonrpc": "2.0", "id": id, "method": method, "params": params]
 
         return try await withCheckedThrowingContinuation { c in
+            let timeoutTask: Task<Void, Never>?
+            if method == "session/prompt", activeHardBudgetLaunchContract != nil {
+                timeoutTask = Task { [weak self] in
+                    try? await Task.sleep(for: Self.armedSessionPromptTimeout)
+                    self?.timeoutPendingRequest(id: id)
+                }
+            } else {
+                timeoutTask = nil
+            }
             ioLock.lock()
-            pendingRequests[id] = PendingRequest(continuation: c, timeoutTask: nil)
+            pendingRequests[id] = PendingRequest(continuation: c, timeoutTask: timeoutTask)
             if method == "session/prompt" {
                 activePromptRequestID = id
             }
             ioLock.unlock()
             if !writeJson(req) {
+                timeoutTask?.cancel()
                 ioLock.lock()
                 pendingRequests.removeValue(forKey: id)
                 if activePromptRequestID == id { activePromptRequestID = nil }
@@ -2632,7 +2674,9 @@ final class GrokProcess: @unchecked Sendable {
             ioLock.unlock()
             return
         }
+        if activePromptRequestID == id { activePromptRequestID = nil }
         ioLock.unlock()
+        pending.timeoutTask?.cancel()
         pending.continuation.resume(throwing: NSError(
             domain: "ACP",
             code: -2,
@@ -2780,16 +2824,16 @@ final class GrokProcess: @unchecked Sendable {
         // Parse real models from modelState (do not make up)
         let meta = res?["_meta"] as? [String: Any]
         acpAgentVersion = (meta?["agentVersion"] as? String).flatMap(ACPAgentVersion.init)
-        hardTokenBudgetCapability = GrokBuildHardTokenBudgetCapability.parse(
-            meta?[GrokBuildHardTokenBudgetCapability.metadataKey]
+        let advertisedBudget = GrokBuildHardTokenBudgetCapability.advertisedValue(
+            fromInitializeResult: res
         )
+        hardTokenBudgetCapability = GrokBuildHardTokenBudgetCapability.parse(advertisedBudget)
         if let expectation = activeHardBudgetLaunchContract?.dispatchExpectation {
-            guard expectation.admitsInitializeMetadata(
-                meta?[GrokBuildHardTokenBudgetCapability.metadataKey]
-            ) else {
+            guard expectation.admitsInitializeMetadata(advertisedBudget) else {
                 throw ACPControlError.invalidStandardResponse(
                     method: "initialize",
-                    reason: "armed v3 initialize lacked a matching nested v3Authority"
+                    reason: expectation.initializeAdmissionRefusal(advertisedBudget)
+                        ?? "armed v3 initialize lacked a matching nested v3Authority"
                 )
             }
         }

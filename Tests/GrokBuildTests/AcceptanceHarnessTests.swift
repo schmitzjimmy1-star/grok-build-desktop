@@ -74,6 +74,40 @@ final class AcceptanceHarnessTests: XCTestCase {
         XCTAssertTrue(runScript.contains("load_ledger_v2(args.ledger)"))
     }
 
+    func testSlice4B5LifecyclePythonContracts() throws {
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/env")
+        process.arguments = ["python3", "-m", "unittest", "scripts.acceptance.tests.test_v3_lifecycle"]
+        process.currentDirectoryURL = Self.repoRoot
+        let output = Pipe()
+        process.standardOutput = output
+        process.standardError = output
+        try process.run()
+        process.waitUntilExit()
+        let text = String(decoding: output.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self)
+        XCTAssertEqual(process.terminationStatus, 0, text)
+        XCTAssertTrue(text.contains("OK"), text)
+
+        let driver = try String(
+            contentsOf: Self.repoRoot.appendingPathComponent("scripts/acceptance/harness/candidate_process_driver.py"),
+            encoding: .utf8
+        )
+        XCTAssertTrue(driver.contains("OFFICIAL_CLI_SHA256"))
+        XCTAssertTrue(driver.contains("STAGED_PAGER_SHA256"))
+        XCTAssertTrue(driver.contains("never replaces"))
+        XCTAssertFalse(driver.contains("grok update"))
+        let provider = try String(
+            contentsOf: Self.repoRoot.appendingPathComponent("scripts/acceptance/harness/loopback_provider.py"),
+            encoding: .utf8
+        )
+        XCTAssertTrue(provider.contains("127.0.0.1"))
+        XCTAssertTrue(provider.contains("simulated"))
+        XCTAssertFalse(provider.contains("openrouter.ai"))
+        XCTAssertFalse(driver.contains("loopback-placeholder-not-live"))
+        XCTAssertTrue(provider.contains("worker"))
+        XCTAssertTrue(provider.contains("recovery"))
+    }
+
     func testSlice6ManifestDryRunUsesQuarterMillionCeiling() throws {
         let manifest = Self.repoRoot
             .appendingPathComponent("scripts/acceptance/manifests/installed-slice6-packet-v1.json")

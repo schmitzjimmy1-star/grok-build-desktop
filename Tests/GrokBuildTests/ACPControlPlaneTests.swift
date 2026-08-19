@@ -36,6 +36,27 @@ final class ACPControlPlaneTests: XCTestCase {
         ], processGeneration: 9))
     }
 
+    func testHardBudgetCapabilityIsReadFromAgentCapabilitiesMeta() {
+        let payload: [String: Any] = [
+            "capabilityVersion": 3,
+            "armed": true,
+        ]
+        let result: [String: Any] = [
+            "_meta": ["agentVersion": "1.0.5"],
+            "agentCapabilities": [
+                "_meta": [GrokBuildHardTokenBudgetCapability.metadataKey: payload],
+            ],
+        ]
+        let advertised = GrokBuildHardTokenBudgetCapability.advertisedValue(
+            fromInitializeResult: result
+        ) as? [String: Any]
+        XCTAssertEqual(advertised?["capabilityVersion"] as? Int, 3)
+        XCTAssertEqual(advertised?["armed"] as? Bool, true)
+        XCTAssertNil(GrokBuildHardTokenBudgetCapability.advertisedValue(fromInitializeResult: [
+            "_meta": ["agentVersion": "1.0.5"]
+        ]))
+    }
+
     func testModelsAreAvailableOn104WhilePersistedControlsStayGated() {
         let registry = ACPControlCapabilityRegistry()
         registry.reset(generation: 4, agentVersion: ACPAgentVersion("1.0.4"))
