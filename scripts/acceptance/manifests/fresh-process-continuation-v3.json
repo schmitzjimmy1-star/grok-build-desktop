@@ -1,0 +1,72 @@
+{
+  "schemaVersion": 3,
+  "runId": "20260819T101400Z",
+  "campaignTokenCeiling": 20000000,
+  "plannedAllocation": 19000000,
+  "emergencyReserveTokens": 1000000,
+  "packets": [
+    {
+      "id": "S4B4-CONT-T1",
+      "allocationID": "alloc-t1",
+      "selectorModelID": "grok-4.6",
+      "prompt": "Reply with exactly the word pong.",
+      "marker": "GB-S4B4-CONT-T1",
+      "continuation": {
+        "group": "S4B4-CONT",
+        "turn": 1,
+        "of": 3,
+        "predecessorPacketID": null,
+        "predecessorBackendDigest": null,
+        "expectedLocalTab": "tab-retained",
+        "freshAppLaunchEpoch": true,
+        "freshProcessGeneration": true,
+        "freshAllocation": true,
+        "sharedCampaignManifest": true,
+        "sharedCampaignLedger": true,
+        "loadMethod": "session/load"
+      }
+    },
+    {
+      "id": "S4B4-CONT-T2",
+      "allocationID": "alloc-t2",
+      "selectorModelID": "grok-4.6",
+      "prompt": "Reply with exactly the word ping.",
+      "marker": "GB-S4B4-CONT-T2",
+      "continuation": {
+        "group": "S4B4-CONT",
+        "turn": 2,
+        "of": 3,
+        "predecessorPacketID": "S4B4-CONT-T1",
+        "predecessorBackendDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "expectedLocalTab": "tab-retained",
+        "freshAppLaunchEpoch": true,
+        "freshProcessGeneration": true,
+        "freshAllocation": true,
+        "sharedCampaignManifest": true,
+        "sharedCampaignLedger": true,
+        "loadMethod": "session/load"
+      }
+    },
+    {
+      "id": "S4B4-CONT-T3",
+      "allocationID": "alloc-t3",
+      "selectorModelID": "grok-4.6",
+      "prompt": "Reply with exactly the word pong.",
+      "marker": "GB-S4B4-CONT-T3",
+      "continuation": {
+        "group": "S4B4-CONT",
+        "turn": 3,
+        "of": 3,
+        "predecessorPacketID": "S4B4-CONT-T2",
+        "predecessorBackendDigest": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "expectedLocalTab": "tab-retained",
+        "freshAppLaunchEpoch": true,
+        "freshProcessGeneration": true,
+        "freshAllocation": true,
+        "sharedCampaignManifest": true,
+        "sharedCampaignLedger": true,
+        "loadMethod": "session/load"
+      }
+    }
+  ]
+}

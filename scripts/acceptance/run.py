@@ -24,6 +24,7 @@ from harness.authority_v2 import prepare_campaign_authority, retain_campaign_aut
 from harness.driver import (
     capture_identities,
     close_current_session,
+    governed_fresh_process_load,
     launch_installed,
     new_chat,
     quit_installed,
@@ -53,11 +54,17 @@ from harness.receipts import evaluate, load_ledger
 from harness.redaction import redact_value, safe_print
 from harness.schema import dry_run_plan as dry_run_plan_v1, load_manifest as load_manifest_v1, require_live_run_id as require_live_run_id_v1
 from harness.schema_v2 import dry_run_plan as dry_run_plan_v2, load_manifest as load_manifest_v2, require_live_run_id as require_live_run_id_v2
+from harness.schema_v3 import dry_run_plan as dry_run_plan_v3, load_manifest as load_manifest_v3
 from harness.receipts_v2 import (
     append_row as append_row_v2,
     evaluate as evaluate_v2,
     evaluate_prefix as evaluate_prefix_v2,
     load_ledger as load_ledger_v2,
+)
+from harness.receipts_v3 import (
+    append_row as append_row_v3,
+    evaluate_fresh_process_continuation,
+    load_ledger as load_ledger_v3,
 )
 
 DEFAULT_MANIFEST = ROOT / "manifests" / "installed-three-route-v1.json"
@@ -101,7 +108,12 @@ def main(argv: list[str] | None = None) -> int:
         if args.evaluate_ledger:
             version = _manifest_version(args.manifest)
             manifest = _load_manifest(args.manifest, args.run_id, version)
-            if version == 2:
+            if version == 3:
+                summary = evaluate_fresh_process_continuation(
+                    manifest["packets"],
+                    load_ledger_v3(args.ledger),
+                )
+            elif version == 2:
                 summary = evaluate_v2(manifest, load_ledger_v2(args.ledger))
             else:
                 summary = evaluate(manifest, load_ledger(args.ledger))
@@ -110,9 +122,14 @@ def main(argv: list[str] | None = None) -> int:
         if args.billable:
             if not args.run_id:
                 raise HarnessError("billable mode requires --run-id")
-            if _manifest_version(args.manifest) != 2:
-                raise HarnessError("legacy v1 billable execution is retired; use the guarded v2 campaign")
+            version = _manifest_version(args.manifest)
             from harness.preflight_v2 import require_absolute_ceiling_support, require_runtime_floor
+            if version == 3:
+                # Paid 4C stays locked. Refuse before runtime discovery or Send.
+                require_absolute_ceiling_support()
+                return _billable_v3(args)
+            if version != 2:
+                raise HarnessError("legacy v1 billable execution is retired; use the guarded v2 campaign")
             # This refusal is deliberately first. A locked paid campaign must not
             # start Grok even for version/catalog discovery.
             require_absolute_ceiling_support()
@@ -120,7 +137,12 @@ def main(argv: list[str] | None = None) -> int:
             return _billable_v2(args)
         version = _manifest_version(args.manifest)
         manifest = _load_manifest(args.manifest, args.run_id, version)
-        plan = dry_run_plan_v2(manifest) if version == 2 else dry_run_plan_v1(manifest)
+        if version == 3:
+            plan = dry_run_plan_v3(manifest)
+        elif version == 2:
+            plan = dry_run_plan_v2(manifest)
+        else:
+            plan = dry_run_plan_v1(manifest)
         safe_print(json.dumps(redact_value("plan", plan), indent=2))
         return 0
     except HarnessError as exc:
@@ -267,13 +289,17 @@ def _manifest_version(path: Path) -> int:
     except (OSError, json.JSONDecodeError) as exc:
         raise HarnessError(f"manifest is unreadable: {exc}") from exc
     version = value.get("schemaVersion") if isinstance(value, dict) else None
-    if version not in {1, 2}:
+    if version not in {1, 2, 3}:
         raise HarnessError(f"unsupported schemaVersion {version}")
     return int(version)
 
 
 def _load_manifest(path: Path, run_id: str | None, version: int) -> dict:
-    return (load_manifest_v2 if version == 2 else load_manifest_v1)(path, run_id=run_id)
+    if version == 3:
+        return load_manifest_v3(path, run_id=run_id)
+    if version == 2:
+        return load_manifest_v2(path, run_id=run_id)
+    return load_manifest_v1(path, run_id=run_id)
 
 
 def _billable_v2(args: argparse.Namespace) -> int:
@@ -475,6 +501,151 @@ def _billable_v2(args: argparse.Namespace) -> int:
                 process_zero_samples=process_zero_samples,
             )
         }, sort_keys=True))
+
+
+def _billable_v3(args: argparse.Namespace) -> int:
+    """Three allocated epochs, one backend, one ledger.
+
+    T1 creates the backend with session/new. T2/T3 relaunch a fresh installed
+    process, select the retained tab through governed_fresh_process_load, then
+    Send. Cleanup runs only after T3. Paid 4C stays locked in main() via
+    require_absolute_ceiling_support(); this body is the later unlock path.
+    """
+    if not args.run_id:
+        raise HarnessError("billable mode requires --run-id")
+    require_live_run_id_v2(args.run_id)
+    manifest = load_manifest_v3(args.manifest, run_id=args.run_id)
+    packets = manifest["packets"]
+    if len(packets) != 3:
+        raise HarnessError("schema-3 continuation requires exactly three packets")
+    rows: list[dict] = []
+    current_packet: dict | None = None
+    current_identities: dict[str, str] = {}
+    send_may_be_live = False
+    terminal_is_recorded = False
+    app_launch_epoch = 0
+    retained_backend = ""
+    campaign_ledger = str(args.ledger)
+    try:
+        for index, packet in enumerate(packets, start=1):
+            current_packet = packet
+            current_identities = {}
+            terminal_is_recorded = False
+            send_may_be_live = False
+            quit_installed()
+            two_process_zero_samples()
+            launch_installed()
+            app_launch_epoch += 1
+            if index == 1:
+                select_workspace(REPO)
+                new_chat()
+                select_model(packet["selectorModelID"])
+            else:
+                governed_fresh_process_load(
+                    expected_tab=packet["continuation"]["expectedLocalTab"],
+                    expected_backend=retained_backend,
+                )
+            send_may_be_live = True
+            send_prompt(packet["prompt"])
+            wait_for_marker(packet["marker"], timeout_seconds=300)
+            current_identities = capture_identities(REPO, packet["marker"])
+            generation = _continuation_process_generation(
+                TRANSCRIPTS / f"{current_identities['tabId']}.json",
+                packet["marker"],
+            )
+            if index == 1:
+                retained_tab = current_identities["tabId"]
+                retained_backend = current_identities["backendId"]
+                for item in packets:
+                    item["continuation"]["expectedLocalTab"] = retained_tab
+            terminal = {
+                "rowType": "terminal",
+                "packetId": packet["id"],
+                "tabId": current_identities["tabId"],
+                "backendId": current_identities["backendId"],
+                "appLaunchEpoch": app_launch_epoch,
+                "processGeneration": generation,
+                "allocationID": packet["allocationID"],
+                "campaignLedger": campaign_ledger,
+                "loadMethod": "session/load",
+                "sessionLoadStartedFreshFallback": False,
+                "loadTimePrompt": False,
+                "outcome": "new" if index == 1 else "loaded",
+            }
+            append_row_v3(args.ledger, terminal)
+            rows.append(terminal)
+            terminal_is_recorded = True
+            send_may_be_live = False
+        close_current_session(current_identities["tabId"])
+        append_row_v3(
+            args.ledger,
+            {
+                "rowType": "cleanup",
+                "packetId": packets[-1]["id"],
+                "cleanup": {"localTab": "closedExact"},
+            },
+        )
+        summary = evaluate_fresh_process_continuation(
+            manifest["packets"],
+            load_ledger_v3(args.ledger),
+        )
+        quit_installed()
+        summary["processZero"] = two_process_zero_samples()
+        safe_print(json.dumps(redact_value("summary", summary), sort_keys=True))
+        return 0
+    except Exception as exc:
+        secondary_failures: list[str] = []
+        if current_packet is not None and send_may_be_live and not terminal_is_recorded:
+            try:
+                stop_turn()
+                wait_for_terminal_checkpoint(current_packet["marker"], timeout_seconds=45)
+            except Exception:
+                secondary_failures.append("live turn could not be stopped and reconciled")
+        try:
+            quit_installed()
+            two_process_zero_samples()
+        except Exception:
+            secondary_failures.append("installed app cleanup/process-zero failed")
+        if secondary_failures:
+            raise HarnessError(
+                "v3 continuation stopped; " + "; ".join(secondary_failures)
+            ) from exc
+        if isinstance(exc, HarnessError):
+            raise
+        raise HarnessError(f"v3 continuation stopped: {type(exc).__name__}") from exc
+
+
+def _continuation_process_generation(path: Path, marker: str) -> int:
+    try:
+        envelope = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        raise HarnessError("continuation transcript is unreadable") from exc
+    messages = envelope.get("messages") if isinstance(envelope, dict) else None
+    if not isinstance(messages, list):
+        raise HarnessError("continuation transcript has no messages")
+    start = None
+    for index, message in enumerate(messages):
+        if not isinstance(message, dict):
+            continue
+        role = str(message.get("role") or "").lower()
+        content = str(message.get("content") or "")
+        if role == "user" and marker in content:
+            start = index
+    if start is None:
+        raise HarnessError(f"continuation transcript lacks marker {marker}")
+    for message in messages[start:]:
+        if not isinstance(message, dict):
+            continue
+        role = str(message.get("role") or "").lower()
+        if role not in {"assistant", "agent"}:
+            continue
+        checkpoint = (message.get("assistantTrace") or {}).get("checkpoint") or {}
+        if not isinstance(checkpoint, dict):
+            continue
+        generation = checkpoint.get("processGeneration")
+        if generation:
+            return int(generation)
+    raise HarnessError(f"continuation transcript lacks process generation for {marker}")
 
 
 def _sha256(path: Path) -> str | None:

@@ -63,7 +63,9 @@ unarmed Resume still can. During acceptance, `resumeTaskSession` refuses so
 retained tab through `governed_fresh_process_load`, then packet Send
 prelaunches the allocated process with `resumeSessionID` (`session/load`).
 Legacy continuation (`resumeAfterQuit`, `resume_saved_task`) is rejected at
-schema.
+schema. Schema-3 continuation dry-run and `_billable_v3` exist in
+`scripts/acceptance/run.py` and still refuse `--billable` at the absolute
+ceiling; paid 4C stays locked.
 
 ## Auth & status bar
 

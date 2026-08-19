@@ -7,6 +7,10 @@ prompts, and cleanup before T3 all fail closed.
 
 from __future__ import annotations
 
+import json
+import os
+import stat
+from pathlib import Path
 from typing import Any
 
 from .errors import ReceiptError
@@ -68,3 +72,41 @@ def evaluate_fresh_process_continuation(
         "allocationCount": 3,
         "ledgerCount": 1,
     }
+
+
+def append_row(path: Path, row: dict[str, Any]) -> None:
+    if not isinstance(row, dict) or row.get("rowType") not in {"terminal", "cleanup"}:
+        raise ReceiptError("v3 ledger row must be a terminal or cleanup object")
+    path.parent.mkdir(parents=True, exist_ok=True)
+    flags = os.O_WRONLY | os.O_APPEND | os.O_CREAT
+    if hasattr(os, "O_NOFOLLOW"):
+        flags |= os.O_NOFOLLOW
+    try:
+        fd = os.open(path, flags, 0o600)
+    except OSError as exc:
+        raise ReceiptError("v3 ledger could not be opened without following links") from exc
+    info = os.fstat(fd)
+    if not stat.S_ISREG(info.st_mode) or info.st_uid != os.getuid() or info.st_mode & 0o077:
+        os.close(fd)
+        raise ReceiptError("v3 ledger must be an owner-only regular file")
+    with os.fdopen(fd, "a", encoding="utf-8") as handle:
+        handle.write(json.dumps(row, sort_keys=True, separators=(",", ":")) + "\n")
+
+
+def load_ledger(path: Path) -> list[dict[str, Any]]:
+    try:
+        lines = path.read_text(encoding="utf-8").splitlines()
+    except OSError as exc:
+        raise ReceiptError("v3 ledger is unreadable") from exc
+    rows: list[dict[str, Any]] = []
+    for line in lines:
+        if not line.strip():
+            continue
+        try:
+            row = json.loads(line)
+        except json.JSONDecodeError as exc:
+            raise ReceiptError("v3 ledger row is unreadable") from exc
+        if not isinstance(row, dict):
+            raise ReceiptError("v3 ledger row must be an object")
+        rows.append(row)
+    return rows

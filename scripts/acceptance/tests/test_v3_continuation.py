@@ -1,13 +1,19 @@
 from __future__ import annotations
 
-import copy
 import inspect
+import json
+import tempfile
 import unittest
+from pathlib import Path
 
 from scripts.acceptance.harness.driver import governed_fresh_process_load, resume_saved_task
 from scripts.acceptance.harness.errors import DriverError, ReceiptError, SchemaError
-from scripts.acceptance.harness.receipts_v3 import evaluate_fresh_process_continuation
-from scripts.acceptance.harness.schema_v3 import validate_fresh_process_continuation
+from scripts.acceptance.harness.receipts_v3 import evaluate_fresh_process_continuation, load_ledger
+from scripts.acceptance.harness.schema_v3 import dry_run_plan, load_manifest, validate_fresh_process_continuation
+
+ROOT = Path(__file__).resolve().parents[1]
+MANIFEST = ROOT / "manifests" / "fresh-process-continuation-v3.json"
+RUN_PY = ROOT / "run.py"
 
 
 def _packet(turn: int, **overrides: object) -> dict:
@@ -123,3 +129,47 @@ class Slice4B4FreshProcessContinuationContracts(unittest.TestCase):
         with self.assertRaises(DriverError):
             governed_fresh_process_load(expected_tab="tab-retained", expected_backend="backend-1")
         self.assertIn("def resume_saved_task", inspect.getsource(resume_saved_task))
+
+    def test_committed_v3_manifest_dry_run_plans_governed_load(self) -> None:
+        manifest = load_manifest(MANIFEST, run_id="20260819T101400Z")
+        plan = dry_run_plan(manifest)
+        self.assertEqual(plan["schemaVersion"], 3)
+        self.assertIs(plan["billable"], False)
+        self.assertEqual(plan["continuation"]["t1"], "session/new")
+        self.assertEqual(plan["continuation"]["t2t3"], "governed_fresh_process_load")
+        self.assertEqual(plan["continuation"]["cleanupAfter"], "T3")
+        self.assertEqual(plan["continuation"]["loadMethod"], "session/load")
+        self.assertEqual([packet["turn"] for packet in plan["packets"]], [1, 2, 3])
+
+    def test_billable_v3_source_selects_retained_tab_and_cleans_up_after_t3(self) -> None:
+        source = RUN_PY.read_text(encoding="utf-8")
+        billable_v3 = source[source.index("def _billable_v3"):source.index("if __name__")]
+        self.assertIn("governed_fresh_process_load(", billable_v3)
+        self.assertIn("new_chat()", billable_v3)
+        self.assertIn("close_current_session(current_identities[\"tabId\"])", billable_v3)
+        self.assertIn("expectedLocalTab", billable_v3)
+        self.assertNotIn("resume_saved_task()", billable_v3)
+        self.assertNotIn("Resume current task", billable_v3)
+        self.assertNotIn("restore_continuation(", billable_v3)
+        happy_path = billable_v3[: billable_v3.index("except Exception as exc:")]
+        self.assertGreater(
+            happy_path.index("close_current_session(current_identities[\"tabId\"])"),
+            happy_path.rindex("send_prompt(packet[\"prompt\"])"),
+        )
+        stop_recovery = billable_v3[billable_v3.index("except Exception as exc:"):]
+        self.assertIn("wait_for_terminal_checkpoint(current_packet[\"marker\"]", stop_recovery)
+        self.assertNotIn("wait_for_marker(current_packet[\"marker\"]", stop_recovery)
+
+    def test_v3_ledger_loader_reads_jsonl_objects(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "ledger.jsonl"
+            path.write_text(
+                json.dumps(_terminal(1)) + "\n" + json.dumps(_terminal(2)) + "\n",
+                encoding="utf-8",
+            )
+            rows = load_ledger(path)
+            self.assertEqual([row["packetId"] for row in rows], ["CONT-T1", "CONT-T2"])
+
+
+if __name__ == "__main__":
+    unittest.main()

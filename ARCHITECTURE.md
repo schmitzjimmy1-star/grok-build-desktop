@@ -1279,10 +1279,10 @@ make ship      # Apple Development install to /Applications/GrokBuild.app
 | `scripts/release.sh` | Unsigned personal GitHub release only if explicitly asked; refuses `RELEASE_TYPE=notarized` |
 | `scripts/notarize.sh` | Present but unused. `make notarize` is refused on this personal line. |
 | `scripts/grokbuild-install-update.sh` | In-app replace + relaunch |
-| `scripts/acceptance/run.py` | Agentic acceptance harness: versioned manifests, dry-run default, fixture rejection, `--billable` installed UI only; Slice 6 packet ceiling 250k |
+| `scripts/acceptance/run.py` | Agentic acceptance harness: versioned manifests, dry-run default, fixture rejection, `--billable` installed UI only; Slice 6 packet ceiling 250k; schema-3 continuation dry-run plus `_billable_v3` (T1 `session/new`, T2/T3 `governed_fresh_process_load`, cleanup after T3) still fail-closed at the absolute ceiling |
 | `scripts/acceptance/harness/provenance_v3.py` | Independent 4B.3 canonical provenance and nested `v3Authority` verifier; does not mutate v2 |
-| `scripts/acceptance/harness/schema_v3.py` | 4B.4 fresh-process continuation schema: `session/load` only; `resumeAfterQuit` / `session/resume` / `resume_saved_task` fail closed |
-| `scripts/acceptance/harness/receipts_v3.py` | 4B.4 continuation evaluator: three allocations, one backend, one ledger; stale `session/new` fallback, load-time prompt, and early cleanup fail closed |
+| `scripts/acceptance/harness/schema_v3.py` | 4B.4 fresh-process continuation schema: `session/load` only; `resumeAfterQuit` / `session/resume` / `resume_saved_task` fail closed; `load_manifest` / `dry_run_plan` for schemaVersion 3 |
+| `scripts/acceptance/harness/receipts_v3.py` | 4B.4 continuation evaluator: three allocations, one backend, one ledger; stale `session/new` fallback, load-time prompt, and early cleanup fail closed; JSONL `append_row` / `load_ledger` |
 | `scripts/acceptance/harness/driver.py` | Installed-app UI driver. `governed_fresh_process_load` selects the retained tab by AX UUID after an allocated launch and never clicks ungoverned Resume; later packet Send performs native `session/load`. `resume_saved_task` remains the consumer-only v1 path |
 
 **SPM targets:** `GrokBuild` (app), `GrokBuildComputerUseCore` (shared Computer Use contract library), `GrokBuildComputerUseMCP` (MCP helper), `GrokBuildTests`.
@@ -1331,7 +1331,7 @@ spawn/ACP/session/model/MCP readiness, submit/dispatch/first-chunk/settled bound
 using only stage, time, and PID. It never records prompts, response bodies, tool
 arguments, credentials, URLs, or environment contents.
 | **Public README screenshots (2026-08-13 campaign Slice 7)** | `docs/images/grokbuild-app.png` (signed-installed New chat), `docs/images/grokbuild-run-inspector.png` (settled multi-tool/two-child Run inspector); first-screenful copy in `README.md` |
-| **Agentic acceptance harness** | `scripts/acceptance/run.py`, `scripts/acceptance/schema/v1.json`, `scripts/acceptance/manifests/installed-three-route-v1.json`, `scripts/acceptance/manifests/installed-slice6-packet-v1.json`; dry-run default, `--billable` after preflight, fixture-mode rejection, exact-ID cleanup, Slice 6 250k Stop packet; independent v3 provenance verifier in `scripts/acceptance/harness/provenance_v3.py` |
+| **Agentic acceptance harness** | `scripts/acceptance/run.py`, `scripts/acceptance/schema/v1.json`, `scripts/acceptance/manifests/installed-three-route-v1.json`, `scripts/acceptance/manifests/installed-slice6-packet-v1.json`, `scripts/acceptance/manifests/fresh-process-continuation-v3.json`; dry-run default, `--billable` after preflight, fixture-mode rejection, exact-ID cleanup, Slice 6 250k Stop packet; independent v3 provenance verifier in `scripts/acceptance/harness/provenance_v3.py`; schema-3 continuation dry-run plus fail-closed `_billable_v3` |
 | **Armed v3 credential / provenance (4B.3 T5 proven locally)** | `ArmedV3DispatchExpectation.swift`, `GrokArmedCredentialMaterializer.swift`, `HardBudgetProvenanceV3.swift`, nested ACP `v3Authority`, fail-closed `ArmedV3ResolvedSnapshot`, `TrackedConfigGeneration` / `ResolvedConfigIdentityTracker`, live `ArmedV3LiveRouteCore` plus `ArmedV3PacketBoundsObservation` (loopback endpoint SHA, deterministic `v3.<sha256>` route id, 64KiB serializer ceiling, Darwin `fd_v1`, five-tool isolation, derived conservative bound), selected-model `resolved-managed-provider` source kind, preserved `ModelEntry.model_provider`, omitted armed summary client, spawn requires already-active authority, production `GrokProcess.start` materializes v3 via the dedicated Keychain client then `posix_spawn`s the leased candidate with FD 198/197 (debug tests inject the client; schema-2 stays fail-closed; schema-3 packets carry selectors, and `ArmedV3DispatchExpectation` cross-binds them to the live custom model + provider before `HardBudgetLaunchContract`; spawn rechecks that latch (model, empty MCP, `officialHelper`, file identity) immediately before `posix_spawn`, and `initialize` must present a matching nested `v3Authority` before `.ready`; schema-3 uses 20M/19M/1M and refuses the live v1 4M governor), one cached armed `SamplingClient` per sampler actor, CLI pager FD-198 owner install, `agent::init::bootstrap` `bind_measured_v3_authority_if_present`, `bind_and_install_v3_authority`, `SamplingClient::new_with_armed_v3` / `from_process_config` |
 | **Add/remove project** | `WorkspaceStore`, `WorkspacePicker` |
 | **Browser tools** | `AgentBrowserService`, `BrowserSettingsStore`, settings `.browser` (agent-browser CLI over MCP) |
@@ -1407,7 +1407,7 @@ make test    # Tests/GrokBuildTests/
 | `OpenRouterOAuthTests.swift` | PKCE/authorization/exchange parsing plus real loopback capture and a cancellation-safe timeout |
 | `SettingsTabTests.swift` | Settings destination metadata/grouping, selected-pane-only lifecycle, shared value-state/status/accessibility reducers, adaptive rows, explicit persistence, and the six-priority-pane parent-draft/cancellation source contract |
 | `LifecycleAndSubprocessTests.swift` | Coalesced streaming Settings reconnects, exact apply/fork receipts, process-LRU identity safety, store/process release, one-shot subprocess hygiene, and restored-empty Resume chrome vs New chat |
-| `AcceptanceHarnessTests.swift` | Agentic `scripts/acceptance/` harness: dry-run default, `--billable` fail-closed without a run ID, guessed-cleanup refusal, fixture-mode reject/accept cases at zero provider cost, Resume-then-Send labels, installed-exec refuse of `.build` / `dist`, Slice 6 250k Stop packet, and 4B.4 fresh-process continuation schema/receipt/governed-load driver contracts |
+| `AcceptanceHarnessTests.swift` | Agentic `scripts/acceptance/` harness: dry-run default, `--billable` fail-closed without a run ID, guessed-cleanup refusal, fixture-mode reject/accept cases at zero provider cost, Resume-then-Send labels, installed-exec refuse of `.build` / `dist`, Slice 6 250k Stop packet, 4B.4 fresh-process continuation schema/receipt/governed-load driver contracts, schema-3 dry-run, and schema-3 `--billable` still ceiling-locked |
 | `GrokArmedCredentialMaterializerTests.swift` | Fake Keychain materializer query, one-Data result, wipe, Browser/Computer/MCP preflight refusal, production `GrokProcess.start` v3 spawn with an injected client against the cooperative receiver, and an env-gated signed digest-staged pager E2E (`GROKBUILD_SLICE4B3_RUNTIME_SELECTION`; skips in CI) |
 | `HardBudgetProvenanceV3Tests.swift` | Independent Swift canonical bytes/digest parity with Rust plus hostile missing/extra/reorder/4M-policy refusal |
 
@@ -1583,8 +1583,10 @@ activation, live provider hosts, helper execution, candidate install, and
 ad-hoc 4B.0 arming remain locked. 4B.4 tab-select is wired:
 `governed_fresh_process_load` selects the retained tab by AX UUID, ungoverned
 `resumeTaskSession` refuses during acceptance, and packet Send prelaunches the
-allocated process with `session/load`. A schema-3 billable runner and paid 4C
-remain locked. Live unarmed and schema-2 packets stay on the 4M/3M/1M v1 governor.
+allocated process with `session/load`. Schema-3 continuation dry-run and
+`_billable_v3` are wired (T1 `session/new`, T2/T3 governed tab-select, cleanup
+after T3) and still fail-closed at the absolute ceiling. Paid 4C remains locked.
+Live unarmed and schema-2 packets stay on the 4M/3M/1M v1 governor.
 Schema-3 armed desktop packets use versioned 20M/19M/1M and refuse that mix.
 CLI `HardTokenBudget::from_env` vs v3 authority in the child remains a fork
 follow-up.

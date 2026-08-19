@@ -465,8 +465,10 @@ three allocations, one backend, and one ledger; `governed_fresh_process_load`
 selects the retained tab by AX UUID and cannot call the ungoverned saved-task
 chrome; acceptance `session/load` refuses stale `session/new` fallback; and
 `resumeTaskSession` refuses during acceptance so packet Send owns allocated
-load. Ordinary consumer Resume is unchanged. A schema-3 billable runner remains
-unwired. Paid activation remains locked.
+load. Ordinary consumer Resume is unchanged. Schema-3 continuation dry-run and
+`_billable_v3` are wired (T1 `session/new`, T2/T3 `governed_fresh_process_load`,
+cleanup after T3) and still fail-closed at the absolute ceiling. Paid
+activation remains locked.
 
 ### `HardTokenBoundProvenanceV1`
 

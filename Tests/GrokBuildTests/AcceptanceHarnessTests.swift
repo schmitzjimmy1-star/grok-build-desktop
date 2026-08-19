@@ -174,6 +174,34 @@ final class AcceptanceHarnessTests: XCTestCase {
         XCTAssertTrue(governed.contains("_select_retained_tab"))
     }
 
+    func testSlice4B4Schema3DryRunPlansGovernedLoad() throws {
+        let manifest = Self.repoRoot
+            .appendingPathComponent("scripts/acceptance/manifests/fresh-process-continuation-v3.json")
+        let result = try runHarness(["--manifest", manifest.path, "--run-id", "20260819T101400Z"])
+        XCTAssertEqual(result.exitCode, 0, result.output)
+        XCTAssertTrue(result.stdout.contains("\"schemaVersion\": 3"), result.stdout)
+        XCTAssertTrue(result.stdout.contains("\"billable\": false"), result.stdout)
+        XCTAssertTrue(result.stdout.contains("governed_fresh_process_load"), result.stdout)
+        XCTAssertTrue(result.stdout.contains("\"cleanupAfter\": \"T3\""), result.stdout)
+        XCTAssertTrue(result.stdout.contains("S4B4-CONT-T1"), result.stdout)
+    }
+
+    func testSlice4B4Schema3BillableStillRefusesAbsoluteCeiling() throws {
+        let manifest = Self.repoRoot
+            .appendingPathComponent("scripts/acceptance/manifests/fresh-process-continuation-v3.json")
+        let result = try runHarness([
+            "--manifest", manifest.path,
+            "--run-id", "20260819T101401Z",
+            "--billable",
+        ])
+        XCTAssertEqual(result.exitCode, 2, result.output)
+        XCTAssertTrue(
+            result.stderr.contains("cannot prove the absolute 4,000,000-token ceiling"),
+            "Schema-3 --billable must refuse at the absolute ceiling before runtime discovery or Send: \(result.output)"
+        )
+        XCTAssertFalse(result.stderr.contains("legacy v1 billable execution is retired"), result.stderr)
+    }
+
     func testSlice4HarnessUsesOnlyAppOwnedEvidenceAndAllowlistedV2Rows() throws {
         let preflight = try String(
             contentsOf: Self.repoRoot.appendingPathComponent("scripts/acceptance/harness/preflight.py"),
