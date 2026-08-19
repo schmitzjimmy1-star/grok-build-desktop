@@ -362,6 +362,17 @@ final class GrokArmedCredentialMaterializerTests: XCTestCase {
         )
     }
 
+    func testAcceptanceSessionLoadRefusesStaleNewFallback() throws {
+        XCTAssertNil(GrokSessionLoadError.staleFallbackRefusal(hardBudget: nil))
+        let fixture = try CandidateRuntimeTestFixture.makeCredentialReceiverExecutable()
+        defer { try? FileManager.default.removeItem(at: fixture.container) }
+        let contract = try makeArmedContract(fixture: fixture, allocationID: "packet-load")
+        XCTAssertEqual(
+            GrokSessionLoadError.staleFallbackRefusal(hardBudget: contract),
+            "Acceptance session/load cannot fall back to session/new"
+        )
+    }
+
     func testV3PreflightRefusesEveryOrdinaryToolOrHelperDetour() {
         let authorization = authorization()
         XCTAssertNil(GrokArmedCredentialLaunchPreflight.refusalMessage(

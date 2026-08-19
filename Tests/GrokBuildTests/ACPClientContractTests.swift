@@ -414,6 +414,51 @@ final class ACPClientContractTests: XCTestCase {
         await store.shutdownPermanently()
     }
 
+    @MainActor
+    func testAcceptanceResumeCurrentTaskRefusesUngovernedLoad() async {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("grokbuild-acceptance-resume-\(UUID().uuidString)", isDirectory: true)
+        try? FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let store = ChatStore(
+            acceptanceBudgetResolver: { _ in .blocked },
+            acceptanceBudgetIsConfigured: { true }
+        )
+        store.bindTabSession(UUID(), savedModel: "grok-4.6", savedGrokSessionID: "backend-retained")
+        store.restorePersistedMessages([
+            Message(role: .user, content: "prior prompt"),
+            Message(role: .assistant, content: "prior reply"),
+        ])
+        await store.start(workspace: Workspace(name: "acceptance-resume", path: root))
+        XCTAssertTrue(store.canResumeTaskSession)
+        let resumed = await store.resumeTaskSession()
+        XCTAssertFalse(resumed)
+        XCTAssertNil(store.process.activeProcessGeneration)
+        XCTAssertEqual(store.connectionState, .idle)
+        XCTAssertTrue(store.lastError?.contains("ungoverned Resume") == true)
+        await store.shutdownPermanently()
+    }
+
+    func testAcceptanceReplayMismatchCannotFallBackToNewBackend() throws {
+        let repositoryRoot = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        let source = try String(
+            contentsOf: repositoryRoot.appendingPathComponent("GrokBuild/Services/ChatStore.swift"),
+            encoding: .utf8
+        )
+        let start = try XCTUnwrap(
+            source.range(of: "private func continueFrozenSendAfterReplayMismatchIfNeeded() async")
+        )
+        let end = try XCTUnwrap(
+            source.range(of: "private func finishPrompt(assistantID: UUID, ok: Bool)", range: start.upperBound..<source.endIndex)
+        )
+        let method = String(source[start.lowerBound..<end.lowerBound])
+        XCTAssertTrue(method.contains("acceptanceBudgetIsConfigured()"))
+        XCTAssertTrue(method.contains("Acceptance session/load cannot fall back to a new backend."))
+    }
+
     func testHardBudgetLaunchEnvironmentScrubsAmbientAuthorityAndSetsOnlyExplicitContract() throws {
         let root = FileManager.default.temporaryDirectory
             .appendingPathComponent("grokbuild-launch-authority-\(UUID().uuidString)", isDirectory: true)

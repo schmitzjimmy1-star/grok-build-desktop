@@ -168,6 +168,8 @@ final class ResponsiveAndAccessibilityTests: XCTestCase {
         let sidebar = try source("GrokBuild/Views/SidebarView.swift")
         XCTAssertTrue(sidebar.contains("grok-sidebar-session-row"),
                       "nested session rows carry a stable accessibility identifier")
+        XCTAssertTrue(sidebar.contains(".accessibilityValue(session.id.uuidString)"),
+                      "session rows expose the exact tab UUID so continuation can select one row")
         XCTAssertTrue(sidebar.contains("SessionSidebarMetadata.accessibilityLabel(for: session)"),
                       "session rows keep their spoken title/model/state label")
         XCTAssertTrue(sidebar.contains(".accessibilityAction(named: \"Rename session\")"),

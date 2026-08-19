@@ -276,11 +276,13 @@ discovery. The official CLI remains unchanged at `grok 1.0.4
 (d846eb93d94d) [stable]`, SHA-256
 `39366f7756a090b735cc1df8c93a8c0c3c7871555cf6cbb28f9351ca82936485`.
 
-The exact next slice is 4B.4 after the 4B.3 T5 closeout merges: fresh-process
-`session/load` continuation. 4B.3 T5 production `GrokProcess.start` is proven
-locally against the signed digest-staged pager SHA-256 `14da2ef7…e68701` with a
-fake Keychain sentinel; CI skips that E2E. Hostile `setsid`/tool-tree proof
-stays 4B.5. Paid activation remains locked. A 2026-08-18 Cursor checkpoint made the
+The exact next remaining 4B.4 work is live unarmed T2/T3 proof: relaunch the
+installed app, select the retained tab by AX UUID, Send without Resume, and
+keep official grok 1.0.4 as the child. Schema-3 continuation dry-run and
+`_billable_v3` are wired (three allocated epochs, `governed_fresh_process_load`
+for T2/T3, one backend/ledger, cleanup after T3). `--billable` still fails
+closed at `require_absolute_ceiling_support()`. 4B.3 T5 merged through PR [#136](https://github.com/schmitzjimmy1-star/grok-build-desktop/pull/136)
+as `1aeebdf`. Hostile `setsid`/tool-tree proof stays 4B.5. Paid activation remains locked. A 2026-08-18 Cursor checkpoint made the
 builder-to-active-to-claim-to-armed-sampler type-state unbypassable in the dirty
 CLI/app trees, added independent Python `provenance_v3` golden parity, and
 renamed Swift's expected digest field. A later same-day checkpoint wired pager
@@ -361,8 +363,12 @@ the signed digest-staged pager `14da2ef7…e68701` without the fixture signature
 override, injects a fake sentinel, and fail-closes ACP before `.ready`. A
 2026-08-19 local DEBUG run passed in 17.445s; the official CLI SHA was
 unchanged. Paid activation, live provider dispatch, ad-hoc 4B.0 arming, and
-hostile `setsid`/tool-tree proof remain locked. 4B.4 is next after this closeout
-merges. The official CLI remains `grok 1.0.4 (d846eb93d94d) [stable]`, SHA-256
+hostile `setsid`/tool-tree proof remain locked. 4B.4 tab-select is wired:
+schema-level legacy continuation refusal, `governed_fresh_process_load` selects
+the retained tab by AX UUID, ungoverned `resumeTaskSession` refuses during
+acceptance, and packet Send prelaunches allocated `session/load`. Schema-3
+continuation dry-run and `_billable_v3` are wired and still fail-closed at the
+absolute ceiling. Paid 4C remains locked. The official CLI remains `grok 1.0.4 (d846eb93d94d) [stable]`, SHA-256
 `39366f7756a090b735cc1df8c93a8c0c3c7871555cf6cbb28f9351ca82936485`.
 
 PR [#124](https://github.com/schmitzjimmy1-star/grok-build-desktop/pull/124)

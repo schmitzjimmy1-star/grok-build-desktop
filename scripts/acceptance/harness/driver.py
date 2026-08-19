@@ -108,8 +108,15 @@ def _walk_named(node: Any, hits: list[dict[str, str]]) -> None:
         ref = node.get("ref_id") or node.get("ref")
         role = str(node.get("role") or "")
         value = str(node.get("value") or "")
+        identifier = str(node.get("identifier") or node.get("id") or "")
         if isinstance(name, str) and isinstance(ref, str) and ref.startswith("@"):
-            hits.append({"name": name, "ref": ref, "role": role, "value": value})
+            hits.append({
+                "name": name,
+                "ref": ref,
+                "role": role,
+                "value": value,
+                "identifier": identifier,
+            })
         for child in node.get("children") or []:
             _walk_named(child, hits)
     elif isinstance(node, list):
@@ -443,6 +450,64 @@ def wait_for_restore_chrome(*, timeout_seconds: int = 25) -> None:
             last_error = exc
         time.sleep(0.5)
     raise DriverError(f"restore chrome did not appear: {last_error}")
+
+
+def _select_retained_tab(expected_tab: str) -> None:
+    snapshot = _ad(["snapshot", "--app", APP_NAME, *_window_args(), "--surface", "window", "-i"])
+    hits: list[dict[str, str]] = []
+    payload = _payload(snapshot)
+    if isinstance(payload, dict):
+        _walk_named(payload.get("tree"), hits)
+    matches = [
+        item for item in hits
+        if item.get("value") == expected_tab
+        or item.get("identifier", "").endswith(expected_tab)
+    ]
+    if len(matches) != 1:
+        raise DriverError("exact retained tab is not uniquely available")
+    _ad(["click", matches[0]["ref"]])
+    time.sleep(0.6)
+
+
+def _retained_backend_id(expected_tab: str) -> str:
+    transcripts = Path.home() / "Library/Application Support/GrokBuild/Transcripts"
+    envelope_path = transcripts / f"{expected_tab}.json"
+    if not envelope_path.is_file():
+        raise DriverError("retained tab transcript is unavailable")
+    try:
+        envelope = json.loads(envelope_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        raise DriverError("retained tab transcript is unreadable") from exc
+    if not isinstance(envelope, dict):
+        raise DriverError("retained tab transcript is unreadable")
+    backend = _backend_from_envelope(envelope)
+    if not backend:
+        raise DriverError("retained tab does not expose the expected backend")
+    return backend
+
+
+def governed_fresh_process_load(*, expected_tab: str, expected_backend: str) -> None:
+    """Select the retained tab after allocation so later Send uses ACP session/load.
+
+    Requires the installed app. Does not send a prompt.
+    """
+    if not expected_tab or not expected_backend:
+        raise DriverError("governed load requires the exact retained tab and backend")
+    _require_only_installed()
+    _select_retained_tab(expected_tab)
+    deadline = time.time() + 25
+    last_error: Exception | None = None
+    while time.time() < deadline:
+        try:
+            _find_named("Message composer", role="textfield")
+            observed = _retained_backend_id(expected_tab)
+            if observed != expected_backend:
+                raise DriverError("retained tab/backend identity drift")
+            return
+        except DriverError as exc:
+            last_error = exc
+            time.sleep(0.5)
+    raise DriverError(f"governed session/load tab is not ready: {last_error}")
 
 
 def resume_saved_task() -> None:
