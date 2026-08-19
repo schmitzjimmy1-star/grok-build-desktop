@@ -415,7 +415,8 @@ schema-3 packets parse `credentialAuthorizationV3` selectors. Dispatch binds
 those selectors through `ArmedV3DispatchExpectation` to the live custom model
 and linked provider before `HardBudgetLaunchContract`. Spawn rechecks that
 latch immediately before `posix_spawn`. Armed `initialize` refuses `.ready`
-without a matching nested `v3Authority`. Native Grok routes fail
+without a matching nested `v3Authority`. Schema-3 packets require 20M/19M/1M
+and refuse the live v1/v2 4M governor; schema-2 stays 4M/3M/1M. Native Grok routes fail
 that bind and still fail preflight if a contract is constructed directly. Armed
 mode omits the summary `OaiCompatClient`. Resolved models keep `model_provider`.
 `ResolvedConfigIdentityTracker` bumps generation only when the credential-free

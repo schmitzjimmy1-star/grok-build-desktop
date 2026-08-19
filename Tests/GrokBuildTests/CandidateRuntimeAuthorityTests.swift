@@ -735,7 +735,7 @@ final class CandidateRuntimeAuthorityTests: XCTestCase {
         let manifest = AcceptanceBudgetManifest(
             schemaVersion: 3,
             runID: "schema-3",
-            campaignTokenCeiling: 4_000_000,
+            campaignTokenCeiling: 20_000_000,
             emergencyReserveTokens: 1_000_000,
             hardBudgetManifestSHA256: CandidateRuntimeTestFixture.sha256(cliManifestData),
             expectedCLIBuild: fixture.cliBuild,

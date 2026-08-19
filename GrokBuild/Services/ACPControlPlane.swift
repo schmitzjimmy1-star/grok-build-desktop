@@ -241,12 +241,38 @@ struct GrokBuildHardTokenBudgetCapability: Sendable, Equatable {
     }
 
     func authorizes(_ authorization: AcceptanceBudgetAuthorization) -> Bool {
+        if authorization.credentialAuthorizationV3 != nil {
+            return authorizesArmedV3(authorization)
+        }
         guard isEnforcing,
-              let status,
-              let allocation,
               authorization.campaignTokenCeiling == 4_000_000,
               authorization.emergencyReserveTokens == 1_000_000,
               let spendableTokenCeiling = authorization.spendableTokenCeiling else { return false }
+        return matchesLiveAllocation(authorization, spendableTokenCeiling: spendableTokenCeiling)
+    }
+
+    /// Schema-3 armed packets use versioned 20M/19M/1M policy. A live v1/v2
+    /// enforcing 4M governor must not authorize them, and a v3 projection must
+    /// not authorize a 4M packet.
+    private func authorizesArmedV3(_ authorization: AcceptanceBudgetAuthorization) -> Bool {
+        guard !isEnforcing,
+              capabilityVersion == 3,
+              authorization.campaignTokenCeiling == Int(HardBudgetProvenanceV3.absoluteTokenCeiling),
+              authorization.emergencyReserveTokens == Int(HardBudgetProvenanceV3.unreachableReserveTokens),
+              let spendableTokenCeiling = authorization.spendableTokenCeiling,
+              spendableTokenCeiling == Int(HardBudgetProvenanceV3.allocatableTokenCeiling) else {
+            return false
+        }
+        return matchesLiveAllocation(authorization, spendableTokenCeiling: spendableTokenCeiling)
+    }
+
+    private func matchesLiveAllocation(
+        _ authorization: AcceptanceBudgetAuthorization,
+        spendableTokenCeiling: Int
+    ) -> Bool {
+        guard let status,
+              let allocation,
+              status.violated == false else { return false }
         let budget = authorization.budget
         return status.campaignID == authorization.runID
             && status.ceilingTokens == spendableTokenCeiling

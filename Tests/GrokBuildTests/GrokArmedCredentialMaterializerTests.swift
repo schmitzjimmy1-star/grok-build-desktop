@@ -462,7 +462,7 @@ final class GrokArmedCredentialMaterializerTests: XCTestCase {
             )
             let authorization = AcceptanceBudgetAuthorization(
                 runID: "schema-3",
-                campaignTokenCeiling: 4_000_000,
+                campaignTokenCeiling: 20_000_000,
                 emergencyReserveTokens: 1_000_000,
                 hardBudgetManifestSHA256: manifestSHA,
                 expectedCLIBuild: fixture.cliBuild,

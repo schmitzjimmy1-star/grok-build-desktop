@@ -100,21 +100,29 @@ struct AcceptanceBudgetManifest: Codable, Equatable, Sendable {
             partial = overflow ? Int.max : sum
         }
         let packetsMatchSchema: Bool
+        let requiredCeiling: Int
+        let requiredReserve: Int
         switch schemaVersion {
         case 2:
             packetsMatchSchema = packets.allSatisfy {
                 $0.route.managedProviderID == nil && $0.route.authScheme == nil
             }
+            requiredCeiling = 4_000_000
+            requiredReserve = 1_000_000
         case 3:
             packetsMatchSchema = packets.allSatisfy { $0.route.credentialAuthorizationV3 != nil }
+            requiredCeiling = Int(HardBudgetProvenanceV3.absoluteTokenCeiling)
+            requiredReserve = Int(HardBudgetProvenanceV3.unreachableReserveTokens)
         default:
             packetsMatchSchema = false
+            requiredCeiling = 0
+            requiredReserve = 0
         }
         return (schemaVersion == 2 || schemaVersion == 3)
             && packetsMatchSchema
             && !runID.isEmpty
-            && campaignTokenCeiling == 4_000_000
-            && emergencyReserveTokens == 1_000_000
+            && campaignTokenCeiling == requiredCeiling
+            && emergencyReserveTokens == requiredReserve
             && spendableTokenCeiling != nil
             && hardBudgetManifestSHA256.range(
                 of: #"^[0-9a-f]{64}$"#,

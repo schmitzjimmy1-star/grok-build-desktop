@@ -176,6 +176,13 @@ final class ArmedV3DispatchExpectationTests: XCTestCase {
             providers: [matchingProvider()],
             candidate: matchingCandidate()
         ))
+        XCTAssertNil(ArmedV3DispatchExpectation.tryMake(
+            authorization: authorization(campaignTokenCeiling: 4_000_000),
+            selectedModelID: modelID,
+            customModel: matchingCustomModel(),
+            provider: matchingProvider(),
+            candidate: matchingCandidate()
+        ))
     }
 
     func testSpawnAdmissionRefusesModelAndMCPDrift() throws {
@@ -241,7 +248,8 @@ final class ArmedV3DispatchExpectationTests: XCTestCase {
         attachedAuthorization: GrokArmedCredentialAuthorizationV3? = nil,
         providerID: String = "openrouter",
         authScheme: String = "bearer",
-        model: String? = nil
+        model: String? = nil,
+        campaignTokenCeiling: Int = 20_000_000
     ) -> AcceptanceBudgetAuthorization {
         let route = AcceptanceHardBudgetRoute(
             model: model ?? providerFacing,
@@ -257,7 +265,7 @@ final class ArmedV3DispatchExpectationTests: XCTestCase {
         let packetAuth = attachedAuthorization ?? route.credentialAuthorizationV3
         return AcceptanceBudgetAuthorization(
             runID: "schema-3",
-            campaignTokenCeiling: 4_000_000,
+            campaignTokenCeiling: campaignTokenCeiling,
             emergencyReserveTokens: 1_000_000,
             hardBudgetManifestSHA256: String(repeating: "a", count: 64),
             expectedCLIBuild: "1.0.5 (86f0c70)",
