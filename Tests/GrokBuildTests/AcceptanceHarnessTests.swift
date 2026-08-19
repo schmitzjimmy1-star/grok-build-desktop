@@ -133,6 +133,7 @@ final class AcceptanceHarnessTests: XCTestCase {
         XCTAssertTrue(installer.contains("candidate-runtime"))
         XCTAssertFalse(installer.contains("grok update"))
         XCTAssertTrue(installer.contains("O_EXCL"))
+        XCTAssertTrue(installer.contains("distinct timestamps"))
         let runScript = try String(contentsOf: Self.runScript, encoding: .utf8)
         let billableRange = try XCTUnwrap(runScript.range(of: "def _billable_v3"))
         let mainRange = try XCTUnwrap(runScript.range(of: "if __name__"))

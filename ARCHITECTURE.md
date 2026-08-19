@@ -963,7 +963,8 @@ byte-copies that same signed pager into an owner-private
 `~/Library/Application Support/GrokBuild/candidate-runtime/<sha256>/` tree
 (`scripts/acceptance/harness/candidate_install.py`). Owner-local lifecycle tests
 install a copy first, then rerun the 4B.5 matrix against the installed
-selection. Ordinary CLI lookup still never scans that directory. Paid 4C stays
+selection. Ordinary CLI lookup still never scans that directory. Rollback
+requires two empty process-zero samples with distinct timestamps. Paid 4C stays
 locked.
 
 The remaining supply-chain, credential, provenance, continuation, loopback, and
@@ -1299,6 +1300,7 @@ make ship      # Apple Development install to /Applications/GrokBuild.app
 | `scripts/acceptance/harness/schema_v3.py` | 4B.4 fresh-process continuation schema: `session/load` only; `resumeAfterQuit` / `session/resume` / `resume_saved_task` fail closed; `load_manifest` / `dry_run_plan` for schemaVersion 3 |
 | `scripts/acceptance/harness/receipts_v3.py` | 4B.4 continuation evaluator: three allocations, one backend, one ledger; stale `session/new` fallback, load-time prompt, and early cleanup fail closed; JSONL `append_row` / `load_ledger` |
 | `scripts/acceptance/harness/driver.py` | Installed-app UI driver. `governed_fresh_process_load` selects the retained tab by AX UUID after an allocated launch and never clicks ungoverned Resume; later packet Send performs native `session/load`. `resume_saved_task` remains the consumer-only v1 path |
+| `scripts/acceptance/harness/candidate_install.py` | Slice 4B.6 signed owner-private pager copy into `candidate-runtime/<sha256>/`; never `~/.grok/bin/grok`; rollback unlinks only the selection sidecar after two empty process-zero samples with distinct timestamps |
 
 **SPM targets:** `GrokBuild` (app), `GrokBuildComputerUseCore` (shared Computer Use contract library), `GrokBuildComputerUseMCP` (MCP helper), `GrokBuildTests`.
 

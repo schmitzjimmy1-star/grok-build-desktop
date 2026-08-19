@@ -53,20 +53,20 @@
 > CLI upgrade and provider/config/credential mutation remain unauthorized.
 > Slice 5 and later work remain locked.
 >
-> **2026-08-19 stop-the-line (not 4B.4, not 4C):** a restored rich Markdown
+> **2026-08-19 layout-loop (merged, not 4C):** a restored rich Markdown
 > transcript plus a second Send pinned GrokBuild's main thread at 100% in SwiftUI
 > `NSHostingView.layout` / `SelectionOverlay` / `ChatTranscriptLayout.IdentifiedMessageBlock`
-> while grok sat idle. Repair is a separate branch from `main`
-> (`cursor/transcript-selection-scroll-settlement`): suspend AppKit text selection
-> during auto-follow streaming and settlement, and skip per-chunk follow scrolls
-> when already attached. Do not mix this into the 4B.4 PR. Do not Computer-Use the
-> huge T1 overview to prove it; use a short transcript. Paid 4C stays locked.
+> while grok sat idle. Repair merged as PR
+> [#138](https://github.com/schmitzjimmy1-star/grok-build-desktop/pull/138)
+> (`6498de1`) and is on current `main` (`ChatTranscriptSelectionPolicy` plus
+> attached follow-scroll skip). Do not Computer-Use the huge T1 overview to
+> prove it; use a short transcript. Paid 4C stays locked.
 >
 > Prior campaigns: 2026-08-15 Visual Quiet complete and merged through `3947136` (PR #113);
 > 2026-08-14 Residual Closeout (Phases 0–6) complete and merged as `4613bde` (PR #94);
 > 2026-08-13 campaign (Slices 0–7) closed at merge `c0895ee` (PR #86).
 
-## Official Runtime Alignment — 2026-08-16 (Slices 0–3 complete; Slice 4A nonbillable implementation complete)
+## Official Runtime Alignment — 2026-08-16 (Slices 0–3 complete; Slice 4B.0–4B.6 accepted; paid 4C locked)
 
 Authorized spec is
 [`docs/GROKBUILD_OFFICIAL_RUNTIME_ALIGNMENT_CAMPAIGN_2026-08-16.md`](GROKBUILD_OFFICIAL_RUNTIME_ALIGNMENT_CAMPAIGN_2026-08-16.md).
@@ -385,13 +385,16 @@ zero-tool `live_ids` drain skip (`9db8cb0`), after-turn workspace detach
 `scripts/acceptance/harness/loopback_provider.py`,
 `scripts/acceptance/harness/candidate_process_driver.py`. Armed
 `session/prompt` timeout stays 90s. Kill-after-response-before-settlement is
-the loopback `hold_after_body` case in `Slice4B5LifecycleTests`. **4B.6 is the
-current slice:** signed owner-private digest install via
+the loopback `hold_after_body` case in `Slice4B5LifecycleTests`. **4B.6 is
+accepted** as merge `29c064f` (PR [#140](https://github.com/schmitzjimmy1-star/grok-build-desktop/pull/140)):
+signed owner-private digest install via
 `scripts/acceptance/harness/candidate_install.py`, class-setup copy then rerun of
 the 4B.5 matrix against that copy, rollback of the selection sidecar only.
-Hostile `setsid`/tool-tree is the CLI leftover
-`hard_budget_receiver_closes_fd_before_raw_fork_and_setsid_descendant` on the
-pager-bin CI filter. Paid 4C stays locked. Do not `grok update`.
+Rollback now refuses two process-zero samples that share one timestamp. Hostile
+`setsid`/tool-tree leftover is CLI PR [#7](https://github.com/schmitzjimmy1-star/grok-build/pull/7)
+(`hard_budget_receiver_closes_fd_before_raw_fork_and_setsid_descendant` on the
+pager-bin CI filter). Darwin post-enrollment `setsid()` remains the known 4B.2
+limit. Do not rebuild the pager. Paid 4C stays locked. Do not `grok update`.
 
 PR [#124](https://github.com/schmitzjimmy1-star/grok-build-desktop/pull/124)
 passed required exact-head run `32123735441` and merged normally as

@@ -68,6 +68,19 @@ class Slice4B6InstallContracts(unittest.TestCase):
                     process_zero_samples=[{"at": "now", "pids": {"grok": [1]}}, {"at": "now", "pids": {"grok": []}}],
                 )
 
+    def test_rollback_refuses_identical_process_zero_timestamps(self) -> None:
+        with tempfile.TemporaryDirectory() as raw:
+            selection = Path(raw) / "runtime-selection.json"
+            selection.write_text("{}")
+            os.chmod(selection, 0o600)
+            empty = {"GrokBuild": [], "grok": [], "agent-desktop": [], "owned-browser": []}
+            duplicate = [
+                {"at": "2026-08-19T17:53:24-0500", "pids": dict(empty)},
+                {"at": "2026-08-19T17:53:24-0500", "pids": dict(empty)},
+            ]
+            with self.assertRaisesRegex(HarnessError, "distinct timestamps"):
+                rollback_signed_install(selection, process_zero_samples=duplicate)
+
     def test_rollback_refuses_a_missing_selection(self) -> None:
         with tempfile.TemporaryDirectory() as raw:
             missing = Path(raw) / "runtime-selection.json"

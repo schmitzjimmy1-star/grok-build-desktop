@@ -83,10 +83,11 @@ loopback `pong`. Tests: `Slice4B5LifecycleTests`, including
 temp dest in tests) via `scripts/acceptance/harness/candidate_install.py`.
 Ordinary `GrokProcess.start` does not scan that directory. Armed launch still
 requires `--grokbuild-acceptance-runtime-selection-file=` plus budget/manifest/ledger.
-Rollback unlinks only the selection sidecar after two process-zero samples.
-Owner-local lifecycle tests install a copy first, then rerun the 4B.5 matrix
-against it. 4C paid Send stays locked behind `require_absolute_ceiling_support()`;
-`_billable_v3` must not call `resume_saved_task()`.
+Rollback unlinks only the selection sidecar after two process-zero samples
+with distinct timestamps. Owner-local lifecycle tests install a copy first, then
+rerun the 4B.5 matrix against it. 4C paid Send stays locked behind
+`require_absolute_ceiling_support()`; `_billable_v3` must not call
+`resume_saved_task()`.
 
 ## Auth & status bar
 
