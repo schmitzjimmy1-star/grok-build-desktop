@@ -32,8 +32,11 @@ final class ComposerCursorRectView: NSView {
     }
 
     override func setFrameSize(_ newSize: NSSize) {
+        let sizeChanged = frame.size != newSize
         super.setFrameSize(newSize)
-        window?.invalidateCursorRects(for: self)
+        if sizeChanged {
+            window?.invalidateCursorRects(for: self)
+        }
     }
 
     override func resetCursorRects() {
@@ -96,7 +99,9 @@ struct ComposerCursorRegion: NSViewRepresentable {
     }
 
     func updateNSView(_ nsView: ComposerCursorRectView, context: Context) {
-        nsView.window?.invalidateCursorRects(for: nsView)
+        // SwiftUI calls this for every draft mutation. Invalidating cursor
+        // rectangles here turns long prompt entry into an AppKit layout loop;
+        // window attachment and actual size changes already own invalidation.
     }
 }
 

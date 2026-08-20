@@ -724,6 +724,8 @@ final class ActivitySidebarTests: XCTestCase {
         XCTAssertTrue(chat.contains("addCursorRect(bounds, cursor: .iBeam)"))
         XCTAssertTrue(composer.contains(".overlay(ComposerCursorRegion())"))
         XCTAssertTrue(chrome.contains("window?.invalidateCursorRects(for: self)"))
+        XCTAssertTrue(chat.contains("let sizeChanged = frame.size != newSize"))
+        XCTAssertFalse(chat.contains("updateNSView(_ nsView: ComposerCursorRectView, context: Context) {\n        nsView.window?.invalidateCursorRects(for: nsView)"))
         XCTAssertTrue(chrome.contains(".cursorUpdate"))
         XCTAssertTrue(chrome.contains("NSCursor.iBeam.set()"))
         XCTAssertTrue(chrome.contains("NSCursor.arrow.set()"))
