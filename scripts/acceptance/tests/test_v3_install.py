@@ -95,7 +95,11 @@ class Slice4B6InstallContracts(unittest.TestCase):
         run_source = (REPO / "scripts" / "acceptance" / "run.py").read_text()
         billable = run_source[run_source.index("def _billable_v3") : run_source.index("if __name__")]
         self.assertNotIn("resume_saved_task()", billable)
+        self.assertNotIn("later unlock path", billable)
+        self.assertIn("4B.4 continuation", billable)
         self.assertIn("governed_fresh_process_load", billable)
+        self.assertIn("launch_installed()", billable)
+        self.assertNotIn("runtime_selection_file=", billable)
         self.assertIn("require_absolute_ceiling_support()", run_source)
 
     def test_ordinary_resolver_source_never_scans_candidate_runtime(self) -> None:

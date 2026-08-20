@@ -139,6 +139,9 @@ final class AcceptanceHarnessTests: XCTestCase {
         let mainRange = try XCTUnwrap(runScript.range(of: "if __name__"))
         let billable = String(runScript[billableRange.lowerBound..<mainRange.lowerBound])
         XCTAssertFalse(billable.contains("resume_saved_task()"))
+        XCTAssertFalse(billable.contains("later unlock path"))
+        XCTAssertTrue(billable.contains("4B.4 continuation"))
+        XCTAssertFalse(billable.contains("runtime_selection_file="))
     }
 
     func testSlice6ManifestDryRunUsesQuarterMillionCeiling() throws {

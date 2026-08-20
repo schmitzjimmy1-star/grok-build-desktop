@@ -402,7 +402,11 @@ final class Slice4B5LifecycleTests: XCTestCase {
         let mainRange = try XCTUnwrap(runScript.range(of: "if __name__"))
         let billable = String(runScript[billableRange.lowerBound..<mainRange.lowerBound])
         XCTAssertFalse(billable.contains("resume_saved_task()"))
+        XCTAssertFalse(billable.contains("later unlock path"))
+        XCTAssertTrue(billable.contains("4B.4 continuation"))
         XCTAssertTrue(billable.contains("governed_fresh_process_load"))
+        XCTAssertTrue(billable.contains("launch_installed()"))
+        XCTAssertFalse(billable.contains("runtime_selection_file="))
         XCTAssertTrue(runScript.contains("require_absolute_ceiling_support()"))
     }
 

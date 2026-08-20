@@ -625,7 +625,7 @@ Do **not** commit exported plist files from repo root (`.gitignore`).
 | `~/Library/Application Support/GrokBuild/Transcripts/<local-session-uuid>.metadata.json` | Owner-only metadata sidecar: local tab ID, schema, generation, message/restorable-message counts, and modified date. Restore selection and counts read this sidecar without parsing message bodies. |
 | `~/Library/Application Support/GrokBuild/Transcripts/legacy-v1-migration.json` | Owner-only keyed migration-complete marker. It is written only after the complete v1 dictionary is copied and verified; legacy preferences remain untouched for rollback. |
 | `~/Library/Application Support/GrokBuild/candidate-runtime/<sha256>/` | Slice 4B.6 owner-private signed pager (`xai-grok-pager`) plus `candidate-provenance-v1.json`. Ordinary `GrokProcess.start` never scans this directory. Armed launch requires `--grokbuild-acceptance-runtime-selection-file=` plus budget/manifest/ledger together. |
-| `~/Library/Application Support/GrokBuild/candidate-runtime/runtime-selection.json` | Acceptance selection sidecar (0600, `O_EXCL`). Rollback unlinks only this file after two empty process-zero samples and writes `rollback-receipt-v1.json`; the digest-addressed pager stays. Never written under `~/.grok`. |
+| `~/Library/Application Support/GrokBuild/candidate-runtime/runtime-selection.json` | Acceptance selection sidecar (0600, `O_EXCL`). After 4B.6 rollback this file is **absent** until a 4C paid packet reinstalls it; ordinary `GrokProcess.start` never scans the directory. Rollback unlinks only this file after two empty process-zero samples and writes `rollback-receipt-v1.json`; the digest-addressed pager stays. Never written under `~/.grok`. |
 
 ---
 
@@ -1295,7 +1295,7 @@ make ship      # Apple Development install to /Applications/GrokBuild.app
 | `scripts/release.sh` | Unsigned personal GitHub release only if explicitly asked; refuses `RELEASE_TYPE=notarized` |
 | `scripts/notarize.sh` | Present but unused. `make notarize` is refused on this personal line. |
 | `scripts/grokbuild-install-update.sh` | In-app replace + relaunch |
-| `scripts/acceptance/run.py` | Agentic acceptance harness: versioned manifests, dry-run default, fixture rejection, `--billable` installed UI only; Slice 6 packet ceiling 250k; schema-3 continuation dry-run plus `_billable_v3` (T1 `session/new`, T2/T3 `governed_fresh_process_load`, cleanup after T3) still fail-closed at the absolute ceiling |
+| `scripts/acceptance/run.py` | Agentic acceptance harness: versioned manifests, dry-run default, fixture rejection, `--billable` installed UI only; Slice 6 packet ceiling 250k; schema-3 continuation dry-run plus `_billable_v3` (4B.4 T1 `session/new`, T2/T3 `governed_fresh_process_load`, cleanup after T3; not the 4C route matrix) still fail-closed at the absolute ceiling |
 | `scripts/acceptance/harness/provenance_v3.py` | Independent 4B.3 canonical provenance and nested `v3Authority` verifier; does not mutate v2 |
 | `scripts/acceptance/harness/schema_v3.py` | 4B.4 fresh-process continuation schema: `session/load` only; `resumeAfterQuit` / `session/resume` / `resume_saved_task` fail closed; `load_manifest` / `dry_run_plan` for schemaVersion 3 |
 | `scripts/acceptance/harness/receipts_v3.py` | 4B.4 continuation evaluator: three allocations, one backend, one ledger; stale `session/new` fallback, load-time prompt, and early cleanup fail closed; JSONL `append_row` / `load_ledger` |
@@ -1589,22 +1589,22 @@ v3 environment fail-closes at bootstrap when observation, candidate claim, or
 snapshot resolution does not succeed. CLI bootstrap bind is proven on a local
 `86f0c70` candidate (`1.0.5 (86f0c70)`, binary SHA-256 `25181a88…0df98`) via
 fake FD 198 plus measured FD 197; merge SHA `f87a874` is not that candidate's
-compiled `SOURCE_COMMIT_SHA`. Production `GrokProcess.start` T5 now also
-leases the Apple Development signed digest-staged copy of that pager
-(binary SHA-256
-`14da2ef77ea00cbea6d8b2cf3ad9d6511eb530a53d23777109e6f382a7e68701`) without the
-fixture signature override, injects a fake Keychain sentinel, and `posix_spawn`s
-that SHA. A 2026-08-19 local DEBUG run passed in 17.445s, fail-closed before
-`.ready`, left the official CLI bytes unchanged, and skipped CI unless
-`GROKBUILD_SLICE4B3_RUNTIME_SELECTION` points at that owner-private selection
-file. That is not live Keychain, live provider, or install proof. Paid
-activation, live provider hosts, helper execution, candidate install, and
+compiled `SOURCE_COMMIT_SHA`. **Historical 4B.3-era T5 evidence:** production
+`GrokProcess.start` leased signed pager SHA-256
+`14da2ef77ea00cbea6d8b2cf3ad9d6511eb530a53d23777109e6f382a7e68701`. Current
+accepted pin is `f434fa4f17160c8771d3b57bfc62499e252413c4d1fc5ab22bee1a18f2bc933b`,
+`cliBuild` `1.0.5 (8226242)`, source `822624291de2b544605f439ad1349ae6bdc3cf10`.
+That 4B.3-era run fail-closed before `.ready`, left the official CLI bytes
+unchanged, and skipped CI unless `GROKBUILD_SLICE4B3_RUNTIME_SELECTION` points
+at an owner-private selection file. That is not live Keychain, live provider, or
+install proof. Paid activation, live provider hosts, helper execution, and
 ad-hoc 4B.0 arming remain locked. 4B.4 tab-select is wired:
 `governed_fresh_process_load` selects the retained tab by AX UUID, ungoverned
 `resumeTaskSession` refuses during acceptance, and packet Send prelaunches the
 allocated process with `session/load`. Schema-3 continuation dry-run and
 `_billable_v3` are wired (T1 `session/new`, T2/T3 governed tab-select, cleanup
-after T3) and still fail-closed at the absolute ceiling. Paid 4C remains locked.
+after T3) and still fail-closed at the absolute ceiling. That path is 4B.4
+continuation, not 4C. Paid 4C remains locked.
 Live unarmed and schema-2 packets stay on the 4M/3M/1M v1 governor.
 Schema-3 armed desktop packets use versioned 20M/19M/1M and refuse that mix.
 CLI `HardTokenBudget::from_env` vs v3 authority in the child remains a fork
@@ -1623,6 +1623,8 @@ follow-up.
 | `docs/GROKBUILD_RESIDUAL_CLOSEOUT_2026-08-14.md` | Closed 2026-08-14 residual-closeout campaign (Phases 0–6 complete) |
 | `docs/GROKBUILD_LEFTOVER_CLOSEOUT_2026-08-15.md` | Leftover closeout (Phases 1–2 merged as `7a3006d`). Phase 3 ChatView split stays deferred. |
 | `docs/GROKBUILD_VISUAL_QUIET_CAMPAIGN_2026-08-15.md` | Proposed visual-quiet campaign (not started). Not leftover Phase 3. |
+| `docs/GROKBUILD_SLICE4_ACTIVATION_CAMPAIGN_2026-08-17.md` | Slice 4B activation authority; 4B.0–4B.6 accepted; paid 4C locked |
+| `docs/GROKBUILD_SLICE4C_EDIT_MAP_2026-08-19.md` | Pre-4C leftover closeout: new armed `_billable_4c` executor map; do not unlock `_billable_v3` |
 | `docs/GROKBUILD_AGENTIC_COCKPIT_CAMPAIGN_2026-08-15.md` | Closed Agentic Cockpit campaign (Phases 1/3/4 complete; Phase 2 deferred as leftover Phase 3). |
 | `.cursor/rules/` | Architecture, SwiftUI, CLI integration, AppKit panels |
 | `.cursor/skills/grokbuild-*` | Dev workflow, release, CLI checks |
