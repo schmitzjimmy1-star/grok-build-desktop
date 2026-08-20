@@ -208,6 +208,46 @@ final class CodexShellParityTests: XCTestCase {
                       "update chrome must clear the macOS traffic-light row")
     }
 
+    /// Frontend rebuild F5B: the workspace shell loses its heavy nested-card
+    /// treatment while persistent chat titles and receipt truth stay readable.
+    func testF5BQuietWorkspaceChromeAndReadableReceipts() throws {
+        let theme = try source("GrokBuild/AppTheme.swift")
+        XCTAssertTrue(theme.contains("dark: NSColor(red: 0.112, green: 0.116, blue: 0.124"),
+                      "the rail stays distinct without becoming a charcoal slab")
+        XCTAssertTrue(theme.contains("static let sidebarTitle = Font.system(size: 13.5"),
+                      "conversation rows use their own readable type role")
+
+        let sidebar = try source("GrokBuild/Views/SidebarView.swift")
+        XCTAssertTrue(sidebar.contains("AppTheme.Typography.sidebarTitleSelected"))
+        XCTAssertTrue(sidebar.contains("Color.primary.opacity(0.78)"),
+                      "unselected conversation titles remain readable instead of tiny tertiary text")
+        XCTAssertTrue(sidebar.contains(".frame(minHeight: 42)"),
+                      "conversation rows keep a full pointer and reading target")
+
+        let composer = try source("GrokBuild/Views/ComposerViews.swift")
+        let toolStart = try XCTUnwrap(composer.range(of: "private struct AssistantToolTraceRow"))
+        let toolEnd = try XCTUnwrap(
+            composer.range(of: "// MARK: - Workflow chips", range: toolStart.upperBound..<composer.endIndex)
+        )
+        let toolRow = String(composer[toolStart.lowerBound..<toolEnd.lowerBound])
+        XCTAssertFalse(toolRow.contains(".background(AppTheme.Palette.sidebarSelection"),
+                       "tool receipts are transcript rows, not charcoal cards")
+        XCTAssertFalse(toolRow.contains(".background(statusColor.opacity"),
+                       "settled status remains semantic text, not another nested pill")
+        XCTAssertTrue(toolRow.contains(".fill(AppTheme.Palette.divider)"),
+                      "a quiet rule preserves scan order after the card is removed")
+        XCTAssertTrue(toolRow.contains("settledOutput"),
+                      "flattening presentation must not discard redacted receipt detail")
+
+        let content = try source("GrokBuild/ContentView.swift")
+        let bannerStart = try XCTUnwrap(content.range(of: "private struct UpdatesBanner"))
+        let banner = String(content[bannerStart.lowerBound...])
+        XCTAssertTrue(banner.contains(".padding(.vertical, 6)"))
+        XCTAssertTrue(banner.contains(".background(AppTheme.Palette.chrome)"))
+        XCTAssertFalse(banner.contains(".background(.regularMaterial)"),
+                       "the update notice is a compact top row, not a second material titlebar")
+    }
+
     /// Slice 5 presentation contract (replaced the Slice 0 red-baseline
     /// inventory): the right panel is a compact contextual inspector — short
     /// optional sections, content height, deep receipts one disclosure away —

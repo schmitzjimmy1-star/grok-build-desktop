@@ -220,7 +220,7 @@ struct SidebarView: View {
         VStack(spacing: 0) {
             HStack(spacing: 6) {
                 Text("GrokBuild")
-                    .font(AppTheme.Typography.heading)
+                    .font(.system(size: 15, weight: .semibold))
                     .lineLimit(1)
 
                 Spacer(minLength: 4)
@@ -522,7 +522,7 @@ struct SidebarView: View {
             onClose: { onCloseSession(session.id) },
             onCloseLocal: { onCloseLocalSession(session.id) }
         )
-        .listRowInsets(EdgeInsets(top: 2, leading: 16, bottom: 2, trailing: 8))
+        .listRowInsets(EdgeInsets(top: 2, leading: 12, bottom: 2, trailing: 8))
         .listRowBackground(Color.clear)
         .contextMenu {
             Button("Rename…") {
@@ -625,9 +625,9 @@ private struct SessionSidebarRow: View {
                 .frame(width: 10)
 
                 Text(session.title)
-                    .font(isSelected ? AppTheme.Typography.captionStrong : AppTheme.Typography.caption)
+                    .font(isSelected ? AppTheme.Typography.sidebarTitleSelected : AppTheme.Typography.sidebarTitle)
                     .lineLimit(1)
-                    .foregroundStyle(isSelected ? .primary : .secondary)
+                    .foregroundStyle(isSelected ? Color.primary : Color.primary.opacity(0.78))
                 Spacer()
                 if session.hasActiveSchedule {
                     Image(systemName: "clock.badge.checkmark")
@@ -639,8 +639,8 @@ private struct SessionSidebarRow: View {
                 }
                 }
                 .padding(.horizontal, 6)
-                .padding(.vertical, 7)
-                .frame(minHeight: 38)
+                .padding(.vertical, 8)
+                .frame(minHeight: 42)
                 .contentShape(Rectangle())
                 .background(
                     isSelected ? AppTheme.Palette.sidebarSelection : Color.clear,
@@ -695,14 +695,10 @@ private struct WorkspaceRow: View {
 
     var body: some View {
         HStack(spacing: 10) {
-            ZStack {
-                RoundedRectangle(cornerRadius: AppTheme.Radius.medium, style: .continuous)
-                    .fill(isSelected ? AppTheme.Palette.surfaceHover : AppTheme.Palette.glassTint)
-                Image(systemName: isPinned ? "pin.fill" : "folder.fill")
-                    .font(.system(size: 12, weight: .semibold))
-                    .foregroundStyle(isPinned || isSelected ? Color.primary : .secondary)
-            }
-            .frame(width: 28, height: 28)
+            Image(systemName: isPinned ? "pin.fill" : "folder.fill")
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundStyle(isPinned || isSelected ? Color.primary : .secondary)
+                .frame(width: 28, height: 28)
 
             Text(workspace.displayName)
                 .font(isSelected ? AppTheme.Typography.captionStrong : AppTheme.Typography.caption)

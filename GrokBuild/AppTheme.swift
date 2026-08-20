@@ -17,7 +17,7 @@ enum AppTheme {
         )
         static let canvas = Color(nsColor: canvasNSColor)
         static let sidebarNSColor = adaptiveNSColor(
-            dark: NSColor(red: 0.132, green: 0.137, blue: 0.148, alpha: 1),
+            dark: NSColor(red: 0.112, green: 0.116, blue: 0.124, alpha: 1),
             light: NSColor(red: 0.949, green: 0.953, blue: 0.963, alpha: 1)
         )
         static let sidebar = Color(nsColor: sidebarNSColor)
@@ -156,6 +156,10 @@ enum AppTheme {
         static let label = Font.system(size: 11, weight: .medium, design: .default)
         static let caption = Font.system(size: 12, weight: .regular, design: .default)
         static let captionStrong = Font.system(size: 12, weight: .semibold, design: .default)
+        /// Persistent conversation titles need to survive a dense project history
+        /// without competing with transcript text.
+        static let sidebarTitle = Font.system(size: 13.5, weight: .regular, design: .default)
+        static let sidebarTitleSelected = Font.system(size: 13.5, weight: .semibold, design: .default)
         /// Count badges rendered inside small circles.
         static let badge = Font.system(size: 9, weight: .semibold, design: .default)
         /// Inline code and command output.

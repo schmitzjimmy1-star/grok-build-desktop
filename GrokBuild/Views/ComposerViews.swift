@@ -217,8 +217,13 @@ private struct AssistantToolTraceRow: View {
                 .padding(.vertical, 6)
             }
         }
-        .padding(.horizontal, 8)
-        .background(AppTheme.Palette.sidebarSelection, in: RoundedRectangle(cornerRadius: AppTheme.Radius.medium))
+        .padding(.vertical, 2)
+        .overlay(alignment: .bottom) {
+            Rectangle()
+                .fill(AppTheme.Palette.divider)
+                .frame(height: 1)
+                .accessibilityHidden(true)
+        }
         .accessibilityElement(children: .contain)
         .accessibilityLabel(accessibilityLabel(server: displayedMCPServer))
         .accessibilityValue(
@@ -246,19 +251,19 @@ private struct AssistantToolTraceRow: View {
                     .lineLimit(1)
             }
             Spacer(minLength: 8)
-            Label(statusLabel, systemImage: statusIcon)
-                .font(AppTheme.Typography.badge)
-                .foregroundStyle(statusColor)
-                .padding(.horizontal, 7)
-                .frame(minHeight: 22)
-                .background(statusColor.opacity(0.09), in: Capsule())
+            HStack(spacing: 4) {
+                Image(systemName: statusIcon)
+                Text(statusLabel)
+            }
+            .font(AppTheme.Typography.label)
+            .foregroundStyle(statusColor)
             if hasOutput {
                 Image(systemName: isExpanded ? "chevron.up" : "chevron.down")
                     .font(.caption2.weight(.semibold))
                     .foregroundStyle(.tertiary)
             }
         }
-        .frame(maxWidth: .infinity, minHeight: 38, alignment: .leading)
+        .frame(maxWidth: .infinity, minHeight: 36, alignment: .leading)
         .contentShape(Rectangle())
     }
 

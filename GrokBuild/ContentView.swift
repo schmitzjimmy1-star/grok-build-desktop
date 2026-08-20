@@ -1916,24 +1916,23 @@ private struct UpdatesBanner: View {
     }
 
     var body: some View {
-        HStack(spacing: 12) {
+        HStack(spacing: 9) {
             Image(systemName: "arrow.triangle.2.circlepath")
-                .font(.title3)
-                .foregroundStyle(.blue)
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(AppTheme.Palette.link)
 
-            VStack(alignment: .leading, spacing: 4) {
-                Button(action: onAction) {
-                    Text("Updates Available")
-                        .font(.callout.weight(.semibold))
-                }
-                .buttonStyle(.plain)
-                .accessibilityIdentifier("grok-upgrade-banner-open")
-                .accessibilityHint("Opens the update panel. Do not use during campaign acceptance.")
-
-                Text(subtitle)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+            Button(action: onAction) {
+                Text("Updates Available")
+                    .font(AppTheme.Typography.captionStrong)
             }
+            .buttonStyle(.plain)
+            .accessibilityIdentifier("grok-upgrade-banner-open")
+            .accessibilityHint("Opens the update panel. Do not use during campaign acceptance.")
+
+            Text(subtitle)
+                .font(AppTheme.Typography.caption)
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
 
             Spacer(minLength: 8)
 
@@ -1948,10 +1947,10 @@ private struct UpdatesBanner: View {
             .accessibilityLabel("Dismiss upgrade notice")
             .accessibilityHint("Hides this notice until the next launch.")
         }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 10)
+        .padding(.horizontal, 12)
+        .padding(.vertical, 6)
         .padding(.top, TitlebarMetrics.systemTitlebarHeight)
-        .background(.regularMaterial)
+        .background(AppTheme.Palette.chrome)
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("grok-upgrade-banner")
         .overlay(alignment: .bottom) {

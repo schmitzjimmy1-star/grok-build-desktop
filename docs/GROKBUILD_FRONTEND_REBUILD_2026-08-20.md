@@ -138,11 +138,27 @@ purple/lavender action chrome. Dark maps interactive chrome to white/near-white;
 Light maps the same semantics to black/charcoal. Blue remains reserved for real
 links, while warning, failure, and success retain their semantic colors.
 
-Installed acceptance may include one explicitly authorized, bounded, no-retry
-billable prompt that exercises a read-only CLI-owned tool so the transcript,
-tool receipt, and usage projection are visually proven together. That proof
+Installed acceptance may include an explicitly authorized, bounded, no-retry
+billable prompt matrix that exercises read-only CLI-owned tools so the transcript,
+worker coordination, tool receipts, and usage projection are visually proven together. That proof
 does not unlock or modify the separate 4C runtime, budget, provider, credential,
 or routing campaign. Focused tests per bounded checkpoint.
+
+The second F5 visual checkpoint quiets the workspace itself: Dark rail contrast
+moves closer to the canvas, project glyphs lose their charcoal tiles, persistent
+conversation titles gain a dedicated readable type role, and the update notice
+becomes one compact top row. Transcript tool receipts become flat disclosure rows
+with semantic status text and a quiet separator; redacted result detail, MCP/tool
+identity, duration, failure state, and accessibility remain unchanged.
+
+Jimmy explicitly authorized this checkpoint's live agentic acceptance. It is
+bounded to at most two user prompts, no automatic retries, read-only repository
+tools, exactly two requested child workers in the long-horizon prompt, and an
+aggregate provider-reported ceiling of USD 0.50. The parent must reconcile spawn,
+child-session, terminal child, child-tool, model/route, usage, and settled-cost
+fields from observed receipts; missing evidence stays unknown. This acceptance is
+not permission to edit provider configuration, credentials, routing, the locked
+4C campaign, or repository files from inside the paid run.
 
 ### F6 — tranche exit
 
