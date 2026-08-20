@@ -79,13 +79,21 @@ final class OwnedProcessLedgerTests: XCTestCase {
             process.executableURL = URL(fileURLWithPath: "/bin/sh")
             process.arguments = ["-c", "sleep 30 & wait"]
             try process.run()
-            usleep(40_000)
-            let fingerprints = OwnedProcessTree.fingerprints(of: OwnedProcessTree.descendants(of: process.processIdentifier))
-            XCTAssertFalse(fingerprints.isEmpty)
+            var fingerprints: [OwnedProcessFingerprint] = []
+            for _ in 0..<50 {
+                fingerprints = OwnedProcessTree.fingerprints(
+                    of: OwnedProcessTree.descendants(of: process.processIdentifier)
+                )
+                if !fingerprints.isEmpty { break }
+                usleep(20_000)
+            }
+            XCTAssertFalse(fingerprints.isEmpty, "owned descendant should appear before teardown")
             OwnedProcessTree.signal(SIGTERM, to: fingerprints)
             process.terminate()
             process.waitUntilExit()
-            usleep(20_000)
+            for _ in 0..<50 where fingerprints.contains(where: OwnedProcessTree.stillMatches) {
+                usleep(20_000)
+            }
             XCTAssertTrue(fingerprints.allSatisfy { !OwnedProcessTree.stillMatches($0) })
         }
     }
