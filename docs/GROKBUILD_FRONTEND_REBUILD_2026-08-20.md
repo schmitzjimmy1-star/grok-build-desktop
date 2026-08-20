@@ -14,6 +14,11 @@ not copy source, assets, stylesheets, components, dependencies, Electron/React
 architecture, runtime restoration, embedded-browser implementation, terminal
 implementation, or backend behavior from that repository.
 
+OpenAI Codex compatibility research and the presentation-only adoption map live
+in [`GROKBUILD_CODEX_COMPATIBILITY_RESEARCH_2026-08-20.md`](GROKBUILD_CODEX_COMPATIBILITY_RESEARCH_2026-08-20.md).
+That note permits selected public client-state patterns, not a Codex runtime or
+second protocol layer.
+
 ## Identity and branch
 
 - Canonical worktree:
@@ -83,7 +88,9 @@ tests only; no install unless F1 and F2 land together as the shell milestone.
 
 Recompose `ContentView`, `SidebarView`, and the minimal top-bar surface into the
 new full-height rail plus calm workspace shell. Preserve project/session actions,
-badges, accessibility identifiers, and responsive reachability. This is the
+badges, accessibility identifiers, and responsive reachability. Organize the
+existing projections as New chat, Plugins, Projects, Pinned/Recents, and the
+account/settings footer; do not add a Codex project or thread store. This is the
 first full-suite, `make ship`, light-mode Computer Use milestone.
 
 ### F3 — welcome state and bottom composer
