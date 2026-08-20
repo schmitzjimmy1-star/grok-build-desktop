@@ -182,22 +182,22 @@ final class SettingsTabTests: XCTestCase {
         XCTAssertEqual(AppSettingsDraft.load(defaults: defaults), saved)
     }
 
-    func testFrontendRebuildDefaultsNewInstallsToLightWithoutOverridingExistingState() {
+    func testFrontendRebuildDefaultsNewInstallsToDarkWithoutOverridingExplicitState() {
         let freshSuite = "grokbuild.tests.appearance.fresh.\(UUID().uuidString)"
         let freshDefaults = UserDefaults(suiteName: freshSuite)!
         defer { freshDefaults.removePersistentDomain(forName: freshSuite) }
 
-        XCTAssertEqual(GrokBuildAppearance.load(defaults: freshDefaults), .light)
+        XCTAssertEqual(GrokBuildAppearance.load(defaults: freshDefaults), .dark)
         AppAppearanceMigration.run(defaults: freshDefaults)
-        XCTAssertEqual(GrokBuildAppearance.load(defaults: freshDefaults), .light)
+        XCTAssertEqual(GrokBuildAppearance.load(defaults: freshDefaults), .dark)
 
         let existingSuite = "grokbuild.tests.appearance.existing.\(UUID().uuidString)"
         let existingDefaults = UserDefaults(suiteName: existingSuite)!
         defer { existingDefaults.removePersistentDomain(forName: existingSuite) }
-        existingDefaults.set(true, forKey: "grokbuild.existing-state")
+        existingDefaults.set(GrokBuildAppearance.light.rawValue, forKey: GrokSettingsKeys.appearance)
 
         AppAppearanceMigration.run(defaults: existingDefaults)
-        XCTAssertEqual(GrokBuildAppearance.load(defaults: existingDefaults), .dark)
+        XCTAssertEqual(GrokBuildAppearance.load(defaults: existingDefaults), .light)
     }
 
     func testAppearanceChoicesUseIndependentAccessibleButtons() throws {
@@ -222,12 +222,13 @@ final class SettingsTabTests: XCTestCase {
         XCTAssertTrue(source.contains("Image(systemName: \"checkmark\")"))
     }
 
-    func testAppThemeLightCanvasIsQuietAndBlueActionTokensStayDistinct() {
+    func testAppThemeDarkShellAndOriginalLightCanvasStayDistinct() {
         let light = NSAppearance(named: .aqua)!
         let dark = NSAppearance(named: .darkAqua)!
         let canvasLight = sRGBComponents(of: AppTheme.Palette.canvasNSColor, appearance: light)
         let sidebarLight = sRGBComponents(of: AppTheme.Palette.sidebarNSColor, appearance: light)
         let canvasDark = sRGBComponents(of: AppTheme.Palette.canvasNSColor, appearance: dark)
+        let sidebarDark = sRGBComponents(of: AppTheme.Palette.sidebarNSColor, appearance: dark)
         let accentLight = sRGBComponents(of: AppTheme.Palette.accentNSColor, appearance: light)
         let linkLight = sRGBComponents(of: AppTheme.Palette.linkNSColor, appearance: light)
 
@@ -239,6 +240,10 @@ final class SettingsTabTests: XCTestCase {
                                     "Light sidebar must not keep a warm/cream blue deficit")
         XCTAssertGreaterThan(canvasDark.b, canvasDark.r,
                              "Dark canvas keeps a cool bias so charcoal does not read brown")
+        XCTAssertGreaterThan(sidebarDark.r, canvasDark.r + 0.05,
+                             "Dark rail is the lighter cool charcoal beside the black canvas")
+        XCTAssertGreaterThan(sidebarDark.b, sidebarDark.r,
+                             "Dark rail keeps a cool gray bias")
         XCTAssertNotEqual(AppTheme.Palette.warningNSColor, AppTheme.Palette.linkNSColor)
         XCTAssertGreaterThan(accentLight.b, accentLight.r + 0.35,
                              "Primary actions use the restrained blue rebuild accent")

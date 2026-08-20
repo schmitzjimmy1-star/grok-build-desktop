@@ -219,8 +219,8 @@ final class ResponsiveAndAccessibilityTests: XCTestCase {
         XCTAssertFalse(SidebarVisibility.shouldShow(
             preference: true, settingsPresented: false, availableContentWidth: 1000
         ))
-        XCTAssertEqual(ResponsiveLayoutPolicy.sidebarMinimumWidth, 200,
-                       "Workbench W-1: the rail is navigation, not a pane")
+        XCTAssertEqual(ResponsiveLayoutPolicy.sidebarMinimumWidth, 248,
+                       "F2: the persistent rail matches the shell width")
     }
 
     /// M-1 closure (2026-08-08): reduce motion is code-enforced, not a manual
@@ -251,9 +251,9 @@ final class ResponsiveAndAccessibilityTests: XCTestCase {
     func testAuditedIconOnlyControlsCarryExplicitLabels() throws {
         let expectations: [(file: String, labels: [String])] = [
             ("GrokBuild/Views/SidebarView.swift",
-             ["New project"]),
+             ["New project", "Filter projects", "Session dashboard"]),
             ("GrokBuild/Views/ChatTopBar.swift",
-             ["Filter projects", "Session dashboard"]),
+             []),
             ("GrokBuild/Views/PreviewPane.swift", ["Close review pane"]),
             ("GrokBuild/Views/SessionsBrowserPanel.swift", ["Delete session"]),
             ("GrokBuild/Views/MemoryBrowserPanel.swift", ["Reveal in Finder"]),

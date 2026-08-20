@@ -3,30 +3,38 @@ import AppKit
 
 /// Shared visual language for the main GrokBuild surface.
 ///
-/// Light is the design authority for the frontend rebuild: a quiet paper-white
-/// canvas, a subtly separated project rail, and a restrained blue action color.
-/// Dark remains a first-class adaptive fallback. `canvasNSColor` is also the
-/// AppKit window fill so the transparent titlebar stays visually continuous.
+/// F2 has two deliberate appearances: a cool graphite/charcoal default inspired
+/// by Codex, and the pale original-reference treatment in Light. Both share one
+/// restrained blue action color. `canvasNSColor` is also the AppKit window fill
+/// so the transparent titlebar stays visually continuous.
 enum AppTheme {
     enum Palette {
         static let canvasNSColor = adaptiveNSColor(
-            dark: NSColor(red: 0.070, green: 0.074, blue: 0.086, alpha: 1),
+            dark: NSColor(red: 0.060, green: 0.064, blue: 0.072, alpha: 1),
             light: NSColor(red: 0.985, green: 0.986, blue: 0.990, alpha: 1)
         )
         static let canvas = Color(nsColor: canvasNSColor)
         static let sidebarNSColor = adaptiveNSColor(
-            dark: NSColor(red: 0.052, green: 0.056, blue: 0.068, alpha: 1),
+            dark: NSColor(red: 0.132, green: 0.137, blue: 0.148, alpha: 1),
             light: NSColor(red: 0.949, green: 0.953, blue: 0.963, alpha: 1)
         )
         static let sidebar = Color(nsColor: sidebarNSColor)
         static let chrome = canvas
         static let surface = adaptive(
-            dark: NSColor(red: 0.112, green: 0.118, blue: 0.136, alpha: 1),
+            dark: NSColor(red: 0.105, green: 0.110, blue: 0.122, alpha: 1),
             light: NSColor.white
         )
         static let surfaceHover = adaptive(
-            dark: NSColor(red: 0.155, green: 0.164, blue: 0.190, alpha: 1),
+            dark: NSColor(red: 0.205, green: 0.211, blue: 0.226, alpha: 1),
             light: NSColor(red: 0.914, green: 0.925, blue: 0.949, alpha: 1)
+        )
+        static let sidebarSelection = adaptive(
+            dark: NSColor.white.withAlphaComponent(0.095),
+            light: NSColor.black.withAlphaComponent(0.060)
+        )
+        static let divider = adaptive(
+            dark: NSColor.white.withAlphaComponent(0.085),
+            light: NSColor.black.withAlphaComponent(0.105)
         )
         /// Legacy name retained while F2-F5 migrate call sites from the prior
         /// glass vocabulary. The value is now an ordinary quiet row fill.

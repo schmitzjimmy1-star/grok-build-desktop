@@ -54,7 +54,7 @@ checkpoint names one small extraction with unchanged ownership and tests.
 The rebuild should feel closer to Codex and the reference screenshot than to the
 current dark operations console:
 
-- light-first native canvas with quiet separators and restrained blue accent;
+- cool graphite/black default canvas with quiet separators and restrained blue accent;
 - full-height left rail containing New chat, Plugins, projects, and sessions;
 - simple title bar with the current conversation and only essential utilities;
 - generous empty/welcome state rather than dashboard density;
@@ -63,8 +63,9 @@ current dark operations console:
   voice, and send controls;
 - transcript content centered in a readable column, with tool/review detail
   disclosed on demand;
-- dark mode remains supported, but light mode is the design authority for this
-  campaign.
+- Light remains the pale original-reference treatment: white canvas, mist-gray
+  rail, and black typography. It is a complete appearance, not a recolored dark
+  shell.
 
 This is not pixel cloning. Native macOS accessibility, keyboard behavior,
 window resizing, reduced motion, existing truth labels, and failure authority
@@ -77,10 +78,12 @@ remain first-class.
 Land this document plus the explicit workflow exception. No product behavior
 changes. Receipt: clean identity preflight, exact branch, diff check, commit, push.
 
-### F1 — light-first design system
+### F1 — adaptive design system
 
-Replace the current glass-heavy visual tokens with a restrained light-first
-palette, typography, radii, separators, focus, selection, and dark fallbacks.
+Replace the current glass-heavy visual tokens with restrained adaptive palettes,
+typography, radii, separators, focus, and selection. F2 supersedes the initial
+fresh-install Light default with the requested cool graphite/black default while
+preserving the original pale reference as the explicit Light appearance.
 Keep component ownership unchanged. Add token and contrast contracts. Focused
 tests only; no install unless F1 and F2 land together as the shell milestone.
 

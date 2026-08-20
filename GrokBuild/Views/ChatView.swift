@@ -303,7 +303,6 @@ struct ChatView: View {
     var sessionTitle: String = "New chat"
     var isSidebarVisible: Bool = true
     var onToggleSidebar: () -> Void = {}
-    var isProjectFilterVisible: Binding<Bool> = .constant(false)
     var onOpenSettings: () -> Void = {}
     var reviewFileCount: Int = 0
     /// The already-fetched project diffs, used only to derive per-file +/− counts
@@ -1345,8 +1344,7 @@ struct ChatView: View {
             onOpenProjectIn: onOpenProjectIn,
             showSetGoal: $showSetGoal,
             createSkillName: $createSkillName,
-            showCreateSkill: $showCreateSkill,
-            isProjectFilterVisible: isProjectFilterVisible
+            showCreateSkill: $showCreateSkill
         ) {
             tasksStatusPill
         } reviewToggle: {

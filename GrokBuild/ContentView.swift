@@ -149,6 +149,14 @@ struct ContentView: View {
         (sessionLayoutFailure != nil && !isMigrationBannerDismissed) || showUpgradeBanner
     }
 
+    private var sidebarIsPresented: Bool {
+        SidebarVisibility.shouldShow(
+            preference: isSidebarVisible,
+            settingsPresented: route == .settings,
+            availableContentWidth: contentAreaWidth
+        )
+    }
+
     private func setSidebarVisible(_ visible: Bool) {
         withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.18)) {
             isSidebarVisible = visible
@@ -172,9 +180,8 @@ struct ContentView: View {
                 ChatView(
                     store: activeStore,
                     sessionTitle: activeSession?.title ?? currentWorkspace?.displayName ?? "New chat",
-                    isSidebarVisible: isSidebarVisible,
+                    isSidebarVisible: sidebarIsPresented,
                     onToggleSidebar: { setSidebarVisible(!isSidebarVisible) },
-                    isProjectFilterVisible: $isProjectFilterVisible,
                     onOpenSettings: { openSettings(tab: selectedSettingsTab) },
                     reviewFileCount: activeReviewDiffs.count,
                     reviewDiffs: activeReviewDiffs,
@@ -228,30 +235,23 @@ struct ContentView: View {
         }
     }
 
-    @ViewBuilder
-    private var projectSidebarOverlay: some View {
-        if SidebarVisibility.shouldShow(
-            preference: isSidebarVisible,
-            settingsPresented: route == .settings,
-            availableContentWidth: contentAreaWidth
-        ) {
-            VStack(spacing: 0) {
-                Color.clear
-                    .frame(height: TitlebarMetrics.overlayTopInset)
-                    .allowsHitTesting(false)
-                HStack(spacing: 0) {
-                    projectSidebar
-                    Color.black.opacity(0.18)
-                        .frame(maxWidth: .infinity, maxHeight: .infinity)
-                        .contentShape(Rectangle())
-                        .onTapGesture { setSidebarVisible(false) }
-                        .accessibilityLabel("Dismiss sidebar")
-                        .accessibilityAddTraits(.isButton)
-                }
+    private var workspaceShell: some View {
+        HStack(spacing: 0) {
+            if sidebarIsPresented {
+                projectSidebar
+                    .transition(.move(edge: .leading).combined(with: .opacity))
+
+                Rectangle()
+                    .fill(AppTheme.Palette.divider)
+                    .frame(width: 1)
+                    .accessibilityHidden(true)
             }
-            .transition(.move(edge: .leading).combined(with: .opacity))
-            .zIndex(1)
+
+            workCanvas
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
+        .background(AppTheme.Palette.canvas)
+        .animation(reduceMotion ? nil : .easeInOut(duration: 0.18), value: sidebarIsPresented)
     }
 
     private var projectSidebar: some View {
@@ -304,7 +304,7 @@ struct ContentView: View {
             onOpenSettings: { openSettings(tab: selectedSettingsTab) },
             isFilterVisible: $isProjectFilterVisible
         )
-        .frame(width: TitlebarMetrics.sidebarOverlayWidth)
+        .frame(width: TitlebarMetrics.sidebarWidth)
         .frame(maxHeight: .infinity)
         .background(AppTheme.Palette.sidebar)
         .disabled(isRestoringSessions)
@@ -377,11 +377,7 @@ struct ContentView: View {
                 )
             }
 
-            ZStack(alignment: .leading) {
-                workCanvas
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-                projectSidebarOverlay
-            }
+            workspaceShell
 
             if isRestoringSessions {
                 sessionRestoreOverlay

@@ -170,6 +170,14 @@ struct SidebarView: View {
         return base
     }
 
+    private var pinnedWorkspaces: [Workspace] {
+        filtered.filter { pinnedWorkspaceIDs.contains($0.id) }
+    }
+
+    private var projectWorkspaces: [Workspace] {
+        filtered.filter { !pinnedWorkspaceIDs.contains($0.id) }
+    }
+
     private var persistentSelection: Binding<SidebarPersistentSelection?> {
         Binding(
             get: {
@@ -227,9 +235,38 @@ struct SidebarView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            // Filter and Session dashboard live in ChatTopBar, to the right of
-            // the session title. The rail starts here so those icons cannot
-            // collide with the description.
+            HStack(spacing: 6) {
+                Text("GrokBuild")
+                    .font(AppTheme.Typography.heading)
+                    .lineLimit(1)
+
+                Spacer(minLength: 4)
+
+                Button {
+                    isFilterVisible.toggle()
+                } label: {
+                    Image(systemName: "magnifyingglass")
+                        .frame(width: 16, height: 16)
+                }
+                .buttonStyle(GrokChromeButtonStyle())
+                .help(isFilterVisible ? "Hide the project filter" : "Filter projects")
+                .accessibilityLabel("Filter projects")
+                .accessibilityHint(isFilterVisible ? "Hides the project filter field." : "Shows a field that filters projects by name.")
+                .accessibilityValue(isFilterVisible ? "Visible" : "Hidden")
+
+                Button(action: onOpenActivity) {
+                    Image(systemName: "bell")
+                        .frame(width: 16, height: 16)
+                }
+                .buttonStyle(GrokChromeButtonStyle())
+                .help("Session dashboard")
+                .accessibilityLabel("Session dashboard")
+                .accessibilityHint("Opens the session dashboard.")
+            }
+            .padding(.horizontal, 10)
+            .padding(.top, TitlebarMetrics.systemTitlebarHeight)
+            .frame(height: TitlebarMetrics.sidebarHeaderHeight, alignment: .bottom)
+
             VStack(spacing: 2) {
                 CodexRailButton(title: "New chat", systemImage: "square.and.pencil", railAction: .newChat, action: onNewChat)
                 CodexRailButton(title: "Sessions", systemImage: "clock.arrow.circlepath", railAction: .sessions, action: onBrowseSessions)
@@ -259,111 +296,25 @@ struct SidebarView: View {
             }
 
             List(selection: persistentSelection) {
+                if !pinnedWorkspaces.isEmpty {
+                    Section("Pinned") {
+                        ForEach(pinnedWorkspaces) { ws in
+                            workspaceRow(ws)
+                        }
+                    }
+                }
+
                 Section {
-                    ForEach(filtered) { ws in
-                        Button {
-                            onSelectWorkspace(ws)
-                        } label: {
-                            let projectSessions = sessions(for: ws.id)
-                            WorkspaceRow(
-                                workspace: ws,
-                                isPinned: pinnedWorkspaceIDs.contains(ws.id),
-                                isSelected: SidebarSelectionSemantics.workspaceIsSelected(
-                                    ws.id,
-                                    selectedWorkspaceID: selectedWorkspaceID,
-                                    selectedSessionID: visibleSelectedSessionID,
-                                    isConversationRouteActive: isConversationRouteActive
-                                ),
-                                hasSessions: !projectSessions.isEmpty,
-                                areSessionsHidden: hiddenSessionWorkspaceIDs.contains(ws.id),
-                                onToggleSessions: {
-                                    toggleSessionVisibility(for: ws.id)
-                                }
-                            )
-                        }
-                        .buttonStyle(.plain)
-                        .tag(SidebarPersistentSelection.workspace(ws.id))
-                        .accessibilityAddTraits(
-                            SidebarSelectionSemantics.workspaceIsSelected(
-                                ws.id,
-                                selectedWorkspaceID: selectedWorkspaceID,
-                                selectedSessionID: visibleSelectedSessionID,
-                                isConversationRouteActive: isConversationRouteActive
-                            ) ? .isSelected : []
-                        )
-                        .accessibilityRemoveTraits(
-                            SidebarSelectionSemantics.workspaceIsSelected(
-                                ws.id,
-                                selectedWorkspaceID: selectedWorkspaceID,
-                                selectedSessionID: visibleSelectedSessionID,
-                                isConversationRouteActive: isConversationRouteActive
-                            ) ? [] : .isSelected
-                        )
-                        .listRowInsets(EdgeInsets(top: 1, leading: 8, bottom: 1, trailing: 8))
-                        .listRowBackground(Color.clear)
-                        .contextMenu {
-                            projectContextMenu(for: ws)
-                        }
-
-                        let projectSessions = sessions(for: ws.id)
-                        let ownsSelectedSession = selectedSessionID.map { id in
-                            projectSessions.contains { $0.id == id }
-                        } ?? false
-                        if (selectedWorkspaceID == ws.id || ownsSelectedSession),
-                           !hiddenSessionWorkspaceIDs.contains(ws.id) {
-                            let isExpanded = isSessionsExpanded(for: ws.id)
-                            let shownSessions = isExpanded ? projectSessions : collapsedSessions(from: projectSessions)
-
-                            if isExpanded {
-                                ForEach(shownSessions) { session in
-                                    sessionRow(session)
-                                }
-                                .onMove { source, destination in
-                                    onMoveSession(ws.id, source, destination)
-                                }
-                            } else {
-                                ForEach(shownSessions) { session in
-                                    sessionRow(session)
-                                }
-                            }
-
-                            let hidden = hiddenCount(for: ws.id, loadedSessions: projectSessions, isExpanded: isExpanded)
-                            if hidden > 0 || isExpanded {
-                                Button {
-                                    if isExpanded {
-                                        expandedSessionWorkspaceIDs.remove(ws.id)
-                                    } else {
-                                        expandedSessionWorkspaceIDs.insert(ws.id)
-                                    }
-                                    onSessionDisclosureChanged()
-                                } label: {
-                                    HStack(spacing: 6) {
-                                        Text(isExpanded ? "Show less" : "Show more")
-                                            .font(.caption.weight(.medium))
-                                        Image(systemName: isExpanded ? "chevron.up" : "chevron.down")
-                                            .font(.caption2.weight(.semibold))
-                                        Spacer()
-                                    }
-                                    .foregroundStyle(.secondary)
-                                    .frame(maxWidth: .infinity, alignment: .leading)
-                                    .contentShape(Rectangle())
-                                }
-                                .buttonStyle(.plain)
-                                .listRowInsets(EdgeInsets(top: 2, leading: 34, bottom: 6, trailing: 10))
-                                .listRowBackground(Color.clear)
-
-                                if isExpanded, hidden > 0 {
-                                    Text("\(hidden) more in Browse Sessions…")
-                                        .font(.caption2)
-                                        .foregroundStyle(.tertiary)
-                                        .listRowInsets(EdgeInsets(top: 0, leading: 34, bottom: 6, trailing: 10))
-                                }
-                            }
-                        }
+                    ForEach(projectWorkspaces) { ws in
+                        workspaceRow(ws)
                     }
                     .onMove { source, destination in
                         guard filter.isEmpty else { return }
-                        onMoveWorkspace(source, destination)
+                        let pinnedOffset = pinnedWorkspaces.count
+                        onMoveWorkspace(
+                            IndexSet(source.map { $0 + pinnedOffset }),
+                            destination + pinnedOffset
+                        )
                     }
 
                 } header: {
@@ -380,17 +331,58 @@ struct SidebarView: View {
                         .accessibilityHint("Opens the folder picker to add a project.")
                     }
                 }
+
+                if let selectedWorkspaceID,
+                   filtered.contains(where: { $0.id == selectedWorkspaceID }),
+                   !hiddenSessionWorkspaceIDs.contains(selectedWorkspaceID) {
+                    let projectSessions = sessions(for: selectedWorkspaceID)
+                    if !projectSessions.isEmpty {
+                        let isExpanded = isSessionsExpanded(for: selectedWorkspaceID)
+                        let shownSessions = isExpanded
+                            ? projectSessions
+                            : collapsedSessions(from: projectSessions)
+                        Section("Recents") {
+                            if isExpanded {
+                                ForEach(shownSessions) { session in
+                                    sessionRow(session)
+                                }
+                                .onMove { source, destination in
+                                    onMoveSession(selectedWorkspaceID, source, destination)
+                                }
+                            } else {
+                                ForEach(shownSessions) { session in
+                                    sessionRow(session)
+                                }
+                            }
+
+                            let hidden = hiddenCount(
+                                for: selectedWorkspaceID,
+                                loadedSessions: projectSessions,
+                                isExpanded: isExpanded
+                            )
+                            if hidden > 0 || isExpanded {
+                                sessionDisclosureRow(
+                                    workspaceID: selectedWorkspaceID,
+                                    isExpanded: isExpanded,
+                                    hiddenCount: hidden
+                                )
+                            }
+                        }
+                    }
+                }
             }
             .listStyle(.sidebar)
             .scrollContentBackground(.hidden)
             .background(AppTheme.Palette.sidebar)
 
-            Divider()
+            Rectangle()
+                .fill(AppTheme.Palette.divider)
+                .frame(height: 1)
 
             Button(action: onOpenSettings) {
                 HStack(spacing: 8) {
                     Circle()
-                        .fill(Color.blue.opacity(0.9))
+                        .fill(AppTheme.Palette.accent)
                         .frame(width: 20, height: 20)
                         .overlay {
                             Text(String(NSFullUserName().prefix(1)).uppercased())
@@ -427,6 +419,76 @@ struct SidebarView: View {
                 }
                 renamingSessionID = nil
             }
+        }
+    }
+
+    @ViewBuilder
+    private func workspaceRow(_ workspace: Workspace) -> some View {
+        let isSelected = SidebarSelectionSemantics.workspaceIsSelected(
+            workspace.id,
+            selectedWorkspaceID: selectedWorkspaceID,
+            selectedSessionID: visibleSelectedSessionID,
+            isConversationRouteActive: isConversationRouteActive
+        )
+        let projectSessions = sessions(for: workspace.id)
+
+        Button {
+            onSelectWorkspace(workspace)
+        } label: {
+            WorkspaceRow(
+                workspace: workspace,
+                isPinned: pinnedWorkspaceIDs.contains(workspace.id),
+                isSelected: isSelected,
+                hasSessions: !projectSessions.isEmpty,
+                areSessionsHidden: hiddenSessionWorkspaceIDs.contains(workspace.id),
+                onToggleSessions: { toggleSessionVisibility(for: workspace.id) }
+            )
+        }
+        .buttonStyle(.plain)
+        .tag(SidebarPersistentSelection.workspace(workspace.id))
+        .accessibilityAddTraits(isSelected ? .isSelected : [])
+        .accessibilityRemoveTraits(isSelected ? [] : .isSelected)
+        .listRowInsets(EdgeInsets(top: 1, leading: 8, bottom: 1, trailing: 8))
+        .listRowBackground(Color.clear)
+        .contextMenu {
+            projectContextMenu(for: workspace)
+        }
+    }
+
+    @ViewBuilder
+    private func sessionDisclosureRow(
+        workspaceID: Workspace.ID,
+        isExpanded: Bool,
+        hiddenCount: Int
+    ) -> some View {
+        Button {
+            if isExpanded {
+                expandedSessionWorkspaceIDs.remove(workspaceID)
+            } else {
+                expandedSessionWorkspaceIDs.insert(workspaceID)
+            }
+            onSessionDisclosureChanged()
+        } label: {
+            HStack(spacing: 6) {
+                Text(isExpanded ? "Show less" : "Show more")
+                    .font(.caption.weight(.medium))
+                Image(systemName: isExpanded ? "chevron.up" : "chevron.down")
+                    .font(.caption2.weight(.semibold))
+                Spacer()
+            }
+            .foregroundStyle(.secondary)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .listRowInsets(EdgeInsets(top: 2, leading: 24, bottom: 6, trailing: 10))
+        .listRowBackground(Color.clear)
+
+        if isExpanded, hiddenCount > 0 {
+            Text("\(hiddenCount) more in Browse Sessions…")
+                .font(.caption2)
+                .foregroundStyle(.tertiary)
+                .listRowInsets(EdgeInsets(top: 0, leading: 24, bottom: 6, trailing: 10))
         }
     }
 
@@ -585,7 +647,7 @@ private struct SessionSidebarRow: View {
                 .padding(.vertical, 3)
                 .contentShape(Rectangle())
                 .background(
-                    isSelected ? AppTheme.Palette.accentSoft : Color.clear,
+                    isSelected ? AppTheme.Palette.sidebarSelection : Color.clear,
                     in: RoundedRectangle(cornerRadius: AppTheme.Radius.small)
                 )
             }
@@ -667,7 +729,7 @@ private struct WorkspaceRow: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .contentShape(Rectangle())
         .background(
-            isSelected ? AppTheme.Palette.accentSoft : Color.clear,
+            isSelected ? AppTheme.Palette.sidebarSelection : Color.clear,
             in: RoundedRectangle(cornerRadius: AppTheme.Radius.small)
         )
         .accessibilityAddTraits(isSelected ? .isSelected : [])

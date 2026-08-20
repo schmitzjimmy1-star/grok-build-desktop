@@ -47,10 +47,12 @@ enum TitlebarMetrics {
     /// Extra air under the AppKit titlebar inset. Do not add
     /// `systemTitlebarHeight` here; SwiftUI still receives that safe area.
     static var contentTopInset: CGFloat { belowTrafficLights }
-    /// Overlay must skip the workbench row so it does not cover the controls.
+    /// Shared main-canvas header height.
     static var overlayTopInset: CGFloat { contentTopInset + height }
-    /// Overlay width. The chat canvas stays full-width underneath.
-    static let sidebarOverlayWidth: CGFloat = 228
+    /// Persistent Codex-style navigation rail width at ordinary window sizes.
+    static let sidebarWidth: CGFloat = 248
+    /// The rail draws under the titlebar; its brand row clears the traffic lights.
+    static let sidebarHeaderHeight: CGFloat = 72
 }
 
 enum SidebarVisibility {
@@ -58,8 +60,7 @@ enum SidebarVisibility {
     static let defaultVisible = true
 
     /// Settings owns its own navigation and should use the full window instead of
-    /// stacking a second sidebar over the project sidebar. The project list is a
-    /// slide-over, so the chat canvas stays full width when the panel is hidden.
+    /// stacking a second sidebar beside the project sidebar.
     ///
     /// `availableContentWidth` wires the Slice 7 responsive order's second step:
     /// the sidebar auto-collapses when even its minimum width would compress the

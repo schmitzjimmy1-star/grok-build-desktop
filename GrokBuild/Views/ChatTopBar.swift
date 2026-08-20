@@ -2,9 +2,9 @@ import SwiftUI
 
 /// Workbench header chrome. ChatView still owns Tasks / Review / Run inspector
 /// state; this view only lays out the shared controls and project menu.
-/// More actions is one ellipsis. Filter and Session dashboard sit to the
-/// right of the session title with a gap. The row sits just under the
-/// traffic lights so Dark icons stay a consistent white. There is no hairline.
+/// More actions is one ellipsis. Search and activity live in the persistent
+/// rail header. The row sits just under the traffic lights only when the rail
+/// is hidden; with the rail present it begins inside the main canvas.
 struct ChatTopBar<TasksStatus: View, ReviewToggle: View, InspectorToggle: View>: View {
     @Bindable var store: ChatStore
     let sessionTitle: String
@@ -18,7 +18,6 @@ struct ChatTopBar<TasksStatus: View, ReviewToggle: View, InspectorToggle: View>:
     @Binding var showSetGoal: Bool
     @Binding var createSkillName: String
     @Binding var showCreateSkill: Bool
-    @Binding var isProjectFilterVisible: Bool
     let tasksStatus: TasksStatus
     let reviewToggle: ReviewToggle
     let inspectorToggle: InspectorToggle
@@ -36,7 +35,6 @@ struct ChatTopBar<TasksStatus: View, ReviewToggle: View, InspectorToggle: View>:
         showSetGoal: Binding<Bool>,
         createSkillName: Binding<String>,
         showCreateSkill: Binding<Bool>,
-        isProjectFilterVisible: Binding<Bool>,
         @ViewBuilder tasksStatus: () -> TasksStatus,
         @ViewBuilder reviewToggle: () -> ReviewToggle,
         @ViewBuilder inspectorToggle: () -> InspectorToggle
@@ -53,7 +51,6 @@ struct ChatTopBar<TasksStatus: View, ReviewToggle: View, InspectorToggle: View>:
         self._showSetGoal = showSetGoal
         self._createSkillName = createSkillName
         self._showCreateSkill = showCreateSkill
-        self._isProjectFilterVisible = isProjectFilterVisible
         self.tasksStatus = tasksStatus()
         self.reviewToggle = reviewToggle()
         self.inspectorToggle = inspectorToggle()
@@ -75,28 +72,6 @@ struct ChatTopBar<TasksStatus: View, ReviewToggle: View, InspectorToggle: View>:
                 .layoutPriority(1)
 
             Spacer(minLength: TitlebarMetrics.headerIconGap)
-
-            Button {
-                if !isSidebarVisible {
-                    onToggleSidebar()
-                }
-                isProjectFilterVisible.toggle()
-            } label: {
-                TitlebarGlyph(systemName: "magnifyingglass")
-            }
-            .buttonStyle(GrokChromeButtonStyle())
-            .help(isProjectFilterVisible ? "Hide the project filter" : "Filter projects")
-            .accessibilityLabel("Filter projects")
-            .accessibilityHint(isProjectFilterVisible ? "Hides the project filter field." : "Shows a field that filters projects by name.")
-            .accessibilityValue(isProjectFilterVisible ? "Visible" : "Hidden")
-
-            Button(action: onOpenDashboard) {
-                TitlebarGlyph(systemName: "bell")
-            }
-            .buttonStyle(GrokChromeButtonStyle())
-            .help("Session dashboard")
-            .accessibilityLabel("Session dashboard")
-            .accessibilityHint("Opens the session dashboard.")
 
             Menu {
                 Button("Browse sessions", systemImage: "clock") {
@@ -185,7 +160,7 @@ struct ChatTopBar<TasksStatus: View, ReviewToggle: View, InspectorToggle: View>:
         .foregroundStyle(AppTheme.Palette.titlebarControl)
         .compositingGroup()
         .padding(.leading, isSidebarVisible
-            ? TitlebarMetrics.sidebarOverlayWidth + TitlebarMetrics.headerIconGap
+            ? TitlebarMetrics.headerIconGap
             : TitlebarMetrics.trafficLightLeading)
         .padding(.trailing, 12)
         .padding(.top, TitlebarMetrics.contentTopInset)

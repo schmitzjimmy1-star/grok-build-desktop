@@ -28,8 +28,9 @@ enum ResponsiveLayoutPolicy {
     /// The narrowest the project sidebar can render. Auto-collapse triggers only
     /// when even this minimum would compress the conversation below its readable
     /// minimum, so a user-chosen wider sidebar never flips visibility by itself.
-    /// Workbench W-1 (2026-08-08): 220 → 200; the rail is navigation, not a pane.
-    static let sidebarMinimumWidth: Double = 200
+    /// F2 (2026-08-20): the persistent Codex-style rail remains compact while
+    /// leaving the 812-pt conversation minimum at the 1100-pt window floor.
+    static let sidebarMinimumWidth: Double = 248
 
     /// Ignore sub-point geometry jitter. Writing `@State` on every 0.01-pt
     /// `onGeometryChange` rebuilds ChatView, including the transcript

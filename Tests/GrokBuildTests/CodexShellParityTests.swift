@@ -146,10 +146,10 @@ final class CodexShellParityTests: XCTestCase {
                        "the old footer Help-and-settings copy must not return")
         XCTAssertTrue(sidebar.contains("grok-sidebar-account-settings"),
                       "the account row opens Settings; Command-comma still works")
-        XCTAssertTrue(sidebar.contains("ownsSelectedSession"),
-                      "the project that owns the current session expands even if workspace id is stale")
-        XCTAssertFalse(sidebar.contains("selectedWorkspaceID == ws.id || !projectSessions.isEmpty"),
-                       "unselected projects must not keep their session lists open")
+        XCTAssertTrue(sidebar.contains("Section(\"Recents\")"),
+                      "the selected project's session rows live in one Codex-style Recents section")
+        XCTAssertTrue(sidebar.contains("filtered.contains(where: { $0.id == selectedWorkspaceID })"),
+                      "a filtered-out project cannot leave orphaned Recents rows")
         XCTAssertFalse(sidebar.contains("Text(workspace.path.path)"),
                        "project rows keep the path as a tooltip, not a second line of chrome")
 
@@ -359,13 +359,13 @@ final class CodexShellParityTests: XCTestCase {
         XCTAssertTrue(topBar.contains("TitlebarMetrics.contentTopInset"),
                       "the header sits just under the traffic lights, not inside the vibrant titlebar")
         XCTAssertTrue(topBar.contains("TitlebarMetrics.headerIconGap"),
-                      "filter and dashboard sit to the right of the session title with a gap")
-        XCTAssertTrue(topBar.contains("TitlebarGlyph(systemName: \"magnifyingglass\")"),
-                      "Filter projects is a workbench header icon")
-        XCTAssertTrue(topBar.contains("TitlebarGlyph(systemName: \"bell\")"),
-                      "Session dashboard is a workbench header icon")
-        XCTAssertTrue(topBar.contains("sidebarOverlayWidth + TitlebarMetrics.headerIconGap"),
-                      "an open sidebar cannot cover the session title")
+                      "the session title keeps calm spacing before contextual controls")
+        XCTAssertFalse(topBar.contains("TitlebarGlyph(systemName: \"magnifyingglass\")"),
+                       "Filter projects belongs to the persistent rail header")
+        XCTAssertFalse(topBar.contains("TitlebarGlyph(systemName: \"bell\")"),
+                       "Session dashboard belongs to the persistent rail header")
+        XCTAssertTrue(topBar.contains("? TitlebarMetrics.headerIconGap"),
+                      "the persistent rail means the main header needs only a local inset")
         XCTAssertFalse(topBar.contains(".offset(y: -TitlebarMetrics.height)"),
                        "the header no longer lifts into the traffic-light row")
         XCTAssertTrue(topBar.contains(".menuIndicator(.hidden)"),
@@ -401,18 +401,30 @@ final class CodexShellParityTests: XCTestCase {
         XCTAssertFalse(chatView.contains("showsTaskContextStrip"),
                        "the task-contract bar is removed, not merely hidden while idle")
 
-        XCTAssertTrue(contentView.contains("ZStack(alignment: .leading)"),
-                      "the project sidebar overlays the full-width canvas")
+        let sidebar = try source("GrokBuild/Views/SidebarView.swift")
+        XCTAssertTrue(sidebar.contains("Image(systemName: \"magnifyingglass\")"),
+                      "Filter projects lives in the persistent rail header")
+        XCTAssertTrue(sidebar.contains("Image(systemName: \"bell\")"),
+                      "Session dashboard lives in the persistent rail header")
+        XCTAssertTrue(sidebar.contains("Section(\"Pinned\")"))
+        XCTAssertTrue(sidebar.contains("Section(\"Recents\")"))
+
+        XCTAssertTrue(contentView.contains("private var workspaceShell: some View"),
+                      "F2 owns one explicit persistent shell")
+        XCTAssertTrue(contentView.contains("HStack(spacing: 0)"),
+                      "the project rail and canvas are structural siblings")
         XCTAssertTrue(contentView.contains(".move(edge: .leading)"),
                       "the sidebar slides in from the leading edge")
-        XCTAssertTrue(contentView.contains("TitlebarMetrics.sidebarOverlayWidth"),
-                      "the overlay uses the titlebar sidebar width, not a split pane")
-        XCTAssertTrue(contentView.contains("TitlebarMetrics.overlayTopInset"),
-                      "the overlay skips the lowered workbench row")
+        XCTAssertTrue(contentView.contains("TitlebarMetrics.sidebarWidth"),
+                      "the persistent rail uses the one shell width token")
+        XCTAssertFalse(contentView.contains("projectSidebarOverlay"),
+                       "F2 removes the old dimming slide-over")
+        XCTAssertFalse(contentView.contains("Color.black.opacity(0.18)"),
+                       "the main canvas is never dimmed merely because navigation is visible")
         XCTAssertTrue(contentView.contains("onOpenSettings: { openSettings(tab: selectedSettingsTab) }"),
                       "the account row routes through the existing Settings owner")
         XCTAssertFalse(contentView.contains("HSplitView {\n            if SidebarVisibility.shouldShow"),
-                       "the project sidebar must not steal canvas width from an HSplitView")
+                       "the rail remains a fixed shell sibling, never a user-resizable split pane")
 
         let appDelegate = try source("GrokBuild/AppDelegate.swift")
         XCTAssertTrue(appDelegate.contains(".fullSizeContentView"),

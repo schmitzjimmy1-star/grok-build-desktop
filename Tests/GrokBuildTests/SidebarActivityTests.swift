@@ -114,10 +114,10 @@ final class SidebarActivityTests: XCTestCase {
             contentsOf: repositoryRoot.appendingPathComponent("GrokBuild/Views/ChatTopBar.swift"),
             encoding: .utf8
         )
-        XCTAssertTrue(topBar.contains("TitlebarGlyph(systemName: \"bell\")"),
-                      "the header bell remains and opens the activity surface")
-        XCTAssertFalse(sidebarSource.contains("Image(systemName: \"bell\")"),
-                       "the sidebar no longer keeps a second dashboard bell on the title")
+        XCTAssertFalse(topBar.contains("TitlebarGlyph(systemName: \"bell\")"),
+                       "F2 moves activity out of the conversation header")
+        XCTAssertTrue(sidebarSource.contains("Image(systemName: \"bell\")"),
+                      "the persistent rail owns the one dashboard bell")
         XCTAssertTrue(sidebarSource.contains("accessibilityRemoveTraits"),
                       "action rail and inactive persistent rows must remove false selection")
         XCTAssertTrue(sidebarSource.contains("accessibilityAddTraits(isSelected ? .isSelected : [])"),

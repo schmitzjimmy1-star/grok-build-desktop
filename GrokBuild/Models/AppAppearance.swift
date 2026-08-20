@@ -34,7 +34,7 @@ enum GrokBuildAppearance: String, CaseIterable, Codable, Equatable, Identifiable
     static func load(defaults: UserDefaults = .standard) -> Self {
         guard let raw = defaults.string(forKey: GrokSettingsKeys.appearance),
               let value = Self(rawValue: raw) else {
-            return .light
+            return .dark
         }
         return value
     }
@@ -47,20 +47,14 @@ enum GrokBuildAppearance: String, CaseIterable, Codable, Equatable, Identifiable
     }
 }
 
-/// Existing installs were deliberately dark and keep that choice. New installs
-/// begin in the frontend rebuild's light-authority appearance; System and Dark
-/// remain explicit options in Settings.
+/// F2 makes the cool graphite shell the default while retaining the original
+/// pale reference as the explicit Light appearance. Existing explicit choices
+/// remain untouched.
 enum AppAppearanceMigration {
     static func run(defaults: UserDefaults = .standard) {
         guard defaults.object(forKey: GrokSettingsKeys.appearance) == nil else { return }
 
-        let hasExistingGrokBuildState = defaults.dictionaryRepresentation().keys
-            .contains { $0.hasPrefix("grokbuild.") }
-
-        defaults.set(
-            hasExistingGrokBuildState ? GrokBuildAppearance.dark.rawValue : GrokBuildAppearance.light.rawValue,
-            forKey: GrokSettingsKeys.appearance
-        )
+        defaults.set(GrokBuildAppearance.dark.rawValue, forKey: GrokSettingsKeys.appearance)
     }
 }
 
@@ -70,7 +64,7 @@ struct AppSettingsDraft: Codable, Equatable, Sendable {
 
     static let defaults = AppSettingsDraft(
         autoCheckEnabled: true,
-        appearance: .light
+        appearance: .dark
     )
 
     static func load(defaults: UserDefaults = .standard) -> Self {
