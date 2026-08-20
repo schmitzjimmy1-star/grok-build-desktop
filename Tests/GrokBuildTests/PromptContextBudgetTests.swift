@@ -7,14 +7,17 @@ final class PromptContextBudgetTests: XCTestCase {
         let root = URL(fileURLWithPath: FileManager.default.currentDirectoryPath)
         let data = try Data(contentsOf: root.appendingPathComponent("AGENTS.md"))
         let text = try XCTUnwrap(String(data: data, encoding: .utf8))
+        let aimURL = root.appendingPathComponent("GROKBUILD_ACP_CLIENT_AIM.md")
 
         XCTAssertGreaterThanOrEqual(
             PromptContextBudget.reductionPercent(currentBytes: data.count),
             PromptContextBudget.minimumProjectInstructionReductionPercent
         )
+        XCTAssertTrue(FileManager.default.fileExists(atPath: aimURL.path))
         for required in [
-            "CANONICAL_WORKTREE.md", "ARCHITECTURE.md", "make test", "make ship",
-            "Computer Use", "DD2GCQJVB4", "GrokBuildComputerUseMCP", "agent-desktop",
+            "GROKBUILD_ACP_CLIENT_AIM.md", "CANONICAL_WORKTREE.md", "ARCHITECTURE.md",
+            "make test", "make ship", "Computer Use", "DD2GCQJVB4",
+            "GrokBuildComputerUseMCP", "agent-desktop",
             "schmitzjimmy1-star/grok-build-desktop", "rimusz/grok-build-desktop",
             "/Applications/GrokBuild.app", "docs/OUTSTANDING.md",
         ] {

@@ -18,7 +18,7 @@ xed .             # open Package.swift in Xcode (optional)
 
 ## Before UI work
 
-1. Read `ARCHITECTURE.md` for file layout.
+1. Read `GROKBUILD_ACP_CLIENT_AIM.md`, then `ARCHITECTURE.md` for file layout.
 2. Prefer `make` over ad-hoc `xcodebuild` (no `.xcodeproj`).
 3. After Swift changes, run `swift build` or `make build`.
 

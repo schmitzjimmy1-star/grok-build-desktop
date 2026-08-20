@@ -6,6 +6,8 @@ alwaysApply: false
 
 # grok CLI integration
 
+Contract: `GROKBUILD_ACP_CLIENT_AIM.md`. GrokBuild is a thin ACP client.
+
 ## Services
 
 - `GrokProcess` — spawns `grok agent … stdio`, parses ACP into `AcpEvent`s. Handshake and prompt failures name the pending ACP method (`ACP initialize timed out.`, `ACP session/prompt failed.`). An empty stdout `FileHandle` fire while the child is still running is not ACP close.

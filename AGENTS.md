@@ -1,15 +1,7 @@
 # GrokBuild Desktop
 
-Native SwiftUI macOS workbench for `grok agent stdio`.
-
-## Codex: GUI, ACP, CLI aim (read this first)
-
-GrokBuild is a **thin ACP client**. The grok CLI owns the agent. Every GUI
-step must speak ACP (`initialize` → `session/new`|`session/load` →
-`session/prompt`; Stop is cancel). Do not add a second runtime or TUI pager
-commands.
-
-Full contract: [`docs/GROKBUILD_ACP_CLIENT_AIM.md`](docs/GROKBUILD_ACP_CLIENT_AIM.md).
+Native SwiftUI macOS workbench for `grok agent stdio`. Codex starts at
+[`GROKBUILD_ACP_CLIENT_AIM.md`](GROKBUILD_ACP_CLIENT_AIM.md).
 
 ## Hard identity stop
 
@@ -21,7 +13,7 @@ upstream. Never build, install, publish, or borrow from the retired
 
 Before edits or acceptance, read and follow in order:
 
-1. `docs/GROKBUILD_ACP_CLIENT_AIM.md` — GUI / ACP / CLI contract (Codex start).
+1. `GROKBUILD_ACP_CLIENT_AIM.md` — GUI / ACP / CLI contract.
 2. `CANONICAL_WORKTREE.md` — canonical identity and mandatory live preflight.
 3. `ARCHITECTURE.md` — ownership, data flow, persistence, and file map.
 4. `docs/OUTSTANDING.md` — current slice scope and Gates A–H when a campaign slice is active.

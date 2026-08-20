@@ -7,7 +7,8 @@ description: Works with grok CLI integration in GrokBuild — auth state, versio
 
 ## Boundaries
 
-GrokBuild is a UI shell. Core agent behavior (ACP, MCP, skills, plan mode, subagents) stays in the `grok` CLI.
+Start at `GROKBUILD_ACP_CLIENT_AIM.md`. GrokBuild is a UI shell. Core agent
+behavior (ACP, MCP, skills, plan mode, subagents) stays in the `grok` CLI.
 
 `grok sessions delete <id>` removes indexed parent sessions only. Spawned
 `session_kind=subagent` child directories stay unindexed (`No session found`

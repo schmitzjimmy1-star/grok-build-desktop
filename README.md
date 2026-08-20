@@ -7,6 +7,9 @@
 > project is retired and must not be built or installed. See
 > [`CANONICAL_WORKTREE.md`](CANONICAL_WORKTREE.md) before making changes.
 
+Codex starts at [`GROKBUILD_ACP_CLIENT_AIM.md`](GROKBUILD_ACP_CLIENT_AIM.md):
+GrokBuild is a thin ACP client; the grok CLI owns the agent.
+
 GrokBuild is a native SwiftUI macOS workbench for the [`grok`](https://grok.com) CLI. It is a thin wrapper, not a second agent runtime. The CLI still owns ACP, MCP tools, skills, permissions, memory, plan mode, and subagents.
 
 Work lives in a project folder as durable session tabs you can resume. New chat stays idle until Send. **Ask**, **Build**, and **Review** only seed an editable draft. After a turn, the transcript and **Run inspector** show the exact tools, children, and model/route receipts for that tab and process generation. GrokBuild does not invent a fallback provider or rewrite an older launch.

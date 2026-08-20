@@ -9,7 +9,7 @@
 > repository is retired reference material. Never build or install it. Run the
 > identity preflight in `CANONICAL_WORKTREE.md` before changing code.
 
-**Read this first in every new chat after `CANONICAL_WORKTREE.md`.** This document is the canonical map of how GrokBuild works. `AGENTS.md` points here; `.cursor/rules/` add file-specific conventions.
+**Codex starts at `GROKBUILD_ACP_CLIENT_AIM.md`.** This document is the canonical map of how GrokBuild works after that contract. `AGENTS.md` points here; `.cursor/rules/` add file-specific conventions.
 
 ---
 
@@ -235,7 +235,7 @@ User must run `grok login` for authenticated sessions. Auth failures surface ins
 
 ## GrokProcess & ACP
 
-**Aim:** [`docs/GROKBUILD_ACP_CLIENT_AIM.md`](docs/GROKBUILD_ACP_CLIENT_AIM.md).
+**Aim:** [`GROKBUILD_ACP_CLIENT_AIM.md`](GROKBUILD_ACP_CLIENT_AIM.md).
 GrokBuild is a thin ACP client. The CLI owns the agent. GUI chrome and errors
 name ACP methods.
 

@@ -1,6 +1,6 @@
 # Codex continue — Slice 4C native ACP handshake
 
-**Start at [`GROKBUILD_ACP_CLIENT_AIM.md`](GROKBUILD_ACP_CLIENT_AIM.md).**
+**Start at [`GROKBUILD_ACP_CLIENT_AIM.md`](../GROKBUILD_ACP_CLIENT_AIM.md).**
 This file is campaign evidence only.
 
 Ledger-9 (`RUN_ID=20260820T050226Z`) on installed `6af815f` failed:
