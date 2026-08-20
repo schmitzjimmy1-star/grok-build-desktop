@@ -117,6 +117,13 @@ commit, then stop before F4.
 Restyle the readable transcript column, assistant trace, tool activity, diffs,
 changed-files summary, and Review entry points as one coherent light surface.
 Preserve ACP status/failure/recovery authority and command-argument disclosure.
+The locked implementation is one assistant-turn story: checkpoint-derived status,
+bounded public reasoning stages, readable tool receipt rows with on-demand detail,
+answer, and the turn-attributed changed-files handoff. The handoff owns the single
+closed-state Review action for attributed changes; unattributed repository dirt
+remains on the header Review route. Both continue to open the existing preview
+owner. User prompts stay compact and visually subordinate, while the same semantic
+tokens preserve the hierarchy in cool-charcoal Dark and pale mist-gray Light.
 This is the second full-suite, `make ship`, installed transcript milestone.
 
 ### F5 — secondary panes and responsive states

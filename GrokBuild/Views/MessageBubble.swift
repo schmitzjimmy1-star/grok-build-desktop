@@ -27,14 +27,8 @@ struct MessageBubble: View {
     private var bubbleContent: some View {
         switch message.role {
         case .user:
-            // Workbench W-2 (2026-08-08): the user's prompt is the task statement —
-            // a full-width work record with a quiet leading rule, not a right-aligned
-            // chat bubble. The photographs treat the ask as part of the task, not a
-            // message someone sent.
-            HStack(alignment: .top, spacing: 10) {
-                RoundedRectangle(cornerRadius: 1)
-                    .fill(AppTheme.Palette.glassBorderStrong)
-                    .frame(width: 3)
+            HStack(alignment: .top, spacing: 0) {
+                Spacer(minLength: 72)
                 VStack(alignment: .leading, spacing: 4) {
                     Text("You")
                         .font(AppTheme.Typography.section)
@@ -50,9 +44,16 @@ struct MessageBubble: View {
                             .lineSpacing(2)
                     }
                 }
-                Spacer(minLength: 0)
+                .padding(.horizontal, 14)
+                .padding(.vertical, 11)
+                .frame(maxWidth: 640, alignment: .leading)
+                .background(
+                    AppTheme.Palette.sidebarSelection,
+                    in: RoundedRectangle(cornerRadius: AppTheme.Radius.large, style: .continuous)
+                )
             }
-            .padding(.vertical, 6)
+            .frame(maxWidth: .infinity, alignment: .trailing)
+            .padding(.vertical, 8)
             .accessibilityElement(children: .combine)
             .accessibilityLabel("You: \(message.content)")
         case .assistant:
@@ -88,7 +89,7 @@ struct MessageBubble: View {
                             .frame(maxWidth: .infinity, alignment: .leading)
                     }
                 }
-                .padding(.vertical, 8)
+                .padding(.bottom, 4)
                 .accessibilityElement(children: .contain)
             }
         case .system:

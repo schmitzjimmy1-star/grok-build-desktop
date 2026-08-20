@@ -110,9 +110,42 @@ struct AssistantReasoningTraceView: View {
                 Text(emptyMessage)
                     .font(AppTheme.Typography.thinking)
                     .foregroundStyle(.tertiary)
+            } else if !summaryChunks.isEmpty {
+                let presentation = ReasoningSummaryPresentation.make(
+                    chunks: summaryChunks,
+                    expanded: false
+                )
+                VStack(alignment: .leading, spacing: 8) {
+                    ForEach(presentation.stages) { stage in
+                        HStack(alignment: .top, spacing: 8) {
+                            Circle()
+                                .fill(AppTheme.Palette.textFaint)
+                                .frame(width: 5, height: 5)
+                                .padding(.top, 6)
+                                .accessibilityHidden(true)
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(stage.kind.displayName)
+                                    .font(AppTheme.Typography.badge)
+                                    .foregroundStyle(.secondary)
+                                Text(stage.text)
+                                    .font(AppTheme.Typography.thinking)
+                                    .foregroundStyle(.secondary)
+                                    .lineSpacing(2)
+                            }
+                        }
+                        .accessibilityElement(children: .combine)
+                        .accessibilityLabel("Public reasoning summary: \(stage.kind.displayName)")
+                        .accessibilityValue(stage.text)
+                    }
+                    if presentation.isTruncated {
+                        Text("Public summary shortened to \(presentation.stages.count) of \(presentation.sourceStageCount) stages.")
+                            .font(.caption2)
+                            .foregroundStyle(.tertiary)
+                    }
+                }
             }
         }
-        .padding(.leading, 12)
+        .padding(.leading, 4)
         .accessibilityValue(durationLabel)
         .accessibilityIdentifier("grok-assistant-thinking-details")
     }
@@ -136,55 +169,158 @@ struct AssistantToolTraceView: View {
                 AssistantToolTraceRow(tool: tool)
             }
         }
-        .padding(.leading, 12)
+        .padding(.leading, 4)
     }
 }
 
 private struct AssistantToolTraceRow: View {
     let tool: AssistantTurnTrace.Tool
+    @State private var isExpanded = false
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
-        let displayedMCPServer = tool.mcpReceiptRole == .discovery ? nil : MCPToolReceiptIdentity.serverName(
+        let output = settledOutput
+        VStack(alignment: .leading, spacing: 4) {
+            if output == nil {
+                rowLabel(server: displayedMCPServer, hasOutput: false)
+            } else {
+                Button {
+                    if reduceMotion {
+                        isExpanded.toggle()
+                    } else {
+                        withAnimation(.easeOut(duration: 0.14)) { isExpanded.toggle() }
+                    }
+                } label: {
+                    rowLabel(server: displayedMCPServer, hasOutput: true)
+                }
+                .buttonStyle(.plain)
+            }
+
+            if isExpanded, let output {
+                VStack(alignment: .leading, spacing: 2) {
+                    if tool.mcpReceiptRole == .discovery {
+                        Text("Capability discovery")
+                            .font(AppTheme.Typography.badge)
+                    } else if let server = displayedMCPServer {
+                        Text("Using \(server)")
+                            .font(AppTheme.Typography.badge)
+                    }
+                    Text(output)
+                        .font(AppTheme.Typography.caption.monospaced())
+                        .foregroundStyle(.primary.opacity(0.82))
+                        // Settled tool detail remains available in the Run inspector.
+                        // Selectable AppKit text inside the transcript LazyVStack can
+                        // re-enter SelectionOverlay layout during session recovery.
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
+                .padding(.leading, 25)
+                .padding(.vertical, 6)
+            }
+        }
+        .padding(.horizontal, 8)
+        .background(AppTheme.Palette.sidebarSelection, in: RoundedRectangle(cornerRadius: AppTheme.Radius.medium))
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel(accessibilityLabel(server: displayedMCPServer))
+        .accessibilityValue(
+            isExpanded
+                ? accessibilityValue(output: output, server: displayedMCPServer)
+                : "\(statusLine), \(output == nil ? "no additional detail" : "details collapsed")"
+        )
+        .accessibilityIdentifier("grok-assistant-tool-\(sanitizedToolID)")
+    }
+
+    private func rowLabel(server: String?, hasOutput: Bool) -> some View {
+        HStack(alignment: .center, spacing: 9) {
+            Image(systemName: server == nil ? toolIcon : "network")
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(server == nil ? Color.secondary : AppTheme.Palette.link)
+                .frame(width: 16)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(actionTitle)
+                    .font(AppTheme.Typography.captionStrong)
+                    .foregroundStyle(.primary)
+                    .lineLimit(1)
+                Text(receiptSubtitle(server: server))
+                    .font(AppTheme.Typography.badge)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+            }
+            Spacer(minLength: 8)
+            Label(statusLabel, systemImage: statusIcon)
+                .font(AppTheme.Typography.badge)
+                .foregroundStyle(statusColor)
+                .padding(.horizontal, 7)
+                .frame(minHeight: 22)
+                .background(statusColor.opacity(0.09), in: Capsule())
+            if hasOutput {
+                Image(systemName: isExpanded ? "chevron.up" : "chevron.down")
+                    .font(.caption2.weight(.semibold))
+                    .foregroundStyle(.tertiary)
+            }
+        }
+        .frame(maxWidth: .infinity, minHeight: 38, alignment: .leading)
+        .contentShape(Rectangle())
+    }
+
+    private var displayedMCPServer: String? {
+        guard tool.mcpReceiptRole != .discovery else { return nil }
+        return MCPToolReceiptIdentity.serverName(
             explicitName: tool.mcpServerName,
             qualifiedToolName: tool.qualifiedToolName ?? tool.title,
             knownServerNames: []
         )
-        let output = settledOutput
-        VStack(alignment: .leading, spacing: 4) {
-            HStack(alignment: .firstTextBaseline, spacing: 7) {
-                Image(systemName: displayedMCPServer == nil ? "wrench" : "network")
-                    .font(.caption2.weight(.semibold))
-                    .foregroundStyle(displayedMCPServer == nil ? Color.secondary : AppTheme.Palette.accent)
-                VStack(alignment: .leading, spacing: 2) {
-                    if tool.mcpReceiptRole == .discovery {
-                        Text("Capability discovery")
-                            .font(.system(size: 13, weight: .semibold))
-                    } else if let server = displayedMCPServer {
-                        Text("Using \(server)")
-                            .font(.system(size: 13, weight: .semibold))
-                    }
-                    Text(tool.title)
-                        .font(AppTheme.Typography.thinking)
-                        .foregroundStyle(.primary)
-                    Text(statusLine)
-                        .font(AppTheme.Typography.caption)
-                        .foregroundStyle(.secondary)
-                }
-            }
-            if let output {
-                Text(output)
-                    .font(AppTheme.Typography.caption.monospaced())
-                    .foregroundStyle(.primary.opacity(0.82))
-                    // Settled tool detail remains available in the Run inspector.
-                    // Selectable AppKit text inside the transcript LazyVStack can
-                    // re-enter SelectionOverlay layout during session recovery.
-                    .frame(maxWidth: .infinity, alignment: .leading)
-            }
+    }
+
+    private var actionTitle: String {
+        ToolActionPresentation.title(rawTitle: tool.title, kind: tool.kind, status: tool.status)
+    }
+
+    private var toolIcon: String {
+        let kind = "\(tool.kind ?? "") \(tool.title)".lowercased()
+        if kind.contains("browser") || kind.contains("web") { return "globe" }
+        if kind.contains("read") { return "doc.text" }
+        if kind.contains("edit") || kind.contains("write") || kind.contains("patch") { return "pencil" }
+        if kind.contains("exec") || kind.contains("terminal") || kind.contains("command") { return "terminal" }
+        if kind.contains("search") || kind.contains("find") { return "magnifyingglass" }
+        return "wrench"
+    }
+
+    private var statusLabel: String {
+        ActivitySidebarPresentation.activityStatus(tool.status)
+    }
+
+    private var statusIcon: String {
+        switch ToolCallTerminalStatus.from(rawStatus: tool.status) {
+        case .succeeded: return "checkmark.circle.fill"
+        case .failed: return "xmark.circle.fill"
+        case .cancelled: return "slash.circle.fill"
+        case .stale: return "clock.badge.exclamationmark"
+        case .unknown: return "questionmark.circle.fill"
+        case nil: return ToolActivitySummaryPresentation.isActive(tool.status) ? "circle.dotted" : "circle"
         }
-        .accessibilityElement(children: .combine)
-        .accessibilityLabel(accessibilityLabel(server: displayedMCPServer))
-        .accessibilityValue(accessibilityValue(output: output, server: displayedMCPServer))
-        .accessibilityIdentifier("grok-assistant-tool-\(sanitizedToolID)")
+    }
+
+    private var statusColor: Color {
+        switch ToolCallTerminalStatus.from(rawStatus: tool.status) {
+        case .succeeded: return .green
+        case .failed: return .red
+        case .cancelled, .stale, .unknown: return AppTheme.Palette.warning
+        case nil: return ToolActivitySummaryPresentation.isActive(tool.status) ? AppTheme.Palette.link : .secondary
+        }
+    }
+
+    private func receiptSubtitle(server: String?) -> String {
+        var parts: [String] = []
+        if tool.mcpReceiptRole == .discovery {
+            parts.append("Capability discovery")
+        } else if let server {
+            parts.append(server)
+        } else if let kind = tool.kind, !kind.isEmpty {
+            parts.append(kind.replacingOccurrences(of: "_", with: " ").capitalized)
+        }
+        let duration = ThreadRunSpinePresentation.durationLabel(tool.durationMilliseconds)
+        if duration != "Duration not reported" { parts.append(duration) }
+        return parts.isEmpty ? "Tool receipt" : parts.joined(separator: " · ")
     }
 
     private var sanitizedToolID: String {

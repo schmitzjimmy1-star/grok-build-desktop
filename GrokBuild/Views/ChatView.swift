@@ -477,7 +477,8 @@ struct ChatView: View {
         message: Message,
         isExpanded: Bool,
         trace: AssistantTurnTrace?,
-        hasLiveTrace: Bool
+        hasLiveTrace: Bool,
+        status: ConversationTurnStatusPresentation?
     ) -> some View {
         Button {
             if isExpanded {
@@ -500,6 +501,9 @@ struct ChatView: View {
                         .foregroundStyle(AppTheme.Palette.textMuted)
                 }
                 Spacer(minLength: 8)
+                if let status {
+                    ConversationTurnStatusBadge(presentation: status)
+                }
             }
             .frame(maxWidth: .infinity, minHeight: 26, alignment: .leading)
             .contentShape(Rectangle())
@@ -617,6 +621,24 @@ struct ChatView: View {
     private var currentAssistantHasText: Bool {
         guard let id = store.streamingMessageID else { return false }
         return store.messages.first(where: { $0.id == id })?.content.isEmpty == false
+    }
+
+    private var inlineChangedFilesSummary: ChangedFilesSummaryProjection.Summary? {
+        guard let summary = ChangedFilesSummaryProjection.summary(
+            snapshot: store.runEvidenceSnapshot,
+            diffs: reviewDiffs,
+            workspace: store.currentWorkspace?.path
+        ), summary.turnAttributedCount > 0 else {
+            return nil
+        }
+        return summary
+    }
+
+    /// Git review evidence belongs to the latest settled assistant turn. A
+    /// repository-wide change without turn attribution remains header-only.
+    private var inlineChangedFilesMessageID: UUID? {
+        guard inlineChangedFilesSummary != nil else { return nil }
+        return store.messages.last(where: { $0.role == .assistant })?.id
     }
 
     @ViewBuilder
@@ -792,7 +814,7 @@ struct ChatView: View {
 
             ScrollViewReader { proxy in
                 ScrollView {
-                    LazyVStack(alignment: .leading, spacing: 22) {
+                    LazyVStack(alignment: .leading, spacing: 8) {
                         if store.showsEmptyTranscriptWelcome {
                             if store.currentWorkspace == nil {
                                 noProjectState
@@ -828,55 +850,81 @@ struct ChatView: View {
                                 explicitlyExpanded: expandedAssistantTraceIDs,
                                 explicitlyCollapsed: collapsedAssistantTraceIDs
                             )
-                            ForEach(
-                                ChatTranscriptLayout.identifiedMessageBlocks(
-                                    messageID: msg.id,
-                                    blocks: ChatTranscriptLayout.messageBlockOrder(
-                                        containsAgentHeader: msg.role == .assistant,
-                                        traceExpanded: traceExpanded,
-                                        containsThinking: hasLiveThinking || hasPersistedThinking
-                                            || (msg.role == .assistant && !hasAnyTrace),
-                                        containsToolActivity: hasLiveTools || hasPersistedTools,
-                                        containsLiveProgress: msg.role == .assistant
-                                            && msg.id == store.streamingMessageID
-                                            && store.liveRunEvidenceProjection == nil
-                                            && store.isGrokking,
-                                        containsPlanSpine: false
-                                    )
+                            if msg.role == .assistant {
+                                let isLiveTurn = store.isStreaming && msg.id == store.streamingMessageID
+                                let turnStatus = ConversationTurnStatusPresentation.make(
+                                    isLive: isLiveTurn,
+                                    checkpoint: persistedTrace?.checkpoint
                                 )
-                            ) { identifiedBlock in
-                                switch identifiedBlock.block {
-                                case .agentHeader:
-                                    assistantTurnHeader(
-                                        message: msg,
-                                        isExpanded: traceExpanded,
-                                        trace: persistedTrace,
-                                        hasLiveTrace: hasLiveThinking || hasLiveTools
-                                    )
-                                case .thinking:
-                                    assistantThinkingDetails(
-                                        message: msg,
-                                        useLiveTrace: hasLiveThinking,
-                                        hasAnyTrace: hasAnyTrace
-                                    )
-                                case .toolActivity:
-                                    assistantToolDetails(message: msg, useLiveTrace: hasLiveTools)
-                                case .planSpine:
-                                    EmptyView()
-                                case .liveProgress:
-                                    liveProgressControl
-                                case .answer:
-                                    MessageBubble(
-                                        message: msg,
-                                        isStreaming: store.isStreaming && msg.id == store.streamingMessageID,
-                                        streamingPresentation: msg.id == store.streamingMessageID
-                                            ? store.streamingPresentation
-                                            : nil,
-                                        isLayoutFrozen: transcriptSessionTransitionInProgress,
-                                        allowsTextSelection: allowsTranscriptTextSelection
-                                    )
-                                    .id(msg.id)
+                                ConversationTurnSurface(messageID: msg.id, status: turnStatus) {
+                                    ForEach(
+                                        ChatTranscriptLayout.identifiedMessageBlocks(
+                                            messageID: msg.id,
+                                            blocks: ChatTranscriptLayout.messageBlockOrder(
+                                                containsAgentHeader: true,
+                                                traceExpanded: traceExpanded,
+                                                containsThinking: hasLiveThinking || hasPersistedThinking || !hasAnyTrace,
+                                                containsToolActivity: hasLiveTools || hasPersistedTools,
+                                                containsLiveProgress: msg.id == store.streamingMessageID
+                                                    && store.liveRunEvidenceProjection == nil
+                                                    && store.isGrokking,
+                                                containsPlanSpine: false
+                                            )
+                                        )
+                                    ) { identifiedBlock in
+                                        switch identifiedBlock.block {
+                                        case .agentHeader:
+                                            assistantTurnHeader(
+                                                message: msg,
+                                                isExpanded: traceExpanded,
+                                                trace: persistedTrace,
+                                                hasLiveTrace: hasLiveThinking || hasLiveTools,
+                                                status: turnStatus
+                                            )
+                                        case .thinking:
+                                            assistantThinkingDetails(
+                                                message: msg,
+                                                useLiveTrace: hasLiveThinking,
+                                                hasAnyTrace: hasAnyTrace
+                                            )
+                                        case .toolActivity:
+                                            assistantToolDetails(message: msg, useLiveTrace: hasLiveTools)
+                                        case .planSpine:
+                                            EmptyView()
+                                        case .liveProgress:
+                                            liveProgressControl
+                                        case .answer:
+                                            MessageBubble(
+                                                message: msg,
+                                                isStreaming: isLiveTurn,
+                                                streamingPresentation: msg.id == store.streamingMessageID
+                                                    ? store.streamingPresentation
+                                                    : nil,
+                                                isLayoutFrozen: transcriptSessionTransitionInProgress,
+                                                allowsTextSelection: allowsTranscriptTextSelection
+                                            )
+                                            .id(msg.id)
+                                        }
+                                    }
+
+                                    if msg.id == inlineChangedFilesMessageID,
+                                       let changedFilesSummary = inlineChangedFilesSummary {
+                                        ChangedFilesSummaryCard(
+                                            summary: changedFilesSummary,
+                                            onOpenReview: {
+                                                onOpenTurnReview()
+                                                if !isReviewVisible { onToggleReview() }
+                                            }
+                                        )
+                                    }
                                 }
+                            } else {
+                                MessageBubble(
+                                    message: msg,
+                                    isLayoutFrozen: transcriptSessionTransitionInProgress,
+                                    allowsTextSelection: allowsTranscriptTextSelection
+                                )
+                                .id(msg.id)
                             }
                         }
 
@@ -909,30 +957,6 @@ struct ChatView: View {
                             ) { optionId in
                                 store.respondToPermission(perm, with: optionId)
                             }
-                        }
-
-                        // Codex parity Slice 3: one inline changed-files card after a
-                        // settled turn whose generation-bound Git recording reports
-                        // changes. The projection separates turn-attributed edits from
-                        // repository-wide dirt; Review opens the real Git pane.
-                        // The inline card renders only for changes attributed to
-                        // this turn (owner decision, 2026-08-08): repository-wide
-                        // unattributed changes cluttered every thread and already
-                        // have the header Review chip as their entry point.
-                        if let changedFilesSummary = ChangedFilesSummaryProjection.summary(
-                            snapshot: store.runEvidenceSnapshot,
-                            diffs: reviewDiffs,
-                            workspace: store.currentWorkspace?.path
-                        ), changedFilesSummary.turnAttributedCount > 0 {
-                            ChangedFilesSummaryCard(
-                                summary: changedFilesSummary,
-                                onOpenReview: {
-                                    // The card is turn-attribution truth, so its
-                                    // Review lands in the Last turn scope.
-                                    onOpenTurnReview()
-                                    if !isReviewVisible { onToggleReview() }
-                                }
-                            )
                         }
 
                         // A fixed 1pt element at the true bottom. Scrolling to a
@@ -1746,7 +1770,12 @@ struct ChatView: View {
     @ViewBuilder
     private var headerReviewToggle: some View {
         ChatHeaderReviewToggle(
-            reviewFileCount: reviewFileCount,
+            // When the latest turn owns an inline changed-files handoff, that is
+            // the one closed-state Review entry. The header reappears to close an
+            // open pane, or for repository-wide changes that have no turn owner.
+            reviewFileCount: inlineChangedFilesSummary != nil && !isReviewVisible
+                ? 0
+                : reviewFileCount,
             isReviewVisible: isReviewVisible,
             onToggleReview: onToggleReview
         )

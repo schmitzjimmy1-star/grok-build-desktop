@@ -161,7 +161,7 @@ struct ToolCallRow: View {
                 .font(.caption)
                 .foregroundStyle(tool.isFailed ? Color.red : Color.secondary)
                 .frame(width: 14)
-            Text(tool.title)
+            Text(ToolActionPresentation.title(rawTitle: tool.title, kind: tool.kind, status: tool.status))
                 .font(.system(.caption, design: .monospaced))
                 .foregroundStyle(tool.isFailed ? Color.primary : Color.secondary)
                 .lineLimit(1)
@@ -185,7 +185,7 @@ struct ToolCallRow: View {
         .frame(maxWidth: .infinity, minHeight: ComposerControlMetrics.minimumHitTarget, alignment: .leading)
         .contentShape(Rectangle())
         .accessibilityElement(children: .combine)
-        .accessibilityLabel("\(tool.title), \(statusLabel ?? tool.kind)")
+        .accessibilityLabel("\(ToolActionPresentation.title(rawTitle: tool.title, kind: tool.kind, status: tool.status)), \(statusLabel ?? tool.kind)")
         .accessibilityValue(tool.detail == nil ? "No additional details" : (isExpanded ? "Details expanded" : "Details collapsed"))
         .accessibilityHint(tool.detail == nil ? "Tool activity status." : "Reveals or hides tool details.")
     }

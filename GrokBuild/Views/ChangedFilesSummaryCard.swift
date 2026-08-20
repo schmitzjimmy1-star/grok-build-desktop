@@ -48,8 +48,11 @@ struct ChangedFilesSummaryCard: View {
                     .font(AppTheme.Typography.label)
                 }
                 Spacer(minLength: 8)
-                Button("Review", action: onOpenReview)
-                    .buttonStyle(.bordered)
+                Button(action: onOpenReview) {
+                    Label("Review changes", systemImage: "arrow.right")
+                        .labelStyle(.titleAndIcon)
+                }
+                    .buttonStyle(GrokProminentButtonStyle())
                     .controlSize(.small)
                     .help("Open the Git review pane for this project")
                     .accessibilityLabel("Review changed files")
@@ -103,8 +106,12 @@ struct ChangedFilesSummaryCard: View {
                     .fixedSize(horizontal: false, vertical: true)
             }
         }
-        .padding(12)
-        .grokGlassSurface(cornerRadius: AppTheme.Radius.large)
+        .padding(.vertical, 14)
+        .overlay(alignment: .top) {
+            Rectangle()
+                .fill(AppTheme.Palette.glassBorderStrong)
+                .frame(height: 2)
+        }
         .frame(maxWidth: .infinity, alignment: .leading)
         .accessibilityElement(children: .contain)
         .accessibilityLabel("Changed files summary: \(summary.headline)")

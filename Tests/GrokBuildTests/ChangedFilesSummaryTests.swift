@@ -159,7 +159,7 @@ final class ChangedFilesSummaryTests: XCTestCase {
 
     // MARK: Transcript wiring
 
-    func testCardRendersInTranscriptTailAndReviewTargetsTheRealPane() throws {
+    func testCardRendersUnderProducingTurnAndReviewTargetsTheRealPane() throws {
         let repositoryRoot = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent()
             .deletingLastPathComponent()
@@ -172,8 +172,10 @@ final class ChangedFilesSummaryTests: XCTestCase {
                       "the card gates on the projection, not on raw view state")
         XCTAssertTrue(chatSource.contains("snapshot: store.runEvidenceSnapshot"),
                       "the settled snapshot is the gate — no card without a settled turn")
-        XCTAssertTrue(chatSource.contains("changedFilesSummary.turnAttributedCount > 0"),
+        XCTAssertTrue(chatSource.contains("summary.turnAttributedCount > 0"),
                       "only turn-attributed changes render inline; repository-wide changes stay on the header Review chip (owner decision 2026-08-08)")
+        XCTAssertTrue(chatSource.contains("msg.id == inlineChangedFilesMessageID"),
+                      "the changed-files handoff stays attached to the assistant turn that owns it")
         let cardSource = try String(
             contentsOf: repositoryRoot.appendingPathComponent("GrokBuild/Views/ChangedFilesSummaryCard.swift"),
             encoding: .utf8
