@@ -2,6 +2,15 @@
 
 Native SwiftUI macOS workbench for `grok agent stdio`.
 
+## Codex: GUI, ACP, CLI aim (read this first)
+
+GrokBuild is a **thin ACP client**. The grok CLI owns the agent. Every GUI
+step must speak ACP (`initialize` → `session/new`|`session/load` →
+`session/prompt`; Stop is cancel). Do not add a second runtime or TUI pager
+commands.
+
+Full contract: [`docs/GROKBUILD_ACP_CLIENT_AIM.md`](docs/GROKBUILD_ACP_CLIENT_AIM.md).
+
 ## Hard identity stop
 
 Work only in `/Users/jimmyschmitz/Desktop/Projects/MCP Servers/Grok Build/grok-build-desktop`
@@ -12,10 +21,11 @@ upstream. Never build, install, publish, or borrow from the retired
 
 Before edits or acceptance, read and follow in order:
 
-1. `CANONICAL_WORKTREE.md` — canonical identity and mandatory live preflight.
-2. `ARCHITECTURE.md` — ownership, data flow, persistence, and file map.
-3. `docs/OUTSTANDING.md` — current slice scope and Gates A–H when a campaign slice is active.
-4. `docs/GROKBUILD_VISUAL_QUIET_CAMPAIGN_2026-08-15.md` — Visual Quiet.
+1. `docs/GROKBUILD_ACP_CLIENT_AIM.md` — GUI / ACP / CLI contract (Codex start).
+2. `CANONICAL_WORKTREE.md` — canonical identity and mandatory live preflight.
+3. `ARCHITECTURE.md` — ownership, data flow, persistence, and file map.
+4. `docs/OUTSTANDING.md` — current slice scope and Gates A–H when a campaign slice is active.
+5. `docs/GROKBUILD_VISUAL_QUIET_CAMPAIGN_2026-08-15.md` — Visual Quiet.
    P1–P6 and P3C/P3D are accepted; P6 is welcome-only at `a437c01`.
    The broad `ChatView` split remains unauthorized.
 

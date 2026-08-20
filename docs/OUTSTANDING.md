@@ -421,10 +421,11 @@ SHA-256
 `e1fbfe81221c3f58d9c0ef0842610e90048d9cb5616347f00761a7d751e7b11c`.
 `_billable_v3` stays the 4B.4 continuation executor. Sidecar arm and
 owner-local Sends remain. Do not `grok update`.
-**Codex continue (2026-08-20):**
-[`docs/GROKBUILD_SLICE4C_CODEX_CONTINUE_2026-08-20.md`](GROKBUILD_SLICE4C_CODEX_CONTINUE_2026-08-20.md)
-owns the native ACP handshake repair, spent ledgers 6–8, and the next 4C
-command. Do not start from ledger-8 copy.
+**Codex start (2026-08-20):**
+[`docs/GROKBUILD_ACP_CLIENT_AIM.md`](GROKBUILD_ACP_CLIENT_AIM.md)
+is the GUI / ACP / CLI contract. 4C native Sends have not billed. Campaign
+notes:
+[`docs/GROKBUILD_SLICE4C_CODEX_CONTINUE_2026-08-20.md`](GROKBUILD_SLICE4C_CODEX_CONTINUE_2026-08-20.md).
 
 PR [#124](https://github.com/schmitzjimmy1-star/grok-build-desktop/pull/124)
 passed required exact-head run `32123735441` and merged normally as
@@ -6219,13 +6220,12 @@ them:
 
 ## One-sentence new-session handoff
 
-Paid 4C is the live campaign on `cursor/official-runtime-s4c-locked-executor`.
-Start at
-[`docs/GROKBUILD_SLICE4C_CODEX_CONTINUE_2026-08-20.md`](GROKBUILD_SLICE4C_CODEX_CONTINUE_2026-08-20.md).
-Do not unlock `_billable_v3`, do not `grok update`, and do not rebuild pager
-`1.0.5 (8226242)`. Visual Quiet through Phase 5 is accepted; leftover Phase 3
-(`ChatView` split) stays unauthorized. Re-derive canonical repository and
-installed-app identity before any future work.
+Start at [`docs/GROKBUILD_ACP_CLIENT_AIM.md`](GROKBUILD_ACP_CLIENT_AIM.md)
+(also the first section of `AGENTS.md`). GrokBuild is a thin ACP client; the
+CLI owns the agent; GUI steps name ACP methods. Paid 4C Sends have **not**
+billed. Do not unlock `_billable_v3`, do not `grok update`, and do not rebuild
+pager `1.0.5 (8226242)`. Visual Quiet leftover Phase 3 (`ChatView` split)
+stays unauthorized. Re-derive canonical identity before any future work.
 
 ## Hard stop conditions
 

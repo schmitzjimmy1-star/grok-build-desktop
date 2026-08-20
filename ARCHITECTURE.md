@@ -235,6 +235,10 @@ User must run `grok login` for authenticated sessions. Auth failures surface ins
 
 ## GrokProcess & ACP
 
+**Aim:** [`docs/GROKBUILD_ACP_CLIENT_AIM.md`](docs/GROKBUILD_ACP_CLIENT_AIM.md).
+GrokBuild is a thin ACP client. The CLI owns the agent. GUI chrome and errors
+name ACP methods.
+
 **File:** `Services/GrokProcess.swift`
 
 `GrokProcess` is the long-running **ACP client**. One instance per `ChatStore`. ACP startup failures append a bounded `GrokMCPRedactor` snapshot of process stderr (`redactedStartupStderr`) into `.failed` / `lastError`, so values such as `api_key=` never reach the UI.

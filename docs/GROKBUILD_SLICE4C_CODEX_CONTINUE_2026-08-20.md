@@ -1,8 +1,17 @@
 # Codex continue — Slice 4C native ACP handshake
 
+**Start at [`GROKBUILD_ACP_CLIENT_AIM.md`](GROKBUILD_ACP_CLIENT_AIM.md).**
+This file is campaign evidence only.
+
+Ledger-9 (`RUN_ID=20260820T050226Z`) on installed `6af815f` failed:
+`ACP session/prompt did not start, and no named ACP method failure was visible`.
+Empty `tabId`. Not billed. Sidecar rolled back. Do not reuse ledgers 6–9.
+Do not start another `--billable` run unless Jimmy asks.
+
+---
+
 Read this file before any 4C Send, pager rebuild, CLI upgrade, or `_billable_v3`
-unlock. If it conflicts with another chat, stop and reconcile here plus
-`docs/OUTSTANDING.md`.
+unlock. If it conflicts with the aim doc, the aim doc wins.
 
 ## Identity (re-derive live, do not memorize)
 
@@ -50,12 +59,17 @@ GrokBuild stays a thin ACP client: `initialize` → `session/new`|`session/load`
 
 ## Spent ledgers (none billed)
 
-Ledgers 6–8 failed before `session/prompt`. They are evidence, not reusable.
+Ledgers 6–9 failed before `session/prompt`. They are evidence, not reusable.
 
 - Ledger-8 `RUN_ID=20260820T044027Z` exit 2: user-visible
   `grok closed stdio before ACP initialize completed` (old copy). Harness
   waiter never saw the banner. `tabId` / `processGeneration` empty. Not a
   billed turn.
+- Ledger-9 `RUN_ID=20260820T050226Z` exit 2: installed stamp `6af815f`,
+  dirty=false, Mach-O `7a64e19c…`. Harness:
+  `ACP session/prompt did not start, and no named ACP method failure was visible`.
+  Empty `tabId`. Not a billed turn. Sidecar rolled back after two empty
+  process-zero samples.
 
 Packets remain: `S4C-NAT-CTRL` → `S4C-OAI-H-NO` → `S4C-OR-OW-NO`. Early stop.
 No retries. No substitute models.
@@ -79,13 +93,13 @@ No retries. No substitute models.
 - After packets: quit + two distinct empty process-zero samples; unlink **only**
   the selection sidecar; restore `selectedAgent` if you changed it.
 - Do not `make ship` a docs-only successor just to chase stamp == HEAD.
-- Commit / push / PR / merge only when Jimmy asks. This file may already be
-  committed as the handoff.
+- Commit / push / PR / merge only when Jimmy asks.
 
 ## Next owner-local 4C command
 
-Stamp must equal HEAD with `dirty=false` on `/Applications/GrokBuild.app`.
-Then:
+Do **not** run this unless Jimmy asks. Ledger-9 is spent. Use a new path
+(`ledger-10` or later). Stamp must equal HEAD with `dirty=false` on
+`/Applications/GrokBuild.app`.
 
 ```bash
 python3 -m scripts.acceptance.harness.candidate_install install \
@@ -96,29 +110,28 @@ python3 scripts/acceptance/run.py \
   --manifest scripts/acceptance/manifests/official-provider-slice4c-paid.json \
   --billable \
   --run-id "$(date -u +%Y%m%dT%H%M%SZ)" \
-  --ledger /tmp/grokbuild-s4c-ledger-9.jsonl \
+  --ledger /tmp/grokbuild-s4c-ledger-10.jsonl \
   --candidate-selection "$HOME/Library/Application Support/GrokBuild/candidate-runtime/runtime-selection.json"
 ```
 
-Use a new ledger path if `ledger-9` already exists. Never reuse 6–8.
+Use a new ledger path if `ledger-10` already exists. Never reuse 6–9.
 
 If `initialize` still times out after this ship, the remaining question is
 whether the leased pager answers JSON-RPC on stdin. Do not rebuild the pager
 or switch native to official 1.0.4 to “fix” it.
 
-## Ship / ledger receipts (fill after the authorized ship)
+## Ship / ledger receipts
 
-- Product commit:
-- Installed stamp:
-- Installed Mach-O SHA-256:
-- Dirty:
-- Team:
-- Ledger path / `RUN_ID`:
-- Exit code:
-- Native packet outcome (`session/prompt` live vs named ACP failure):
-- Billed?:
-- Sidecar after rollback:
-- Process-zero samples:
+- Product commit: `6af815f24969f7eaeb5410f1356db8c8a90d1ea8`
+- Installed stamp: `6af815f` (same), `dirty=false`
+- Installed Mach-O SHA-256: `7a64e19c7d374ddaf84033573c787a32ac06374461a8a0a968ebff2c486b46a0`
+- Team: `DD2GCQJVB4`
+- Ledger path / `RUN_ID`: `/tmp/grokbuild-s4c-ledger-9.jsonl` / `20260820T050226Z`
+- Exit code: 2
+- Native packet outcome: no Stop, no named ACP banner visible to harness
+- Billed?: no
+- Sidecar after rollback: absent (`runtimeSelectionRemoved: true`)
+- Process-zero samples: `2026-08-20T00:04:55-0500` and `2026-08-20T00:05:00-0500`; extra rollback samples `00:05:40` / `00:05:45`
 
 ## Out of scope
 
