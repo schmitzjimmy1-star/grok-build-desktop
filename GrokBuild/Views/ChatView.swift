@@ -686,9 +686,9 @@ struct ChatView: View {
         }
     }
 
-    /// P3D's one live activity canvas. It docks only when the full worker cards
-    /// leave a readable transcript, overlays in the middle band, and collapses
-    /// to a named/count control below the fit threshold.
+    /// F5C's one on-demand evidence drawer. It overlays at ordinary window
+    /// sizes, docks only on genuinely wide canvases, and collapses below the
+    /// fit threshold without discarding the user's open state.
     private func activityInspector(docked: Bool) -> some View {
         ActivitySidebar(
             snapshot: activitySnapshot,
@@ -1166,21 +1166,21 @@ struct ChatView: View {
                 .focusSection()
             }
 
-            // P3D responsive order: below 900 the activity canvas collapses to a
-            // named strip; 900..<1,180 overlays; ≥1,180 docks. The user's
+            // F5C responsive order: below 960 the evidence drawer collapses to a
+            // named strip; 960..<1,320 overlays; ≥1,320 docks. The user's
             // open state is preserved so widening restores the full panel.
             if showActivitySidebar, inspectorPlacement == .overlay {
                 activityInspector(docked: false)
             }
         }
 
-        // P3D: at ≥1,180 pt the open activity canvas is a
+        // F5C: at ≥1,320 pt the open activity drawer is a
         // real third column — same panel and state, no overlap with the transcript.
         if showActivitySidebar, inspectorPlacement == .dockedColumn {
             activityInspector(docked: true)
         }
 
-        // Below 900 pt keep a compact collapsed strip instead of hiding evidence.
+        // Below 960 pt keep a compact collapsed strip instead of hiding evidence.
         if showActivitySidebar, inspectorPlacement == .collapsedStrip {
             activityInspectorCollapsedStrip()
         }
@@ -1205,14 +1205,6 @@ struct ChatView: View {
         }
         .onAppear {
             inputFocused = true
-            if hasLiveSubagents {
-                setActivitySidebarVisible(true)
-            }
-        }
-        .onChange(of: hasLiveSubagents) { _, isLive in
-            if isLive {
-                setActivitySidebarVisible(true)
-            }
         }
         .onDisappear {
             cancelSettledAutoScroll()
@@ -1786,11 +1778,6 @@ struct ChatView: View {
         )
     }
 
-    private var hasLiveSubagents: Bool {
-        guard let workers = store.liveRunEvidenceProjection?.workers else { return false }
-        return !workers.isEmpty
-    }
-
     private func setActivitySidebarVisible(_ visible: Bool) {
         if visible && !showActivitySidebar {
             selectedActivityMessageID = nil
@@ -1823,7 +1810,7 @@ struct ChatView: View {
             }
             if contextInspectorModel.subagents != nil || showActivitySidebar {
                 Divider()
-                Button(showActivitySidebar ? "Hide subagents" : "Show subagents") {
+                Button(showActivitySidebar ? "Hide run activity" : "Show run activity") {
                     setActivitySidebarVisible(!showActivitySidebar)
                 }
             }
@@ -1852,7 +1839,7 @@ struct ChatView: View {
         .help("Run inspector")
         .accessibilityLabel("Run inspector")
         .accessibilityValue(activityEvidenceAccessibilityValue)
-        .accessibilityHint("Quick look at the current run. Opens the right-side subagent tracker when workers are live.")
+        .accessibilityHint("Quick look at the current run. Opens the on-demand evidence drawer.")
         .accessibilityIdentifier("grok-run-inspector-toggle")
     }
 

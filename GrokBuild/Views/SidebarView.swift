@@ -287,14 +287,14 @@ struct SidebarView: View {
                 if !pinnedWorkspaces.isEmpty {
                     Section("Pinned") {
                         ForEach(pinnedWorkspaces) { ws in
-                            workspaceRow(ws)
+                            workspaceTree(ws)
                         }
                     }
                 }
 
                 Section {
                     ForEach(projectWorkspaces) { ws in
-                        workspaceRow(ws)
+                        workspaceTree(ws)
                     }
                     .onMove { source, destination in
                         guard filter.isEmpty else { return }
@@ -309,6 +309,13 @@ struct SidebarView: View {
                     HStack {
                         Text("Projects")
                         Spacer()
+                        Button(action: onBrowseSessions) {
+                            Image(systemName: "clock.arrow.circlepath")
+                                .contentShape(Rectangle().inset(by: -8))
+                        }
+                        .buttonStyle(.plain)
+                        .help("Browse all sessions")
+                        .accessibilityLabel("Browse all sessions")
                         Button(action: onAddWorkspace) {
                             Image(systemName: "plus")
                                 .contentShape(Rectangle().inset(by: -8))
@@ -317,59 +324,6 @@ struct SidebarView: View {
                         .help("New project")
                         .accessibilityLabel("New project")
                         .accessibilityHint("Opens the folder picker to add a project.")
-                    }
-                }
-
-                if let selectedWorkspaceID,
-                   filtered.contains(where: { $0.id == selectedWorkspaceID }),
-                   !hiddenSessionWorkspaceIDs.contains(selectedWorkspaceID) {
-                    let projectSessions = sessions(for: selectedWorkspaceID)
-                    if !projectSessions.isEmpty {
-                        let isExpanded = isSessionsExpanded(for: selectedWorkspaceID)
-                        let shownSessions = isExpanded
-                            ? projectSessions
-                            : collapsedSessions(from: projectSessions)
-                        Section {
-                            if isExpanded {
-                                ForEach(shownSessions) { session in
-                                    sessionRow(session)
-                                }
-                                .onMove { source, destination in
-                                    onMoveSession(selectedWorkspaceID, source, destination)
-                                }
-                            } else {
-                                ForEach(shownSessions) { session in
-                                    sessionRow(session)
-                                }
-                            }
-
-                            let hidden = hiddenCount(
-                                for: selectedWorkspaceID,
-                                loadedSessions: projectSessions,
-                                isExpanded: isExpanded
-                            )
-                            if hidden > 0 || isExpanded {
-                                sessionDisclosureRow(
-                                    workspaceID: selectedWorkspaceID,
-                                    isExpanded: isExpanded,
-                                    hiddenCount: hidden
-                                )
-                            }
-                        } header: {
-                            HStack {
-                                Text("Recents")
-                                Spacer()
-                                Button(action: onBrowseSessions) {
-                                    Label("Browse all", systemImage: "clock.arrow.circlepath")
-                                        .labelStyle(.titleAndIcon)
-                                }
-                                .buttonStyle(.plain)
-                                .font(AppTheme.Typography.badge)
-                                .foregroundStyle(.secondary)
-                                .help("Browse all sessions")
-                                .accessibilityLabel("Browse all sessions")
-                            }
-                        }
                     }
                 }
             }
@@ -428,6 +382,48 @@ struct SidebarView: View {
     }
 
     @ViewBuilder
+    private func workspaceTree(_ workspace: Workspace) -> some View {
+        workspaceRow(workspace)
+
+        if workspace.id == selectedWorkspaceID,
+           !hiddenSessionWorkspaceIDs.contains(workspace.id) {
+            let projectSessions = sessions(for: workspace.id)
+            if !projectSessions.isEmpty {
+                let isExpanded = isSessionsExpanded(for: workspace.id)
+                let shownSessions = isExpanded
+                    ? projectSessions
+                    : collapsedSessions(from: projectSessions)
+
+                if isExpanded {
+                    ForEach(shownSessions) { session in
+                        sessionRow(session)
+                    }
+                    .onMove { source, destination in
+                        onMoveSession(workspace.id, source, destination)
+                    }
+                } else {
+                    ForEach(shownSessions) { session in
+                        sessionRow(session)
+                    }
+                }
+
+                let hidden = hiddenCount(
+                    for: workspace.id,
+                    loadedSessions: projectSessions,
+                    isExpanded: isExpanded
+                )
+                if hidden > 0 || isExpanded {
+                    sessionDisclosureRow(
+                        workspaceID: workspace.id,
+                        isExpanded: isExpanded,
+                        hiddenCount: hidden
+                    )
+                }
+            }
+        }
+    }
+
+    @ViewBuilder
     private func workspaceRow(_ workspace: Workspace) -> some View {
         let isSelected = SidebarSelectionSemantics.workspaceIsSelected(
             workspace.id,
@@ -452,7 +448,7 @@ struct SidebarView: View {
         .buttonStyle(.plain)
         .accessibilityAddTraits(isSelected ? .isSelected : [])
         .accessibilityRemoveTraits(isSelected ? [] : .isSelected)
-        .listRowInsets(EdgeInsets(top: 2, leading: 8, bottom: 2, trailing: 8))
+        .listRowInsets(EdgeInsets(top: 1, leading: 8, bottom: 1, trailing: 8))
         .listRowBackground(Color.clear)
         .contextMenu {
             projectContextMenu(for: workspace)
@@ -522,7 +518,7 @@ struct SidebarView: View {
             onClose: { onCloseSession(session.id) },
             onCloseLocal: { onCloseLocalSession(session.id) }
         )
-        .listRowInsets(EdgeInsets(top: 2, leading: 12, bottom: 2, trailing: 8))
+        .listRowInsets(EdgeInsets(top: 0, leading: 30, bottom: 0, trailing: 8))
         .listRowBackground(Color.clear)
         .contextMenu {
             Button("Rename…") {
@@ -638,9 +634,9 @@ private struct SessionSidebarRow: View {
                         .accessibilityIdentifier("grok-sidebar-session-schedule")
                 }
                 }
-                .padding(.horizontal, 6)
-                .padding(.vertical, 8)
-                .frame(minHeight: 42)
+            .padding(.horizontal, 5)
+            .padding(.vertical, 6)
+            .frame(minHeight: 38)
                 .contentShape(Rectangle())
                 .background(
                     isSelected ? AppTheme.Palette.sidebarSelection : Color.clear,
@@ -694,11 +690,11 @@ private struct WorkspaceRow: View {
     @State private var isHovered = false
 
     var body: some View {
-        HStack(spacing: 10) {
-            Image(systemName: isPinned ? "pin.fill" : "folder.fill")
-                .font(.system(size: 13, weight: .semibold))
+        HStack(spacing: 8) {
+            Image(systemName: isPinned ? "pin" : "folder")
+                .font(.system(size: 13, weight: .medium))
                 .foregroundStyle(isPinned || isSelected ? Color.primary : .secondary)
-                .frame(width: 28, height: 28)
+                .frame(width: 20, height: 24)
 
             Text(workspace.displayName)
                 .font(isSelected ? AppTheme.Typography.captionStrong : AppTheme.Typography.caption)
@@ -720,9 +716,9 @@ private struct WorkspaceRow: View {
                     .help(areSessionsHidden ? "Show sessions" : "Hide sessions")
             }
         }
-        .padding(.horizontal, 8)
-        .padding(.vertical, 5)
-        .frame(minHeight: 42)
+        .padding(.horizontal, 7)
+        .padding(.vertical, 4)
+        .frame(minHeight: 36)
         .frame(maxWidth: .infinity, alignment: .leading)
         .contentShape(Rectangle())
         .background(

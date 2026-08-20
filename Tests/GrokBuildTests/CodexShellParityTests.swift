@@ -147,14 +147,14 @@ final class CodexShellParityTests: XCTestCase {
                        "the old footer Help-and-settings copy must not return")
         XCTAssertTrue(sidebar.contains("grok-sidebar-account-settings"),
                       "the account row opens Settings; Command-comma still works")
-        XCTAssertTrue(sidebar.contains("Text(\"Recents\")"),
-                      "the selected project's session rows live in one Codex-style Recents section")
+        XCTAssertTrue(sidebar.contains("private func workspaceTree"),
+                      "each selected project owns its nested session rows")
         XCTAssertTrue(sidebar.contains("Button(action: onBrowseSessions)"),
-                      "Recents owns the single browse-all sessions route")
+                      "the Projects header owns the single browse-all sessions route")
         XCTAssertFalse(sidebar.contains("CodexRailButton(title: \"Sessions\""),
-                       "Sessions must not do double duty in the rail and Recents")
-        XCTAssertTrue(sidebar.contains("filtered.contains(where: { $0.id == selectedWorkspaceID })"),
-                      "a filtered-out project cannot leave orphaned Recents rows")
+                       "Sessions must not do double duty in the rail and project tree")
+        XCTAssertTrue(sidebar.contains("workspace.id == selectedWorkspaceID"),
+                      "only the selected project expands its nested conversation tree")
         XCTAssertFalse(sidebar.contains("Text(workspace.path.path)"),
                        "project rows keep the path as a tooltip, not a second line of chrome")
 
@@ -190,12 +190,12 @@ final class CodexShellParityTests: XCTestCase {
                        "lavender action chrome must not return")
 
         let sidebar = try source("GrokBuild/Views/SidebarView.swift")
-        XCTAssertTrue(sidebar.contains("\"folder.fill\""),
-                      "project rows use a legible filled folder glyph")
-        XCTAssertTrue(sidebar.contains(".frame(width: 28, height: 28)"),
-                      "the folder icon has its own stable visual column")
-        XCTAssertTrue(sidebar.contains(".frame(minHeight: 42)"),
-                      "project rows retain comfortable vertical rhythm")
+        XCTAssertTrue(sidebar.contains("isPinned ? \"pin\" : \"folder\""),
+                      "project rows use calm outline hierarchy glyphs")
+        XCTAssertTrue(sidebar.contains(".frame(width: 20, height: 24)"),
+                      "the folder icon keeps a compact stable visual column")
+        XCTAssertTrue(sidebar.contains(".frame(minHeight: 36)"),
+                      "project rows retain a readable but calmer vertical rhythm")
         XCTAssertTrue(sidebar.contains("@State private var isHovered = false"),
                       "project rows have a quiet hover state")
 
@@ -221,8 +221,8 @@ final class CodexShellParityTests: XCTestCase {
         XCTAssertTrue(sidebar.contains("AppTheme.Typography.sidebarTitleSelected"))
         XCTAssertTrue(sidebar.contains("Color.primary.opacity(0.78)"),
                       "unselected conversation titles remain readable instead of tiny tertiary text")
-        XCTAssertTrue(sidebar.contains(".frame(minHeight: 42)"),
-                      "conversation rows keep a full pointer and reading target")
+        XCTAssertTrue(sidebar.contains(".frame(minHeight: 38)"),
+                      "conversation rows keep a readable target inside the calmer tree")
 
         let composer = try source("GrokBuild/Views/ComposerViews.swift")
         let toolStart = try XCTUnwrap(composer.range(of: "private struct AssistantToolTraceRow"))
@@ -464,10 +464,10 @@ final class CodexShellParityTests: XCTestCase {
                       "the header separator uses the adaptive semantic rule")
         XCTAssertTrue(chatView.contains("RunInspectorQuickLook"),
                       "run facts live in the header dropdown")
-        XCTAssertTrue(chatView.contains("Show subagents"),
-                      "the dropdown can open the right-side subagent tracker")
-        XCTAssertTrue(chatView.contains("hasLiveSubagents"),
-                      "live workers auto-open the right-side tracker")
+        XCTAssertTrue(chatView.contains("Show run activity"),
+                      "the dropdown can open the on-demand evidence drawer")
+        XCTAssertFalse(chatView.contains("hasLiveSubagents"),
+                       "live workers never steal transcript width by auto-opening the drawer")
         XCTAssertFalse(chatView.contains("Color.primary.opacity(0.035), in: RoundedRectangle"),
                        "launch choices are not a tinted banner")
         XCTAssertTrue(chatView.contains("LaunchSessionChoices("),
@@ -483,7 +483,19 @@ final class CodexShellParityTests: XCTestCase {
         XCTAssertTrue(sidebar.contains("Image(systemName: \"bell\")"),
                       "Session dashboard lives in the persistent rail header")
         XCTAssertTrue(sidebar.contains("Section(\"Pinned\")"))
-        XCTAssertTrue(sidebar.contains("Text(\"Recents\")"))
+        XCTAssertTrue(sidebar.contains("private func workspaceTree"))
+
+        let layout = try source("GrokBuild/MainWindowLayout.swift")
+        XCTAssertTrue(layout.contains("static let sidebarWidth: CGFloat = 248"),
+                      "F5C reclaims canvas width from the project rail")
+
+        let activity = try source("GrokBuild/Views/ActivitySidebar.swift")
+        XCTAssertTrue(activity.contains("idealWidth: 304"),
+                      "the evidence drawer is deliberately narrower than the old worker canvas")
+        XCTAssertTrue(activity.contains(".background(AppTheme.Palette.canvas)"),
+                      "the drawer reads as workspace evidence, not another charcoal slab")
+        XCTAssertFalse(activity.contains("Color.primary.opacity(0.035), in: RoundedRectangle"),
+                       "worker receipts are flat rows, not nested cards")
 
         XCTAssertTrue(contentView.contains("private var workspaceShell: some View"),
                       "F2 owns one explicit persistent shell")

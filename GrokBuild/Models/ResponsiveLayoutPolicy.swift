@@ -11,15 +11,14 @@ enum ResponsiveLayoutPolicy {
     /// Below this the overlay stands down and an open inspector becomes a
     /// collapsed strip; the user's open/closed state is preserved and the
     /// panel returns when the window widens.
-    static let inspectorMinimumChatWidth: Double = 900
+    static let inspectorMinimumChatWidth: Double = 960
 
-    /// P3D (2026-08-15): the live-worker surface is a 340-pt activity canvas,
-    /// not the old 260-pt receipt rail. Dock only when the full canvas plus its
-    /// breathing room still leaves the 812-pt readable transcript. Below that,
-    /// use the bounded overlay; below 900, collapse to the named worker control.
-    static let inspectorDockMinimumChatWidth: Double = 1180
+    /// F5C (2026-08-20): Run is an on-demand evidence drawer. At the default
+    /// 1,440-pt window it overlays instead of permanently squeezing the answer
+    /// column; only genuinely wide windows promote it to a docked third column.
+    static let inspectorDockMinimumChatWidth: Double = 1320
 
-    static let activityCanvasWidth: CGFloat = 340
+    static let activityCanvasWidth: CGFloat = 304
 
     /// The transcript's readable minimum: the 760-pt reading column plus its
     /// 26-pt horizontal padding on each side.
@@ -30,14 +29,14 @@ enum ResponsiveLayoutPolicy {
     /// minimum, so a user-chosen wider sidebar never flips visibility by itself.
     /// F3 (2026-08-20): the persistent Codex-style rail gives long project and
     /// session names room while leaving the conversation usable at the floor.
-    static let sidebarMinimumWidth: Double = 280
+    static let sidebarMinimumWidth: Double = 248
 
     /// Ignore sub-point geometry jitter. Writing `@State` on every 0.01-pt
     /// `onGeometryChange` rebuilds ChatView, including the transcript
     /// ScrollView, and pins a core at 100% (2026-08-14 installed sample).
     static let measuredWidthEpsilon: Double = 1
 
-    /// Keep the current inspector chrome across the 900 / 1,180 thresholds so
+    /// Keep the current inspector chrome across the 960 / 1,320 thresholds so
     /// overlay ↔ dock ↔ strip cannot chase a noisy measurement.
     static let inspectorHysteresis: Double = 16
 

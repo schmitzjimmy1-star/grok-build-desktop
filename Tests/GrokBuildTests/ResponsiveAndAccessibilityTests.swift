@@ -18,25 +18,25 @@ final class ResponsiveAndAccessibilityTests: XCTestCase {
                       "the unmeasured initial state never suppresses the panel")
     }
 
-    /// P3D — three regimes: collapsed strip below 900, a bounded overlay through
-    /// 1,179, and the wider 340-pt worker canvas docked from 1,180 up.
+    /// F5C — three regimes: collapsed strip below 960, an on-demand overlay
+    /// through 1,319, and the quiet 304-pt drawer docked from 1,320 up.
     func testInspectorDocksOnlyAtFullThirdColumnWidth() {
-        XCTAssertFalse(ResponsiveLayoutPolicy.inspectorDocks(chatAreaWidth: 899),
+        XCTAssertFalse(ResponsiveLayoutPolicy.inspectorDocks(chatAreaWidth: 959),
                        "collapsed regime: the inspector does not dock")
-        XCTAssertFalse(ResponsiveLayoutPolicy.inspectorDocks(chatAreaWidth: 1179),
+        XCTAssertFalse(ResponsiveLayoutPolicy.inspectorDocks(chatAreaWidth: 1319),
                        "overlay regime: below the dock threshold the panel overlays")
-        XCTAssertTrue(ResponsiveLayoutPolicy.inspectorDocks(chatAreaWidth: 1180),
+        XCTAssertTrue(ResponsiveLayoutPolicy.inspectorDocks(chatAreaWidth: 1320),
                       "dock regime: a real third column once both surfaces fit at full width")
-        XCTAssertTrue(ResponsiveLayoutPolicy.inspectorDocks(chatAreaWidth: 1200),
-                      "default 1440×900 chat area (1440 − 240 sidebar) docks")
-        XCTAssertEqual(ResponsiveLayoutPolicy.inspectorDockMinimumChatWidth, 1180)
-        XCTAssertEqual(ResponsiveLayoutPolicy.activityCanvasWidth, 340)
+        XCTAssertFalse(ResponsiveLayoutPolicy.inspectorDocks(chatAreaWidth: 1192),
+                       "the default 1,440-pt window keeps Run as an overlay, not a permanent third column")
+        XCTAssertEqual(ResponsiveLayoutPolicy.inspectorDockMinimumChatWidth, 1320)
+        XCTAssertEqual(ResponsiveLayoutPolicy.activityCanvasWidth, 304)
         // Docking must leave the transcript above its readable minimum.
         XCTAssertGreaterThanOrEqual(
             ResponsiveLayoutPolicy.inspectorDockMinimumChatWidth
                 - Double(ResponsiveLayoutPolicy.activityCanvasWidth) - 24,
             ResponsiveLayoutPolicy.conversationReadableMinimum,
-            "1,180 − (340-pt canvas + padding) keeps the reading column readable"
+            "1,320 − (304-pt drawer + padding) keeps the reading column readable"
         )
     }
 
@@ -83,39 +83,39 @@ final class ResponsiveAndAccessibilityTests: XCTestCase {
             "unmeasured initial state docks, matching the default window"
         )
         XCTAssertEqual(
-            ResponsiveLayoutPolicy.inspectorPlacement(chatAreaWidth: 1179, current: docked),
+            ResponsiveLayoutPolicy.inspectorPlacement(chatAreaWidth: 1319, current: docked),
             docked,
-            "once docked, a 1-pt dip below 1,180 must not undock"
+            "once docked, a 1-pt dip below 1,320 must not undock"
         )
         XCTAssertEqual(
-            ResponsiveLayoutPolicy.inspectorPlacement(chatAreaWidth: 1163, current: docked),
+            ResponsiveLayoutPolicy.inspectorPlacement(chatAreaWidth: 1303, current: docked),
             overlay,
             "docking yields only after the 16-pt hysteresis band"
         )
         XCTAssertEqual(
-            ResponsiveLayoutPolicy.inspectorPlacement(chatAreaWidth: 899, current: overlay),
+            ResponsiveLayoutPolicy.inspectorPlacement(chatAreaWidth: 959, current: overlay),
             overlay,
-            "once overlaying, a 1-pt dip below 900 must not collapse"
+            "once overlaying, a 1-pt dip below 960 must not collapse"
         )
         XCTAssertEqual(
-            ResponsiveLayoutPolicy.inspectorPlacement(chatAreaWidth: 883, current: overlay),
+            ResponsiveLayoutPolicy.inspectorPlacement(chatAreaWidth: 943, current: overlay),
             strip
         )
         XCTAssertEqual(
-            ResponsiveLayoutPolicy.inspectorPlacement(chatAreaWidth: 900, current: strip),
+            ResponsiveLayoutPolicy.inspectorPlacement(chatAreaWidth: 960, current: strip),
             overlay,
-            "widening from the strip still uses the raw 900-pt enter threshold"
+            "widening from the strip still uses the raw 960-pt enter threshold"
         )
         XCTAssertEqual(
-            ResponsiveLayoutPolicy.inspectorPlacement(chatAreaWidth: 1180, current: overlay),
+            ResponsiveLayoutPolicy.inspectorPlacement(chatAreaWidth: 1320, current: overlay),
             docked,
-            "widening from overlay still uses the raw 1,180-pt enter threshold"
+            "widening from overlay still uses the raw 1,320-pt enter threshold"
         )
     }
 
     func testSidebarCollapsesBeforeTheTranscriptCompresses() {
         // Current minimums keep the sidebar user-controlled…
-        XCTAssertTrue(ResponsiveLayoutPolicy.sidebarFits(contentWidth: 1100, sidebarWidth: 280))
+        XCTAssertTrue(ResponsiveLayoutPolicy.sidebarFits(contentWidth: 1100, sidebarWidth: 248))
         // …but a smaller window must sacrifice the sidebar, never the transcript.
         XCTAssertFalse(ResponsiveLayoutPolicy.sidebarFits(contentWidth: 1000, sidebarWidth: 244))
         XCTAssertEqual(ResponsiveLayoutPolicy.conversationReadableMinimum, 812,
@@ -219,8 +219,8 @@ final class ResponsiveAndAccessibilityTests: XCTestCase {
         XCTAssertFalse(SidebarVisibility.shouldShow(
             preference: true, settingsPresented: false, availableContentWidth: 1000
         ))
-        XCTAssertEqual(ResponsiveLayoutPolicy.sidebarMinimumWidth, 280,
-                       "F3: the persistent rail gives projects and sessions readable room")
+        XCTAssertEqual(ResponsiveLayoutPolicy.sidebarMinimumWidth, 248,
+                       "F5C: the rail stays readable without crowding the workbench")
     }
 
     /// M-1 closure (2026-08-08): reduce motion is code-enforced, not a manual

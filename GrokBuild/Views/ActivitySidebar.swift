@@ -345,8 +345,8 @@ struct ActivitySidebar: View {
                 .frame(width: 0, height: 0)
                 .accessibilityHidden(true)
         }
-        .frame(minWidth: 300, idealWidth: 340, maxWidth: 380, maxHeight: .infinity)
-        .background(AppTheme.Palette.sidebar)
+        .frame(minWidth: 288, idealWidth: 304, maxWidth: 320, maxHeight: .infinity)
+        .background(AppTheme.Palette.canvas)
         .modifier(ActivitySidebarChrome())
         .accessibilityElement(children: .contain)
         .accessibilityLabel(liveProjection?.workers.isEmpty == false ? "Live worker activity" : "Run inspector")
@@ -437,26 +437,19 @@ struct ActivitySidebar: View {
         let currentAction = ownedStep?.title.trimmingCharacters(in: .whitespacesAndNewlines)
         let showsCurrentAction = currentAction?.isEmpty == false
             && currentAction?.localizedCaseInsensitiveCompare(worker.title) != .orderedSame
-        return VStack(alignment: .leading, spacing: 6) {
+        return VStack(alignment: .leading, spacing: 5) {
             HStack(alignment: .center, spacing: 8) {
-                ZStack {
-                    Circle().fill(color.opacity(0.14))
-                    Image(systemName: worker.isActive ? "person.wave.2.fill" : "person.2.fill")
-                        .font(.system(size: 10, weight: .semibold))
-                        .foregroundStyle(color)
-                }
-                .frame(width: 24, height: 24)
+                Circle()
+                    .fill(color)
+                    .frame(width: 7, height: 7)
                 .accessibilityHidden(true)
                 Text(worker.title)
                     .font(.system(size: 13, weight: .semibold))
-                    .lineLimit(2)
+                    .lineLimit(1)
                 Spacer(minLength: 6)
                 Text(status)
                     .font(AppTheme.Typography.section.weight(.semibold))
                     .foregroundStyle(color)
-                    .padding(.horizontal, 6)
-                    .padding(.vertical, 3)
-                    .background(color.opacity(0.10), in: Capsule())
             }
 
             if showsCurrentAction, let currentAction {
@@ -500,11 +493,11 @@ struct ActivitySidebar: View {
             }
             .accessibilityLabel("Worker receipt")
         }
-        .padding(9)
-        .background(Color.primary.opacity(0.035), in: RoundedRectangle(cornerRadius: AppTheme.Radius.medium))
-        .overlay {
-            RoundedRectangle(cornerRadius: AppTheme.Radius.medium)
-                .stroke(color.opacity(worker.isActive || ActivitySidebarPresentation.workerNeedsReview(worker) ? 0.28 : 0.12), lineWidth: 1)
+        .padding(.vertical, 9)
+        .overlay(alignment: .bottom) {
+            Rectangle()
+                .fill(AppTheme.Palette.divider)
+                .frame(height: 1)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .accessibilityElement(children: .contain)

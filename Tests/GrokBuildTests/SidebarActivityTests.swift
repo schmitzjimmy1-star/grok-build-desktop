@@ -127,9 +127,9 @@ final class SidebarActivityTests: XCTestCase {
         XCTAssertFalse(sidebarSource.contains("List(selection: persistentSelection)"),
                        "native List selection must not draw a second selected-row layer")
         XCTAssertFalse(sidebarSource.contains("CodexRailButton(title: \"Sessions\""),
-                       "Recents owns session discovery instead of duplicating Sessions in the rail")
+                       "the project tree owns session discovery instead of duplicating Sessions in the rail")
         XCTAssertTrue(sidebarSource.contains(".accessibilityLabel(\"Browse all sessions\")"),
-                      "Recents exposes the one browse-all session affordance")
+                      "Projects exposes the one browse-all session affordance")
 
         let contentSource = try String(
             contentsOf: repositoryRoot.appendingPathComponent("GrokBuild/ContentView.swift"),
