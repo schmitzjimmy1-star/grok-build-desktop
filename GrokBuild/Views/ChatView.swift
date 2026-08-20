@@ -686,37 +686,47 @@ struct ChatView: View {
         }
     }
 
-    /// F5C's one on-demand evidence drawer. It overlays at ordinary window
-    /// sizes, docks only on genuinely wide canvases, and collapses below the
-    /// fit threshold without discarding the user's open state.
+    /// One on-demand evidence dock. The docked form is a true peer surface;
+    /// ordinary windows get the same surface as a bounded material overlay.
+    @ViewBuilder
     private func activityInspector(docked: Bool) -> some View {
+        if docked {
+            activityInspectorContent
+                .frame(width: ResponsiveLayoutPolicy.activityCanvasWidth)
+                .frame(maxHeight: .infinity, alignment: .top)
+                .transition(.move(edge: .trailing).combined(with: .opacity))
+        } else {
+            activityInspectorContent
+                .frame(width: ResponsiveLayoutPolicy.activityCanvasWidth)
+                .frame(maxHeight: .infinity, alignment: .top)
+                .grokGlassSurface(cornerRadius: AppTheme.Radius.composer, shadowed: true)
+                .padding(10)
+                .transition(.move(edge: .trailing).combined(with: .opacity))
+        }
+    }
+
+    private var activityInspectorContent: some View {
         ActivitySidebar(
-            snapshot: activitySnapshot,
-            liveProjection: store.liveRunEvidenceProjection,
-            workspace: store.currentWorkspace?.path,
-            onClose: {
-                setActivitySidebarVisible(false)
-            },
-            onContinueAsNew: {
-                Task {
-                    _ = await performTranscriptSessionTransition {
-                        await store.continueAsNew()
+                snapshot: activitySnapshot,
+                liveProjection: store.liveRunEvidenceProjection,
+                workspace: store.currentWorkspace?.path,
+                onClose: {
+                    setActivitySidebarVisible(false)
+                },
+                onContinueAsNew: {
+                    Task {
+                        _ = await performTranscriptSessionTransition {
+                            await store.continueAsNew()
+                        }
                     }
-                }
-            },
-            onReviewRecovery: {
-                showRecoveryReview = true
-                Task { await store.reviewRecoveryCandidates() }
-            },
-            onRevealArtifact: onRevealArtifact,
-            inspector: contextInspectorModel
-        )
-        .frame(width: ResponsiveLayoutPolicy.activityCanvasWidth)
-        .padding(.top, 12)
-        .padding(.trailing, docked ? 0 : 12)
-        .padding(.bottom, 12)
-        .frame(maxHeight: .infinity, alignment: .top)
-        .transition(.move(edge: .trailing).combined(with: .opacity))
+                },
+                onReviewRecovery: {
+                    showRecoveryReview = true
+                    Task { await store.reviewRecoveryCandidates() }
+                },
+                onRevealArtifact: onRevealArtifact,
+                inspector: contextInspectorModel
+            )
     }
 
     /// Below the inspector fit threshold the open panel stays mounted as a narrow
@@ -1563,13 +1573,13 @@ struct ChatView: View {
     @ViewBuilder
     private var composerProjectContext: some View {
         if let workspace = store.currentWorkspace {
-            HStack(spacing: 8) {
+            HStack(spacing: 7) {
                 Label(workspace.displayName, systemImage: "folder")
                     .lineLimit(1)
-                    .padding(.horizontal, 9)
-                    .padding(.vertical, 5)
-                    .background(AppTheme.Palette.sidebarSelection, in: Capsule())
                     .accessibilityIdentifier("grok-composer-workspace-chip")
+
+                Text("·")
+                    .foregroundStyle(.tertiary)
 
                 Button(action: onSwitchBranch) {
                     Label(
@@ -1577,9 +1587,6 @@ struct ChatView: View {
                         systemImage: "arrow.triangle.branch"
                     )
                     .lineLimit(1)
-                    .padding(.horizontal, 9)
-                    .padding(.vertical, 5)
-                    .background(AppTheme.Palette.sidebarSelection, in: Capsule())
                 }
                 .buttonStyle(.plain)
                 .help("Switch branch or worktree")
@@ -1587,10 +1594,10 @@ struct ChatView: View {
 
                 Spacer(minLength: 0)
             }
-            .font(AppTheme.Typography.badge)
+            .font(AppTheme.Typography.label)
             .foregroundStyle(.secondary)
-            .padding(.horizontal, 10)
-            .frame(maxWidth: AppTheme.Layout.composerMaxWidth, minHeight: 28, alignment: .leading)
+            .padding(.horizontal, ComposerDensityPolicy.outerHorizontalPadding + 2)
+            .frame(maxWidth: AppTheme.Layout.composerMaxWidth, minHeight: 24, alignment: .leading)
             .frame(maxWidth: .infinity)
             .accessibilityElement(children: .contain)
             .accessibilityLabel("Composer project context")

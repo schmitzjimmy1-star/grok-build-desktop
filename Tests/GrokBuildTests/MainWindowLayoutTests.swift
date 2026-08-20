@@ -47,13 +47,13 @@ final class MainWindowLayoutTests: XCTestCase {
     func testTitlebarMetricsSitJustUnderTheTrafficLights() {
         XCTAssertEqual(TitlebarMetrics.trafficLightLeading, 78)
         XCTAssertEqual(TitlebarMetrics.systemTitlebarHeight, 32)
-        XCTAssertEqual(TitlebarMetrics.height, 32)
-        XCTAssertEqual(TitlebarMetrics.belowTrafficLights, 8)
+        XCTAssertEqual(TitlebarMetrics.height, 46)
+        XCTAssertEqual(TitlebarMetrics.belowTrafficLights, 0)
         XCTAssertEqual(TitlebarMetrics.headerIconGap, 16)
-        XCTAssertEqual(TitlebarMetrics.contentTopInset, 8)
-        XCTAssertEqual(TitlebarMetrics.overlayTopInset, 40)
-        XCTAssertEqual(TitlebarMetrics.sidebarWidth, 248)
-        XCTAssertEqual(TitlebarMetrics.sidebarHeaderHeight, 72)
+        XCTAssertEqual(TitlebarMetrics.contentTopInset, 32)
+        XCTAssertEqual(TitlebarMetrics.overlayTopInset, 78)
+        XCTAssertEqual(TitlebarMetrics.sidebarWidth, 256)
+        XCTAssertEqual(TitlebarMetrics.sidebarHeaderHeight, 78)
         XCTAssertGreaterThanOrEqual(
             TitlebarMetrics.sidebarWidth,
             ResponsiveLayoutPolicy.sidebarMinimumWidth

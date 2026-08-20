@@ -37,23 +37,22 @@ enum TitlebarMetrics {
     /// AppKit traffic-light row. The canvas ignores that safe area, so chrome
     /// has to clear it itself.
     static let systemTitlebarHeight: CGFloat = 32
-    /// Workbench control row. Sits on the canvas just under the traffic lights
-    /// so Dark titlebar vibrancy cannot crush the icons to canvas black.
-    static let height: CGFloat = 32
-    /// Small gap under the traffic-light row.
-    static let belowTrafficLights: CGFloat = 8
+    /// Synara-style shared shell row below the native traffic lights. Sidebar,
+    /// workbench, and evidence dock all use this same content height.
+    static let height: CGFloat = 46
+    static let belowTrafficLights: CGFloat = 0
     /// Space between the session title and the trailing header icons.
     static let headerIconGap: CGFloat = 16
     /// Extra air under the AppKit titlebar inset. Do not add
     /// `systemTitlebarHeight` here; SwiftUI still receives that safe area.
-    static var contentTopInset: CGFloat { belowTrafficLights }
-    /// Shared main-canvas header height.
+    static var contentTopInset: CGFloat { systemTitlebarHeight + belowTrafficLights }
+    /// Shared shell height including the native titlebar clearance.
     static var overlayTopInset: CGFloat { contentTopInset + height }
     /// Persistent Codex-style navigation rail width at ordinary window sizes.
     /// F5C keeps navigation useful without donating a quarter of the window to it.
-    static let sidebarWidth: CGFloat = 248
+    static let sidebarWidth: CGFloat = 256
     /// The rail draws under the titlebar; its brand row clears the traffic lights.
-    static let sidebarHeaderHeight: CGFloat = 72
+    static let sidebarHeaderHeight: CGFloat = 78
 }
 
 enum SidebarVisibility {

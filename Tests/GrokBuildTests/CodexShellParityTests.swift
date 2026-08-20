@@ -116,9 +116,9 @@ final class CodexShellParityTests: XCTestCase {
 
         for retained in [
             "CodexRailButton(title: \"New chat\"",
-            "CodexRailButton(title: \"Plugins\"",
-            "CodexRailButton(title: \"Security\"",
-            "Text(\"Projects\")",
+            "RailUtilityButton(title: \"Plugins\"",
+            "RailUtilityButton(title: \"Security\"",
+            "Text(\"Workspaces\")",
             "sessionRow(",
             "TextField(\"Filter projects\"",
             "projectContextMenu(",
@@ -204,16 +204,18 @@ final class CodexShellParityTests: XCTestCase {
         XCTAssertTrue(settings.contains("AppTheme.Palette.divider"))
 
         let content = try source("GrokBuild/ContentView.swift")
-        XCTAssertTrue(content.contains(".padding(.top, TitlebarMetrics.systemTitlebarHeight)"),
-                      "update chrome must clear the macOS traffic-light row")
+        XCTAssertFalse(content.contains("private struct UpdatesBanner"),
+                       "updates no longer rent a full-width titlebar")
+        XCTAssertTrue(sidebar.contains("grok-upgrade-indicator"),
+                      "the rail carries the quiet, still-actionable update receipt")
     }
 
     /// Frontend rebuild F5B: the workspace shell loses its heavy nested-card
     /// treatment while persistent chat titles and receipt truth stay readable.
     func testF5BQuietWorkspaceChromeAndReadableReceipts() throws {
         let theme = try source("GrokBuild/AppTheme.swift")
-        XCTAssertTrue(theme.contains("dark: NSColor(red: 0.112, green: 0.116, blue: 0.124"),
-                      "the rail stays distinct without becoming a charcoal slab")
+        XCTAssertTrue(theme.contains("dark: NSColor(red: 0.082, green: 0.082, blue: 0.082"),
+                      "the rail stays near the canvas instead of becoming a charcoal slab")
         XCTAssertTrue(theme.contains("static let sidebarTitle = Font.system(size: 13.5"),
                       "conversation rows use their own readable type role")
 
@@ -221,7 +223,7 @@ final class CodexShellParityTests: XCTestCase {
         XCTAssertTrue(sidebar.contains("AppTheme.Typography.sidebarTitleSelected"))
         XCTAssertTrue(sidebar.contains("Color.primary.opacity(0.78)"),
                       "unselected conversation titles remain readable instead of tiny tertiary text")
-        XCTAssertTrue(sidebar.contains(".frame(minHeight: 38)"),
+        XCTAssertTrue(sidebar.contains(".frame(minHeight: 36)"),
                       "conversation rows keep a readable target inside the calmer tree")
 
         let composer = try source("GrokBuild/Views/ComposerViews.swift")
@@ -240,12 +242,11 @@ final class CodexShellParityTests: XCTestCase {
                       "flattening presentation must not discard redacted receipt detail")
 
         let content = try source("GrokBuild/ContentView.swift")
-        let bannerStart = try XCTUnwrap(content.range(of: "private struct UpdatesBanner"))
-        let banner = String(content[bannerStart.lowerBound...])
-        XCTAssertTrue(banner.contains(".padding(.vertical, 6)"))
-        XCTAssertTrue(banner.contains(".background(AppTheme.Palette.chrome)"))
-        XCTAssertFalse(banner.contains(".background(.regularMaterial)"),
-                       "the update notice is a compact top row, not a second material titlebar")
+        XCTAssertTrue(content.contains("private var updateNotice: String?"))
+        XCTAssertFalse(content.contains("private struct UpdatesBanner"))
+        XCTAssertTrue(sidebar.contains("grok-upgrade-indicator"))
+        XCTAssertTrue(sidebar.contains("Dismiss until next launch"),
+                      "quiet update chrome retains its explicit dismissal")
     }
 
     /// Slice 5 presentation contract (replaced the Slice 0 red-baseline
@@ -406,7 +407,7 @@ final class CodexShellParityTests: XCTestCase {
         let topBar = try source("GrokBuild/Views/ChatTopBar.swift")
         let reviewToggle = try source("GrokBuild/Views/ChatHeaderReviewToggle.swift")
 
-        // The inspector docks at the default window width; overlay is mid-band only.
+        // The inspector remains a single responsive surface.
         XCTAssertTrue(chatView.contains("ZStack(alignment: .topTrailing) {"),
                       "the Run inspector still overlays in the mid band")
         XCTAssertTrue(chatView.contains("activityInspector(docked: true)"),
@@ -486,14 +487,14 @@ final class CodexShellParityTests: XCTestCase {
         XCTAssertTrue(sidebar.contains("private func workspaceTree"))
 
         let layout = try source("GrokBuild/MainWindowLayout.swift")
-        XCTAssertTrue(layout.contains("static let sidebarWidth: CGFloat = 248"),
-                      "F5C reclaims canvas width from the project rail")
+        XCTAssertTrue(layout.contains("static let sidebarWidth: CGFloat = 256"),
+                      "the rail follows the Synara workspace-width contract")
 
         let activity = try source("GrokBuild/Views/ActivitySidebar.swift")
         XCTAssertTrue(activity.contains("idealWidth: 304"),
                       "the evidence drawer is deliberately narrower than the old worker canvas")
-        XCTAssertTrue(activity.contains(".background(AppTheme.Palette.canvas)"),
-                      "the drawer reads as workspace evidence, not another charcoal slab")
+        XCTAssertTrue(activity.contains(".background(AppTheme.Palette.sidebar.opacity(0.88))"),
+                      "the drawer reads as a peer shell surface, not another charcoal slab")
         XCTAssertFalse(activity.contains("Color.primary.opacity(0.035), in: RoundedRectangle"),
                        "worker receipts are flat rows, not nested cards")
 

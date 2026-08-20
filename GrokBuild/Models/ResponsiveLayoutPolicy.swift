@@ -29,7 +29,7 @@ enum ResponsiveLayoutPolicy {
     /// minimum, so a user-chosen wider sidebar never flips visibility by itself.
     /// F3 (2026-08-20): the persistent Codex-style rail gives long project and
     /// session names room while leaving the conversation usable at the floor.
-    static let sidebarMinimumWidth: Double = 248
+    static let sidebarMinimumWidth: Double = 256
 
     /// Ignore sub-point geometry jitter. Writing `@State` on every 0.01-pt
     /// `onGeometryChange` rebuilds ChatView, including the transcript

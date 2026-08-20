@@ -154,6 +154,9 @@ struct SidebarView: View {
     var onOpenPlugins: () -> Void = {}
     var onOpenSecurity: () -> Void = {}
     var onOpenSettings: () -> Void = {}
+    var updateNotice: String? = nil
+    var onOpenUpdates: () -> Void = {}
+    var onDismissUpdates: () -> Void = {}
     @Binding var isFilterVisible: Bool
 
     @State private var filter = ""
@@ -220,10 +223,28 @@ struct SidebarView: View {
         VStack(spacing: 0) {
             HStack(spacing: 6) {
                 Text("GrokBuild")
-                    .font(.system(size: 15, weight: .semibold))
+                    .font(.system(size: 14, weight: .semibold))
                     .lineLimit(1)
 
                 Spacer(minLength: 4)
+
+                if let updateNotice {
+                    Button(action: onOpenUpdates) {
+                        Image(systemName: "arrow.triangle.2.circlepath")
+                            .frame(width: 16, height: 16)
+                    }
+                    .buttonStyle(GrokChromeButtonStyle())
+                    .foregroundStyle(AppTheme.Palette.link)
+                    .help(updateNotice)
+                    .accessibilityLabel("Updates available")
+                    .accessibilityValue(updateNotice)
+                    .accessibilityHint("Opens the update panel. Do not use during campaign acceptance.")
+                    .accessibilityIdentifier("grok-upgrade-indicator")
+                    .contextMenu {
+                        Button("Open Updates", action: onOpenUpdates)
+                        Button("Dismiss until next launch", action: onDismissUpdates)
+                    }
+                }
 
                 Button {
                     isFilterVisible.toggle()
@@ -249,15 +270,22 @@ struct SidebarView: View {
             .padding(.horizontal, 10)
             .padding(.top, TitlebarMetrics.systemTitlebarHeight)
             .frame(height: TitlebarMetrics.sidebarHeaderHeight, alignment: .bottom)
+            .overlay(alignment: .bottom) {
+                Rectangle()
+                    .fill(AppTheme.Palette.divider)
+                    .frame(height: 1)
+                    .accessibilityHidden(true)
+            }
 
-            VStack(spacing: 2) {
+            VStack(spacing: 6) {
                 CodexRailButton(title: "New chat", systemImage: "square.and.pencil", railAction: .newChat, action: onNewChat)
-                CodexRailButton(title: "Plugins", systemImage: "shippingbox", railAction: .plugins, action: onOpenPlugins)
-                CodexRailButton(title: "Security", systemImage: "checkmark.shield", railAction: .security, action: onOpenSecurity)
+                HStack(spacing: 6) {
+                    RailUtilityButton(title: "Plugins", systemImage: "shippingbox", action: onOpenPlugins)
+                    RailUtilityButton(title: "Security", systemImage: "checkmark.shield", action: onOpenSecurity)
+                }
             }
             .padding(.horizontal, 8)
-            .padding(.top, 8)
-            .padding(.bottom, 8)
+            .padding(.vertical, 8)
 
             if isFilterVisible {
                 HStack(spacing: 8) {
@@ -275,13 +303,6 @@ struct SidebarView: View {
                     .padding(.bottom, 8)
                     .transition(.move(edge: .top).combined(with: .opacity))
             }
-
-            Rectangle()
-                .fill(AppTheme.Palette.divider)
-                .frame(height: 1)
-                .padding(.horizontal, 12)
-                .padding(.bottom, 6)
-                .accessibilityHidden(true)
 
             List {
                 if !pinnedWorkspaces.isEmpty {
@@ -307,7 +328,7 @@ struct SidebarView: View {
 
                 } header: {
                     HStack {
-                        Text("Projects")
+                        Text("Workspaces")
                         Spacer()
                         Button(action: onBrowseSessions) {
                             Image(systemName: "clock.arrow.circlepath")
@@ -330,6 +351,7 @@ struct SidebarView: View {
             .listStyle(.sidebar)
             .scrollContentBackground(.hidden)
             .background(AppTheme.Palette.sidebar)
+            .environment(\.defaultMinListRowHeight, 34)
 
             Rectangle()
                 .fill(AppTheme.Palette.divider)
@@ -354,7 +376,7 @@ struct SidebarView: View {
                         .foregroundStyle(.secondary)
                 }
                 .padding(.horizontal, 12)
-                .frame(height: 48)
+                .frame(height: 44)
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
@@ -584,7 +606,7 @@ private struct CodexRailButton: View {
                 Spacer()
             }
             .padding(.horizontal, 8)
-            .frame(height: 34)
+            .frame(height: 36)
             .background(isHovered ? AppTheme.Palette.surfaceHover : Color.clear,
                         in: RoundedRectangle(cornerRadius: AppTheme.Radius.medium))
             .contentShape(Rectangle())
@@ -596,6 +618,37 @@ private struct CodexRailButton: View {
             SidebarSelectionSemantics.railActionIsSelected(railAction) ? [] : .isSelected
         )
         .onHover { isHovered = $0 }
+    }
+}
+
+private struct RailUtilityButton: View {
+    let title: String
+    let systemImage: String
+    let action: () -> Void
+    @State private var isHovered = false
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 7) {
+                Image(systemName: systemImage)
+                    .frame(width: 14)
+                Text(title)
+                    .font(AppTheme.Typography.label)
+                    .lineLimit(1)
+                Spacer(minLength: 0)
+            }
+            .padding(.horizontal, 8)
+            .frame(maxWidth: .infinity, minHeight: 32)
+            .background(
+                isHovered ? AppTheme.Palette.surfaceHover : AppTheme.Palette.glassTint,
+                in: RoundedRectangle(cornerRadius: AppTheme.Radius.medium, style: .continuous)
+            )
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .onHover { isHovered = $0 }
+        .accessibilityLabel(title)
+        .accessibilityIdentifier("grok-rail-\(title.lowercased())")
     }
 }
 
@@ -635,8 +688,8 @@ private struct SessionSidebarRow: View {
                 }
                 }
             .padding(.horizontal, 5)
-            .padding(.vertical, 6)
-            .frame(minHeight: 38)
+            .padding(.vertical, 5)
+            .frame(minHeight: 36)
                 .contentShape(Rectangle())
                 .background(
                     isSelected ? AppTheme.Palette.sidebarSelection : Color.clear,
@@ -697,7 +750,7 @@ private struct WorkspaceRow: View {
                 .frame(width: 20, height: 24)
 
             Text(workspace.displayName)
-                .font(isSelected ? AppTheme.Typography.captionStrong : AppTheme.Typography.caption)
+                .font(isSelected ? AppTheme.Typography.sidebarTitleSelected : AppTheme.Typography.sidebarTitle)
                 .foregroundStyle(isSelected ? .primary : .secondary)
                 .lineLimit(1)
                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -718,7 +771,7 @@ private struct WorkspaceRow: View {
         }
         .padding(.horizontal, 7)
         .padding(.vertical, 4)
-        .frame(minHeight: 36)
+        .frame(minHeight: 34)
         .frame(maxWidth: .infinity, alignment: .leading)
         .contentShape(Rectangle())
         .background(

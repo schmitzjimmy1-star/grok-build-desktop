@@ -115,7 +115,7 @@ final class ResponsiveAndAccessibilityTests: XCTestCase {
 
     func testSidebarCollapsesBeforeTheTranscriptCompresses() {
         // Current minimums keep the sidebar user-controlled…
-        XCTAssertTrue(ResponsiveLayoutPolicy.sidebarFits(contentWidth: 1100, sidebarWidth: 248))
+        XCTAssertTrue(ResponsiveLayoutPolicy.sidebarFits(contentWidth: 1100, sidebarWidth: 256))
         // …but a smaller window must sacrifice the sidebar, never the transcript.
         XCTAssertFalse(ResponsiveLayoutPolicy.sidebarFits(contentWidth: 1000, sidebarWidth: 244))
         XCTAssertEqual(ResponsiveLayoutPolicy.conversationReadableMinimum, 812,
@@ -219,8 +219,8 @@ final class ResponsiveAndAccessibilityTests: XCTestCase {
         XCTAssertFalse(SidebarVisibility.shouldShow(
             preference: true, settingsPresented: false, availableContentWidth: 1000
         ))
-        XCTAssertEqual(ResponsiveLayoutPolicy.sidebarMinimumWidth, 248,
-                       "F5C: the rail stays readable without crowding the workbench")
+        XCTAssertEqual(ResponsiveLayoutPolicy.sidebarMinimumWidth, 256,
+                       "the Synara-sized rail stays readable without crowding the workbench")
     }
 
     /// M-1 closure (2026-08-08): reduce motion is code-enforced, not a manual

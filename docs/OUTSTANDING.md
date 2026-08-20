@@ -87,6 +87,16 @@ layout of `msk-labs/grok-build-gui`: a light-first canvas, project/session rail,
 calm workspace, compact workspace/branch controls, and bottom-docked composer.
 No Electron/React implementation, source, asset, dependency, or backend is copied.
 
+**Active checkpoint F5D — Synara shell convergence.** This checkpoint replaces
+the stacked full-width update/header/card composition with one 46-point shell
+language, a 256-point workspace rail, an on-demand peer Run dock, flat composer
+context, and adaptive near-black/original-light material tokens. Runtime owners,
+provider routing, credentials, paid 4C, session deletion, and broad view
+decomposition remain untouched. It is nonbillable. Focused shell, theme,
+responsive, composer, and receipt contracts pass 66/66; the full suite passes
+1082 tests with 15 skipped and zero failures. Ship/install, installed visual
+acceptance, exact commit, and push receipt remain.
+
 Checkpoint commits accumulate and push to
 `personal/codex/frontend-rebuild-com-grokbuild-app`. Do not open or merge a PR
 until the campaign exit gate is satisfied. The broad historical `ChatView` split

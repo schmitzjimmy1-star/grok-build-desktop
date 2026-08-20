@@ -253,16 +253,16 @@ final class SettingsTabTests: XCTestCase {
 
         XCTAssertGreaterThan(canvasLight.r, 0.97, "Light canvas is the near-white design authority")
         XCTAssertLessThan(sidebarLight.r, canvasLight.r, "Project rail must separate from the canvas")
-        XCTAssertGreaterThanOrEqual(canvasLight.b, canvasLight.r - 0.001,
-                                    "Light canvas must not keep a warm/cream blue deficit")
-        XCTAssertGreaterThanOrEqual(sidebarLight.b, sidebarLight.r - 0.001,
-                                    "Light sidebar must not keep a warm/cream blue deficit")
-        XCTAssertGreaterThan(canvasDark.b, canvasDark.r,
-                             "Dark canvas keeps a cool bias so charcoal does not read brown")
-        XCTAssertGreaterThan(sidebarDark.r, canvasDark.r + 0.05,
-                             "Dark rail is the lighter cool charcoal beside the black canvas")
-        XCTAssertGreaterThan(sidebarDark.b, sidebarDark.r,
-                             "Dark rail keeps a cool gray bias")
+        XCTAssertLessThan(abs(canvasLight.b - canvasLight.r), 0.002,
+                          "Light canvas stays paper-white")
+        XCTAssertGreaterThan(sidebarLight.r, sidebarLight.b,
+                             "Light rail keeps the original warm mist treatment")
+        XCTAssertLessThan(abs(canvasDark.b - canvasDark.r), 0.002,
+                          "Dark canvas is neutral near-black")
+        XCTAssertGreaterThan(sidebarDark.r, canvasDark.r,
+                             "Dark rail separates by luminance, not a loud hue shift")
+        XCTAssertLessThan(sidebarDark.r - canvasDark.r, 0.03,
+                          "Dark rail stays close to the canvas")
         XCTAssertNotEqual(AppTheme.Palette.warningNSColor, AppTheme.Palette.linkNSColor)
         XCTAssertLessThan(abs(accentLight.r - accentLight.b), 0.08,
                           "Light primary actions use neutral ink rather than purple/blue")

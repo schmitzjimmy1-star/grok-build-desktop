@@ -3,54 +3,54 @@ import AppKit
 
 /// Shared visual language for the main GrokBuild surface.
 ///
-/// F2 has two deliberate appearances: a cool graphite/charcoal default inspired
-/// by Codex, and the pale original-reference treatment in Light. Both share one
-/// neutral action color. Dark uses near-white chrome and Light uses quiet ink;
-/// neither appearance inherits the user's purple/blue system accent.
+/// The frontend-rebuild shell deliberately uses one low-contrast material
+/// language: Synara-like near-black planes in Dark and the pale original
+/// reference treatment in Light. Semantic color is reserved for links and real
+/// status. App-owned controls never inherit the user's purple/blue system accent.
 /// `canvasNSColor` is also the AppKit window fill
 /// so the transparent titlebar stays visually continuous.
 enum AppTheme {
     enum Palette {
         static let canvasNSColor = adaptiveNSColor(
-            dark: NSColor(red: 0.060, green: 0.064, blue: 0.072, alpha: 1),
-            light: NSColor(red: 0.985, green: 0.986, blue: 0.990, alpha: 1)
+            dark: NSColor(red: 0.067, green: 0.067, blue: 0.067, alpha: 1),
+            light: NSColor(red: 0.988, green: 0.988, blue: 0.988, alpha: 1)
         )
         static let canvas = Color(nsColor: canvasNSColor)
         static let sidebarNSColor = adaptiveNSColor(
-            dark: NSColor(red: 0.112, green: 0.116, blue: 0.124, alpha: 1),
-            light: NSColor(red: 0.949, green: 0.953, blue: 0.963, alpha: 1)
+            dark: NSColor(red: 0.082, green: 0.082, blue: 0.082, alpha: 1),
+            light: NSColor(red: 0.961, green: 0.957, blue: 0.949, alpha: 1)
         )
         static let sidebar = Color(nsColor: sidebarNSColor)
         static let chrome = canvas
         static let surface = adaptive(
-            dark: NSColor(red: 0.105, green: 0.110, blue: 0.122, alpha: 1),
+            dark: NSColor(red: 0.090, green: 0.090, blue: 0.090, alpha: 1),
             light: NSColor.white
         )
         static let surfaceHover = adaptive(
-            dark: NSColor(red: 0.205, green: 0.211, blue: 0.226, alpha: 1),
-            light: NSColor(red: 0.914, green: 0.925, blue: 0.949, alpha: 1)
+            dark: NSColor.white.withAlphaComponent(0.075),
+            light: NSColor.black.withAlphaComponent(0.055)
         )
         static let sidebarSelection = adaptive(
             dark: NSColor.white.withAlphaComponent(0.095),
             light: NSColor.black.withAlphaComponent(0.060)
         )
         static let divider = adaptive(
-            dark: NSColor.white.withAlphaComponent(0.085),
-            light: NSColor.black.withAlphaComponent(0.105)
+            dark: NSColor.white.withAlphaComponent(0.075),
+            light: NSColor.black.withAlphaComponent(0.090)
         )
         /// Legacy name retained while F2-F5 migrate call sites from the prior
         /// glass vocabulary. The value is now an ordinary quiet row fill.
         static let glassTint = adaptive(
-            dark: NSColor.white.withAlphaComponent(0.045),
-            light: NSColor(red: 0.900, green: 0.916, blue: 0.949, alpha: 0.54)
+            dark: NSColor.white.withAlphaComponent(0.035),
+            light: NSColor.black.withAlphaComponent(0.025)
         )
         static let glassBorder = adaptive(
-            dark: NSColor.white.withAlphaComponent(0.105),
-            light: NSColor(red: 0.120, green: 0.145, blue: 0.205, alpha: 0.16)
+            dark: NSColor.white.withAlphaComponent(0.075),
+            light: NSColor.black.withAlphaComponent(0.090)
         )
         static let glassBorderStrong = adaptive(
-            dark: NSColor.white.withAlphaComponent(0.19),
-            light: NSColor(red: 0.105, green: 0.135, blue: 0.205, alpha: 0.28)
+            dark: NSColor.white.withAlphaComponent(0.18),
+            light: NSColor.black.withAlphaComponent(0.20)
         )
         static let accentNSColor = adaptiveNSColor(
             dark: NSColor(white: 0.94, alpha: 1),
@@ -82,7 +82,7 @@ enum AppTheme {
             dark: NSColor.white.withAlphaComponent(0.42),
             light: NSColor.black.withAlphaComponent(0.48)
         )
-        static let shadow = Color.black.opacity(0.12)
+        static let shadow = Color.black.opacity(0.18)
         static let richContentBackground = adaptive(
             dark: NSColor.black.withAlphaComponent(0.26),
             light: NSColor.black.withAlphaComponent(0.055)
@@ -128,12 +128,12 @@ enum AppTheme {
         /// Floating modal cards that sit above the canvas.
         static let overlay: CGFloat = 18
         /// Codex-style bottom composer and floating inspector cards.
-        static let composer: CGFloat = 14
+        static let composer: CGFloat = 12
     }
 
     enum Layout {
-        static let conversationMaxWidth: CGFloat = 760
-        static let composerMaxWidth: CGFloat = 820
+        static let conversationMaxWidth: CGFloat = 800
+        static let composerMaxWidth: CGFloat = 880
         static let settingsSidebarWidth: CGFloat = 168
         static let settingsContentMaxWidth: CGFloat = 760
         static let settingsControlWidth: CGFloat = 180
@@ -374,12 +374,17 @@ private struct GrokGlassSurfaceModifier: ViewModifier {
     func body(content: Content) -> some View {
         content
             .background {
-                RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-                    .fill(
-                        reduceTransparency
-                            ? AppTheme.Palette.surface
-                            : AppTheme.Palette.surface.opacity(0.98)
-                    )
+                if reduceTransparency {
+                    RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                        .fill(AppTheme.Palette.surface)
+                } else {
+                    RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                        .fill(.ultraThinMaterial)
+                        .overlay {
+                            RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                                .fill(AppTheme.Palette.surface.opacity(0.76))
+                        }
+                }
             }
             .overlay {
                 RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
@@ -388,7 +393,7 @@ private struct GrokGlassSurfaceModifier: ViewModifier {
                             ? AppTheme.Palette.glassBorderStrong
                             : (differentiateWithoutColor || colorSchemeContrast == .increased
                                 ? AppTheme.Palette.glassBorderStrong
-                                : AppTheme.Palette.glassBorder),
+                                : .clear),
                         lineWidth: 1
                     )
             }

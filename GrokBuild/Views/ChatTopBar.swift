@@ -165,7 +165,7 @@ struct ChatTopBar<TasksStatus: View, ReviewToggle: View, InspectorToggle: View>:
         .padding(.trailing, 12)
         .padding(.top, TitlebarMetrics.contentTopInset)
         .frame(height: TitlebarMetrics.overlayTopInset)
-        .background(AppTheme.Palette.canvas)
+        .background(AppTheme.Palette.canvas.opacity(0.96))
         .overlay(alignment: .bottom) {
             Rectangle()
                 .fill(AppTheme.Palette.divider)

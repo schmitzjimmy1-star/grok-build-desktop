@@ -271,7 +271,10 @@ struct ActivitySidebar: View {
         // from the generation-bound live projection or settled snapshot.
         VStack(spacing: 0) {
             header
-            Divider()
+            Rectangle()
+                .fill(AppTheme.Palette.divider)
+                .frame(height: 1)
+                .accessibilityHidden(true)
             ScrollView {
                 VStack(alignment: .leading, spacing: 10) {
                     if let snapshot, snapshot.continuity.requiresRecoveryAction {
@@ -346,7 +349,7 @@ struct ActivitySidebar: View {
                 .accessibilityHidden(true)
         }
         .frame(minWidth: 288, idealWidth: 304, maxWidth: 320, maxHeight: .infinity)
-        .background(AppTheme.Palette.canvas)
+        .background(AppTheme.Palette.sidebar.opacity(0.88))
         .modifier(ActivitySidebarChrome())
         .accessibilityElement(children: .contain)
         .accessibilityLabel(liveProjection?.workers.isEmpty == false ? "Live worker activity" : "Run inspector")
@@ -658,20 +661,17 @@ struct ActivitySidebar: View {
 
     private var header: some View {
         HStack(spacing: 8) {
-            VStack(alignment: .leading, spacing: 2) {
-                HStack(spacing: 6) {
-                    Text(headerTitle)
-                        .font(AppTheme.Typography.captionStrong)
-                    if snapshot != nil {
-                        evidencePhaseBadge("Finished", color: .secondary)
-                    } else if liveProjection != nil {
-                        evidencePhaseBadge("Live", color: AppTheme.Palette.accent)
-                    }
-                }
-                Text(headerSubtitle)
+            Text("Run")
+                .font(AppTheme.Typography.captionStrong)
+            if snapshot != nil {
+                evidencePhaseBadge("Finished", color: .secondary)
+            } else if liveProjection != nil {
+                evidencePhaseBadge("Live", color: AppTheme.Palette.accent)
+            }
+            Text(headerSubtitle)
                 .font(AppTheme.Typography.caption)
                 .foregroundStyle(.tertiary)
-            }
+                .lineLimit(1)
             Spacer()
             Button(action: onClose) {
                 Image(systemName: "xmark")
@@ -682,13 +682,8 @@ struct ActivitySidebar: View {
             .buttonStyle(.plain).foregroundStyle(.secondary)
             .help("Hide run inspector").accessibilityLabel("Hide run inspector")
         }
-        .padding(.horizontal, 12).padding(.vertical, 8)
-    }
-
-    private var headerTitle: String {
-        if liveProjection?.workers.isEmpty == false { return "Worker activity" }
-        if snapshot?.workers.isEmpty == false { return "Worker receipts" }
-        return inspector.subagents == nil ? "Run" : "Subagents"
+        .padding(.horizontal, 12)
+        .frame(height: TitlebarMetrics.height)
     }
 
     private var headerSubtitle: String {

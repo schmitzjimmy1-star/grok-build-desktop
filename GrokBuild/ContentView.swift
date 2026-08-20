@@ -146,7 +146,21 @@ struct ContentView: View {
     }
 
     private var hasTopBanners: Bool {
-        (sessionLayoutFailure != nil && !isMigrationBannerDismissed) || showUpgradeBanner
+        sessionLayoutFailure != nil && !isMigrationBannerDismissed
+    }
+
+    private var updateNotice: String? {
+        guard showUpgradeBanner else { return nil }
+        switch (bannerAppVersion, bannerCLIVersion) {
+        case let (app?, nil):
+            return "GrokBuild \(app) is ready"
+        case let (nil, cli?):
+            return "grok CLI \(cli) is ready"
+        case let (app?, cli?):
+            return "GrokBuild \(app) and grok CLI \(cli) are ready"
+        default:
+            return "Updates available"
+        }
     }
 
     private var sidebarIsPresented: Bool {
@@ -302,6 +316,18 @@ struct ContentView: View {
             onOpenPlugins: { openSettings(tab: .plugins) },
             onOpenSecurity: { openSettings(tab: .permissions) },
             onOpenSettings: { openSettings(tab: selectedSettingsTab) },
+            updateNotice: updateNotice,
+            onOpenUpdates: {
+                Task {
+                    await UpdateUI.presentUpdatePanel(refresh: false) {
+                        refreshUpgradeBannerState()
+                    }
+                }
+            },
+            onDismissUpdates: {
+                isUpgradeBannerDismissed = true
+                refreshUpgradeBannerState()
+            },
             isFilterVisible: $isProjectFilterVisible
         )
         .frame(width: TitlebarMetrics.sidebarWidth)
@@ -359,24 +385,6 @@ struct ContentView: View {
                 .accessibilityElement(children: .contain)
                 .accessibilityIdentifier("grok-migration-banner")
             }
-            if showUpgradeBanner {
-                UpdatesBanner(
-                    appVersion: bannerAppVersion,
-                    cliVersion: bannerCLIVersion,
-                    onAction: {
-                        Task {
-                            await UpdateUI.presentUpdatePanel(refresh: false) {
-                                refreshUpgradeBannerState()
-                            }
-                        }
-                    },
-                    onDismiss: {
-                        isUpgradeBannerDismissed = true
-                        refreshUpgradeBannerState()
-                    }
-                )
-            }
-
             workspaceShell
 
             if isRestoringSessions {
@@ -1893,69 +1901,6 @@ struct ContentView: View {
         bannerAppVersion = appAvailable ? UpdateScheduler.cachedAppRelease?.latestVersion : nil
         bannerCLIVersion = cliAvailable ? UpdateScheduler.cachedCLIStatus?.latestVersion : nil
         showUpgradeBanner = true
-    }
-}
-
-private struct UpdatesBanner: View {
-    let appVersion: String?
-    let cliVersion: String?
-    let onAction: () -> Void
-    let onDismiss: () -> Void
-
-    private var subtitle: String {
-        switch (appVersion, cliVersion) {
-        case let (app?, nil):
-            return "GrokBuild \(app) is ready to download and install."
-        case let (nil, cli?):
-            return "grok CLI \(cli) is ready to update."
-        case let (app?, cli?):
-            return "GrokBuild \(app) and grok CLI \(cli) have updates ready."
-        default:
-            return "Review available updates."
-        }
-    }
-
-    var body: some View {
-        HStack(spacing: 9) {
-            Image(systemName: "arrow.triangle.2.circlepath")
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(AppTheme.Palette.link)
-
-            Button(action: onAction) {
-                Text("Updates Available")
-                    .font(AppTheme.Typography.captionStrong)
-            }
-            .buttonStyle(.plain)
-            .accessibilityIdentifier("grok-upgrade-banner-open")
-            .accessibilityHint("Opens the update panel. Do not use during campaign acceptance.")
-
-            Text(subtitle)
-                .font(AppTheme.Typography.caption)
-                .foregroundStyle(.secondary)
-                .lineLimit(1)
-
-            Spacer(minLength: 8)
-
-            Button(action: onDismiss) {
-                Image(systemName: "xmark.circle.fill")
-                    .foregroundStyle(.secondary)
-                    .contentShape(Rectangle().inset(by: -8))
-            }
-            .buttonStyle(.plain)
-            .help("Dismiss until next launch")
-            .accessibilityIdentifier("grok-upgrade-banner-dismiss")
-            .accessibilityLabel("Dismiss upgrade notice")
-            .accessibilityHint("Hides this notice until the next launch.")
-        }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 6)
-        .padding(.top, TitlebarMetrics.systemTitlebarHeight)
-        .background(AppTheme.Palette.chrome)
-        .accessibilityElement(children: .contain)
-        .accessibilityIdentifier("grok-upgrade-banner")
-        .overlay(alignment: .bottom) {
-            Divider()
-        }
     }
 }
 

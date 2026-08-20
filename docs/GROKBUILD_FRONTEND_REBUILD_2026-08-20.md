@@ -160,6 +160,18 @@ fields from observed receipts; missing evidence stays unknown. This acceptance i
 not permission to edit provider configuration, credentials, routing, the locked
 4C campaign, or repository files from inside the paid run.
 
+The next checkpoint is **F5D — Synara shell convergence**. It is the large
+presentation-only facelift authorized after the installed F5C review: one
+46-point content-header language below the native traffic lights, a 256-point
+workspace rail, a peer Run dock, a bottom composer with unboxed project/branch
+context, and near-black / original-light adaptive material tokens. The update
+notice leaves the full-width roof and becomes a quiet actionable rail indicator.
+Plugins, Security, project/session actions, Settings, update dismissal, Run
+receipts, and every existing accessibility/ownership boundary remain reachable.
+No fake Terminal, Diff, or Browser tab is added merely to imitate a reference.
+F5D requires focused shell/accessibility tests, the full suite, `make ship`, and
+installed Dark/Light/wide/narrow acceptance. It uses no provider prompt.
+
 ### F6 — tranche exit
 
 Run the full suite, clean `make ship`, light and dark installed Computer Use,
