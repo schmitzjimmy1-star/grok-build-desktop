@@ -1,11 +1,18 @@
 # Slice 4C edit map — 2026-08-19
 
-Pre-implementation map. It does **not** authorize a paid Send, a pager rebuild,
-`grok update`, or unlocking `_billable_v3`.
+Locked executor (steps 1–4) is in tree. It does **not** authorize a paid Send,
+a pager rebuild, `grok update`, unlocking `_billable_v3`, or narrowing
+`require_absolute_ceiling_support()`.
 
-Product stamp stays `29c064f` until the first 4C code-bearing `make ship`.
+Product stamp stays `29c064f` until the first 4C **app-code** `make ship`.
 CLI leftover PR #7 is **merged** as `7e9f1ad`. Live Application Support
-`runtime-selection.json` stays **absent** until a 4C packet arms it.
+`runtime-selection.json` stays **absent** until a later 4C packet arms it.
+
+Frozen identity: `campaignId` `slice4c-bounded-paid`. Projection SHA-256
+(excludes only live `runId`)
+`934506fac65bc58c2d17ff373a71835cfbe53f862204d9f1c6c99ab38d0967e5`.
+`expectedCLIBuild` `1.0.5 (8226242)`. Catalog prices stay
+`pricingConfirmed: false`.
 
 ## Reviews (complete)
 
@@ -70,11 +77,15 @@ launch_installed(
 
 ## Implementation order
 
-1. `schema_4c` + dry-run 4C manifest. Still fully locked.
-2. `_billable_4c` + `main` routing **behind** the still-unconditional ceiling refusal.
-3. `authority_4c` + four-arg launch + install/rollback.
-4. Tests: v3 fixture still cannot Send; 4C dry-run only.
+1. ~~`schema_4c` + dry-run 4C manifest. Still fully locked.~~ Landed.
+2. ~~`_billable_4c` + `main` routing **behind** the still-unconditional ceiling refusal.~~ Landed.
+3. ~~`authority_4c` + four-arg launch + install/rollback reuse.~~ Landed.
+4. ~~Tests: v3 fixture still cannot Send; 4C dry-run only.~~ Landed.
 5. **Separate unlock commit:** narrow predicate, then owner-local armed Sends, rollback, receipts.
+
+Native schema-3 `credentialAuthorizationV3` bind remains an unlock leftover.
+Do not “fix” it by sending native on official 1.0.4. Live bind hashes stay out
+of the committed matrix.
 
 ## Out of scope
 

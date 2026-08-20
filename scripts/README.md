@@ -42,6 +42,10 @@ so the reactive app Stop guard cannot prove the absolute 4M ceiling. V2 billable
 preflight refuses before launch until a hard official or worst-case bound exists.
 Legacy v1 billable execution is retired. V2 receipts are owner-only append-only
 triples: reservation, typed terminal evidence, then exact local cleanup.
+Schema-4 `_billable_4c` plus `manifests/official-provider-slice4c-paid.json`
+plan the 20M/19M/1M native → direct → brokered matrix as dry-run only.
+`--billable` still refuses at the absolute ceiling. Do not treat that executor
+as paid unlock.
 
 ```bash
 python3 scripts/acceptance/run.py

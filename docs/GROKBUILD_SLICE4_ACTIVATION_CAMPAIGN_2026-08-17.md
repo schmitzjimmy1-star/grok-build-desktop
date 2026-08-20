@@ -557,7 +557,7 @@ Owner-local proofs live in these files. Do not retarget pager pins anywhere else
 | Kill-after-response-before-settlement | `loopback_provider.py` mode `hold_after_body`; `Slice4B5LifecycleTests.testKillAfterResponseBeforeSettlementChargesAmbiguousReservation` |
 | Hostile `setsid` / tool-tree | CLI spawn/process-group code in the grok-build fork. CI leftover merged as PR #7 `7e9f1ad` (`hard_budget_receiver_closes_fd_before_raw_fork_and_setsid_descendant` on the pager-bin `hard_budget` filter). Darwin post-enrollment `setsid()` escape remains the known 4B.2 limit. |
 | 4B.6 signed owner-private install | `scripts/acceptance/harness/candidate_install.py`; owner-local `Slice4B5LifecycleTests` install a copy first; ordinary lookup never scans `candidate-runtime`; not `~/.grok/bin/grok`; rollback requires two empty process-zero samples with distinct timestamps |
-| 4C paid unlock | New armed route-matrix executor in `scripts/acceptance/run.py` (`_billable_4c`), not `_billable_v3`. CLI PR #7 is **merged** as `7e9f1ad`. Three 4C-unlock reviews of installed `29c064f` plus that merge are complete. See [`GROKBUILD_SLICE4C_EDIT_MAP_2026-08-19.md`](GROKBUILD_SLICE4C_EDIT_MAP_2026-08-19.md). Do not unlock `_billable_v3` or weaken lower guards. |
+| 4C paid unlock | Locked `_billable_4c` plus `official-provider-slice4c-paid.json` exist behind the still-unconditional ceiling. Unlock is a **separate** commit that narrows `require_absolute_ceiling_support()` to the frozen `campaignId` / projection hash / 20M/19M/1M / packet-order predicate. Do not unlock `_billable_v3` or weaken lower guards. CLI PR #7 is **merged** as `7e9f1ad`. |
 
 Staged pager identity for this pass: binary SHA-256
 `f434fa4f17160c8771d3b57bfc62499e252413c4d1fc5ab22bee1a18f2bc933b`,
@@ -620,16 +620,17 @@ Three independent 4C-unlock reviews of installed `29c064f` plus CLI leftover
 `_billable_v3` (unarmed `launch_installed()` would Send on official 1.0.4);
 identity pins re-derived live (official CLI `39366f77…`, pager `f434fa4f…`,
 installed Mach-O `55d85de4…`, Team `DD2GCQJVB4`). Live selection sidecar stays
-absent. 4C implementation is a new armed route-matrix executor plus pinned
-manifest, not a predicate-only unlock of `_billable_v3`.
+absent. Locked `_billable_4c` plus the schema-4 matrix now exist; paid Send
+still refuses at `require_absolute_ceiling_support()`. Do not treat that
+executor as unlock, and do not send `_billable_v3` on official 1.0.4.
 
 ## Paid unlock and execution
 
-4C is a separate decision boundary. It cannot begin merely because the code is
-merged or the unconditional lock is easy to delete. Three independent skeptical
+4C is a separate decision boundary. It cannot begin merely because the locked
+executor is merged or the unconditional lock is easy to delete. Three independent skeptical
 reviews of the exact installed 4B.6 tree (`29c064f`), the CLI leftover merge
-`7e9f1ad`, and retained nonbillable evidence are complete. The unlock commit
-must add a new armed 4C executor and replace the first-branch refusal with a
+`7e9f1ad`, and retained nonbillable evidence are complete. The **unlock** commit
+must replace the first-branch refusal with a
 narrow, testable predicate for that exact campaign; it may not weaken any lower
 guard or send `_billable_v3` on the official 1.0.4 path. The implementer map is
 [`GROKBUILD_SLICE4C_EDIT_MAP_2026-08-19.md`](GROKBUILD_SLICE4C_EDIT_MAP_2026-08-19.md).

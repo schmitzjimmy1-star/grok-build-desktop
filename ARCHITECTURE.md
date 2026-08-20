@@ -1295,9 +1295,11 @@ make ship      # Apple Development install to /Applications/GrokBuild.app
 | `scripts/release.sh` | Unsigned personal GitHub release only if explicitly asked; refuses `RELEASE_TYPE=notarized` |
 | `scripts/notarize.sh` | Present but unused. `make notarize` is refused on this personal line. |
 | `scripts/grokbuild-install-update.sh` | In-app replace + relaunch |
-| `scripts/acceptance/run.py` | Agentic acceptance harness: versioned manifests, dry-run default, fixture rejection, `--billable` installed UI only; Slice 6 packet ceiling 250k; schema-3 continuation dry-run plus `_billable_v3` (4B.4 T1 `session/new`, T2/T3 `governed_fresh_process_load`, cleanup after T3; not the 4C route matrix) still fail-closed at the absolute ceiling |
+| `scripts/acceptance/run.py` | Agentic acceptance harness: versioned manifests, dry-run default, fixture rejection, `--billable` installed UI only; Slice 6 packet ceiling 250k; schema-3 continuation dry-run plus `_billable_v3` (4B.4 T1 `session/new`, T2/T3 `governed_fresh_process_load`, cleanup after T3; not the 4C route matrix); schema-4 `_billable_4c` (native → direct → brokered, 20M/19M/1M, four-arg launch) still fail-closed at the absolute ceiling |
 | `scripts/acceptance/harness/provenance_v3.py` | Independent 4B.3 canonical provenance and nested `v3Authority` verifier; does not mutate v2 |
 | `scripts/acceptance/harness/schema_v3.py` | 4B.4 fresh-process continuation schema: `session/load` only; `resumeAfterQuit` / `session/resume` / `resume_saved_task` fail closed; `load_manifest` / `dry_run_plan` for schemaVersion 3 |
+| `scripts/acceptance/harness/schema_4c.py` | Locked 4C paid-matrix schema: frozen `campaignId` `slice4c-bounded-paid`, 20M/19M/1M, native then direct then brokered, no live bind hashes, `pricingConfirmed` false |
+| `scripts/acceptance/harness/authority_4c.py` | 4C CLI/Swift authority: nested 20M/19M/1M, `expectedCLIBuild` `1.0.5 (8226242)`, `campaignId` is not `runId` |
 | `scripts/acceptance/harness/receipts_v3.py` | 4B.4 continuation evaluator: three allocations, one backend, one ledger; stale `session/new` fallback, load-time prompt, and early cleanup fail closed; JSONL `append_row` / `load_ledger` |
 | `scripts/acceptance/harness/driver.py` | Installed-app UI driver. `governed_fresh_process_load` selects the retained tab by AX UUID after an allocated launch and never clicks ungoverned Resume; later packet Send performs native `session/load`. `resume_saved_task` remains the consumer-only v1 path |
 | `scripts/acceptance/harness/candidate_install.py` | Slice 4B.6 signed owner-private pager copy into `candidate-runtime/<sha256>/`; never `~/.grok/bin/grok`; rollback unlinks only the selection sidecar after two empty process-zero samples with distinct timestamps |
@@ -1348,7 +1350,7 @@ spawn/ACP/session/model/MCP readiness, submit/dispatch/first-chunk/settled bound
 using only stage, time, and PID. It never records prompts, response bodies, tool
 arguments, credentials, URLs, or environment contents.
 | **Public README screenshots (2026-08-13 campaign Slice 7)** | `docs/images/grokbuild-app.png` (signed-installed New chat), `docs/images/grokbuild-run-inspector.png` (settled multi-tool/two-child Run inspector); first-screenful copy in `README.md` |
-| **Agentic acceptance harness** | `scripts/acceptance/run.py`, `scripts/acceptance/schema/v1.json`, `scripts/acceptance/manifests/installed-three-route-v1.json`, `scripts/acceptance/manifests/installed-slice6-packet-v1.json`, `scripts/acceptance/manifests/fresh-process-continuation-v3.json`; dry-run default, `--billable` after preflight, fixture-mode rejection, exact-ID cleanup, Slice 6 250k Stop packet; independent v3 provenance verifier in `scripts/acceptance/harness/provenance_v3.py`; schema-3 continuation dry-run plus fail-closed `_billable_v3` |
+| **Agentic acceptance harness** | `scripts/acceptance/run.py`, `scripts/acceptance/schema/v1.json`, `scripts/acceptance/manifests/installed-three-route-v1.json`, `scripts/acceptance/manifests/installed-slice6-packet-v1.json`, `scripts/acceptance/manifests/fresh-process-continuation-v3.json`, `scripts/acceptance/manifests/official-provider-slice4c-paid.json`; dry-run default, `--billable` after preflight, fixture-mode rejection, exact-ID cleanup, Slice 6 250k Stop packet; independent v3 provenance verifier in `scripts/acceptance/harness/provenance_v3.py`; schema-3 continuation dry-run plus fail-closed `_billable_v3`; locked schema-4 `_billable_4c` behind the same absolute ceiling |
 | **Armed v3 credential / provenance (4B.3 T5 proven locally)** | `ArmedV3DispatchExpectation.swift`, `GrokArmedCredentialMaterializer.swift`, `HardBudgetProvenanceV3.swift`, nested ACP `v3Authority`, fail-closed `ArmedV3ResolvedSnapshot`, `TrackedConfigGeneration` / `ResolvedConfigIdentityTracker`, live `ArmedV3LiveRouteCore` plus `ArmedV3PacketBoundsObservation` (loopback endpoint SHA, deterministic `v3.<sha256>` route id, 64KiB serializer ceiling, Darwin `fd_v1`, five-tool isolation, derived conservative bound), selected-model `resolved-managed-provider` source kind, preserved `ModelEntry.model_provider`, omitted armed summary client, spawn requires already-active authority, production `GrokProcess.start` materializes v3 via the dedicated Keychain client then `posix_spawn`s the leased candidate with FD 198/197 (debug tests inject the client; schema-2 stays fail-closed; schema-3 packets carry selectors, and `ArmedV3DispatchExpectation` cross-binds them to the live custom model + provider before `HardBudgetLaunchContract`; spawn rechecks that latch (model, empty MCP, `officialHelper`, file identity) immediately before `posix_spawn`, and `initialize` must present a matching nested `v3Authority` before `.ready`; schema-3 uses 20M/19M/1M and refuses the live v1 4M governor), one cached armed `SamplingClient` per sampler actor, CLI pager FD-198 owner install, `agent::init::bootstrap` `bind_measured_v3_authority_if_present`, `bind_and_install_v3_authority`, `SamplingClient::new_with_armed_v3` / `from_process_config` |
 | **Add/remove project** | `WorkspaceStore`, `WorkspacePicker` |
 | **Browser tools** | `AgentBrowserService`, `BrowserSettingsStore`, settings `.browser` (agent-browser CLI over MCP) |
@@ -1604,7 +1606,10 @@ ad-hoc 4B.0 arming remain locked. 4B.4 tab-select is wired:
 allocated process with `session/load`. Schema-3 continuation dry-run and
 `_billable_v3` are wired (T1 `session/new`, T2/T3 governed tab-select, cleanup
 after T3) and still fail-closed at the absolute ceiling. That path is 4B.4
-continuation, not 4C. Paid 4C remains locked.
+continuation, not 4C. Locked `_billable_4c` plus
+`official-provider-slice4c-paid.json` exist for the native → direct → brokered
+matrix (20M/19M/1M, frozen `campaignId` `slice4c-bounded-paid`) and still
+refuse `--billable` at that ceiling. Paid Send remains locked.
 Live unarmed and schema-2 packets stay on the 4M/3M/1M v1 governor.
 Schema-3 armed desktop packets use versioned 20M/19M/1M and refuse that mix.
 CLI `HardTokenBudget::from_env` vs v3 authority in the child remains a fork
@@ -1624,7 +1629,7 @@ follow-up.
 | `docs/GROKBUILD_LEFTOVER_CLOSEOUT_2026-08-15.md` | Leftover closeout (Phases 1–2 merged as `7a3006d`). Phase 3 ChatView split stays deferred. |
 | `docs/GROKBUILD_VISUAL_QUIET_CAMPAIGN_2026-08-15.md` | Proposed visual-quiet campaign (not started). Not leftover Phase 3. |
 | `docs/GROKBUILD_SLICE4_ACTIVATION_CAMPAIGN_2026-08-17.md` | Slice 4B activation authority; 4B.0–4B.6 accepted; paid 4C locked |
-| `docs/GROKBUILD_SLICE4C_EDIT_MAP_2026-08-19.md` | Pre-4C leftover closeout: new armed `_billable_4c` executor map; do not unlock `_billable_v3` |
+| `docs/GROKBUILD_SLICE4C_EDIT_MAP_2026-08-19.md` | 4C implementer map: locked `_billable_4c` steps 1–4 landed; step 5 paid unlock is a separate commit; do not unlock `_billable_v3` |
 | `docs/GROKBUILD_AGENTIC_COCKPIT_CAMPAIGN_2026-08-15.md` | Closed Agentic Cockpit campaign (Phases 1/3/4 complete; Phase 2 deferred as leftover Phase 3). |
 | `.cursor/rules/` | Architecture, SwiftUI, CLI integration, AppKit panels |
 | `.cursor/skills/grokbuild-*` | Dev workflow, release, CLI checks |

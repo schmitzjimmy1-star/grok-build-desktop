@@ -1,0 +1,179 @@
+{
+  "schemaVersion": 4,
+  "campaignId": "slice4c-bounded-paid",
+  "runId": "DRY-RUN",
+  "campaignTokenCeiling": 20000000,
+  "plannedTokenMaximum": 19000000,
+  "emergencyReserveTokens": 1000000,
+  "maxAttempts": 1,
+  "effort": "low",
+  "parentAgent": "default",
+  "expectedCLIBuild": "1.0.5 (8226242)",
+  "pricingConfirmed": false,
+  "forbiddenToolsDefault": [
+    "GrokBuild:update_plan"
+  ],
+  "packets": [
+    {
+      "id": "S4C-NAT-CTRL",
+      "marker": "GB-S4C-NAT-CTRL-{runId}",
+      "prompt": "Return exactly {marker} and nothing else.",
+      "selectorModelID": "grok-4.6",
+      "effectiveModelID": "grok-4.6",
+      "expectedModelUsageIDs": [
+        "grok-4.6"
+      ],
+      "routeReceipt": {
+        "kind": "nativeXAI",
+        "selectedModelID": "grok-4.6",
+        "providerName": "xAI",
+        "appProviderID": null,
+        "officialProviderID": null,
+        "endpointIdentity": null,
+        "providerModelID": "grok-4.6",
+        "apiBackend": null,
+        "authBoundary": "nativeSession",
+        "modelIsPinned": true,
+        "servingProviderIsProven": true,
+        "appFallbackEnabled": false
+      },
+      "tokenAllocation": 100000,
+      "maxModelCalls": 1,
+      "maxAttempts": 1,
+      "workload": "noTool",
+      "allowedTools": [],
+      "requiredTools": [],
+      "forbiddenTools": [
+        "GrokBuild:update_plan"
+      ],
+      "requiredResponseTerms": [],
+      "orderedGroups": [],
+      "readFixtures": [],
+      "childTopology": null,
+      "continuation": null,
+      "frozenPricing": null,
+      "hardBudget": {
+        "allocationID": "s4c-nat-ctrl",
+        "route": {
+          "model": "grok-4.6",
+          "apiBackend": "responses",
+          "requestBoundTokens": 100000,
+          "maxPayloadBytes": 8192,
+          "maxOutputTokens": 91808
+        }
+      }
+    },
+    {
+      "id": "S4C-OAI-H-NO",
+      "marker": "GB-S4C-OAI-H-NO-{runId}",
+      "prompt": "Return exactly {marker} and nothing else.",
+      "selectorModelID": "gpt-5.6-terra",
+      "effectiveModelID": "gpt-5.6-terra",
+      "expectedModelUsageIDs": [
+        "gpt-5.6-terra"
+      ],
+      "routeReceipt": {
+        "kind": "directProvider",
+        "selectedModelID": "gpt-5.6-terra",
+        "providerName": "ChatGPT (OpenAI)",
+        "appProviderID": "openai",
+        "officialProviderID": "grokbuild.saved.openai",
+        "endpointIdentity": "https://api.openai.com/v1",
+        "providerModelID": "gpt-5.6-terra",
+        "apiBackend": "responses",
+        "authBoundary": "officialHelper",
+        "modelIsPinned": true,
+        "servingProviderIsProven": true,
+        "appFallbackEnabled": false
+      },
+      "tokenAllocation": 100000,
+      "maxModelCalls": 1,
+      "maxAttempts": 1,
+      "workload": "noTool",
+      "allowedTools": [],
+      "requiredTools": [],
+      "forbiddenTools": [
+        "GrokBuild:update_plan"
+      ],
+      "requiredResponseTerms": [],
+      "orderedGroups": [],
+      "readFixtures": [],
+      "childTopology": null,
+      "continuation": null,
+      "frozenPricing": {
+        "currency": "USD",
+        "promptUsdPerMillion": 2.0,
+        "completionUsdPerMillion": 12.0,
+        "cacheTreatment": "uncachedUpperBound",
+        "source": "https://openai.com/index/advancing-the-price-performance-frontier-with-gpt-5-6/",
+        "campaignConfirmed": false
+      },
+      "hardBudget": {
+        "allocationID": "s4c-oai-h-no",
+        "route": {
+          "model": "gpt-5.6-terra",
+          "apiBackend": "responses",
+          "requestBoundTokens": 100000,
+          "maxPayloadBytes": 8192,
+          "maxOutputTokens": 91808
+        }
+      }
+    },
+    {
+      "id": "S4C-OR-OW-NO",
+      "marker": "GB-S4C-OR-OW-NO-{runId}",
+      "prompt": "Return exactly {marker} and nothing else.",
+      "selectorModelID": "deepseek-deepseek-v4-flash-0731",
+      "effectiveModelID": "deepseek/deepseek-v4-flash",
+      "expectedModelUsageIDs": [
+        "deepseek/deepseek-v4-flash"
+      ],
+      "routeReceipt": {
+        "kind": "brokeredOpenRouter",
+        "selectedModelID": "deepseek-deepseek-v4-flash-0731",
+        "providerName": "OpenRouter",
+        "appProviderID": "openrouter",
+        "officialProviderID": "grokbuild.saved.openrouter",
+        "endpointIdentity": "https://openrouter.ai/api/v1",
+        "providerModelID": "deepseek/deepseek-v4-flash",
+        "apiBackend": "chat_completions",
+        "authBoundary": "officialHelper",
+        "modelIsPinned": true,
+        "servingProviderIsProven": false,
+        "appFallbackEnabled": false
+      },
+      "tokenAllocation": 100000,
+      "maxModelCalls": 1,
+      "maxAttempts": 1,
+      "workload": "noTool",
+      "allowedTools": [],
+      "requiredTools": [],
+      "forbiddenTools": [
+        "GrokBuild:update_plan"
+      ],
+      "requiredResponseTerms": [],
+      "orderedGroups": [],
+      "readFixtures": [],
+      "childTopology": null,
+      "continuation": null,
+      "frozenPricing": {
+        "currency": "USD",
+        "promptUsdPerMillion": 0.09,
+        "completionUsdPerMillion": 0.18,
+        "cacheTreatment": "uncachedUpperBound",
+        "source": "https://openrouter.ai/deepseek/deepseek-v4-flash/api",
+        "campaignConfirmed": false
+      },
+      "hardBudget": {
+        "allocationID": "s4c-or-ow-no",
+        "route": {
+          "model": "deepseek/deepseek-v4-flash",
+          "apiBackend": "chat_completions",
+          "requestBoundTokens": 100000,
+          "maxPayloadBytes": 8192,
+          "maxOutputTokens": 91808
+        }
+      }
+    }
+  ]
+}
