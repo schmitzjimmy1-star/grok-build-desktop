@@ -173,6 +173,7 @@ final class AcceptanceHarnessTests: XCTestCase {
             encoding: .utf8
         )
         XCTAssertTrue(source.contains("require_runtime_floor"))
+        XCTAssertTrue(source.contains("require_4c_leased_runtime"))
         XCTAssertTrue(source.contains("require_absolute_ceiling_support"))
         XCTAssertTrue(source.contains("reactive and cannot prove the absolute 4,000,000-token ceiling"))
 
@@ -318,7 +319,7 @@ final class AcceptanceHarnessTests: XCTestCase {
         XCTAssertTrue(result.stdout.contains("\"campaignTokenCeiling\": 20000000"), result.stdout)
         XCTAssertTrue(result.stdout.contains("\"plannedTokenMaximum\": 19000000"), result.stdout)
         XCTAssertTrue(result.stdout.contains("\"emergencyReserveTokens\": 1000000"), result.stdout)
-        XCTAssertTrue(result.stdout.contains("\"pricingConfirmed\": false"), result.stdout)
+        XCTAssertTrue(result.stdout.contains("\"pricingConfirmed\": true"), result.stdout)
         XCTAssertTrue(result.stdout.contains("S4C-NAT-CTRL"), result.stdout)
         XCTAssertTrue(result.stdout.contains("S4C-OAI-H-NO"), result.stdout)
         XCTAssertTrue(result.stdout.contains("S4C-OR-OW-NO"), result.stdout)
@@ -326,7 +327,7 @@ final class AcceptanceHarnessTests: XCTestCase {
         XCTAssertFalse(result.stdout.contains("governed_fresh_process_load"), result.stdout)
     }
 
-    func testSlice4CBillableStillRefusesAbsoluteCeiling() throws {
+    func testSlice4CBillableStillRequiresCandidateSelection() throws {
         let manifest = Self.repoRoot
             .appendingPathComponent("scripts/acceptance/manifests/official-provider-slice4c-paid.json")
         let result = try runHarness([
@@ -336,10 +337,10 @@ final class AcceptanceHarnessTests: XCTestCase {
         ])
         XCTAssertEqual(result.exitCode, 2, result.output)
         XCTAssertTrue(
-            result.stderr.contains("cannot prove the absolute 4,000,000-token ceiling"),
-            "Schema-4 --billable must refuse at the absolute ceiling before runtime discovery or Send: \(result.output)"
+            result.stderr.contains("one exact --candidate-selection authority"),
+            "Schema-4 --billable must pass ceiling and confirmed prices then require candidate selection: \(result.output)"
         )
-        XCTAssertFalse(result.stderr.contains("catalog prices are not campaign-confirmed"), result.stderr)
+        XCTAssertFalse(result.stderr.contains("cannot prove the absolute 4,000,000-token ceiling"), result.stderr)
         XCTAssertFalse(result.stderr.contains("legacy v1 billable execution is retired"), result.stderr)
     }
 

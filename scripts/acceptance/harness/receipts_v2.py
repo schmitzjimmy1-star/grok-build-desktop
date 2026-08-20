@@ -453,25 +453,30 @@ def _check_hard_budget_pre_dispatch_authority(
     authority = terminal["hardBudgetPreDispatchAuthority"]
     if not isinstance(authority, dict):
         raise ReceiptError(f"{packet['id']}: completed packet requires hard-budget pre-dispatch authority")
-    route = packet["hardBudget"]["route"]
+    expected_campaign = (
+        manifest["campaignId"] if manifest.get("schemaVersion") == 4 else manifest["runId"]
+    )
+    expected_route = _expected_hard_budget_route(manifest, packet, authority)
     if (
         authority["campaignID"], authority["allocationID"], authority["packetID"], authority["cliBuild"],
     ) != (
-        manifest["runId"], packet["hardBudget"]["allocationID"], packet["id"], manifest["expectedCLIBuild"],
+        expected_campaign, packet["hardBudget"]["allocationID"], packet["id"], manifest["expectedCLIBuild"],
     ):
-        # The campaign run ID is deliberately the authority campaign ID for this v2 manifest.
         raise ReceiptError(f"{packet['id']}: hard-budget authority campaign/allocation identity mismatch")
     if (
         authority["routeModel"], authority["endpointSHA256"], authority["apiBackend"],
         authority["requestBoundTokens"], authority["maxPayloadBytes"], authority["maxOutputTokens"],
         authority["boundProvenanceSHA256"],
     ) != (
-        route["model"], route["endpointSha256"], route["apiBackend"], route["requestBoundTokens"],
-        route["maxPayloadBytes"], route["maxOutputTokens"], route["boundProvenanceSha256"],
+        expected_route["model"], expected_route["endpointSha256"], expected_route["apiBackend"],
+        expected_route["requestBoundTokens"], expected_route["maxPayloadBytes"],
+        expected_route["maxOutputTokens"], expected_route["boundProvenanceSha256"],
     ):
         raise ReceiptError(f"{packet['id']}: hard-budget authority route/bounds mismatch")
     canonical_manifest = json.dumps(
-        canonical_cli_manifest(manifest), sort_keys=True, separators=(",", ":")
+        _canonical_cli_manifest_for_receipts(manifest, authority),
+        sort_keys=True,
+        separators=(",", ":"),
     ).encode("utf-8")
     if authority["manifestSHA256"] != hashlib.sha256(canonical_manifest).hexdigest():
         raise ReceiptError(f"{packet['id']}: hard-budget authority manifest hash mismatch")
@@ -481,6 +486,34 @@ def _check_hard_budget_pre_dispatch_authority(
     )):
         raise ReceiptError(f"{packet['id']}: exact candidate runtime identity is unavailable")
     return authority
+
+
+def _expected_hard_budget_route(
+    manifest: dict[str, Any], packet: dict[str, Any], authority: dict[str, Any]
+) -> dict[str, Any]:
+    if manifest.get("schemaVersion") != 4:
+        return packet["hardBudget"]["route"]
+    from .authority_4c import _cli_route
+
+    provenance = authority.get("boundProvenanceSHA256") or authority.get("candidateProvenanceSHA256")
+    route = _cli_route(packet, provenance_sha256=provenance)
+    if "endpointSha256" not in route or "boundProvenanceSha256" not in route:
+        raise ReceiptError(f"{packet['id']}: 4C hard-budget route hashes were not reconstructed")
+    return route
+
+
+def _canonical_cli_manifest_for_receipts(
+    manifest: dict[str, Any], authority: dict[str, Any]
+) -> dict[str, Any]:
+    if manifest.get("schemaVersion") != 4:
+        return canonical_cli_manifest(manifest)
+    from .authority_4c import canonical_cli_manifest as canonical_cli_manifest_4c
+
+    class _Candidate:
+        provenance_sha256 = str(authority["candidateProvenanceSHA256"])
+        binary_sha256 = str(authority["candidateBinarySHA256"])
+
+    return canonical_cli_manifest_4c(manifest, candidate=_Candidate())
 
 
 def _check_hard_budget_settlement(
@@ -501,7 +534,6 @@ def _check_hard_budget_settlement(
     seen_reservations: set[str] = set()
     seen_sequences: set[int] = set()
     actual_tokens = 0
-    route = packet["hardBudget"]["route"]
     for request in requests:
         if request["lifecycle"] != "settled_usage_reported" or request["actualTokens"] is None:
             raise ReceiptError(f"{packet['id']}: completed packet has non-settled hard-budget reservation")
@@ -515,10 +547,10 @@ def _check_hard_budget_settlement(
         if request["sequence"] < authority["preDispatchNextSequence"]:
             raise ReceiptError(f"{packet['id']}: hard-budget record predates pre-dispatch cursor")
         if (request["model"], request["endpointSHA256"], request["apiBackend"]) != (
-            route["model"], route["endpointSha256"], route["apiBackend"],
+            authority["routeModel"], authority["endpointSHA256"], authority["apiBackend"],
         ):
             raise ReceiptError(f"{packet['id']}: hard-budget route record mismatch")
-        if request["payloadBytes"] > route["maxPayloadBytes"] or request["maxOutputTokens"] > route["maxOutputTokens"]:
+        if request["payloadBytes"] > authority["maxPayloadBytes"] or request["maxOutputTokens"] > authority["maxOutputTokens"]:
             raise ReceiptError(f"{packet['id']}: hard-budget request exceeded route bound")
         if (
             request["reservedTokens"] <= 0

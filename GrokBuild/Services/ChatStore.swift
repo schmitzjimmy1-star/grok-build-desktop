@@ -2416,6 +2416,17 @@ final class ChatStore {
         computerUseSettings.enabled = computerUseSettings.enabled
             && enabledBuiltInToolNames.contains(BuiltInToolConnection.computerUse.rawValue)
         let requestedMCPServerNames = selectedPromptMCPNames.union(enabledBuiltInToolNames)
+        if hardBudgetLaunchContract?.dispatchExpectation?.frozenRoute.isNativeXAIFreeze == true,
+           browserSettings.enabled
+            || computerUseSettings.enabled
+            || !requestedMCPServerNames.isEmpty {
+            connectionWatchdogTask?.cancel()
+            connectionState = .failed(
+                "Armed credential launch refuses Browser, Computer Use, MCP, and non-managed-provider detours."
+            )
+            lastError = "Armed credential launch stopped before any helper or candidate process was created."
+            return
+        }
         if let refusal = GrokArmedCredentialLaunchPreflight.refusalMessage(
             authorization: hardBudgetLaunchContract?.credentialAuthorizationV3,
             browserEnabled: browserSettings.enabled,

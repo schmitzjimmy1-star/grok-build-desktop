@@ -2,10 +2,10 @@
 
 Live bind hashes are filled at arm time from the candidate plus frozen
 endpointIdentity. They are never copied from the 4M v2 fixture. The
-committed 4C matrix still freezes models, routes, allocations, and
-unconfirmed prices only. Native packets use sha256(b"nativeXAI") rather
-than inventing an xAI host. Native Keychain selectors stay null; Swift
-schema-3 isValid still rejects that mixed matrix until the step-5 leftover.
+committed 4C matrix freezes models, routes, allocations, and confirmed
+catalog prices. Native packets use sha256(b"nativeXAI") rather than
+inventing an xAI host. Native Keychain selectors stay null; Swift
+schema-3 mixed matrices bind that freeze onto the leased candidate.
 """
 
 from __future__ import annotations

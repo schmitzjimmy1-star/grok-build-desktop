@@ -54,8 +54,14 @@ struct HardBudgetLaunchContract: Sendable, Equatable {
               let candidateExecutionLease,
               candidateExecutionLease.heldFileRemainsValid else { return nil }
         if let dispatchExpectation {
-            guard dispatchExpectation.credentialAuthorizationV3 == credentialAuthorizationV3,
-                  dispatchExpectation.authBoundary == .officialHelper else { return nil }
+            if dispatchExpectation.frozenRoute.isNativeXAIFreeze {
+                guard credentialAuthorizationV3 == nil,
+                      dispatchExpectation.credentialAuthorizationV3 == nil,
+                      dispatchExpectation.authBoundary == .nativeSession else { return nil }
+            } else {
+                guard dispatchExpectation.credentialAuthorizationV3 == credentialAuthorizationV3,
+                      dispatchExpectation.authBoundary == .officialHelper else { return nil }
+            }
         }
         self.manifestPath = manifestPath
         self.ledgerPath = ledgerPath
@@ -1633,8 +1639,11 @@ final class GrokProcess: @unchecked Sendable {
         hasAuthoritativeModelCatalog = false
         activeHardBudgetLaunchContract = options.hardBudgetLaunchContract
 
+        let isArmedNativeFreeze = options.hardBudgetLaunchContract?.dispatchExpectation?.frozenRoute.isNativeXAIFreeze == true
+            && options.hardBudgetLaunchContract?.credentialAuthorizationV3 == nil
         let hasLegacyHardBudgetContract = options.hardBudgetLaunchContract != nil
             && options.hardBudgetLaunchContract?.credentialAuthorizationV3 == nil
+            && !isArmedNativeFreeze
         guard !hasLegacyHardBudgetContract,
               options.hardBudgetLaunchContract?.filesRemainValid != false else {
             failBeforeSpawn(
@@ -1713,6 +1722,15 @@ final class GrokProcess: @unchecked Sendable {
                 launched = try Self.spawnArmedV3Candidate(
                     contract: contract,
                     authorization: authorization,
+                    options: options,
+                    arguments: args,
+                    environment: environment,
+                    currentDirectory: workspace.path
+                )
+            } else if let contract = options.hardBudgetLaunchContract,
+                      isArmedNativeFreeze {
+                launched = try Self.spawnArmedNativeCandidate(
+                    contract: contract,
                     options: options,
                     arguments: args,
                     environment: environment,
@@ -3772,6 +3790,30 @@ final class GrokProcess: @unchecked Sendable {
         activeHardBudgetLaunchContract = nil
         mcpServerStatuses = MCPReadinessPolicy.failedStatuses(for: options.mcpServers)
         state = .failed(message)
+    }
+
+    private static func spawnArmedNativeCandidate(
+        contract: HardBudgetLaunchContract,
+        options: GrokLaunchOptions,
+        arguments: [String],
+        environment: [String: String],
+        currentDirectory: URL
+    ) throws -> GrokCandidateSpawnResult {
+        if let refusal = contract.spawnAdmissionRefusal(options: options) {
+            throw ArmedV3StartError.preflight(refusal)
+        }
+        if options.mcpGatewayEnabled {
+            throw ArmedV3StartError.preflight(
+                "Armed credential launch refuses Browser, Computer Use, MCP, and non-managed-provider detours."
+            )
+        }
+        return try GrokCandidateProcessLauncher.spawn(
+            lease: contract.candidateExecutionLease,
+            arguments: arguments,
+            environment: environment,
+            currentDirectory: currentDirectory,
+            credentialTransferV3: nil
+        )
     }
 
     private static func spawnArmedV3Candidate(

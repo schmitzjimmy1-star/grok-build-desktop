@@ -243,8 +243,8 @@ through PR [#124](https://github.com/schmitzjimmy1-star/grok-build-desktop/pull/
 and 4B.2 cooperative credential-transport feasibility is accepted through PR
 [#126](https://github.com/schmitzjimmy1-star/grok-build-desktop/pull/126).**
 **Historical — superseded:** “4B.3 is next and remains nonbillable.” 4B.3
-through 4B.6 are accepted; current work is locked 4C (`_billable_4c` exists,
-paid Send still refused). See the 4B.6 receipt
+through 4B.6 are accepted; current work is 4C (`_billable_4c` is the
+route-matrix executor; schema-3 stays locked). See the 4B.6 receipt
 below. 4B.1 uses disposable signed fixture
 candidates, a byte-identical one-shot execution copy held by FD, and
 suspended-child live CodeDirectory verification before user code as the Darwin
@@ -408,17 +408,19 @@ file. Reinstalling the sidecar is a step **inside** a 4C armed route-matrix
 epoch, not paid unlock by itself. Three
 independent 4C-unlock reviews of installed `29c064f` plus CLI `7e9f1ad` are
 complete: containment GO, harness NO-GO for unlocking `_billable_v3`, identity
-pins re-derived live. Locked `_billable_4c` exists behind the still-unconditional
-`require_absolute_ceiling_support()` (schema-4 dry-run only; `--billable` still
-refuses before Send). `require_4c_unlock_predicate` is the four-part drop-in
-and is not wired. Arm-time authority fills Swift sidecar hashes; native
-Keychain selectors stay null (step-5 leftover). `_billable_v3` stays the 4B.4
-continuation executor. Catalog prices stay `pricingConfirmed: false`. Do not
-narrow the ceiling predicate in this slice. Product stamp remains
-`29c064f`; HEAD may carry harness/docs successors (PR #141 distinct-timestamp
-rollback, leftover receipts, locked 4C harness) with `GrokBuild/` identical
-to stamp except the PR #143 transport comment. Next
-`make ship` is the first 4C **app-code** slice. Do not `grok update`.
+pins re-derived live. Schema-4 `_billable_4c` passes the frozen-identity ceiling
+dispatcher. `require_4c_unlock_predicate` is wired from
+`require_absolute_ceiling_support` for schema-4 only. Schema-4 preflight keeps
+official grok at 1.0.4 and requires pager `1.0.5 (8226242)`. Catalog prices
+are `pricingConfirmed: true`. Brokered packet pins live
+`deepseek/deepseek-v4-flash-0731`. Native freeze bind is in tree
+(`sha256(b"nativeXAI")`, leased candidate, no Keychain). First 4C `make ship`
+landed dirty at `18b2549`, installed Mach-O
+`1aa3318ff207e0fe2a3dd8a108b1b3a3344058dec1027a3942f8e58661fa28c4`. Identity
+SHA-256
+`e1fbfe81221c3f58d9c0ef0842610e90048d9cb5616347f00761a7d751e7b11c`.
+`_billable_v3` stays the 4B.4 continuation executor. Sidecar arm and
+owner-local Sends remain. Do not `grok update`.
 
 PR [#124](https://github.com/schmitzjimmy1-star/grok-build-desktop/pull/124)
 passed required exact-head run `32123735441` and merged normally as

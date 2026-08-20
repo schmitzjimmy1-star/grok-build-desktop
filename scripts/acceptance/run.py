@@ -134,9 +134,11 @@ def main(argv: list[str] | None = None) -> int:
             version = _manifest_version(args.manifest)
             from harness.preflight_v2 import require_absolute_ceiling_support, require_runtime_floor
             if version == 4:
-                # Schema-4 --billable is the locked 4C route-matrix executor.
-                # The ceiling still wins before runtime discovery or Send.
-                require_absolute_ceiling_support()
+                # Schema-4 --billable is the 4C route-matrix executor.
+                # The dispatcher accepts only the frozen 4C identity; v3 stays
+                # on the no-arg 4M refusal below.
+                manifest = _load_manifest(args.manifest, args.run_id, version)
+                require_absolute_ceiling_support(manifest, source_path=args.manifest)
                 return _billable_4c(args)
             if version == 3:
                 # Schema-3 --billable is the 4B.4 continuation executor.
@@ -323,12 +325,11 @@ def _load_manifest(path: Path, run_id: str | None, version: int) -> dict:
 
 
 def _billable_4c(args: argparse.Namespace) -> int:
-    """Armed 4C route matrix. Ceiling still refuses before this body in main().
+    """Armed 4C route matrix. Ceiling dispatcher must accept frozen 4C first.
 
     Clone of armed _billable_v2 control flow: four-arg launch_installed every
     epoch, no retries, no resume_saved_task, and never a bare unarmed launch.
-    Committed prices stay unconfirmed, so require_4c_send_ready refuses Send
-    even if the ceiling predicate is later narrowed without a price confirm.
+    Preflight uses the leased pager, not the official 1.0.5 runtime floor.
     """
     from harness.preflight_v2 import effective_config_sha, preflight as preflight_v2
 
@@ -337,12 +338,18 @@ def _billable_4c(args: argparse.Namespace) -> int:
     require_live_run_id_v2(args.run_id)
     manifest = load_manifest_4c(args.manifest, run_id=args.run_id)
     require_4c_paid_identity(manifest, source_path=args.manifest)
-    if args.candidate_selection is None:
-        raise HarnessError("4C execution requires one exact --candidate-selection authority")
+    require_4c_send_ready(manifest)
     if any(packet["continuation"] is not None for packet in manifest["packets"]):
         raise HarnessError("4C packets must not continue a session")
-    require_4c_send_ready(manifest)
-    report = preflight_v2(REPO, manifest, ledger=args.ledger)
+    if args.candidate_selection is None:
+        raise HarnessError("4C execution requires one exact --candidate-selection authority")
+    report = preflight_v2(
+        REPO,
+        manifest,
+        ledger=args.ledger,
+        source_path=args.manifest,
+        candidate_selection=args.candidate_selection,
+    )
     safe_print(json.dumps({"preflight": redact_value("preflight", report)}))
     authority = prepare_campaign_authority_4c(manifest, candidate_selection=args.candidate_selection)
     rows: list[dict] = []

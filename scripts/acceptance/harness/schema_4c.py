@@ -2,9 +2,8 @@
 
 Version 4 is the locked official-provider route matrix. It is not schema-3
 fresh-process continuation and it is not the historical 4M v2 campaign.
-Live bind hashes stay out of this committed file; authority fills them at
-arm time. Paid Send stays locked until a later unlock commit confirms prices
-and narrows the ceiling predicate.
+Paid Send stays locked until owner-local armed Sends; catalog prices are
+campaign-confirmed and the ceiling dispatcher accepts frozen 4C only.
 """
 
 from __future__ import annotations
@@ -29,7 +28,7 @@ EMERGENCY_RESERVE = 1_000_000
 REQUIRED_PACKET_COUNT = 3
 REQUIRED_PACKET_KINDS = ("nativeXAI", "directProvider", "brokeredOpenRouter")
 # Projection excludes only live runId. Recompute after any other committed edit.
-FROZEN_MANIFEST_SHA256 = "934506fac65bc58c2d17ff373a71835cfbe53f862204d9f1c6c99ab38d0967e5"
+FROZEN_MANIFEST_SHA256 = "e1fbfe81221c3f58d9c0ef0842610e90048d9cb5616347f00761a7d751e7b11c"
 RUN_ID_LIVE = re.compile(r"^[0-9]{8}T[0-9]{6}Z$")
 FORBIDDEN_BYTES = {9, 10, 13, 92}
 
@@ -123,7 +122,8 @@ def require_4c_paid_identity(manifest: dict[str, Any], *, source_path: Path | No
     """Identity half of the later unlock predicate. Raises SchemaError.
 
     The PreflightError drop-in is require_4c_unlock_predicate in preflight_v2.
-    Neither helper is called from require_absolute_ceiling_support() yet.
+    require_absolute_ceiling_support delegates to that helper only for schema-4
+    with a committed source path; no-arg and schema-3 stay on the 4M refusal.
     """
     if manifest.get("campaignId") != FROZEN_CAMPAIGN_ID:
         raise SchemaError("4C campaignId must be the frozen product id slice4c-bounded-paid")
@@ -187,8 +187,8 @@ def validate_4c_document(raw: dict[str, Any]) -> None:
         raise SchemaError("campaign effort must be low and parentAgent default")
     if raw["expectedCLIBuild"] != EXPECTED_CLI_BUILD:
         raise SchemaError("expectedCLIBuild must be exactly 1.0.5 (8226242)")
-    if raw["pricingConfirmed"] is not False:
-        raise SchemaError("committed 4C pricingConfirmed must stay false until the unlock commit")
+    if raw["pricingConfirmed"] is not True:
+        raise SchemaError("committed 4C pricingConfirmed must be true after catalog confirm")
     if "GrokBuild:update_plan" not in _native_tool_ids(raw["forbiddenToolsDefault"], "forbiddenToolsDefault"):
         raise SchemaError("forbiddenToolsDefault must include GrokBuild:update_plan")
     if not isinstance(raw["packets"], list) or len(raw["packets"]) != REQUIRED_PACKET_COUNT:
@@ -284,7 +284,7 @@ def dry_run_plan(manifest: dict[str, Any]) -> dict[str, Any]:
         "plannedAllocation": manifest["plannedAllocation"],
         "emergencyReserveTokens": manifest["emergencyReserveTokens"],
         "expectedCLIBuild": manifest["expectedCLIBuild"],
-        "pricingConfirmed": False,
+        "pricingConfirmed": manifest["pricingConfirmed"],
         "billable": False,
         "continuation": None,
         "launch": "four-arg armed launch_installed",
@@ -358,8 +358,8 @@ def _validate_pricing(packet_id: str, packet: dict[str, Any]) -> None:
         raise SchemaError(f"{packet_id}: invalid frozenPricing")
     if pricing["cacheTreatment"] != "uncachedUpperBound":
         raise SchemaError(f"{packet_id}: frozenPricing must label cached input as an uncached upper bound")
-    if pricing["campaignConfirmed"] is not False:
-        raise SchemaError(f"{packet_id}: committed 4C campaignConfirmed must stay false until unlock")
+    if pricing["campaignConfirmed"] is not True:
+        raise SchemaError(f"{packet_id}: committed 4C campaignConfirmed must be true after catalog confirm")
     _number(pricing["promptUsdPerMillion"], f"{packet_id}.frozenPricing.promptUsdPerMillion", minimum=0)
     _number(pricing["completionUsdPerMillion"], f"{packet_id}.frozenPricing.completionUsdPerMillion", minimum=0)
     _required_string(pricing["source"], f"{packet_id}.frozenPricing.source")

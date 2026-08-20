@@ -19,8 +19,11 @@ from scripts.acceptance.harness.authority_4c import (
 from scripts.acceptance.harness.candidate_runtime import EXPECTED_TEAM
 from scripts.acceptance.harness.errors import HarnessError, PreflightError, SchemaError
 from scripts.acceptance.harness.preflight_v2 import (
+    preflight as preflight_v2,
+    require_4c_leased_runtime,
     require_4c_unlock_predicate,
     require_absolute_ceiling_support,
+    require_runtime_floor,
 )
 from scripts.acceptance.harness.schema_4c import (
     EXPECTED_CLI_BUILD,
@@ -67,12 +70,17 @@ class Slice4CPaidLockContracts(unittest.TestCase):
         self.assertEqual(self.manifest["campaignTokenCeiling"], 20_000_000)
         self.assertEqual(self.manifest["plannedTokenMaximum"], 19_000_000)
         self.assertEqual(self.manifest["emergencyReserveTokens"], 1_000_000)
-        self.assertIs(self.manifest["pricingConfirmed"], False)
+        self.assertIs(self.manifest["pricingConfirmed"], True)
         self.assertEqual(
             [packet["routeReceipt"]["kind"] for packet in self.manifest["packets"]],
             ["nativeXAI", "directProvider", "brokeredOpenRouter"],
         )
         self.assertTrue(all(packet["continuation"] is None for packet in self.manifest["packets"]))
+        brokered = self.manifest["packets"][2]
+        self.assertEqual(brokered["selectorModelID"], "deepseek-deepseek-v4-flash-0731")
+        self.assertEqual(brokered["effectiveModelID"], "deepseek/deepseek-v4-flash-0731")
+        self.assertEqual(brokered["routeReceipt"]["providerModelID"], "deepseek/deepseek-v4-flash-0731")
+        self.assertEqual(brokered["hardBudget"]["route"]["model"], "deepseek/deepseek-v4-flash-0731")
         text = MANIFEST.read_text(encoding="utf-8")
         for digest in V2_LIVE_BIND_HASHES:
             self.assertNotIn(digest, text)
@@ -101,16 +109,21 @@ class Slice4CPaidLockContracts(unittest.TestCase):
         with self.assertRaisesRegex(PreflightError, "unlock predicate refused"):
             require_4c_unlock_predicate(mutated, source_path=MANIFEST)
         ceiling = inspect.getsource(require_absolute_ceiling_support)
-        self.assertNotIn("require_4c_unlock_predicate", ceiling)
+        self.assertIn("require_4c_unlock_predicate", ceiling)
         self.assertNotIn("require_4c_paid_identity", ceiling)
         self.assertNotIn(FROZEN_CAMPAIGN_ID, ceiling)
+        self.assertIn("cannot prove the absolute 4,000,000-token ceiling", ceiling)
         main = RUN_PY.read_text(encoding="utf-8")
         billable_main = main[main.index("if args.billable:") : main.index("def _cleanup")]
         version_four = billable_main[
             billable_main.index("if version == 4:") : billable_main.index("return _billable_4c(args)")
         ]
-        self.assertIn("require_absolute_ceiling_support()", version_four)
-        self.assertNotIn("require_4c_unlock_predicate", version_four)
+        self.assertIn("require_absolute_ceiling_support(manifest, source_path=args.manifest)", version_four)
+        self.assertNotIn("require_absolute_ceiling_support()", version_four)
+        version_three = billable_main[
+            billable_main.index("if version == 3:") : billable_main.index("return _billable_v3(args)")
+        ]
+        self.assertIn("require_absolute_ceiling_support()", version_three)
 
     def test_wrong_campaign_id_is_refused(self) -> None:
         raw = json.loads(MANIFEST.read_text(encoding="utf-8"))
@@ -139,21 +152,23 @@ class Slice4CPaidLockContracts(unittest.TestCase):
         with self.assertRaisesRegex(SchemaError, "nativeXAI then directProvider then brokeredOpenRouter"):
             require_4c_paid_identity(mutated)
 
-    def test_send_ready_stays_locked_on_unconfirmed_prices(self) -> None:
-        with self.assertRaisesRegex(HarnessError, "catalog prices are not campaign-confirmed"):
-            require_4c_send_ready(self.manifest)
+    def test_send_ready_requires_confirmed_prices_and_no_continuation(self) -> None:
+        require_4c_send_ready(self.manifest)
         mutated = copy.deepcopy(self.manifest)
-        mutated["pricingConfirmed"] = True
-        mutated["packets"][0]["continuation"] = {"group": "nope"}
-        with self.assertRaisesRegex(HarnessError, "must not continue"):
+        mutated["pricingConfirmed"] = False
+        with self.assertRaisesRegex(HarnessError, "catalog prices are not campaign-confirmed"):
             require_4c_send_ready(mutated)
+        continued = copy.deepcopy(self.manifest)
+        continued["packets"][0]["continuation"] = {"group": "nope"}
+        with self.assertRaisesRegex(HarnessError, "must not continue"):
+            require_4c_send_ready(continued)
 
     def test_dry_run_plan_is_not_billable(self) -> None:
         plan = dry_run_plan(self.manifest)
         self.assertEqual(plan["mode"], "dry-run")
         self.assertEqual(plan["schemaVersion"], 4)
         self.assertIs(plan["billable"], False)
-        self.assertIs(plan["pricingConfirmed"], False)
+        self.assertIs(plan["pricingConfirmed"], True)
         self.assertIsNone(plan["continuation"])
         self.assertEqual(plan["launch"], "four-arg armed launch_installed")
         self.assertEqual(plan["campaignId"], FROZEN_CAMPAIGN_ID)
@@ -161,7 +176,7 @@ class Slice4CPaidLockContracts(unittest.TestCase):
             [packet["routeKind"] for packet in plan["packets"]],
             ["nativeXAI", "directProvider", "brokeredOpenRouter"],
         )
-        self.assertEqual(plan["packets"][1]["campaignConfirmed"], False)
+        self.assertEqual(plan["packets"][1]["campaignConfirmed"], True)
         self.assertIsNone(plan["packets"][0]["campaignConfirmed"])
 
     def test_cli_authority_uses_frozen_campaign_id_not_run_id(self) -> None:
@@ -227,6 +242,19 @@ class Slice4CPaidLockContracts(unittest.TestCase):
                     Path(directory) / "ledger.json",
                     provenance_sha256=FIXTURE_PROVENANCE_SHA256,
                 )
+
+    def test_receipt_authority_uses_product_campaign_id_and_native_freeze(self) -> None:
+        from scripts.acceptance.harness.receipts_v2 import _expected_hard_budget_route
+
+        native = self.manifest["packets"][0]
+        route = _expected_hard_budget_route(
+            self.manifest,
+            native,
+            {"boundProvenanceSHA256": FIXTURE_PROVENANCE_SHA256},
+        )
+        self.assertEqual(route["endpointSha256"], NATIVE_ENDPOINT_FREEZE_SHA256)
+        self.assertEqual(route["boundProvenanceSha256"], FIXTURE_PROVENANCE_SHA256)
+        self.assertNotIn("endpointSha256", native["hardBudget"]["route"])
 
     def test_prepare_writes_private_four_arg_paths(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
@@ -328,8 +356,8 @@ class Slice4CPaidLockContracts(unittest.TestCase):
             check=False,
         )
         self.assertEqual(billed.returncode, 2, billed.stdout + billed.stderr)
-        self.assertIn("cannot prove the absolute 4,000,000-token ceiling", billed.stderr)
-        self.assertNotIn("catalog prices are not campaign-confirmed", billed.stderr)
+        self.assertIn("one exact --candidate-selection authority", billed.stderr)
+        self.assertNotIn("cannot prove the absolute 4,000,000-token ceiling", billed.stderr)
 
     def test_billable_v3_stays_unarmed_and_4c_uses_four_arg_launch(self) -> None:
         source = RUN_PY.read_text(encoding="utf-8")
@@ -343,6 +371,7 @@ class Slice4CPaidLockContracts(unittest.TestCase):
         self.assertIn("runtime_selection_file=", billable_4c)
         self.assertIn("require_4c_send_ready(manifest)", billable_4c)
         self.assertIn("prepare_campaign_authority_4c", billable_4c)
+        self.assertIn("candidate_selection=args.candidate_selection", billable_4c)
         self.assertNotIn("resume_saved_task()", billable_4c)
         self.assertNotIn("launch_installed()", billable_4c)
         self.assertIn("launch_installed(", billable_4c)
@@ -350,15 +379,34 @@ class Slice4CPaidLockContracts(unittest.TestCase):
         self.assertIn("cannot prove the absolute 4,000,000-token ceiling", ceiling)
         self.assertNotIn(FROZEN_CAMPAIGN_ID, ceiling)
         self.assertNotIn("require_4c_paid_identity", ceiling)
-        self.assertNotIn("require_4c_unlock_predicate", ceiling)
+        self.assertIn("require_4c_unlock_predicate", ceiling)
         with self.assertRaises(PreflightError):
             require_absolute_ceiling_support()
+        with self.assertRaises(PreflightError):
+            require_absolute_ceiling_support(json.loads(V3_MANIFEST.read_text(encoding="utf-8")), source_path=V3_MANIFEST)
+        require_absolute_ceiling_support(self.manifest, source_path=MANIFEST)
         main = source[source.index("def main") : source.index("def _cleanup")]
         billable_main = main[main.index("if args.billable:") :]
         four_c = billable_main[
             billable_main.index("if version == 4:") : billable_main.index("return _billable_4c(args)")
         ]
-        self.assertIn("require_absolute_ceiling_support()", four_c)
+        self.assertIn("require_absolute_ceiling_support(manifest, source_path=args.manifest)", four_c)
+
+    def test_schema4_preflight_uses_leased_pager_not_official_105_floor(self) -> None:
+        source = inspect.getsource(preflight_v2)
+        self.assertIn("require_4c_leased_runtime", source)
+        self.assertIn('manifest.get("schemaVersion") == 4', source)
+        self.assertIn("require_runtime_floor()", source)
+        floor = inspect.getsource(require_runtime_floor)
+        self.assertIn("1.0.5+", floor)
+        leased = inspect.getsource(require_4c_leased_runtime)
+        self.assertIn("OFFICIAL_CLI_SHA256", leased)
+        self.assertIn("STAGED_PAGER_SHA256", leased)
+        self.assertIn("1.0.4", leased)
+        self.assertIn("1.0.5 (8226242)", leased)
+        self.assertNotIn(FROZEN_CAMPAIGN_ID, leased)
+        with self.assertRaisesRegex(PreflightError, "1.0.5\\+"):
+            require_runtime_floor("grok 1.0.4")
 
     def _candidate_selection(self, root: Path):
         runtime_root = root / "runtime"

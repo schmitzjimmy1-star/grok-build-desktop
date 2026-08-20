@@ -4,15 +4,20 @@ Locked executor (steps 1–4) plus the pre-unlock drop-in (this slice) are in
 tree. They do **not** authorize a paid Send, a pager rebuild, `grok update`,
 unlocking `_billable_v3`, or narrowing `require_absolute_ceiling_support()`.
 
-Product stamp stays `29c064f` until the first 4C **app-code** `make ship`.
+Product stamp is `18b2549` after the first 4C app-code `make ship`
+(dirty leftover tree). Installed Mach-O SHA-256
+`1aa3318ff207e0fe2a3dd8a108b1b3a3344058dec1027a3942f8e58661fa28c4`.
 CLI leftover PR #7 is **merged** as `7e9f1ad`. Live Application Support
-`runtime-selection.json` stays **absent** until a later 4C packet arms it.
+`runtime-selection.json` stays **absent** until a 4C packet arms it.
 
 Frozen identity: `campaignId` `slice4c-bounded-paid`. Projection SHA-256
 (excludes only live `runId`)
-`934506fac65bc58c2d17ff373a71835cfbe53f862204d9f1c6c99ab38d0967e5`.
-`expectedCLIBuild` `1.0.5 (8226242)`. Catalog prices stay
-`pricingConfirmed: false`.
+`e1fbfe81221c3f58d9c0ef0842610e90048d9cb5616347f00761a7d751e7b11c`.
+`expectedCLIBuild` `1.0.5 (8226242)`. Catalog prices are
+`pricingConfirmed: true` after live OpenAI Terra $2/$12 and OpenRouter
+`deepseek/deepseek-v4-flash-0731` uncached-upper-bound confirm. The
+brokered packet pins the live configured `-0731` model, not the family
+catalog slug.
 
 ## Reviews (complete)
 
@@ -33,20 +38,20 @@ Frozen identity: `campaignId` `slice4c-bounded-paid`. Projection SHA-256
 
 | File | Change | Must not change |
 |---|---|---|
-| `scripts/acceptance/run.py` | Add `_billable_4c`. Route 4C schema to it. Keep `version == 3` → ceiling refusal → `_billable_v3`. | Do not arm `_billable_v3`. Do not make schema-3 mean paid. |
+| `scripts/acceptance/run.py` | Add `_billable_4c`. Route 4C schema to it. Keep `version == 3` → no-arg ceiling refusal → `_billable_v3`. Schema-4 `--billable` now calls the ceiling dispatcher with the 4C manifest. | Do not arm `_billable_v3`. Do not make schema-3 mean paid. |
 | `scripts/acceptance/run.py` `_billable_4c` | Clone **armed** `_billable_v2` control flow: preflight, authority, four-arg `launch_installed` every epoch, early stop, no retries. | Never `resume_saved_task()`. Never bare `launch_installed()`. |
-| `scripts/acceptance/harness/preflight_v2.py` | Pre-unlock: `require_4c_unlock_predicate(manifest, source_path=...)` exists and raises `PreflightError`. Unlock commit only: replace the unconditional `require_absolute_ceiling_support()` raise and the no-arg `main()` call. | Do not no-op. Do not pass on `schemaVersion==3`. Do not call the helper from the ceiling function until step 5. |
+| `scripts/acceptance/harness/preflight_v2.py` | `require_4c_unlock_predicate` exists. `require_absolute_ceiling_support(manifest, source_path=...)` delegates for schema-4 only. No-arg still raises the 4M lock. Schema-4 `preflight()` uses `require_4c_leased_runtime` (official 1.0.4 + pager 1.0.5). | Do not no-op. Do not pass on `schemaVersion==3`. Do not require official 1.0.5. |
 | `scripts/acceptance/harness/authority_4c.py` | Arm-time live hashes on the Swift sidecar (`endpointSHA256` / `boundProvenanceSHA256`) and on the CLI document when a candidate is present. Native freeze is `sha256(b"nativeXAI")`. | Do not copy v2 `03a28d4` hashes. Do not write hashes into the committed JSON. Do not invent an xAI host. |
 | `scripts/acceptance/harness/driver.py` / `candidate_install.py` | Reuse. | Do not loosen all-four-together. Never write `~/.grok`. |
 | `official-provider-slice4-v2.json`, `fresh-process-continuation-v3.json` | Leave as locked fixtures. | Do not upgrade v2 to 20M or turn v3 into the paid matrix. |
-| Swift armed spawn / resolver | Prefer no change on this locked slice. | Ordinary lookup still never scans `candidate-runtime`. |
+| Swift armed spawn / resolver | Native freeze bind: mixed schema-3 `isValid`, `tryMakeNative`, leased spawn without Keychain, `campaignId` match. Ordinary lookup still never scans `candidate-runtime`. | Do not invent an xAI host. Do not send native on official 1.0.4. |
 
 ## Unlock predicate (not schemaVersion alone)
 
-`require_4c_unlock_predicate` already encodes this and passes the committed 4C file / fails v2 and v3. It is **not** wired. After three reviews of installed `29c064f` + CLI `7e9f1ad`, `require_absolute_ceiling_support` may accept **only** all of:
+`require_4c_unlock_predicate` already encodes this and passes the committed 4C file / fails v2 and v3. It is **wired** from `require_absolute_ceiling_support` when both a schema-4 manifest and source path are supplied. After three reviews of installed `29c064f` + CLI `7e9f1ad`, that dispatcher accepts **only** all of:
 
 1. Frozen `campaignId` `slice4c-bounded-paid`.
-2. SHA-256 of the committed 4C manifest (projection excludes only live `runId`) equal to `934506fac65bc58c2d17ff373a71835cfbe53f862204d9f1c6c99ab38d0967e5`.
+2. SHA-256 of the committed 4C manifest (projection excludes only live `runId`) equal to `e1fbfe81221c3f58d9c0ef0842610e90048d9cb5616347f00761a7d751e7b11c`.
 3. Ceiling triple: absolute 20M, allocatable ≤ 19M, reserve 1M.
 4. Packet order: `nativeXAI`, then first `directProvider`, then first `brokeredOpenRouter`.
 
@@ -84,41 +89,34 @@ launch_installed(
 4. ~~Tests: v3 fixture still cannot Send; 4C dry-run only.~~ Landed.
 5. **Separate unlock commit.** Do not start this commit until Jimmy says so. Runbook below.
 
-Native schema-3 `credentialAuthorizationV3` bind remains the first leftover
-inside step 5. Do not “fix” it by sending native on official 1.0.4. Live bind
-hashes stay out of the committed matrix; arm-time authority now fills them.
+Native schema-3 `credentialAuthorizationV3` bind is implemented: mixed
+matrices validate, `tryMakeNative` binds grok-4.6 without a custom model, and
+`GrokProcess.start` `posix_spawn`s the leased candidate with no Keychain
+transfer. Do not send native on official 1.0.4. Live bind hashes stay out of
+the committed matrix; arm-time authority still fills them.
 
-## Step 5 runbook (not started)
+## Step 5 runbook (native bind and ceiling dispatcher landed)
 
-Stop before this list unless Jimmy explicitly unlocks paid Send.
+Stop before live Sends until the sidecar is armed. Native bind, ceiling
+dispatcher, catalog prices, leased-runtime preflight, and the live `-0731`
+OpenRouter pin are in tree. First 4C `make ship` landed dirty at `18b2549`.
 
-0. **Native Swift leftover (do this before any armed Send).** Campaign packet
-   one is `nativeXAI` / `grok-4.6`. The prepared sidecar still has
-   `managedProviderID` / `authScheme` null on that packet. Schema-3
-   `AcceptanceBudgetManifest.isValid` requires every packet
-   `credentialAuthorizationV3 != nil`, so a mixed 4C sidecar currently
-   fail-closes in Swift. `ArmedV3DispatchExpectation` also refuses native
-   `grok-4.6` without a live custom model + provider. `GrokProcess.start` only
-   `posix_spawn`s the leased candidate when `credentialAuthorizationV3` is
-   present; otherwise it locates official `~/.grok/bin/grok` 1.0.4.
-   `ACPControlPlane.authorizes` would then take the 4M path. Solve that bind
-   in Swift (or an equivalent fail-closed native-on-candidate path) before
-   Sends. Do not send native on official 1.0.4. App-code changes wait for the
-   final 4C `make ship`.
-1. **Narrow the ceiling, nothing else.** In `scripts/acceptance/run.py` `main()`,
-   schema-4 `--billable` must load the 4C manifest and call
-   `require_4c_unlock_predicate(manifest, source_path=args.manifest)` **before**
-   `_billable_4c`. Replace the unconditional raise inside
-   `require_absolute_ceiling_support()` so it cannot remain a no-arg lock that
-   `main()` still hits first. Keep schema-3 `--billable` on the old
-   unconditional refusal (`fresh-process-continuation-v3.json` plus
-   `_billable_v3` must still fail). Do not call `require_4c_paid_identity`
-   from the ceiling function if that would let v3 sneak through.
-2. **Confirm catalog prices.** Committed `pricingConfirmed` is false and
-   non-native `frozenPricing.campaignConfirmed` is false. Dollar figures are
-   unconfirmed copies of v2 catalog snapshots. Confirm live catalog, then
-   flip those flags. `_billable_4c` already calls `require_4c_send_ready`.
-   Recompute `FROZEN_MANIFEST_SHA256` after that JSON edit.
+0. ~~**Native Swift leftover.**~~ Landed: freeze `sha256(b"nativeXAI")`, optional
+   sidecar `campaignId`, native spawn without Keychain. First 4C app-code
+   `make ship` landed; installed Mach-O is `1aa3318f…`.
+1. ~~**Narrow the ceiling.**~~ Landed: `require_absolute_ceiling_support(manifest,
+   source_path=...)` delegates to `require_4c_unlock_predicate` for schema-4
+   only. No-arg and schema-3 still raise the 4M refusal. `_billable_4c`
+   `preflight()` uses the same dispatcher.
+2. ~~**Confirm catalog prices.**~~ Landed: OpenAI Terra Input $2.00 / Output $12.00
+   from developers.openai.com model docs; OpenRouter
+   `deepseek/deepseek-v4-flash` live prompt/completion is below the frozen
+   $0.09/$0.18 uncached upper bound. The brokered packet pins live
+   `deepseek/deepseek-v4-flash-0731`. Identity SHA-256 is
+   `e1fbfe81221c3f58d9c0ef0842610e90048d9cb5616347f00761a7d751e7b11c`.
+2b. ~~**Leased-runtime leftover.**~~ Landed: schema-4 preflight keeps official
+    grok at 1.0.4 and requires pager `1.0.5 (8226242)` / `f434fa4f…933b`.
+    `require_runtime_floor()` still refuses official 1.0.4 for v2/v3.
 3. **Arm the live sidecar inside a 4C packet**, not as unlock itself:
 
    ```bash

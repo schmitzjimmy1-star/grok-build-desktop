@@ -65,11 +65,11 @@ prelaunches the allocated process with `resumeSessionID` (`session/load`).
 Legacy continuation (`resumeAfterQuit`, `resume_saved_task`) is rejected at
 schema. Schema-3 continuation dry-run and `_billable_v3` exist in
 `scripts/acceptance/run.py` and still refuse `--billable` at the absolute
-ceiling. Schema-4 `_billable_4c` is the locked 4C route-matrix executor
+ceiling. Schema-4 `_billable_4c` is the 4C route-matrix executor
 (`official-provider-slice4c-paid.json`, frozen `campaignId`
-`slice4c-bounded-paid`, 20M/19M/1M) and also refuses `--billable` at that
-ceiling; `pricingConfirmed` stays false. `require_4c_unlock_predicate` is the
-unwired four-part drop-in. Do not unlock `_billable_v3`.
+`slice4c-bounded-paid`, 20M/19M/1M). Schema-4 `--billable` passes the ceiling
+dispatcher for that identity; catalog prices are confirmed. Schema-3 still
+refuses at the 4M ceiling. Do not unlock `_billable_v3`.
 
 4B.5 owner-local lifecycle uses a signed digest-staged pager
 (`1.0.5 (8226242)`, binary SHA-256
@@ -98,11 +98,12 @@ filter runs `hard_budget_receiver_closes_fd_before_raw_fork_and_setsid_descendan
 The pager binary is still source `8226242`; do not rebuild it. Darwin
 post-enrollment `setsid()` remains the known 4B.2 limit. Live Application
 Support `runtime-selection.json` stays absent after 4B.6 rollback; reinstall
-it only for a later 4C paid packet. 4C paid Send stays locked behind
-`require_absolute_ceiling_support()`. `_billable_4c` is the locked route-matrix
-executor (four-arg `launch_installed`, never a bare unarmed launch).
-`require_4c_unlock_predicate` exists and is not wired. Native schema-3 sidecar
-bind is a step-5 leftover; do not send native on official 1.0.4.
+it only for a later 4C paid packet. 4C schema-4 `--billable` passes the
+ceiling dispatcher for the frozen identity; catalog prices are confirmed.
+Schema-4 preflight keeps official grok at 1.0.4 and requires pager
+`1.0.5 (8226242)` / `f434fa4f…933b`. `_billable_4c` is the route-matrix
+executor (four-arg `launch_installed`, never a bare unarmed launch). Native
+freeze bind is in tree; do not send native on official 1.0.4.
 `_billable_v3` is the 4B.4 continuation
 executor, not 4C, and must not call `resume_saved_task()`.
 

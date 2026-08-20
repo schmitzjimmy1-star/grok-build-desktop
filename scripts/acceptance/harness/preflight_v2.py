@@ -32,7 +32,51 @@ def require_runtime_floor(version_text: str | None = None) -> str:
     return version_text
 
 
-def preflight(repo: Path, manifest: dict[str, Any], *, ledger: Path) -> dict[str, Any]:
+def require_4c_leased_runtime(candidate_selection: Path | None) -> str:
+    """4C ACP runtime is the signed pager. Official grok stays 1.0.4.
+
+    Do not grok update. Do not treat official 1.0.5+ as the 4C floor.
+    """
+    from .candidate_process_driver import (
+        OFFICIAL_CLI_SHA256,
+        STAGED_CLI_BUILD,
+        STAGED_PAGER_SHA256,
+        official_cli_sha256,
+        require_staged_selection,
+    )
+    from .errors import HarnessError
+
+    try:
+        digest = official_cli_sha256()
+    except HarnessError as exc:
+        raise PreflightError(str(exc)) from exc
+    if digest != OFFICIAL_CLI_SHA256:
+        raise PreflightError("4C requires the pinned official grok 1.0.4 digest")
+    version_text = cli_version()
+    match = VERSION.search(version_text)
+    if not match or tuple(map(int, match.groups())) != (1, 0, 4):
+        raise PreflightError("4C requires official grok 1.0.4; do not grok update")
+    if candidate_selection is None:
+        raise PreflightError("4C execution requires one exact --candidate-selection authority")
+    try:
+        staged = require_staged_selection(candidate_selection)
+    except HarnessError as exc:
+        raise PreflightError(str(exc)) from exc
+    if staged["cliBuild"] != STAGED_CLI_BUILD:
+        raise PreflightError("4C requires candidate cliBuild 1.0.5 (8226242)")
+    if staged["binarySHA256"] != STAGED_PAGER_SHA256:
+        raise PreflightError("4C requires the signed digest-staged pager")
+    return staged["cliBuild"]
+
+
+def preflight(
+    repo: Path,
+    manifest: dict[str, Any],
+    *,
+    ledger: Path,
+    source_path: Path | None = None,
+    candidate_selection: Path | None = None,
+) -> dict[str, Any]:
     unpriced = [
         packet["id"] for packet in manifest["packets"]
         if packet["routeReceipt"]["kind"] != "nativeXAI" and packet["frozenPricing"] is None
@@ -40,7 +84,10 @@ def preflight(repo: Path, manifest: dict[str, Any], *, ledger: Path) -> dict[str
     if unpriced:
         raise PreflightError(f"provider packets lack frozen current pricing: {unpriced}")
     identity = installed_identity(repo)
-    version_text = require_runtime_floor()
+    if manifest.get("schemaVersion") == 4:
+        version_text = require_4c_leased_runtime(candidate_selection)
+    else:
+        version_text = require_runtime_floor()
     require_models([packet["selectorModelID"] for packet in manifest["packets"]])
     _require_configured_routes(manifest)
     inspect_sha = _require_effective_config(repo)
@@ -66,7 +113,7 @@ def preflight(repo: Path, manifest: dict[str, Any], *, ledger: Path) -> dict[str
     selected_agent = _run(["defaults", "read", "com.grokbuild.app", "grokbuild.selectedAgent"])
     if selected_agent.returncode == 0 and selected_agent.stdout.strip():
         raise PreflightError("paid acceptance requires the inherited session agent to be Default")
-    require_absolute_ceiling_support()
+    require_absolute_ceiling_support(manifest, source_path=source_path)
     return {
         "identity": identity,
         "cliVersion": version_text,
@@ -190,10 +237,8 @@ def effective_config_sha(repo: Path) -> str:
 
 
 def require_4c_unlock_predicate(manifest: dict[str, Any], *, source_path: Path) -> None:
-    """Drop-in four-part 4C predicate. Not called by require_absolute_ceiling_support().
-
-    Step 5 may wire this from main() after loading the schema-4 manifest.
-    Until then the unconditional ceiling raise still wins with no arguments.
+    """Four-part 4C predicate. Wired from require_absolute_ceiling_support when
+    both a schema-4 manifest and its committed source path are supplied.
     """
     from .schema_4c import SCHEMA_VERSION, require_4c_paid_identity
 
@@ -205,7 +250,18 @@ def require_4c_unlock_predicate(manifest: dict[str, Any], *, source_path: Path) 
         raise PreflightError(f"4C unlock predicate refused: {exc}") from exc
 
 
-def require_absolute_ceiling_support() -> None:
+def require_absolute_ceiling_support(
+    manifest: dict[str, Any] | None = None,
+    *,
+    source_path: Path | None = None,
+) -> None:
+    if (
+        manifest is not None
+        and source_path is not None
+        and manifest.get("schemaVersion") == 4
+    ):
+        require_4c_unlock_predicate(manifest, source_path=source_path)
+        return
     raise PreflightError(
         "billable Slice 4 remains locked: ACP usage polling is reactive and cannot prove the absolute 4,000,000-token ceiling"
     )

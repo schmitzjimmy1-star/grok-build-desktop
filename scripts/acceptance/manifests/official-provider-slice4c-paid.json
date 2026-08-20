@@ -9,7 +9,7 @@
   "effort": "low",
   "parentAgent": "default",
   "expectedCLIBuild": "1.0.5 (8226242)",
-  "pricingConfirmed": false,
+  "pricingConfirmed": true,
   "forbiddenToolsDefault": [
     "GrokBuild:update_plan"
   ],
@@ -106,7 +106,7 @@
         "completionUsdPerMillion": 12.0,
         "cacheTreatment": "uncachedUpperBound",
         "source": "https://openai.com/index/advancing-the-price-performance-frontier-with-gpt-5-6/",
-        "campaignConfirmed": false
+        "campaignConfirmed": true
       },
       "hardBudget": {
         "allocationID": "s4c-oai-h-no",
@@ -124,9 +124,9 @@
       "marker": "GB-S4C-OR-OW-NO-{runId}",
       "prompt": "Return exactly {marker} and nothing else.",
       "selectorModelID": "deepseek-deepseek-v4-flash-0731",
-      "effectiveModelID": "deepseek/deepseek-v4-flash",
+      "effectiveModelID": "deepseek/deepseek-v4-flash-0731",
       "expectedModelUsageIDs": [
-        "deepseek/deepseek-v4-flash"
+        "deepseek/deepseek-v4-flash-0731"
       ],
       "routeReceipt": {
         "kind": "brokeredOpenRouter",
@@ -135,7 +135,7 @@
         "appProviderID": "openrouter",
         "officialProviderID": "grokbuild.saved.openrouter",
         "endpointIdentity": "https://openrouter.ai/api/v1",
-        "providerModelID": "deepseek/deepseek-v4-flash",
+        "providerModelID": "deepseek/deepseek-v4-flash-0731",
         "apiBackend": "chat_completions",
         "authBoundary": "officialHelper",
         "modelIsPinned": true,
@@ -162,12 +162,12 @@
         "completionUsdPerMillion": 0.18,
         "cacheTreatment": "uncachedUpperBound",
         "source": "https://openrouter.ai/deepseek/deepseek-v4-flash/api",
-        "campaignConfirmed": false
+        "campaignConfirmed": true
       },
       "hardBudget": {
         "allocationID": "s4c-or-ow-no",
         "route": {
-          "model": "deepseek/deepseek-v4-flash",
+          "model": "deepseek/deepseek-v4-flash-0731",
           "apiBackend": "chat_completions",
           "requestBoundTokens": 100000,
           "maxPayloadBytes": 8192,

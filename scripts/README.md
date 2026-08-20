@@ -43,10 +43,11 @@ preflight refuses before launch until a hard official or worst-case bound exists
 Legacy v1 billable execution is retired. V2 receipts are owner-only append-only
 triples: reservation, typed terminal evidence, then exact local cleanup.
 Schema-4 `_billable_4c` plus `manifests/official-provider-slice4c-paid.json`
-plan the 20M/19M/1M native → direct → brokered matrix as dry-run only.
-`--billable` still refuses at the absolute ceiling. The drop-in
-`require_4c_unlock_predicate` exists and is not wired. Do not treat that
-executor as paid unlock.
+plan the 20M/19M/1M native → direct → brokered matrix. Schema-4 `--billable`
+passes the frozen-identity ceiling dispatcher; catalog prices are confirmed.
+Schema-3 `--billable` still refuses at the 4M ceiling. Do not treat
+`_billable_v3` as paid unlock. Schema-4 preflight uses the leased pager and
+keeps official grok at 1.0.4.
 
 ```bash
 python3 scripts/acceptance/run.py
@@ -55,6 +56,11 @@ python3 scripts/acceptance/run.py --billable --run-id 20260814T180000Z \
   --ledger /tmp/grokbuild-s5-ledger.jsonl
 python3 scripts/acceptance/run.py --manifest scripts/acceptance/manifests/installed-slice6-packet-v1.json \
   --billable --run-id 20260815T020000Z --ledger /tmp/grokbuild-s6-ledger.jsonl
+python3 scripts/acceptance/run.py \
+  --manifest scripts/acceptance/manifests/official-provider-slice4c-paid.json \
+  --billable --run-id 20260820T030000Z \
+  --ledger /tmp/grokbuild-s4c-ledger.jsonl \
+  --candidate-selection "$HOME/Library/Application Support/GrokBuild/candidate-runtime/runtime-selection.json"
 python3 scripts/acceptance/run.py --cleanup --ids-from-ledger /tmp/grokbuild-s6-ledger.jsonl
 ```
 
@@ -64,7 +70,7 @@ Focused tests: `swift test --filter AcceptanceHarnessTests`.
 |--------|---------|
 | [`acceptance/run.py`](acceptance/run.py) | Versioned agentic acceptance harness. Dry-run default; `--fixture` for zero-cost rejection; `--billable` for installed-UI Sends after preflight. |
 | [`acceptance/harness/provenance_v3.py`](acceptance/harness/provenance_v3.py) | Independent 4B.3 canonical provenance verifier, including nested `v3Authority` projection checks. Historical v2 schemas stay in `authority_v2.py`. |
-| [`acceptance/harness/schema_4c.py`](acceptance/harness/schema_4c.py) | Locked Slice 4C paid-matrix schema. Frozen `campaignId` `slice4c-bounded-paid`; committed prices stay unconfirmed. |
+| [`acceptance/harness/schema_4c.py`](acceptance/harness/schema_4c.py) | Slice 4C paid-matrix schema. Frozen `campaignId` `slice4c-bounded-paid`; catalog prices are campaign-confirmed. |
 | [`acceptance/harness/authority_4c.py`](acceptance/harness/authority_4c.py) | 4C CLI/Swift authority. Arm-time hashes only; native freeze is `sha256(b"nativeXAI")`. |
 | [`acceptance/harness/candidate_install.py`](acceptance/harness/candidate_install.py) | Slice 4B.6 signed pager install/rollback. Byte-copies into an owner-private digest directory; never writes `~/.grok/bin/grok`. Rollback removes only `runtime-selection.json` after two empty process-zero samples. |
 
