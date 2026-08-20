@@ -35,24 +35,28 @@ struct PluginsSettingsPane: View {
                 }
             }
 
-            HStack {
-                TextField("GitHub repo, Git URL, or local path", text: $installSource)
+            VStack(alignment: .leading, spacing: 8) {
+                HStack(spacing: 10) {
+                    TextField("GitHub repo, Git URL, or local path", text: $installSource)
+                    Button("Install") {
+                        startInstall()
+                    }
+                    .disabled(
+                        installSource.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                            || !trustInstall
+                            || activeOperationID != nil
+                    )
+                }
+
                 Toggle("I reviewed and trust this source", isOn: $trustInstall)
                     .toggleStyle(.checkbox)
                     .controlSize(.small)
-                Button("Install") {
-                    startInstall()
-                }
-                .disabled(
-                    installSource.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-                        || !trustInstall
-                        || activeOperationID != nil
-                )
-            }
 
-            Text("Install is a direct CLI action. GrokBuild requires an explicit trust decision, then restarts only the current live tab; plugin data may remain after uninstall unless the CLI removes it.")
-                .font(.caption)
-                .foregroundStyle(.secondary)
+                Text("Install is a direct CLI action. GrokBuild requires an explicit trust decision, then restarts only the current live tab; plugin data may remain after uninstall unless the CLI removes it.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
             if let receipt = rowReceipts["install"] {
                 SettingsRowOperationReceiptView(receipt: receipt)
             }
@@ -307,4 +311,3 @@ struct PluginsSettingsPane: View {
         return plugin.isEnabled ? "Enabled" : "Disabled"
     }
 }
-

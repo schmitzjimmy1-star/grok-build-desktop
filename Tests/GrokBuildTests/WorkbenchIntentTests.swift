@@ -58,7 +58,7 @@ final class WorkbenchIntentTests: XCTestCase {
         XCTAssertFalse(chatView.contains("private var welcomeState"))
         XCTAssertTrue(source.contains("Text(\"Loading saved conversation…\")"))
         XCTAssertTrue(source.contains("private var restoredEmptyState"))
-        XCTAssertTrue(welcomeState.contains("private struct CodexPromptPill"))
+        XCTAssertTrue(welcomeState.contains("private struct WorkbenchIntentStarter"))
         XCTAssertTrue(welcomeState.contains("ForEach(WorkbenchIntent.defaults)"))
         XCTAssertTrue(chatView.contains("grok-composer-workspace-chip"))
         XCTAssertTrue(chatView.contains("grok-composer-branch-chip"))
@@ -73,10 +73,10 @@ final class WorkbenchIntentTests: XCTestCase {
                        "unknown ACP mode ids must not be relabeled Agent")
         XCTAssertFalse(source.contains("Text(\"Grok agent runs in this folder.\")"),
                        "welcome no longer repeats the folder-as-cwd line")
-        XCTAssertFalse(source.contains("Text(item.detail)"),
-                       "Ask/Build/Review chips keep detail in VoiceOver, not on-canvas paragraphs")
+        XCTAssertTrue(source.contains("Text(item.detail)"),
+                      "Ask/Build/Review starters explain their outcome before seeding the composer")
         XCTAssertTrue(source.contains("accessibilityLabel(\"\\(item.title). \\(item.detail)\")"))
-        XCTAssertTrue(source.contains(".frame(width: 24, height: 24)"))
+        XCTAssertTrue(source.contains(".frame(width: 30, height: 30)"))
         XCTAssertTrue(source.contains(".font(.system(size: 30, weight: .medium))"))
         XCTAssertTrue(source.contains(".padding(.vertical, 40)"))
         XCTAssertFalse(source.contains("grok-task-context-strip"),

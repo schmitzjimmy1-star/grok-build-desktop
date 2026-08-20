@@ -575,6 +575,31 @@ final class SettingsTabTests: XCTestCase {
         XCTAssertTrue(compatibility.contains("Codex currently exposes sessions only"))
     }
 
+    func testF5EEmptyInventoryAndPluginInstallChromeTellTheTruth() throws {
+        let repositoryRoot = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        let settings = try String(
+            contentsOf: repositoryRoot.appendingPathComponent("GrokBuild/Views/SettingsView.swift"),
+            encoding: .utf8
+        )
+        let plugins = try paneSource(named: "PluginsSettingsPane")
+
+        let emptyStart = try XCTUnwrap(settings.range(of: "case .empty(let message):"))
+        let staleStart = try XCTUnwrap(
+            settings.range(of: "case .stale(let message), .error(let message):", range: emptyStart.upperBound..<settings.endIndex)
+        )
+        let emptyPresentation = String(settings[emptyStart.lowerBound..<staleStart.lowerBound])
+        XCTAssertFalse(emptyPresentation.contains("Button(\"Retry\""),
+                       "a successful empty inventory must not pretend that loading failed")
+
+        XCTAssertTrue(plugins.contains("VStack(alignment: .leading, spacing: 8)"),
+                      "plugin trust and warning copy must not be crushed into the source field row")
+        XCTAssertTrue(plugins.contains("I reviewed and trust this source"))
+        XCTAssertTrue(plugins.contains("Install is a direct CLI action"))
+    }
+
     /// Slice 10: each pane lives in its own file under Views/Settings, so a pane's
     /// "body" for contract scanning is that whole file — a stricter scope than the old
     /// next-struct slicing inside the monolithic SettingsView.swift.

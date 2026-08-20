@@ -194,8 +194,8 @@ final class CodexShellParityTests: XCTestCase {
                       "project rows use calm outline hierarchy glyphs")
         XCTAssertTrue(sidebar.contains(".frame(width: 20, height: 24)"),
                       "the folder icon keeps a compact stable visual column")
-        XCTAssertTrue(sidebar.contains(".frame(minHeight: 36)"),
-                      "project rows retain a readable but calmer vertical rhythm")
+        XCTAssertTrue(sidebar.contains(".frame(minHeight: 38)"),
+                      "conversation rows retain a readable but calmer vertical rhythm")
         XCTAssertTrue(sidebar.contains("@State private var isHovered = false"),
                       "project rows have a quiet hover state")
 
@@ -216,14 +216,14 @@ final class CodexShellParityTests: XCTestCase {
         let theme = try source("GrokBuild/AppTheme.swift")
         XCTAssertTrue(theme.contains("dark: NSColor(red: 0.082, green: 0.082, blue: 0.082"),
                       "the rail stays near the canvas instead of becoming a charcoal slab")
-        XCTAssertTrue(theme.contains("static let sidebarTitle = Font.system(size: 13.5"),
+        XCTAssertTrue(theme.contains("static let sidebarTitle = Font.system(size: 14"),
                       "conversation rows use their own readable type role")
 
         let sidebar = try source("GrokBuild/Views/SidebarView.swift")
         XCTAssertTrue(sidebar.contains("AppTheme.Typography.sidebarTitleSelected"))
         XCTAssertTrue(sidebar.contains("Color.primary.opacity(0.78)"),
                       "unselected conversation titles remain readable instead of tiny tertiary text")
-        XCTAssertTrue(sidebar.contains(".frame(minHeight: 36)"),
+        XCTAssertTrue(sidebar.contains(".frame(minHeight: 38)"),
                       "conversation rows keep a readable target inside the calmer tree")
 
         let composer = try source("GrokBuild/Views/ComposerViews.swift")
@@ -318,7 +318,7 @@ final class CodexShellParityTests: XCTestCase {
     /// empty-state pills are a GrokBuild invention that the photographs do not
     /// show; they stay only if a side-by-side installed comparison proves they
     /// do not disturb the Codex hierarchy.
-    func testEmptyStateIntentPillsStillExist() throws {
+    func testEmptyStateIntentStartersExplainTheirOutcome() throws {
         let chatView = try source("GrokBuild/Views/ChatView.swift")
         let welcomeState = try source("GrokBuild/Views/WelcomeStateView.swift")
         XCTAssertTrue(chatView.contains("WelcomeStateView("),
@@ -329,8 +329,10 @@ final class CodexShellParityTests: XCTestCase {
                       "Red-baseline inventory: the Ask/Build/Review intent chips still render")
         XCTAssertFalse(welcomeState.contains("Text(\"Grok agent runs in this folder.\")"),
                        "Visual Quiet Path A dropped the redundant folder-as-cwd line")
-        XCTAssertFalse(welcomeState.contains("Text(item.detail)"),
-                       "Ask/Build/Review chips keep outcome copy in accessibility, not card paragraphs")
+        XCTAssertTrue(welcomeState.contains("private struct WorkbenchIntentStarter"),
+                      "the welcome uses one quiet starter owner instead of tiny pills")
+        XCTAssertTrue(welcomeState.contains("Text(item.detail)"),
+                      "Ask/Build/Review starters explain their outcome on canvas")
         XCTAssertTrue(welcomeState.contains("accessibilityLabel(\"\\(item.title). \\(item.detail)\")"),
                       "VoiceOver still hears the Ask/Build/Review outcome copy")
         XCTAssertFalse(welcomeState.contains("Text(\"Recent tasks\")"),
@@ -473,8 +475,8 @@ final class CodexShellParityTests: XCTestCase {
                        "launch choices are not a tinted banner")
         XCTAssertTrue(chatView.contains("LaunchSessionChoices("),
                       "saved-task choices remain")
-        XCTAssertTrue(chatView.contains(".frame(maxWidth: AppTheme.Layout.composerMaxWidth, alignment: .leading)"),
-                      "launch choices sit in the composer column, not a full-width bar")
+        XCTAssertTrue(chatView.contains("private var composerContextBar"),
+                      "saved-task actions share one project context bar above the composer")
         XCTAssertFalse(chatView.contains("showsTaskContextStrip"),
                        "the task-contract bar is removed, not merely hidden while idle")
 

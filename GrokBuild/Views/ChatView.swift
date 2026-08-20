@@ -1153,24 +1153,9 @@ struct ChatView: View {
                     }
                 )
                 .padding(.horizontal, 12)
-            } else if store.continuityIsResuming && store.isResumedSessionTab {
-                LaunchSessionChoices(
-                    onResumeCurrent: {
-                        Task {
-                            _ = await performTranscriptSessionTransition {
-                                await store.resumeTaskSession()
-                            }
-                        }
-                    },
-                    onStartNew: onNewSession,
-                    onBrowseOld: onBrowseSessions
-                )
-                .frame(maxWidth: AppTheme.Layout.composerMaxWidth, alignment: .leading)
-                .frame(maxWidth: .infinity, alignment: .center)
-                .padding(.horizontal, 12)
             }
 
-            composerProjectContext
+            composerContextBar
             composer
                 .accessibilitySortPriority(1)
                 .focusSection()
@@ -1571,7 +1556,7 @@ struct ChatView: View {
     }
 
     @ViewBuilder
-    private var composerProjectContext: some View {
+    private var composerContextBar: some View {
         if let workspace = store.currentWorkspace {
             HStack(spacing: 7) {
                 Label(workspace.displayName, systemImage: "folder")
@@ -1593,6 +1578,22 @@ struct ChatView: View {
                 .accessibilityIdentifier("grok-composer-branch-chip")
 
                 Spacer(minLength: 0)
+
+                if !store.continuityRequiresRecovery,
+                   store.continuityIsResuming,
+                   store.isResumedSessionTab {
+                    LaunchSessionChoices(
+                        onResumeCurrent: {
+                            Task {
+                                _ = await performTranscriptSessionTransition {
+                                    await store.resumeTaskSession()
+                                }
+                            }
+                        },
+                        onStartNew: onNewSession,
+                        onBrowseOld: onBrowseSessions
+                    )
+                }
             }
             .font(AppTheme.Typography.label)
             .foregroundStyle(.secondary)
@@ -1807,47 +1808,50 @@ struct ChatView: View {
         )
     }
 
+    @ViewBuilder
     private var activitySidebarToggle: some View {
-        let look = runInspectorQuickLook
-        return Menu {
-            Section(look.phase) {
-                ForEach(Array(look.lines.enumerated()), id: \.offset) { _, line in
-                    Text(line)
+        if activitySnapshot != nil || store.liveRunEvidenceProjection != nil || showActivitySidebar {
+            let look = runInspectorQuickLook
+            Menu {
+                Section(look.phase) {
+                    ForEach(Array(look.lines.enumerated()), id: \.offset) { _, line in
+                        Text(line)
+                    }
                 }
-            }
-            if contextInspectorModel.subagents != nil || showActivitySidebar {
-                Divider()
-                Button(showActivitySidebar ? "Hide run activity" : "Show run activity") {
-                    setActivitySidebarVisible(!showActivitySidebar)
+                if contextInspectorModel.subagents != nil || showActivitySidebar {
+                    Divider()
+                    Button(showActivitySidebar ? "Hide run activity" : "Show run activity") {
+                        setActivitySidebarVisible(!showActivitySidebar)
+                    }
                 }
-            }
-        } label: {
-            HStack(spacing: 4) {
-                TitlebarGlyph(systemName: "sidebar.right")
-                if let snapshot = activitySnapshot {
-                    Circle()
-                        .fill(snapshot.outcome == .completionReceiptMissing ? AppTheme.Palette.warning : Color.secondary)
-                        .frame(width: 5, height: 5)
-                        .accessibilityHidden(true)
-                } else if store.liveRunEvidenceProjection != nil {
-                    Circle()
-                        .fill(AppTheme.Palette.accent)
-                        .frame(width: 5, height: 5)
-                        .accessibilityHidden(true)
+            } label: {
+                HStack(spacing: 4) {
+                    TitlebarGlyph(systemName: "sidebar.right")
+                    if let snapshot = activitySnapshot {
+                        Circle()
+                            .fill(snapshot.outcome == .completionReceiptMissing ? AppTheme.Palette.warning : Color.secondary)
+                            .frame(width: 5, height: 5)
+                            .accessibilityHidden(true)
+                    } else if store.liveRunEvidenceProjection != nil {
+                        Circle()
+                            .fill(AppTheme.Palette.accent)
+                            .frame(width: 5, height: 5)
+                            .accessibilityHidden(true)
+                    }
                 }
+                .frame(width: 28, height: TitlebarMetrics.height)
+                .contentShape(Rectangle())
             }
-            .frame(width: 28, height: TitlebarMetrics.height)
-            .contentShape(Rectangle())
+            .menuStyle(.borderlessButton)
+            .menuIndicator(.hidden)
+            .controlSize(.regular)
+            .foregroundStyle(AppTheme.Palette.titlebarControl)
+            .help("Run inspector")
+            .accessibilityLabel("Run inspector")
+            .accessibilityValue(activityEvidenceAccessibilityValue)
+            .accessibilityHint("Quick look at the current run. Opens the on-demand evidence drawer.")
+            .accessibilityIdentifier("grok-run-inspector-toggle")
         }
-        .menuStyle(.borderlessButton)
-        .menuIndicator(.hidden)
-        .controlSize(.regular)
-        .foregroundStyle(AppTheme.Palette.titlebarControl)
-        .help("Run inspector")
-        .accessibilityLabel("Run inspector")
-        .accessibilityValue(activityEvidenceAccessibilityValue)
-        .accessibilityHint("Quick look at the current run. Opens the on-demand evidence drawer.")
-        .accessibilityIdentifier("grok-run-inspector-toggle")
     }
 
     /// MCP servers actually evidenced by tool receipts: the live projection's
@@ -2855,29 +2859,28 @@ private struct LaunchSessionChoices: View {
     let onBrowseOld: () -> Void
 
     var body: some View {
-        HStack(spacing: 14) {
+        HStack(spacing: 8) {
             launchButton(
                 "Resume current task",
                 help: "Resume the exact saved Grok backend without sending a prompt.",
                 identifier: "grok-launch-resume-current",
                 action: onResumeCurrent
             )
-            launchButton(
-                "Start new task",
-                help: "Start a clean local task (Command-N). The saved task stays available.",
-                identifier: "grok-launch-new-task",
-                action: onStartNew
-            )
-            launchButton(
-                "Browse old tasks",
-                help: "Browse historical sessions (Shift-Command-R) without starting one.",
-                identifier: "grok-launch-browse-old",
-                action: onBrowseOld
-            )
-            Spacer(minLength: 0)
+            Menu {
+                Button("Start new task", action: onStartNew)
+                    .accessibilityIdentifier("grok-launch-new-task")
+                Button("Browse old tasks", action: onBrowseOld)
+                    .accessibilityIdentifier("grok-launch-browse-old")
+            } label: {
+                Image(systemName: "ellipsis")
+                    .frame(width: 20, height: 20)
+                    .contentShape(Rectangle())
+            }
+            .menuStyle(.borderlessButton)
+            .menuIndicator(.hidden)
+            .help("More saved task actions")
+            .accessibilityLabel("More saved task actions")
         }
-        .padding(.horizontal, 4)
-        .padding(.vertical, 2)
         .accessibilityElement(children: .contain)
         .accessibilityLabel("Saved task launch choices")
         .accessibilityIdentifier("grok-launch-session-choices")

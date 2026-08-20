@@ -640,7 +640,7 @@ private struct RailUtilityButton: View {
             .padding(.horizontal, 8)
             .frame(maxWidth: .infinity, minHeight: 32)
             .background(
-                isHovered ? AppTheme.Palette.surfaceHover : AppTheme.Palette.glassTint,
+                isHovered ? AppTheme.Palette.surfaceHover : Color.clear,
                 in: RoundedRectangle(cornerRadius: AppTheme.Radius.medium, style: .continuous)
             )
             .contentShape(Rectangle())
@@ -649,6 +649,7 @@ private struct RailUtilityButton: View {
         .onHover { isHovered = $0 }
         .accessibilityLabel(title)
         .accessibilityIdentifier("grok-rail-\(title.lowercased())")
+        .accessibilityRemoveTraits(.isSelected)
     }
 }
 
@@ -687,9 +688,9 @@ private struct SessionSidebarRow: View {
                         .accessibilityIdentifier("grok-sidebar-session-schedule")
                 }
                 }
-            .padding(.horizontal, 5)
-            .padding(.vertical, 5)
-            .frame(minHeight: 36)
+                .padding(.horizontal, 5)
+                .padding(.vertical, 5)
+                .frame(minHeight: 38)
                 .contentShape(Rectangle())
                 .background(
                     isSelected ? AppTheme.Palette.sidebarSelection : Color.clear,

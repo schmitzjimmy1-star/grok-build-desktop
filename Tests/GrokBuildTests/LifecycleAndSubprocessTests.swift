@@ -757,7 +757,10 @@ final class SubprocessHygieneTests: XCTestCase {
         )
         XCTAssertTrue(chatViewSource.contains("if store.continuityRequiresRecovery {"),
                       "recovery note must be gated on the hard-block predicate")
-        XCTAssertTrue(chatViewSource.contains("} else if store.continuityIsResuming && store.isResumedSessionTab {"),
+        XCTAssertTrue(chatViewSource.contains("if !store.continuityRequiresRecovery,"),
+                      "saved-task actions stay out of hard-recovery states")
+        XCTAssertTrue(chatViewSource.contains("store.continuityIsResuming,"))
+        XCTAssertTrue(chatViewSource.contains("store.isResumedSessionTab {"),
                       "quiet launch choices belong on restored tabs, including empty-hydrate, not empty New chat")
         XCTAssertTrue(chatViewSource.contains("ContinuityStatusBanner("),
                       "the inline continuity note must be composed above the composer")
@@ -766,7 +769,7 @@ final class SubprocessHygieneTests: XCTestCase {
         let recoveryStart = try XCTUnwrap(chatViewSource.range(of: "kind: .needsRecovery"))
         let recoveryEnd = try XCTUnwrap(
             chatViewSource.range(
-                of: "} else if store.continuityIsResuming && store.isResumedSessionTab {",
+                of: "private var composerContextBar",
                 range: recoveryStart.upperBound..<chatViewSource.endIndex
             )
         )
@@ -810,7 +813,8 @@ final class SubprocessHygieneTests: XCTestCase {
         )
         XCTAssertTrue(chatViewSource.contains("grok-restored-conversation-loading"))
         XCTAssertTrue(
-            chatViewSource.contains("store.continuityIsResuming && store.isResumedSessionTab"),
+            chatViewSource.contains("store.continuityIsResuming,")
+                && chatViewSource.contains("store.isResumedSessionTab {"),
             "Resume current task must be available before transcript hydrate finishes"
         )
 

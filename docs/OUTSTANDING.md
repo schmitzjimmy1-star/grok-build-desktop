@@ -87,15 +87,17 @@ layout of `msk-labs/grok-build-gui`: a light-first canvas, project/session rail,
 calm workspace, compact workspace/branch controls, and bottom-docked composer.
 No Electron/React implementation, source, asset, dependency, or backend is copied.
 
-**Active checkpoint F5D — Synara shell convergence.** This checkpoint replaces
-the stacked full-width update/header/card composition with one 46-point shell
-language, a 256-point workspace rail, an on-demand peer Run dock, flat composer
-context, and adaptive near-black/original-light material tokens. Runtime owners,
-provider routing, credentials, paid 4C, session deletion, and broad view
-decomposition remain untouched. It is nonbillable. Focused shell, theme,
-responsive, composer, and receipt contracts pass 66/66; the full suite passes
-1082 tests with 15 skipped and zero failures. Ship/install, installed visual
-acceptance, exact commit, and push receipt remain.
+**Active checkpoint F5E — truthful hierarchy and context consolidation.** F5D is
+accepted on pushed commit `ce4849a25a0e3ed074187820b29e2b5ee2a2c6bc`:
+focused contracts passed 66/66, the full suite passed 1082 tests with 15 skipped
+and zero failures, `make ship` installed the exact clean identity, and installed
+Dark/Light/wide/narrow acceptance passed without a provider prompt. F5E now
+flattens the remaining utility cards, strengthens conversation titles, makes
+welcome outcomes visible, combines saved-task actions with workspace/branch
+context, hides the Run inspector when no run evidence exists, and stops offering
+Retry for a successful-empty settings inventory. Existing state/action/runtime
+owners remain unchanged. Provider routing, credentials, paid 4C, session
+deletion, broad view decomposition, PR creation, and merge remain forbidden.
 
 Checkpoint commits accumulate and push to
 `personal/codex/frontend-rebuild-com-grokbuild-app`. Do not open or merge a PR

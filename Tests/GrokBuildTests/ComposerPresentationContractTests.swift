@@ -107,6 +107,10 @@ final class ComposerPresentationContractTests: XCTestCase {
         // Header: Review state and the inspector toggle (Slice 2 homes).
         XCTAssertTrue(chrome.contains("grok-header-review-toggle"))
         XCTAssertTrue(chatView.contains("grok-run-inspector-toggle"))
+        XCTAssertTrue(
+            chatView.contains("if activitySnapshot != nil || store.liveRunEvidenceProjection != nil || showActivitySidebar"),
+            "the run inspector must not advertise a dead no-evidence menu"
+        )
 
         // Conversation: the inline changed-files card (Slice 3 home).
         XCTAssertTrue(chatView.contains("ChangedFilesSummaryCard("))

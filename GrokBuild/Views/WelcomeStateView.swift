@@ -9,7 +9,7 @@ struct WelcomeStateView: View {
     var body: some View {
         VStack(spacing: 18) {
             GrokBrandMarkView()
-                .frame(width: 38, height: 38)
+                .frame(width: 44, height: 44)
             VStack(spacing: 6) {
                 Text("What should we build?")
                     .font(.system(size: 30, weight: .medium))
@@ -18,9 +18,9 @@ struct WelcomeStateView: View {
                     .foregroundStyle(.secondary)
             }
 
-            HStack(spacing: 8) {
+            HStack(alignment: .top, spacing: 10) {
                 ForEach(WorkbenchIntent.defaults) { item in
-                    CodexPromptPill(item: item) {
+                    WorkbenchIntentStarter(item: item) {
                         onSelect(item)
                     }
                 }
@@ -43,7 +43,7 @@ struct GrokBrandMarkView: View {
                     .renderingMode(.template)
                     .resizable()
                     .scaledToFit()
-                    .frame(width: 24, height: 24)
+                    .frame(width: 30, height: 30)
                     .foregroundStyle(.secondary)
             } else {
                 Image(systemName: "sparkles")
@@ -54,7 +54,7 @@ struct GrokBrandMarkView: View {
     }
 }
 
-private struct CodexPromptPill: View {
+private struct WorkbenchIntentStarter: View {
     let item: WorkbenchIntent
     var onSelect: () -> Void
 
@@ -62,20 +62,31 @@ private struct CodexPromptPill: View {
 
     var body: some View {
         Button(action: onSelect) {
-            HStack(spacing: 6) {
+            HStack(alignment: .top, spacing: 9) {
                 Image(systemName: item.icon)
-                    .font(.system(size: 11, weight: .semibold))
-                Text(item.title)
-                    .font(AppTheme.Typography.label)
+                    .font(.system(size: 13, weight: .semibold))
+                    .frame(width: 16, height: 18)
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(item.title)
+                        .font(AppTheme.Typography.captionStrong)
+                        .foregroundStyle(isHovered ? Color.primary : Color.primary.opacity(0.88))
+                    Text(item.detail)
+                        .font(AppTheme.Typography.label)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(2)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                Spacer(minLength: 0)
             }
             .foregroundStyle(isHovered ? Color.primary : Color.secondary)
-            .padding(.horizontal, 14)
-            .frame(minHeight: 42)
+            .padding(.horizontal, 12)
+            .padding(.vertical, 10)
+            .frame(maxWidth: .infinity, minHeight: 62, alignment: .topLeading)
             .background(
-                isHovered ? AppTheme.Palette.surfaceHover : AppTheme.Palette.surface,
-                in: Capsule()
+                isHovered ? AppTheme.Palette.surfaceHover : Color.clear,
+                in: RoundedRectangle(cornerRadius: AppTheme.Radius.medium, style: .continuous)
             )
-            .contentShape(Capsule())
+            .contentShape(RoundedRectangle(cornerRadius: AppTheme.Radius.medium, style: .continuous))
         }
         .buttonStyle(.plain)
         .onHover { isHovered = $0 }

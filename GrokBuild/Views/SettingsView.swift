@@ -455,7 +455,12 @@ struct SettingsLoadStateView: View {
             }
             .accessibilityElement(children: .combine)
             .accessibilityValue("Checking")
-        case .empty(let message), .stale(let message), .error(let message):
+        case .empty(let message):
+            Text(message)
+                .font(.callout)
+                .foregroundStyle(.secondary)
+                .accessibilityLabel(message)
+        case .stale(let message), .error(let message):
             HStack(alignment: .firstTextBaseline, spacing: 10) {
                 Text(message)
                     .font(.callout)

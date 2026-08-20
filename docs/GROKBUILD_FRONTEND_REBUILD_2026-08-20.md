@@ -172,6 +172,29 @@ No fake Terminal, Diff, or Browser tab is added merely to imitate a reference.
 F5D requires focused shell/accessibility tests, the full suite, `make ship`, and
 installed Dark/Light/wide/narrow acceptance. It uses no provider prompt.
 
+The next checkpoint is **F5E — truthful hierarchy and context consolidation**.
+It follows an adversarial installed review of F5D rather than adding another
+decorative layer. The sidebar's Plugins/Security utilities become flat
+hover-only controls, persistent conversation titles move to a readable 14-point
+role with 38-point rows, and utility controls explicitly reject stale selected
+accessibility traits. The genuine New-chat welcome keeps Ask/Build/Review as
+pre-send draft starters, but displays each outcome instead of hiding useful copy
+in help and VoiceOver alone.
+
+Above the composer, workspace, branch, Resume current task, Start new task, and
+Browse old tasks become one context bar rather than three competing bands. The
+same `ChatStore` transition actions remain authoritative. The Run inspector is
+mounted only when a live projection, settled snapshot, or already-open drawer
+exists; no-evidence New chat no longer advertises a dead menu. Settings preserves
+the existing checking/content/empty/stale/error state model, but successful-empty
+inventories no longer render a Retry action. Plugin source, explicit trust, direct
+CLI disclosure, and Install remain unchanged actions in a readable two-line form.
+
+F5E is presentation-only. It does not start a provider prompt, change ACP/CLI
+ownership, modify credentials or routing, unlock paid 4C, or merge the tranche.
+It requires focused shell/continuity/settings contracts, the full suite, a pushed
+checkpoint commit, `make ship`, and installed Dark/Light/wide/narrow acceptance.
+
 ### F6 — tranche exit
 
 Run the full suite, clean `make ship`, light and dark installed Computer Use,

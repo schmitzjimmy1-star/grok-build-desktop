@@ -158,8 +158,8 @@ enum AppTheme {
         static let captionStrong = Font.system(size: 12, weight: .semibold, design: .default)
         /// Persistent conversation titles need to survive a dense project history
         /// without competing with transcript text.
-        static let sidebarTitle = Font.system(size: 13.5, weight: .regular, design: .default)
-        static let sidebarTitleSelected = Font.system(size: 13.5, weight: .semibold, design: .default)
+        static let sidebarTitle = Font.system(size: 14, weight: .regular, design: .default)
+        static let sidebarTitleSelected = Font.system(size: 14, weight: .semibold, design: .default)
         /// Count badges rendered inside small circles.
         static let badge = Font.system(size: 9, weight: .semibold, design: .default)
         /// Inline code and command output.
