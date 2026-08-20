@@ -125,7 +125,9 @@ def main(argv: list[str] | None = None) -> int:
             version = _manifest_version(args.manifest)
             from harness.preflight_v2 import require_absolute_ceiling_support, require_runtime_floor
             if version == 3:
-                # Paid 4C stays locked. Refuse before runtime discovery or Send.
+                # Schema-3 --billable is the 4B.4 continuation executor.
+                # Paid 4C needs a separate armed route-matrix executor.
+                # Refuse before runtime discovery or Send.
                 require_absolute_ceiling_support()
                 return _billable_v3(args)
             if version != 2:
@@ -509,7 +511,8 @@ def _billable_v3(args: argparse.Namespace) -> int:
     T1 creates the backend with session/new. T2/T3 relaunch a fresh installed
     process, select the retained tab through governed_fresh_process_load, then
     Send. Cleanup runs only after T3. Paid 4C stays locked in main() via
-    require_absolute_ceiling_support(); this body is the later unlock path.
+    require_absolute_ceiling_support(). This body is the 4B.4 continuation
+    executor, not the 4C paid route matrix; do not unlock it onto official 1.0.4.
     """
     if not args.run_id:
         raise HarnessError("billable mode requires --run-id")

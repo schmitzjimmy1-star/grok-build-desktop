@@ -70,7 +70,10 @@ ceiling; paid 4C stays locked.
 4B.5 owner-local lifecycle uses a signed digest-staged pager
 (`1.0.5 (8226242)`, binary SHA-256
 `f434fa4f17160c8771d3b57bfc62499e252413c4d1fc5ab22bee1a18f2bc933b`) selected
-through `GROKBUILD_SLICE4B3_RUNTIME_SELECTION`. It never replaces
+through `GROKBUILD_SLICE4B3_RUNTIME_SELECTION` pointed at
+`$HOME/Documents/Codex/GrokBuild-Slice4B5/runtime/runtime-selection.json`
+(pager `f434fa4f…933b`). Never point that env at
+`Documents/Codex/GrokBuild-Slice4B3/` (`14da2ef77…` / `1.0.5 (86f0c70)`). It never replaces
 `~/.grok/bin/grok`. Armed `session/prompt` waits at most 90s
 (`GrokProcess.armedSessionPromptTimeout`). The pager source
 `822624291de2b544605f439ad1349ae6bdc3cf10` detaches after-turn workspace work
@@ -89,9 +92,11 @@ rerun the 4B.5 matrix against it. CLI PR #7 merged as
 `7e9f1ade576df903652b150d634ca634e5180bc4` so the pager-bin `hard_budget` CI
 filter runs `hard_budget_receiver_closes_fd_before_raw_fork_and_setsid_descendant`.
 The pager binary is still source `8226242`; do not rebuild it. Darwin
-post-enrollment `setsid()` remains the known 4B.2 limit. 4C paid Send stays
-locked behind `require_absolute_ceiling_support()`; `_billable_v3` must not
-call `resume_saved_task()`.
+post-enrollment `setsid()` remains the known 4B.2 limit. Live Application
+Support `runtime-selection.json` stays absent after 4B.6 rollback; reinstall
+it only for a 4C paid packet. 4C paid Send stays locked behind
+`require_absolute_ceiling_support()`. `_billable_v3` is the 4B.4 continuation
+executor, not 4C, and must not call `resume_saved_task()`.
 
 ## Auth & status bar
 

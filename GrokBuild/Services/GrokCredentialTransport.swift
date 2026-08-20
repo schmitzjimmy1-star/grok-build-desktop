@@ -21,9 +21,9 @@ enum GrokChildProcessSpawnGate {
 }
 
 /// A fake-only, bounded byte payload used to prove the 4B.2 inherited-descriptor
-/// transport. Production credential materialization is deliberately not wired
-/// until 4B.3. Swift value copies make wiping best-effort only; 4B.3 must replace
-/// this fixture type with consuming, single-owner zeroizing storage.
+/// transport. Production credential materialization now lives in
+/// `GrokArmedCredentialMaterializer` (4B.3+). Swift value copies make wiping
+/// this fixture type best-effort only.
 struct GrokCredentialTransportPayload: Sendable {
     static let maximumByteCount = 4_096
 

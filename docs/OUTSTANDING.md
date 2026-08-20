@@ -242,7 +242,9 @@ Jimmy explicitly authorized sequential execution of 4B.1, then 4B.2, then
 through PR [#124](https://github.com/schmitzjimmy1-star/grok-build-desktop/pull/124),
 and 4B.2 cooperative credential-transport feasibility is accepted through PR
 [#126](https://github.com/schmitzjimmy1-star/grok-build-desktop/pull/126).**
-4B.3 is next and remains nonbillable. 4B.1 uses disposable signed fixture
+**Historical — superseded:** “4B.3 is next and remains nonbillable.” 4B.3
+through 4B.6 are accepted; current work is locked 4C. See the 4B.6 receipt
+below. 4B.1 uses disposable signed fixture
 candidates, a byte-identical one-shot execution copy held by FD, and
 suspended-child live CodeDirectory verification before user code as the Darwin
 inspected-equals-launched proof; the real ad-hoc 4B.0 artifacts remain
@@ -276,13 +278,13 @@ discovery. The official CLI remains unchanged at `grok 1.0.4
 (d846eb93d94d) [stable]`, SHA-256
 `39366f7756a090b735cc1df8c93a8c0c3c7871555cf6cbb28f9351ca82936485`.
 
-The exact next remaining 4B.4 work is live unarmed T2/T3 proof: relaunch the
+**Historical — superseded:** The exact next remaining 4B.4 work is live unarmed T2/T3 proof: relaunch the
 installed app, select the retained tab by AX UUID, Send without Resume, and
 keep official grok 1.0.4 as the child. Schema-3 continuation dry-run and
 `_billable_v3` are wired (three allocated epochs, `governed_fresh_process_load`
 for T2/T3, one backend/ledger, cleanup after T3). `--billable` still fails
 closed at `require_absolute_ceiling_support()`. 4B.3 T5 merged through PR [#136](https://github.com/schmitzjimmy1-star/grok-build-desktop/pull/136)
-as `1aeebdf`. Hostile `setsid`/tool-tree proof stays 4B.5. Paid activation remains locked. A 2026-08-18 Cursor checkpoint made the
+as `1aeebdf`. **Historical — superseded:** Hostile `setsid`/tool-tree proof stays 4B.5. Paid activation remains locked. A 2026-08-18 Cursor checkpoint made the
 builder-to-active-to-claim-to-armed-sampler type-state unbypassable in the dirty
 CLI/app trees, added independent Python `provenance_v3` golden parity, and
 renamed Swift's expected digest field. A later same-day checkpoint wired pager
@@ -358,11 +360,11 @@ selected-model `resolved-managed-provider`, the 64KiB serializer ceiling, and
 the five lexical `GrokBuild:` isolation IDs. Conservative request bound is
 derived live as payload + output cap; allocation ceiling and max model calls
 must come from the frozen packet. Golden 8192/route-1/two-tool/12288
-values are not copied into actual. Production `GrokProcess.start` T5 now leases
-the signed digest-staged pager `14da2ef7…e68701` without the fixture signature
-override, injects a fake sentinel, and fail-closes ACP before `.ready`. A
+values are not copied into actual. **Historical 4B.3-era T5 evidence:** production
+`GrokProcess.start` leased signed pager `14da2ef7…e68701`. Current accepted pin
+is `f434fa4f…933b` / `1.0.5 (8226242)` / source `8226242`. A
 2026-08-19 local DEBUG run passed in 17.445s; the official CLI SHA was
-unchanged. Paid activation, live provider dispatch, ad-hoc 4B.0 arming, and
+unchanged. **Historical — superseded:** Paid activation, live provider dispatch, ad-hoc 4B.0 arming, and
 hostile `setsid`/tool-tree proof remain locked. 4B.4 tab-select is wired:
 schema-level legacy continuation refusal, `governed_fresh_process_load` selects
 the retained tab by AX UUID, ungoverned `resumeTaskSession` refuses during
@@ -373,8 +375,9 @@ absolute ceiling. Paid 4C remains locked. The official CLI remains `grok 1.0.4 (
 
 **4B.4 is merged.** Desktop PR
 [#137](https://github.com/schmitzjimmy1-star/grok-build-desktop/pull/137)
-merged as `90782f2`. Installed `/Applications/GrokBuild.app` remains that 4B.4
-tree until 4B.6 `make ship`. **4B.5 is accepted** as merge `324ff89` (PR #139):
+merged as `90782f2`. Installed `/Applications/GrokBuild.app` is 4B.6 `29c064f`
+(PR [#140](https://github.com/schmitzjimmy1-star/grok-build-desktop/pull/140)
+ship). **4B.5 is accepted** as merge `324ff89` (PR #139):
 owner-local loopback lifecycle against signed digest-staged pager `f434fa4f…933b`
 / `1.0.5 (8226242)` / source `822624291de2b544605f439ad1349ae6bdc3cf10`. The pager
 was not installed over `~/.grok/bin/grok`. CLI hang repairs on
@@ -397,9 +400,17 @@ Rollback now refuses two process-zero samples that share one timestamp. Hostile
 run `32310906969` (`hard_budget_receiver_closes_fd_before_raw_fork_and_setsid_descendant`
 on the pager-bin `hard_budget` filter). Darwin post-enrollment `setsid()` remains
 the known 4B.2 limit; the rename only made that existing proof run in CI. Do not
-rebuild the pager. Paid 4C stays locked until three new independent reviews of
-the exact installed 4B.6 tree (`29c064f`) plus this leftover merge. Do not
-`grok update`.
+rebuild the pager. Live Application Support `runtime-selection.json` stays
+**absent** after 4B.6 rollback; that is the ready unarmed state, not a missing
+file. Reinstalling the sidecar is a step **inside** a new 4C armed route-matrix
+executor, not paid unlock by itself. Three
+independent 4C-unlock reviews of installed `29c064f` plus CLI `7e9f1ad` are
+complete: containment GO, harness NO-GO for unlocking `_billable_v3`, identity
+pins re-derived live. Paid 4C stays locked until that **new** executor exists
+([edit map](GROKBUILD_SLICE4C_EDIT_MAP_2026-08-19.md)). Product stamp remains
+`29c064f`; HEAD may carry harness/docs successors (PR #141 distinct-timestamp
+rollback, this leftover receipt) with `GrokBuild/` identical to stamp. Next
+`make ship` is the first 4C code-bearing slice. Do not `grok update`.
 
 PR [#124](https://github.com/schmitzjimmy1-star/grok-build-desktop/pull/124)
 passed required exact-head run `32123735441` and merged normally as

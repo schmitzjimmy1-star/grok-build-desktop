@@ -386,7 +386,7 @@ before runtime discovery. The official CLI remains unchanged at
 `grok 1.0.4 (d846eb93d94d) [stable]`, SHA-256
 `39366f7756a090b735cc1df8c93a8c0c3c7871555cf6cbb28f9351ca82936485`.
 
-Slice 4B.3 is next and remains nonbillable. It owns the real Rust consumer
+**Historical — superseded:** Slice 4B.3 is next and remains nonbillable. It owns the real Rust consumer
 before any fork, consuming zeroizing storage, actual Keychain/provider binding,
 route provenance, policy v3, and real tool-tree containment. Raw-fork/`setsid`
 escape and real credential behavior are not 4B.2 claims.
@@ -447,7 +447,7 @@ desktop docs PR #131 merged as `55333d70`. Local E2E used candidate `86f0c70`
 re-canonicalizes the typed provenance, derives headers from `authScheme`, and
 still refuses to treat a v3 projection as historical v2 enforcement.
 
-T5 production `GrokProcess.start` now has an owner-local, env-gated E2E
+**Historical 4B.3-era T5 receipt:** T5 production `GrokProcess.start` now has an owner-local, env-gated E2E
 (`GROKBUILD_SLICE4B3_RUNTIME_SELECTION`) against the Apple Development signed,
 digest-staged pager at binary SHA-256
 `14da2ef77ea00cbea6d8b2cf3ad9d6511eb530a53d23777109e6f382a7e68701`,
@@ -461,7 +461,8 @@ receipt, leftover `.grokbuild-exec-*` copies reaped, and official CLI still
 skips in CI and whenever the selection file is unset. It is not live Keychain,
 live provider, candidate install, or paid proof. The ad-hoc original
 `25181a88…0df98` remains evidence-only and is not the T5 binary.
-4B.4 is the exact next slice after this closeout merges. Paid activation
+Current accepted pager pin is `f434fa4f…933b` / `1.0.5 (8226242)`.
+**Historical — superseded:** 4B.4 is the exact next slice after this closeout merges. Paid activation
 remains locked.
 
 PR [#136](https://github.com/schmitzjimmy1-star/grok-build-desktop/pull/136)
@@ -473,8 +474,9 @@ chrome; acceptance `session/load` refuses stale `session/new` fallback; and
 `resumeTaskSession` refuses during acceptance so packet Send owns allocated
 load. Ordinary consumer Resume is unchanged. Schema-3 continuation dry-run and
 `_billable_v3` are wired (T1 `session/new`, T2/T3 `governed_fresh_process_load`,
-cleanup after T3) and still fail-closed at the absolute ceiling. Paid
-activation remains locked.
+cleanup after T3) and still fail-closed at the absolute ceiling. That executor
+is 4B.4 continuation proof, not the 4C paid route matrix. Paid activation
+remains locked.
 
 ### `HardTokenBoundProvenanceV1`
 
@@ -555,7 +557,7 @@ Owner-local proofs live in these files. Do not retarget pager pins anywhere else
 | Kill-after-response-before-settlement | `loopback_provider.py` mode `hold_after_body`; `Slice4B5LifecycleTests.testKillAfterResponseBeforeSettlementChargesAmbiguousReservation` |
 | Hostile `setsid` / tool-tree | CLI spawn/process-group code in the grok-build fork. CI leftover merged as PR #7 `7e9f1ad` (`hard_budget_receiver_closes_fd_before_raw_fork_and_setsid_descendant` on the pager-bin `hard_budget` filter). Darwin post-enrollment `setsid()` escape remains the known 4B.2 limit. |
 | 4B.6 signed owner-private install | `scripts/acceptance/harness/candidate_install.py`; owner-local `Slice4B5LifecycleTests` install a copy first; ordinary lookup never scans `candidate-runtime`; not `~/.grok/bin/grok`; rollback requires two empty process-zero samples with distinct timestamps |
-| 4C paid unlock | `scripts/acceptance/run.py` `require_absolute_ceiling_support()` after three new reviews of the exact installed 4B.6 tree (`29c064f`) plus CLI leftover merge `7e9f1ad`. Do not unlock `_billable_v3` or weaken lower guards. |
+| 4C paid unlock | New armed route-matrix executor in `scripts/acceptance/run.py` (`_billable_4c`), not `_billable_v3`. CLI PR #7 is **merged** as `7e9f1ad`. Three 4C-unlock reviews of installed `29c064f` plus that merge are complete. See [`GROKBUILD_SLICE4C_EDIT_MAP_2026-08-19.md`](GROKBUILD_SLICE4C_EDIT_MAP_2026-08-19.md). Do not unlock `_billable_v3` or weaken lower guards. |
 
 Staged pager identity for this pass: binary SHA-256
 `f434fa4f17160c8771d3b57bfc62499e252413c4d1fc5ab22bee1a18f2bc933b`,
@@ -613,15 +615,24 @@ sidecar remains absent. Official CLI remains `1.0.4` /
 `cargo test` under this space-containing worktree path is environmental, not a
 product leftover; do not refill `/tmp` with another pager compile.
 
+Three independent 4C-unlock reviews of installed `29c064f` plus CLI leftover
+`7e9f1ad` finished 2026-08-19: containment GO; harness NO-GO for unlocking
+`_billable_v3` (unarmed `launch_installed()` would Send on official 1.0.4);
+identity pins re-derived live (official CLI `39366f77…`, pager `f434fa4f…`,
+installed Mach-O `55d85de4…`, Team `DD2GCQJVB4`). Live selection sidecar stays
+absent. 4C implementation is a new armed route-matrix executor plus pinned
+manifest, not a predicate-only unlock of `_billable_v3`.
+
 ## Paid unlock and execution
 
 4C is a separate decision boundary. It cannot begin merely because the code is
 merged or the unconditional lock is easy to delete. Three independent skeptical
-reviews must approve the exact installed 4B.6 tree (`29c064f`), the CLI leftover
-merge `7e9f1ad`, and retained nonbillable evidence. The unlock commit must
-replace the first-branch refusal with a narrow, testable predicate for that
-exact campaign; it may not weaken any lower guard or send `_billable_v3` on
-the official 1.0.4 path.
+reviews of the exact installed 4B.6 tree (`29c064f`), the CLI leftover merge
+`7e9f1ad`, and retained nonbillable evidence are complete. The unlock commit
+must add a new armed 4C executor and replace the first-branch refusal with a
+narrow, testable predicate for that exact campaign; it may not weaken any lower
+guard or send `_billable_v3` on the official 1.0.4 path. The implementer map is
+[`GROKBUILD_SLICE4C_EDIT_MAP_2026-08-19.md`](GROKBUILD_SLICE4C_EDIT_MAP_2026-08-19.md).
 
 The paid manifest freezes exact catalog-confirmed models, routes, prices,
 allocations, prompts, tools, and expected receipts. Its allocation sum is at
