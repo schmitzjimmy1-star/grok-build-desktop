@@ -198,6 +198,12 @@ struct SettingsView: View {
             .padding(.top, TitlebarMetrics.contentTopInset)
             .frame(height: TitlebarMetrics.overlayTopInset)
             .background(AppTheme.Palette.chrome)
+            .overlay(alignment: .bottom) {
+                Rectangle()
+                    .fill(AppTheme.Palette.divider)
+                    .frame(height: 1)
+                    .accessibilityHidden(true)
+            }
             .accessibilityElement(children: .contain)
             .accessibilityLabel("Settings header")
 

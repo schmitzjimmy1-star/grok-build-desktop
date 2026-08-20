@@ -166,6 +166,12 @@ struct ChatTopBar<TasksStatus: View, ReviewToggle: View, InspectorToggle: View>:
         .padding(.top, TitlebarMetrics.contentTopInset)
         .frame(height: TitlebarMetrics.overlayTopInset)
         .background(AppTheme.Palette.canvas)
+        .overlay(alignment: .bottom) {
+            Rectangle()
+                .fill(AppTheme.Palette.divider)
+                .frame(height: 1)
+                .accessibilityHidden(true)
+        }
         .focusSection()
         .accessibilityElement(children: .contain)
         .accessibilityLabel("Workbench controls")

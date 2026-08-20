@@ -131,7 +131,18 @@ This is the second full-suite, `make ship`, installed transcript milestone.
 Align session browser, plugins, settings entry, activity inspector, preview,
 browser, and narrow-window behavior with the rebuilt shell. Do not add Electron
 terminal/file-tree/browser copies merely because the reference advertises them.
-Focused tests per bounded checkpoint.
+F5 begins with a visual-chrome checkpoint: rebuild project-folder rows with a
+clear icon/label/disclosure hierarchy, place a quiet separator between top
+chrome and content, keep update banners below the traffic lights, and remove
+purple/lavender action chrome. Dark maps interactive chrome to white/near-white;
+Light maps the same semantics to black/charcoal. Blue remains reserved for real
+links, while warning, failure, and success retain their semantic colors.
+
+Installed acceptance may include one explicitly authorized, bounded, no-retry
+billable prompt that exercises a read-only CLI-owned tool so the transcript,
+tool receipt, and usage projection are visually proven together. That proof
+does not unlock or modify the separate 4C runtime, budget, provider, credential,
+or routing campaign. Focused tests per bounded checkpoint.
 
 ### F6 — tranche exit
 

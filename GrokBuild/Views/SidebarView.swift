@@ -276,6 +276,13 @@ struct SidebarView: View {
                     .transition(.move(edge: .top).combined(with: .opacity))
             }
 
+            Rectangle()
+                .fill(AppTheme.Palette.divider)
+                .frame(height: 1)
+                .padding(.horizontal, 12)
+                .padding(.bottom, 6)
+                .accessibilityHidden(true)
+
             List {
                 if !pinnedWorkspaces.isEmpty {
                     Section("Pinned") {
@@ -382,7 +389,7 @@ struct SidebarView: View {
                         .overlay {
                             Text(String(NSFullUserName().prefix(1)).uppercased())
                                 .font(.system(size: 9, weight: .bold))
-                                .foregroundStyle(.white)
+                                .foregroundStyle(AppTheme.Palette.accentForeground)
                         }
                     Text(NSFullUserName().isEmpty ? NSUserName() : NSFullUserName())
                         .font(AppTheme.Typography.captionStrong)
@@ -684,44 +691,52 @@ private struct WorkspaceRow: View {
     var hasSessions: Bool = false
     var areSessionsHidden: Bool = false
     var onToggleSessions: () -> Void = {}
+    @State private var isHovered = false
 
     var body: some View {
-        HStack(spacing: 6) {
-            Image(systemName: isPinned ? "pin.fill" : "folder")
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(isPinned || isSelected ? Color.primary : .secondary)
-            VStack(alignment: .leading, spacing: 1) {
-                HStack(spacing: 6) {
-                    Text(workspace.displayName)
-                        .font(isSelected ? AppTheme.Typography.captionStrong : AppTheme.Typography.caption)
-                        .foregroundStyle(isSelected ? .primary : .secondary)
-                    if hasSessions {
-                        Image(systemName: areSessionsHidden ? "chevron.right" : "chevron.down")
-                            .font(.caption.weight(.semibold))
-                            .foregroundStyle(.secondary)
-                            .padding(.horizontal, 3)
-                            .contentShape(Rectangle())
-                            .highPriorityGesture(
-                                TapGesture().onEnded {
-                                    onToggleSessions()
-                                }
-                            )
-                            .help(areSessionsHidden ? "Show sessions" : "Hide sessions")
-                    }
-                }
+        HStack(spacing: 10) {
+            ZStack {
+                RoundedRectangle(cornerRadius: AppTheme.Radius.medium, style: .continuous)
+                    .fill(isSelected ? AppTheme.Palette.surfaceHover : AppTheme.Palette.glassTint)
+                Image(systemName: isPinned ? "pin.fill" : "folder.fill")
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(isPinned || isSelected ? Color.primary : .secondary)
             }
-            .help(workspace.path.path)
-            .accessibilityValue(workspace.path.path)
+            .frame(width: 28, height: 28)
+
+            Text(workspace.displayName)
+                .font(isSelected ? AppTheme.Typography.captionStrong : AppTheme.Typography.caption)
+                .foregroundStyle(isSelected ? .primary : .secondary)
+                .lineLimit(1)
+                .frame(maxWidth: .infinity, alignment: .leading)
+
+            if hasSessions {
+                Image(systemName: areSessionsHidden ? "chevron.right" : "chevron.down")
+                    .font(.system(size: 10, weight: .bold))
+                    .foregroundStyle(isSelected ? Color.primary : .secondary)
+                    .frame(width: 22, height: 28)
+                    .contentShape(Rectangle())
+                    .highPriorityGesture(
+                        TapGesture().onEnded {
+                            onToggleSessions()
+                        }
+                    )
+                    .help(areSessionsHidden ? "Show sessions" : "Hide sessions")
+            }
         }
-        .padding(.horizontal, 6)
-        .padding(.vertical, 7)
-        .frame(minHeight: 38)
+        .padding(.horizontal, 8)
+        .padding(.vertical, 5)
+        .frame(minHeight: 42)
         .frame(maxWidth: .infinity, alignment: .leading)
         .contentShape(Rectangle())
         .background(
-            isSelected ? AppTheme.Palette.sidebarSelection : Color.clear,
-            in: RoundedRectangle(cornerRadius: AppTheme.Radius.small)
+            isSelected
+                ? AppTheme.Palette.sidebarSelection
+                : (isHovered ? AppTheme.Palette.surfaceHover.opacity(0.72) : Color.clear),
+            in: RoundedRectangle(cornerRadius: AppTheme.Radius.medium, style: .continuous)
         )
+        .onHover { isHovered = $0 }
+        .help(workspace.path.path)
         .accessibilityAddTraits(isSelected ? .isSelected : [])
         .accessibilityRemoveTraits(isSelected ? [] : .isSelected)
         .accessibilityElement(children: .combine)

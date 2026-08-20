@@ -179,6 +179,35 @@ final class CodexShellParityTests: XCTestCase {
                       "project switches must clear a hidden stale session selection")
     }
 
+    /// Frontend rebuild F5A: project navigation reads as a roomy hierarchy,
+    /// neutral chrome replaces the lavender action tint, and every top band has
+    /// a deliberate boundary before page content begins.
+    func testF5NeutralChromeProjectRowsAndTopSeparation() throws {
+        let theme = try source("GrokBuild/AppTheme.swift")
+        XCTAssertTrue(theme.contains("dark: NSColor(white: 0.94, alpha: 1)"))
+        XCTAssertTrue(theme.contains("light: NSColor(red: 0.160, green: 0.175, blue: 0.215, alpha: 1)"))
+        XCTAssertFalse(theme.contains("dark: NSColor(red: 0.555, green: 0.650, blue: 1.000"),
+                       "lavender action chrome must not return")
+
+        let sidebar = try source("GrokBuild/Views/SidebarView.swift")
+        XCTAssertTrue(sidebar.contains("\"folder.fill\""),
+                      "project rows use a legible filled folder glyph")
+        XCTAssertTrue(sidebar.contains(".frame(width: 28, height: 28)"),
+                      "the folder icon has its own stable visual column")
+        XCTAssertTrue(sidebar.contains(".frame(minHeight: 42)"),
+                      "project rows retain comfortable vertical rhythm")
+        XCTAssertTrue(sidebar.contains("@State private var isHovered = false"),
+                      "project rows have a quiet hover state")
+
+        let settings = try source("GrokBuild/Views/SettingsView.swift")
+        XCTAssertTrue(settings.contains(".overlay(alignment: .bottom)"))
+        XCTAssertTrue(settings.contains("AppTheme.Palette.divider"))
+
+        let content = try source("GrokBuild/ContentView.swift")
+        XCTAssertTrue(content.contains(".padding(.top, TitlebarMetrics.systemTitlebarHeight)"),
+                      "update chrome must clear the macOS traffic-light row")
+    }
+
     /// Slice 5 presentation contract (replaced the Slice 0 red-baseline
     /// inventory): the right panel is a compact contextual inspector — short
     /// optional sections, content height, deep receipts one disclosure away —
@@ -389,8 +418,10 @@ final class CodexShellParityTests: XCTestCase {
                       "the inspector menu uses a baked titlebar glyph")
         XCTAssertTrue(chatView.contains("AppTheme.Palette.titlebarControl"),
                       "the inspector menu uses the same readable titlebar token")
-        XCTAssertFalse(topBar.contains(".overlay(alignment: .bottom) { Divider() }"),
-                       "the titlebar has no hairline under the characters")
+        XCTAssertTrue(topBar.contains(".overlay(alignment: .bottom)"),
+                      "F5 separates the workbench header from the conversation canvas")
+        XCTAssertTrue(topBar.contains("AppTheme.Palette.divider"),
+                      "the header separator uses the adaptive semantic rule")
         XCTAssertTrue(chatView.contains("RunInspectorQuickLook"),
                       "run facts live in the header dropdown")
         XCTAssertTrue(chatView.contains("Show subagents"),

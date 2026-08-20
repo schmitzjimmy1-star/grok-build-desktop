@@ -5,7 +5,9 @@ import AppKit
 ///
 /// F2 has two deliberate appearances: a cool graphite/charcoal default inspired
 /// by Codex, and the pale original-reference treatment in Light. Both share one
-/// restrained blue action color. `canvasNSColor` is also the AppKit window fill
+/// neutral action color. Dark uses near-white chrome and Light uses quiet ink;
+/// neither appearance inherits the user's purple/blue system accent.
+/// `canvasNSColor` is also the AppKit window fill
 /// so the transparent titlebar stays visually continuous.
 enum AppTheme {
     enum Palette {
@@ -51,13 +53,13 @@ enum AppTheme {
             light: NSColor(red: 0.105, green: 0.135, blue: 0.205, alpha: 0.28)
         )
         static let accentNSColor = adaptiveNSColor(
-            dark: NSColor(red: 0.555, green: 0.650, blue: 1.000, alpha: 1),
-            light: NSColor(red: 0.294, green: 0.396, blue: 0.835, alpha: 1)
+            dark: NSColor(white: 0.94, alpha: 1),
+            light: NSColor(red: 0.160, green: 0.175, blue: 0.215, alpha: 1)
         )
         static let accent = Color(nsColor: accentNSColor)
-        /// Text and symbols placed on the blue primary-action fill.
+        /// Text and symbols placed on the neutral primary-action fill.
         static let accentForegroundNSColor = adaptiveNSColor(
-            dark: NSColor(red: 0.055, green: 0.064, blue: 0.095, alpha: 1),
+            dark: NSColor(red: 0.055, green: 0.060, blue: 0.068, alpha: 1),
             light: NSColor.white
         )
         static let accentForeground = Color(nsColor: accentForegroundNSColor)
@@ -68,8 +70,8 @@ enum AppTheme {
         )
         static let titlebarControl = Color(nsColor: titlebarControlNSColor)
         static let accentSoft = adaptive(
-            dark: NSColor(red: 0.555, green: 0.650, blue: 1.000, alpha: 0.16),
-            light: NSColor(red: 0.294, green: 0.396, blue: 0.835, alpha: 0.11)
+            dark: NSColor.white.withAlphaComponent(0.11),
+            light: NSColor.black.withAlphaComponent(0.07)
         )
         static let textMuted = adaptive(
             dark: NSColor.white.withAlphaComponent(0.62),
@@ -304,7 +306,7 @@ struct GrokChromeButtonStyle: ButtonStyle {
 }
 
 /// App-owned primary action treatment. Native `borderedProminent` inherits the
-/// user's macOS accent color; this keeps the rebuild's restrained blue action
+/// user's macOS accent color; this keeps the rebuild's neutral action
 /// hierarchy stable in Light and Dark.
 struct GrokProminentButtonStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {

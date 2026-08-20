@@ -264,8 +264,10 @@ final class SettingsTabTests: XCTestCase {
         XCTAssertGreaterThan(sidebarDark.b, sidebarDark.r,
                              "Dark rail keeps a cool gray bias")
         XCTAssertNotEqual(AppTheme.Palette.warningNSColor, AppTheme.Palette.linkNSColor)
-        XCTAssertGreaterThan(accentLight.b, accentLight.r + 0.35,
-                             "Primary actions use the restrained blue rebuild accent")
+        XCTAssertLessThan(abs(accentLight.r - accentLight.b), 0.08,
+                          "Light primary actions use neutral ink rather than purple/blue")
+        XCTAssertLessThan(accentLight.r, 0.30,
+                          "Light primary actions remain dark enough for white labels")
         XCTAssertGreaterThan(linkLight.b, linkLight.r + 0.35,
                              "Links remain blue rather than inheriting neutral chrome")
         XCTAssertGreaterThanOrEqual(
@@ -278,6 +280,11 @@ final class SettingsTabTests: XCTestCase {
 
         let titlebarDark = sRGBComponents(of: AppTheme.Palette.titlebarControlNSColor, appearance: dark)
         let titlebarLight = sRGBComponents(of: AppTheme.Palette.titlebarControlNSColor, appearance: light)
+        let accentDark = sRGBComponents(of: AppTheme.Palette.accentNSColor, appearance: dark)
+        XCTAssertGreaterThan(accentDark.r, 0.90,
+                             "Dark interactive chrome uses near-white rather than lavender")
+        XCTAssertLessThan(abs(accentDark.r - accentDark.b), 0.02,
+                          "Dark interactive chrome stays neutral")
         XCTAssertGreaterThan(titlebarDark.r, canvasDark.r + 0.5,
                              "Dark titlebar icons must stay well above the charcoal canvas")
         XCTAssertLessThan(titlebarLight.r, canvasLight.r - 0.5,
