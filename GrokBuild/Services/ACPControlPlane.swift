@@ -241,7 +241,8 @@ struct GrokBuildHardTokenBudgetCapability: Sendable, Equatable {
     }
 
     func authorizes(_ authorization: AcceptanceBudgetAuthorization) -> Bool {
-        if authorization.credentialAuthorizationV3 != nil {
+        if authorization.credentialAuthorizationV3 != nil
+            || authorization.budget.route.isNativeXAIFreeze {
             return authorizesArmedV3(authorization)
         }
         guard isEnforcing,
@@ -255,6 +256,12 @@ struct GrokBuildHardTokenBudgetCapability: Sendable, Equatable {
     /// enforcing 4M governor must not authorize them, and a v3 projection must
     /// not authorize a 4M packet.
     private func authorizesArmedV3(_ authorization: AcceptanceBudgetAuthorization) -> Bool {
+        let nativeFreeze = authorization.budget.route.isNativeXAIFreeze
+        if nativeFreeze {
+            guard authorization.credentialAuthorizationV3 == nil else { return false }
+        } else {
+            guard authorization.credentialAuthorizationV3 != nil else { return false }
+        }
         guard !isEnforcing,
               capabilityVersion == 3,
               authorization.campaignTokenCeiling == Int(HardBudgetProvenanceV3.absoluteTokenCeiling),
@@ -274,7 +281,7 @@ struct GrokBuildHardTokenBudgetCapability: Sendable, Equatable {
               let allocation,
               status.violated == false else { return false }
         let budget = authorization.budget
-        return status.campaignID == authorization.runID
+        return status.campaignID == authorization.hardBudgetCampaignID
             && status.ceilingTokens == spendableTokenCeiling
             && status.manifestSHA256 == authorization.hardBudgetManifestSHA256
             && cliBuild == authorization.expectedCLIBuild

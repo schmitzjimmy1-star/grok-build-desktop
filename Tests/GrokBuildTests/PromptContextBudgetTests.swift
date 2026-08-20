@@ -7,14 +7,17 @@ final class PromptContextBudgetTests: XCTestCase {
         let root = URL(fileURLWithPath: FileManager.default.currentDirectoryPath)
         let data = try Data(contentsOf: root.appendingPathComponent("AGENTS.md"))
         let text = try XCTUnwrap(String(data: data, encoding: .utf8))
+        let aimURL = root.appendingPathComponent("GROKBUILD_ACP_CLIENT_AIM.md")
 
         XCTAssertGreaterThanOrEqual(
             PromptContextBudget.reductionPercent(currentBytes: data.count),
             PromptContextBudget.minimumProjectInstructionReductionPercent
         )
+        XCTAssertTrue(FileManager.default.fileExists(atPath: aimURL.path))
         for required in [
-            "CANONICAL_WORKTREE.md", "ARCHITECTURE.md", "make test", "make ship",
-            "Computer Use", "DD2GCQJVB4", "GrokBuildComputerUseMCP", "agent-desktop",
+            "GROKBUILD_ACP_CLIENT_AIM.md", "CANONICAL_WORKTREE.md", "ARCHITECTURE.md",
+            "make test", "make ship", "Computer Use", "DD2GCQJVB4",
+            "GrokBuildComputerUseMCP", "agent-desktop",
             "schmitzjimmy1-star/grok-build-desktop", "rimusz/grok-build-desktop",
             "/Applications/GrokBuild.app", "docs/OUTSTANDING.md",
         ] {
@@ -76,13 +79,21 @@ final class OwnedProcessLedgerTests: XCTestCase {
             process.executableURL = URL(fileURLWithPath: "/bin/sh")
             process.arguments = ["-c", "sleep 30 & wait"]
             try process.run()
-            usleep(40_000)
-            let fingerprints = OwnedProcessTree.fingerprints(of: OwnedProcessTree.descendants(of: process.processIdentifier))
-            XCTAssertFalse(fingerprints.isEmpty)
+            var fingerprints: [OwnedProcessFingerprint] = []
+            for _ in 0..<50 {
+                fingerprints = OwnedProcessTree.fingerprints(
+                    of: OwnedProcessTree.descendants(of: process.processIdentifier)
+                )
+                if !fingerprints.isEmpty { break }
+                usleep(20_000)
+            }
+            XCTAssertFalse(fingerprints.isEmpty, "owned descendant should appear before teardown")
             OwnedProcessTree.signal(SIGTERM, to: fingerprints)
             process.terminate()
             process.waitUntilExit()
-            usleep(20_000)
+            for _ in 0..<50 where fingerprints.contains(where: OwnedProcessTree.stillMatches) {
+                usleep(20_000)
+            }
             XCTAssertTrue(fingerprints.allSatisfy { !OwnedProcessTree.stillMatches($0) })
         }
     }

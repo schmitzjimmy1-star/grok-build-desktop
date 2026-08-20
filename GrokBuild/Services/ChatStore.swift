@@ -832,6 +832,11 @@ final class ChatStore {
     private var lastTurnEventAt = Date()
     private var stallWatchdogTask: Task<Void, Never>?
     static let turnStallThreshold: TimeInterval = 120
+    /// Unarmed tabs fail closed if ACP never reaches `.ready`. Armed 4C/v3 must
+    /// outlast `GrokProcess.armedACPHandshakeTimeoutSeconds` so ChatStore does
+    /// not kill a pager that is still answering `initialize`.
+    static let connectionWatchdogTimeout: Duration = .seconds(30)
+    static let armedConnectionWatchdogTimeout: Duration = .seconds(120)
     private(set) var isApplyingConfiguration = false
     private(set) var configurationStatusMessage: String?
     private(set) var usedContextTokens: Int?
@@ -2376,7 +2381,7 @@ final class ChatStore {
         currentMode = .agent
         isYolo = false
         lastError = nil
-        startConnectionWatchdog()
+        startConnectionWatchdog(armed: hardBudgetLaunchContract != nil)
         if hardBudgetLaunchContract == nil {
             applyBuiltInModelCatalog(await GrokModelCatalog.shared.models())
         } else {
@@ -2416,6 +2421,17 @@ final class ChatStore {
         computerUseSettings.enabled = computerUseSettings.enabled
             && enabledBuiltInToolNames.contains(BuiltInToolConnection.computerUse.rawValue)
         let requestedMCPServerNames = selectedPromptMCPNames.union(enabledBuiltInToolNames)
+        if hardBudgetLaunchContract?.dispatchExpectation?.frozenRoute.isNativeXAIFreeze == true,
+           browserSettings.enabled
+            || computerUseSettings.enabled
+            || !requestedMCPServerNames.isEmpty {
+            connectionWatchdogTask?.cancel()
+            connectionState = .failed(
+                "Armed credential launch refuses Browser, Computer Use, MCP, and non-managed-provider detours."
+            )
+            lastError = "Armed credential launch stopped before any helper or candidate process was created."
+            return
+        }
         if let refusal = GrokArmedCredentialLaunchPreflight.refusalMessage(
             authorization: hardBudgetLaunchContract?.credentialAuthorizationV3,
             browserEnabled: browserSettings.enabled,
@@ -2710,22 +2726,25 @@ final class ChatStore {
         )
     }
 
-    private func startConnectionWatchdog() {
+    private func startConnectionWatchdog(armed: Bool = false) {
         connectionWatchdogTask?.cancel()
+        let timeout = armed ? Self.armedConnectionWatchdogTimeout : Self.connectionWatchdogTimeout
         connectionWatchdogTask = Task { [weak self] in
-            try? await Task.sleep(for: .seconds(30))
+            try? await Task.sleep(for: timeout)
             await self?.markConnectionTimedOutIfNeeded()
         }
     }
 
     private func markConnectionTimedOutIfNeeded() async {
         guard connectionState == .starting else { return }
-        lastError = process.state.errorMessage ?? "Timed out while connecting to grok."
+        let method = process.pendingACPMethod()
+        lastError = process.state.errorMessage
+            ?? GrokProcess.jsonRPCTimeoutError(method: method, redactedStderr: "").localizedDescription
         mcpServerStatuses = MCPReadinessPolicy.failedStatuses(
             for: mcpServerStatuses.map(\.name),
-            reason: "The process did not reach ACP readiness before the connection timeout."
+            reason: "ACP \(method) timed out before MCP readiness."
         )
-        connectionState = .failed(lastError ?? "Timed out while connecting to grok.")
+        connectionState = .failed(lastError ?? "ACP \(method) timed out.")
         await process.stop()
     }
 
@@ -3487,7 +3506,7 @@ final class ChatStore {
         authoritativeTailAssistantID = nil
         activeTurnBackendSessionID = nil
         if latestTurnOutcome != .cancelled {
-            lastError = lastError ?? process.state.errorMessage ?? "Failed to send to grok."
+            lastError = lastError ?? process.state.errorMessage ?? "ACP session/prompt failed."
         }
         // An owned `turn_completed` is the lifecycle authority even when its
         // stop reason is error/cancelled. GrokProcess releases a missing prompt

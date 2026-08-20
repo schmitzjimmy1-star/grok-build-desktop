@@ -56,7 +56,8 @@ final class ACPClientContractTests: XCTestCase {
         cliManifestPath: String = "/private/tmp/grokbuild-cli-manifest.json",
         ledgerPath: String = "/private/tmp/grokbuild-ledger.json",
         candidateExecutionLease: GrokCandidateExecutionLease? = nil,
-        credentialAuthorizationV3: GrokArmedCredentialAuthorizationV3? = nil
+        credentialAuthorizationV3: GrokArmedCredentialAuthorizationV3? = nil,
+        campaignId: String? = nil
     ) -> AcceptanceBudgetAuthorization {
         AcceptanceBudgetAuthorization(
             runID: runID,
@@ -69,7 +70,8 @@ final class ACPClientContractTests: XCTestCase {
             hardBudgetCLIManifestPath: cliManifestPath,
             hardBudgetLedgerPath: ledgerPath,
             candidateExecutionLease: candidateExecutionLease,
-            credentialAuthorizationV3: credentialAuthorizationV3
+            credentialAuthorizationV3: credentialAuthorizationV3,
+            campaignId: campaignId
         )
     }
 
@@ -321,6 +323,81 @@ final class ACPClientContractTests: XCTestCase {
             schema3.packets[0].route.credentialAuthorizationV3?.expectedProvenanceSHA256,
             hardBudgetSHA
         )
+        let nativeFreeze = AcceptanceHardBudgetRoute(
+            model: AcceptanceNativeXAIFreeze.modelID,
+            endpointSHA256: AcceptanceNativeXAIFreeze.endpointSHA256,
+            apiBackend: "responses",
+            requestBoundTokens: 100,
+            maxPayloadBytes: 80,
+            maxOutputTokens: 20,
+            boundProvenanceSHA256: hardBudgetSHA
+        )
+        XCTAssertTrue(nativeFreeze.isNativeXAIFreeze)
+        XCTAssertNil(nativeFreeze.credentialAuthorizationV3)
+        let mixed = AcceptanceBudgetManifest(
+            schemaVersion: 3,
+            runID: "run",
+            campaignTokenCeiling: 20_000_000,
+            emergencyReserveTokens: 1_000_000,
+            hardBudgetManifestSHA256: hardBudgetSHA,
+            expectedCLIBuild: "grokbuild-fork",
+            packets: [
+                acceptanceBudget(
+                    packetID: "native",
+                    marker: "NATIVE",
+                    promptHash: "3a4726dafd3f6c5e45b1c6a41a7e948aeedcb39387ffdaef1f8b666f407e1236",
+                    tokenAllocation: 10,
+                    maxModelCalls: 1,
+                    route: nativeFreeze
+                ),
+                acceptanceBudget(
+                    packetID: "brokered",
+                    marker: "BROKERED",
+                    promptHash: "4a4726dafd3f6c5e45b1c6a41a7e948aeedcb39387ffdaef1f8b666f407e1236",
+                    tokenAllocation: 10,
+                    maxModelCalls: 1,
+                    route: AcceptanceHardBudgetRoute(
+                        model: "deepseek/deepseek-v4-flash-0731",
+                        endpointSHA256: hardBudgetSHA,
+                        apiBackend: "chat_completions",
+                        requestBoundTokens: 100,
+                        maxPayloadBytes: 80,
+                        maxOutputTokens: 20,
+                        boundProvenanceSHA256: hardBudgetSHA,
+                        managedProviderID: "openrouter",
+                        authScheme: "bearer"
+                    )
+                ),
+            ],
+            campaignId: "slice4c-bounded-paid"
+        )
+        XCTAssertTrue(mixed.isValid)
+        XCTAssertEqual(mixed.campaignId, "slice4c-bounded-paid")
+        let grokWithoutFreezeOrSelectors = AcceptanceBudgetManifest(
+            schemaVersion: 3,
+            runID: "run",
+            campaignTokenCeiling: 20_000_000,
+            emergencyReserveTokens: 1_000_000,
+            hardBudgetManifestSHA256: hardBudgetSHA,
+            expectedCLIBuild: "grokbuild-fork",
+            packets: [acceptanceBudget(
+                packetID: "only",
+                marker: "ONLY",
+                promptHash: "3a4726dafd3f6c5e45b1c6a41a7e948aeedcb39387ffdaef1f8b666f407e1236",
+                tokenAllocation: 10,
+                maxModelCalls: 1,
+                route: AcceptanceHardBudgetRoute(
+                    model: "grok-4.6",
+                    endpointSHA256: hardBudgetSHA,
+                    apiBackend: "responses",
+                    requestBoundTokens: 100,
+                    maxPayloadBytes: 80,
+                    maxOutputTokens: 20,
+                    boundProvenanceSHA256: hardBudgetSHA
+                )
+            )]
+        )
+        XCTAssertFalse(grokWithoutFreezeOrSelectors.isValid)
     }
 
     func testAcceptanceBudgetGuardRequiresPrivateRegularFileAndFinalPromptDigest() throws {
@@ -714,6 +791,64 @@ final class ACPClientContractTests: XCTestCase {
             budget: budget,
             campaignTokenCeiling: 4_000_000,
             credentialAuthorizationV3: v3Packet
+        )))
+        let nativeRoute = AcceptanceHardBudgetRoute(
+            model: AcceptanceNativeXAIFreeze.modelID,
+            endpointSHA256: AcceptanceNativeXAIFreeze.endpointSHA256,
+            apiBackend: "responses",
+            requestBoundTokens: 100,
+            maxPayloadBytes: 80,
+            maxOutputTokens: 20,
+            boundProvenanceSHA256: sha
+        )
+        var nativeValue = value
+        nativeValue["status"] = [
+            "campaignId": "slice4c-bounded-paid",
+            "ceilingTokens": 19_000_000,
+            "settledTokens": 0,
+            "outstandingTokens": 0,
+            "remainingTokens": 19_000_000,
+            "violated": false,
+            "manifestSha256": sha,
+            "allocationId": "packet-a",
+            "allocationRemainingTokens": 100,
+            "allocationRemainingCalls": 1,
+            "nextSequence": 1,
+            "ledgerRevision": 0,
+        ]
+        nativeValue["allocation"] = [
+            "id": "packet-a",
+            "packetId": "packet-a",
+            "promptSha256": sha,
+            "tokenCeiling": 100,
+            "maxModelCalls": 1,
+            "route": [
+                "model": AcceptanceNativeXAIFreeze.modelID,
+                "endpointSha256": AcceptanceNativeXAIFreeze.endpointSHA256,
+                "apiBackend": "responses",
+                "requestBoundTokens": 100,
+                "maxPayloadBytes": 80,
+                "maxOutputTokens": 20,
+                "boundProvenanceSha256": sha,
+            ],
+        ]
+        let nativeCapability = try XCTUnwrap(GrokBuildHardTokenBudgetCapability.parse(nativeValue))
+        let nativeBudget = acceptanceBudget(
+            packetID: "packet-a",
+            marker: "marker",
+            promptHash: sha,
+            tokenAllocation: 100,
+            maxModelCalls: 1,
+            route: nativeRoute
+        )
+        XCTAssertTrue(nativeCapability.authorizes(acceptanceAuthorization(
+            budget: nativeBudget,
+            campaignTokenCeiling: 20_000_000,
+            campaignId: "slice4c-bounded-paid"
+        )))
+        XCTAssertFalse(nativeCapability.authorizes(acceptanceAuthorization(
+            budget: nativeBudget,
+            campaignTokenCeiling: 20_000_000
         )))
     }
 
@@ -1517,6 +1652,90 @@ final class ACPClientContractTests: XCTestCase {
         XCTAssertEqual(observed.value, 0)
         XCTAssertNil(store.process.activeProcessGeneration)
         await store.shutdownPermanently()
+    }
+
+    @MainActor
+    func testSlice4CNativeFreezeSpawnsLeasedCandidateWithoutKeychain() async throws {
+        let fixture = try CandidateRuntimeTestFixture.makeCredentialReceiverExecutable()
+        defer { try? FileManager.default.removeItem(at: fixture.container) }
+        CandidateRuntimeTestFixture.installSignatureOverride()
+        defer { GrokCandidateRuntimeAuthority.signatureVerifierOverrideForTests = nil }
+        let lease = try XCTUnwrap(GrokCandidateRuntimeAuthority.acquireLease(
+            selectionPath: fixture.selection.path,
+            expectedCLIBuild: fixture.cliBuild
+        ))
+        let cliManifest = fixture.container.appendingPathComponent("cli-manifest.json")
+        let cliManifestData = Data("{\"campaign\":\"slice4c-native\"}".utf8)
+        try cliManifestData.write(to: cliManifest)
+        try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: cliManifest.path)
+        let ledger = fixture.container.appendingPathComponent("ledger.json")
+        try Data("{}".utf8).write(to: ledger)
+        try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: ledger.path)
+        let manifestSHA = SHA256.hash(data: cliManifestData)
+            .map { String(format: "%02x", $0) }
+            .joined()
+        let budget = acceptanceBudget(
+            packetID: "s4c-nat-ctrl",
+            marker: "GB-S4C-NAT-CTRL",
+            promptHash: String(repeating: "0", count: 64),
+            tokenAllocation: 10,
+            maxModelCalls: 1,
+            route: AcceptanceHardBudgetRoute(
+                model: AcceptanceNativeXAIFreeze.modelID,
+                endpointSHA256: AcceptanceNativeXAIFreeze.endpointSHA256,
+                apiBackend: "responses",
+                requestBoundTokens: 100,
+                maxPayloadBytes: 80,
+                maxOutputTokens: 20,
+                boundProvenanceSHA256: String(repeating: "b", count: 64)
+            )
+        )
+        let authorization = acceptanceAuthorization(
+            budget: budget,
+            campaignTokenCeiling: 20_000_000,
+            manifestSHA256: manifestSHA,
+            cliBuild: fixture.cliBuild,
+            cliManifestPath: cliManifest.path,
+            ledgerPath: ledger.path,
+            candidateExecutionLease: lease,
+            campaignId: "slice4c-bounded-paid"
+        )
+        let expectation = try XCTUnwrap(ArmedV3DispatchExpectation.tryMakeNative(
+            authorization: authorization,
+            selectedModelID: AcceptanceNativeXAIFreeze.modelID,
+            candidate: lease.identity
+        ))
+        let contract = try XCTUnwrap(HardBudgetLaunchContract(
+            manifestPath: cliManifest.path,
+            ledgerPath: ledger.path,
+            allocationID: budget.allocationID,
+            expectedManifestSHA256: manifestSHA,
+            candidateExecutionLease: lease,
+            credentialAuthorizationV3: nil,
+            dispatchExpectation: expectation
+        ))
+        final class PIDBox { var value: pid_t = 0 }
+        let observed = PIDBox()
+        GrokCandidateProcessLauncher.spawnedProcessObserverForTests = { observed.value = $0 }
+        defer { GrokCandidateProcessLauncher.spawnedProcessObserverForTests = nil }
+        GrokProcess.armedKeychainClientForTests = nil
+        GrokProcess.cliOverrideForTests = URL(fileURLWithPath: "/usr/bin/true")
+        defer { GrokProcess.cliOverrideForTests = nil }
+
+        let process = GrokProcess()
+        await process.start(
+            workspace: Workspace(name: "slice4c-native", path: fixture.container),
+            options: GrokLaunchOptions(
+                model: AcceptanceNativeXAIFreeze.modelID,
+                hardBudgetLaunchContract: contract
+            )
+        )
+        XCTAssertNotEqual(observed.value, 0)
+        XCTAssertEqual(
+            process.launchReceipt?.candidateBinarySHA256,
+            lease.identity.binarySHA256
+        )
+        await process.stop()
     }
 
     func testLastLiveDoesNotAttachToANewerInheritedDefault() {
@@ -3583,5 +3802,115 @@ final class ACPClientContractTests: XCTestCase {
         )
         XCTAssertEqual(decoded.status, .settled)
         XCTAssertNil(decoded.requests)
+    }
+
+    func testArmedACPHandshakeJSONRPCTimeoutMatchesPromptBudget() throws {
+        XCTAssertEqual(GrokProcess.armedSessionPromptTimeout, .seconds(90))
+        XCTAssertEqual(GrokProcess.armedACPHandshakeTimeoutSeconds, 90)
+        XCTAssertEqual(
+            GrokProcess.jsonRPCTimeoutSeconds(method: "initialize", isArmed: true, requestedSeconds: 15),
+            90
+        )
+        XCTAssertEqual(
+            GrokProcess.jsonRPCTimeoutSeconds(method: "session/new", isArmed: true, requestedSeconds: 15),
+            90
+        )
+        XCTAssertEqual(
+            GrokProcess.jsonRPCTimeoutSeconds(method: "session/load", isArmed: true, requestedSeconds: 15),
+            90
+        )
+        XCTAssertEqual(
+            GrokProcess.jsonRPCTimeoutSeconds(method: "session/set_model", isArmed: true, requestedSeconds: 12),
+            90
+        )
+        XCTAssertEqual(
+            GrokProcess.jsonRPCTimeoutSeconds(method: "initialize", isArmed: false, requestedSeconds: 15),
+            15
+        )
+        XCTAssertEqual(
+            GrokProcess.jsonRPCTimeoutSeconds(method: "session/set_model", isArmed: false, requestedSeconds: 12),
+            12
+        )
+        XCTAssertEqual(ChatStore.connectionWatchdogTimeout, .seconds(30))
+        XCTAssertEqual(ChatStore.armedConnectionWatchdogTimeout, .seconds(120))
+        XCTAssertGreaterThan(
+            ChatStore.armedConnectionWatchdogTimeout,
+            GrokProcess.armedSessionPromptTimeout
+        )
+        let repositoryRoot = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        let chatStore = try String(
+            contentsOf: repositoryRoot.appendingPathComponent("GrokBuild/Services/ChatStore.swift"),
+            encoding: .utf8
+        )
+        XCTAssertTrue(chatStore.contains("jsonRPCTimeoutError(method: method, redactedStderr: \"\")"))
+        XCTAssertTrue(chatStore.contains("ACP \\(method) timed out before MCP readiness."))
+        XCTAssertTrue(chatStore.contains("ACP session/prompt failed."))
+        XCTAssertFalse(chatStore.contains("Timed out while connecting to grok."))
+        XCTAssertFalse(chatStore.contains("Failed to send to grok."))
+    }
+
+    func testJSONRPCTimeoutErrorNamesMethodAndIncludesRedactedStderr() {
+        let withStderr = GrokProcess.jsonRPCTimeoutError(
+            method: "initialize",
+            redactedStderr: "pager: boom"
+        )
+        XCTAssertEqual(withStderr.domain, "ACP")
+        XCTAssertEqual(withStderr.code, -2)
+        XCTAssertEqual(withStderr.userInfo["acpMethod"] as? String, "initialize")
+        XCTAssertEqual(
+            withStderr.localizedDescription,
+            "ACP initialize timed out.\npager: boom"
+        )
+        let empty = GrokProcess.jsonRPCTimeoutError(method: "session/new", redactedStderr: "  ")
+        XCTAssertEqual(empty.localizedDescription, "ACP session/new timed out.")
+        XCTAssertEqual(empty.userInfo["acpMethod"] as? String, "session/new")
+    }
+
+    func testStartupTransportFailuresAreImmediateAndCredentialFree() {
+        let stdio = GrokProcess.startupStdioClosedError(redactedStderr: "")
+        XCTAssertEqual(stdio.domain, "ACP")
+        XCTAssertEqual(stdio.code, -3)
+        XCTAssertEqual(stdio.userInfo["acpMethod"] as? String, "initialize")
+        XCTAssertEqual(
+            stdio.localizedDescription,
+            "ACP initialize failed: stdio closed before the result."
+        )
+        let exited = GrokProcess.childExitedBeforeInitializeError(redactedStderr: "fatal: nope")
+        XCTAssertEqual(
+            exited.localizedDescription,
+            "ACP initialize failed: grok exited before the result.\nfatal: nope"
+        )
+        XCTAssertEqual(
+            GrokProcess.acpStartupFailureStateMessage(
+                error: stdio,
+                extraStderr: ""
+            ),
+            "ACP initialize failed: stdio closed before the result."
+        )
+        XCTAssertFalse(stdio.localizedDescription.lowercased().contains("keychain"))
+        XCTAssertFalse(exited.localizedDescription.lowercased().contains("token"))
+    }
+
+    func testArmedStartupFailsFastOnChildExitAndStdoutEOF() throws {
+        let repositoryRoot = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        let text = try String(
+            contentsOf: repositoryRoot.appendingPathComponent("GrokBuild/Services/GrokProcess.swift"),
+            encoding: .utf8
+        )
+        XCTAssertTrue(text.contains("beginStartupLivenessWatch"))
+        XCTAssertTrue(text.contains("noteStdioClosed"))
+        XCTAssertTrue(text.contains("processStillRunning"))
+        XCTAssertTrue(text.contains("if !launched.process.isRunning"))
+        XCTAssertTrue(text.contains("ACP \\(method) failed: \\(reason)"))
+        XCTAssertTrue(text.contains("stdio closed before the result."))
+        XCTAssertTrue(text.contains("grok exited before the result."))
+        XCTAssertTrue(text.contains("Keep listening until the"))
+        XCTAssertFalse(text.contains("waitForFirstStdout"))
     }
 }

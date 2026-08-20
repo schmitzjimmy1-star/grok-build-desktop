@@ -22,6 +22,12 @@ struct AcceptanceTurnBudget: Codable, Equatable, Sendable {
     }
 }
 
+enum AcceptanceNativeXAIFreeze {
+    /// sha256(b"nativeXAI") — documented freeze, not an invented xAI host.
+    static let endpointSHA256 = "3a5d48d4cd406179a2c7e33c6f9fcc70c1d459fe0bbad93db3aae668d911bac8"
+    static let modelID = "grok-4.6"
+}
+
 struct AcceptanceHardBudgetRoute: Codable, Equatable, Sendable {
     let model: String
     let endpointSHA256: String
@@ -33,6 +39,14 @@ struct AcceptanceHardBudgetRoute: Codable, Equatable, Sendable {
     /// Schema-3-only Keychain selector. Schema-2 packets must leave these nil.
     let managedProviderID: String?
     let authScheme: String?
+
+    /// Armed 4C native packet: grok-4.6 on the leased candidate with no Keychain selectors.
+    var isNativeXAIFreeze: Bool {
+        model == AcceptanceNativeXAIFreeze.modelID
+            && endpointSHA256 == AcceptanceNativeXAIFreeze.endpointSHA256
+            && managedProviderID == nil
+            && authScheme == nil
+    }
 
     var isValid: Bool {
         let shaPattern = #"^[0-9a-f]{64}$"#
@@ -88,6 +102,8 @@ struct AcceptanceBudgetManifest: Codable, Equatable, Sendable {
     let hardBudgetManifestSHA256: String
     let expectedCLIBuild: String
     let packets: [AcceptanceTurnBudget]
+    /// Product campaign id. Schema-2 omits it and Swift matches CLI `runID`.
+    let campaignId: String?
 
     var spendableTokenCeiling: Int? {
         let (value, overflow) = campaignTokenCeiling.subtractingReportingOverflow(emergencyReserveTokens)
@@ -110,7 +126,12 @@ struct AcceptanceBudgetManifest: Codable, Equatable, Sendable {
             requiredCeiling = 4_000_000
             requiredReserve = 1_000_000
         case 3:
-            packetsMatchSchema = packets.allSatisfy { $0.route.credentialAuthorizationV3 != nil }
+            packetsMatchSchema = packets.allSatisfy { packet in
+                if packet.route.isNativeXAIFreeze {
+                    return packet.route.credentialAuthorizationV3 == nil
+                }
+                return packet.route.credentialAuthorizationV3 != nil
+            }
             requiredCeiling = Int(HardBudgetProvenanceV3.absoluteTokenCeiling)
             requiredReserve = Int(HardBudgetProvenanceV3.unreachableReserveTokens)
         default:
@@ -143,6 +164,26 @@ struct AcceptanceBudgetManifest: Codable, Equatable, Sendable {
         let digest = SHA256.hash(data: Data(prompt.utf8)).map { String(format: "%02x", $0) }.joined()
         return digest == matches[0].promptHash ? matches[0] : nil
     }
+
+    init(
+        schemaVersion: Int,
+        runID: String,
+        campaignTokenCeiling: Int,
+        emergencyReserveTokens: Int,
+        hardBudgetManifestSHA256: String,
+        expectedCLIBuild: String,
+        packets: [AcceptanceTurnBudget],
+        campaignId: String? = nil
+    ) {
+        self.schemaVersion = schemaVersion
+        self.runID = runID
+        self.campaignTokenCeiling = campaignTokenCeiling
+        self.emergencyReserveTokens = emergencyReserveTokens
+        self.hardBudgetManifestSHA256 = hardBudgetManifestSHA256
+        self.expectedCLIBuild = expectedCLIBuild
+        self.packets = packets
+        self.campaignId = campaignId
+    }
 }
 
 struct AcceptanceBudgetAuthorization: Equatable, Sendable {
@@ -161,10 +202,44 @@ struct AcceptanceBudgetAuthorization: Equatable, Sendable {
     /// Schema-3-only, non-secret Keychain selector. Schema-2 resolution never
     /// supplies it, so legacy acceptance packets cannot materialize a secret.
     let credentialAuthorizationV3: GrokArmedCredentialAuthorizationV3?
+    /// CLI hard-budget campaign id. Native/provider 4C uses the frozen product id.
+    let campaignId: String?
+
+    var hardBudgetCampaignID: String {
+        campaignId ?? runID
+    }
 
     var spendableTokenCeiling: Int? {
         let (value, overflow) = campaignTokenCeiling.subtractingReportingOverflow(emergencyReserveTokens)
         return overflow || value <= 0 ? nil : value
+    }
+
+    init(
+        runID: String,
+        campaignTokenCeiling: Int,
+        emergencyReserveTokens: Int,
+        hardBudgetManifestSHA256: String,
+        expectedCLIBuild: String,
+        budget: AcceptanceTurnBudget,
+        authorizationManifestPath: String,
+        hardBudgetCLIManifestPath: String,
+        hardBudgetLedgerPath: String,
+        candidateExecutionLease: GrokCandidateExecutionLease?,
+        credentialAuthorizationV3: GrokArmedCredentialAuthorizationV3?,
+        campaignId: String? = nil
+    ) {
+        self.runID = runID
+        self.campaignTokenCeiling = campaignTokenCeiling
+        self.emergencyReserveTokens = emergencyReserveTokens
+        self.hardBudgetManifestSHA256 = hardBudgetManifestSHA256
+        self.expectedCLIBuild = expectedCLIBuild
+        self.budget = budget
+        self.authorizationManifestPath = authorizationManifestPath
+        self.hardBudgetCLIManifestPath = hardBudgetCLIManifestPath
+        self.hardBudgetLedgerPath = hardBudgetLedgerPath
+        self.candidateExecutionLease = candidateExecutionLease
+        self.credentialAuthorizationV3 = credentialAuthorizationV3
+        self.campaignId = campaignId
     }
 }
 
@@ -232,8 +307,13 @@ enum AcceptanceBudgetGuard {
         guard let budget = manifest.budget(for: prompt) else { return .blocked }
         let credentialAuthorizationV3: GrokArmedCredentialAuthorizationV3?
         if manifest.schemaVersion == 3 {
-            guard let authorization = budget.route.credentialAuthorizationV3 else { return .blocked }
-            credentialAuthorizationV3 = authorization
+            if budget.route.isNativeXAIFreeze {
+                guard budget.route.credentialAuthorizationV3 == nil else { return .blocked }
+                credentialAuthorizationV3 = nil
+            } else {
+                guard let authorization = budget.route.credentialAuthorizationV3 else { return .blocked }
+                credentialAuthorizationV3 = authorization
+            }
         } else {
             credentialAuthorizationV3 = nil
         }
@@ -248,7 +328,8 @@ enum AcceptanceBudgetGuard {
             hardBudgetCLIManifestPath: cliManifestPaths[0],
             hardBudgetLedgerPath: ledgerPaths[0],
             candidateExecutionLease: candidateExecutionLease,
-            credentialAuthorizationV3: credentialAuthorizationV3
+            credentialAuthorizationV3: credentialAuthorizationV3,
+            campaignId: manifest.campaignId
         ))
     }
 

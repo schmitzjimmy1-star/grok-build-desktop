@@ -446,6 +446,10 @@ final class Slice4B5LifecycleTests: XCTestCase {
 
     func testArmedSessionPromptTimeoutIsBounded() {
         XCTAssertEqual(GrokProcess.armedSessionPromptTimeout, .seconds(90))
+        XCTAssertEqual(
+            GrokProcess.jsonRPCTimeoutSeconds(method: "initialize", isArmed: true, requestedSeconds: 15),
+            GrokProcess.armedACPHandshakeTimeoutSeconds
+        )
     }
 
     private func dumpFailure(harness: Slice4B5Harness) throws {

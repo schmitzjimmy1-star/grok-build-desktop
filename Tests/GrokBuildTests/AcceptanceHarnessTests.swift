@@ -173,6 +173,7 @@ final class AcceptanceHarnessTests: XCTestCase {
             encoding: .utf8
         )
         XCTAssertTrue(source.contains("require_runtime_floor"))
+        XCTAssertTrue(source.contains("require_4c_leased_runtime"))
         XCTAssertTrue(source.contains("require_absolute_ceiling_support"))
         XCTAssertTrue(source.contains("reactive and cannot prove the absolute 4,000,000-token ceiling"))
 
@@ -269,6 +270,78 @@ final class AcceptanceHarnessTests: XCTestCase {
             result.stderr.contains("cannot prove the absolute 4,000,000-token ceiling"),
             "Schema-3 --billable must refuse at the absolute ceiling before runtime discovery or Send: \(result.output)"
         )
+        XCTAssertFalse(result.stderr.contains("legacy v1 billable execution is retired"), result.stderr)
+    }
+
+    func testSlice4CPaidLockPythonContracts() throws {
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/env")
+        process.arguments = ["python3", "-m", "unittest", "scripts.acceptance.tests.test_4c_paid_lock"]
+        process.currentDirectoryURL = Self.repoRoot
+        let output = Pipe()
+        process.standardOutput = output
+        process.standardError = output
+        try process.run()
+        process.waitUntilExit()
+        let text = String(decoding: output.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self)
+        XCTAssertEqual(process.terminationStatus, 0, text)
+        XCTAssertTrue(text.contains("OK"), text)
+
+        let runScript = try String(contentsOf: Self.runScript, encoding: .utf8)
+        let fourCRange = try XCTUnwrap(runScript.range(of: "def _billable_4c"))
+        let v2Range = try XCTUnwrap(runScript.range(of: "def _billable_v2"))
+        let fourC = String(runScript[fourCRange.lowerBound..<v2Range.lowerBound])
+        XCTAssertTrue(fourC.contains("runtime_selection_file="))
+        XCTAssertTrue(fourC.contains("require_4c_send_ready"))
+        XCTAssertTrue(fourC.contains("wait_for_acp_startup_outcome"))
+        XCTAssertFalse(fourC.contains("resume_saved_task()"))
+        XCTAssertFalse(fourC.contains("launch_installed()"))
+        let preflight = try String(
+            contentsOf: Self.repoRoot.appendingPathComponent("scripts/acceptance/harness/preflight_v2.py"),
+            encoding: .utf8
+        )
+        XCTAssertTrue(preflight.contains("require_4c_unlock_predicate"))
+        XCTAssertTrue(preflight.contains("reactive and cannot prove the absolute 4,000,000-token ceiling"))
+        let billableRange = try XCTUnwrap(runScript.range(of: "def _billable_v3"))
+        let mainRange = try XCTUnwrap(runScript.range(of: "if __name__"))
+        let billable = String(runScript[billableRange.lowerBound..<mainRange.lowerBound])
+        XCTAssertFalse(billable.contains("runtime_selection_file="))
+        XCTAssertFalse(billable.contains("resume_saved_task()"))
+    }
+
+    func testSlice4CDryRunPlansLockedPaidMatrix() throws {
+        let manifest = Self.repoRoot
+            .appendingPathComponent("scripts/acceptance/manifests/official-provider-slice4c-paid.json")
+        let result = try runHarness(["--manifest", manifest.path, "--run-id", "20260819T210000Z"])
+        XCTAssertEqual(result.exitCode, 0, result.output)
+        XCTAssertTrue(result.stdout.contains("\"schemaVersion\": 4"), result.stdout)
+        XCTAssertTrue(result.stdout.contains("\"billable\": false"), result.stdout)
+        XCTAssertTrue(result.stdout.contains("\"campaignId\": \"slice4c-bounded-paid\""), result.stdout)
+        XCTAssertTrue(result.stdout.contains("\"campaignTokenCeiling\": 20000000"), result.stdout)
+        XCTAssertTrue(result.stdout.contains("\"plannedTokenMaximum\": 19000000"), result.stdout)
+        XCTAssertTrue(result.stdout.contains("\"emergencyReserveTokens\": 1000000"), result.stdout)
+        XCTAssertTrue(result.stdout.contains("\"pricingConfirmed\": true"), result.stdout)
+        XCTAssertTrue(result.stdout.contains("S4C-NAT-CTRL"), result.stdout)
+        XCTAssertTrue(result.stdout.contains("S4C-OAI-H-NO"), result.stdout)
+        XCTAssertTrue(result.stdout.contains("S4C-OR-OW-NO"), result.stdout)
+        XCTAssertTrue(result.stdout.contains("four-arg armed launch_installed"), result.stdout)
+        XCTAssertFalse(result.stdout.contains("governed_fresh_process_load"), result.stdout)
+    }
+
+    func testSlice4CBillableStillRequiresCandidateSelection() throws {
+        let manifest = Self.repoRoot
+            .appendingPathComponent("scripts/acceptance/manifests/official-provider-slice4c-paid.json")
+        let result = try runHarness([
+            "--manifest", manifest.path,
+            "--run-id", "20260819T210001Z",
+            "--billable",
+        ])
+        XCTAssertEqual(result.exitCode, 2, result.output)
+        XCTAssertTrue(
+            result.stderr.contains("one exact --candidate-selection authority"),
+            "Schema-4 --billable must pass ceiling and confirmed prices then require candidate selection: \(result.output)"
+        )
+        XCTAssertFalse(result.stderr.contains("cannot prove the absolute 4,000,000-token ceiling"), result.stderr)
         XCTAssertFalse(result.stderr.contains("legacy v1 billable execution is retired"), result.stderr)
     }
 

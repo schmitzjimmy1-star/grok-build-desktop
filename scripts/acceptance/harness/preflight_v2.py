@@ -14,7 +14,7 @@ try:
 except ModuleNotFoundError:  # pragma: no cover - exercised only on obsolete system Python.
     tomllib = None  # type: ignore[assignment]
 
-from .errors import PreflightError
+from .errors import PreflightError, SchemaError
 from .preflight import APP, DIST, TEAM, cli_version, installed_identity, marker_collisions, require_clean_test_ledger, require_models, two_process_zero_samples
 
 HELPER = APP / "Contents/MacOS/GrokBuildProviderAuthHelper"
@@ -32,7 +32,51 @@ def require_runtime_floor(version_text: str | None = None) -> str:
     return version_text
 
 
-def preflight(repo: Path, manifest: dict[str, Any], *, ledger: Path) -> dict[str, Any]:
+def require_4c_leased_runtime(candidate_selection: Path | None) -> str:
+    """4C ACP runtime is the signed pager. Official grok stays 1.0.4.
+
+    Do not grok update. Do not treat official 1.0.5+ as the 4C floor.
+    """
+    from .candidate_process_driver import (
+        OFFICIAL_CLI_SHA256,
+        STAGED_CLI_BUILD,
+        STAGED_PAGER_SHA256,
+        official_cli_sha256,
+        require_staged_selection,
+    )
+    from .errors import HarnessError
+
+    try:
+        digest = official_cli_sha256()
+    except HarnessError as exc:
+        raise PreflightError(str(exc)) from exc
+    if digest != OFFICIAL_CLI_SHA256:
+        raise PreflightError("4C requires the pinned official grok 1.0.4 digest")
+    version_text = cli_version()
+    match = VERSION.search(version_text)
+    if not match or tuple(map(int, match.groups())) != (1, 0, 4):
+        raise PreflightError("4C requires official grok 1.0.4; do not grok update")
+    if candidate_selection is None:
+        raise PreflightError("4C execution requires one exact --candidate-selection authority")
+    try:
+        staged = require_staged_selection(candidate_selection)
+    except HarnessError as exc:
+        raise PreflightError(str(exc)) from exc
+    if staged["cliBuild"] != STAGED_CLI_BUILD:
+        raise PreflightError("4C requires candidate cliBuild 1.0.5 (8226242)")
+    if staged["binarySHA256"] != STAGED_PAGER_SHA256:
+        raise PreflightError("4C requires the signed digest-staged pager")
+    return staged["cliBuild"]
+
+
+def preflight(
+    repo: Path,
+    manifest: dict[str, Any],
+    *,
+    ledger: Path,
+    source_path: Path | None = None,
+    candidate_selection: Path | None = None,
+) -> dict[str, Any]:
     unpriced = [
         packet["id"] for packet in manifest["packets"]
         if packet["routeReceipt"]["kind"] != "nativeXAI" and packet["frozenPricing"] is None
@@ -40,7 +84,10 @@ def preflight(repo: Path, manifest: dict[str, Any], *, ledger: Path) -> dict[str
     if unpriced:
         raise PreflightError(f"provider packets lack frozen current pricing: {unpriced}")
     identity = installed_identity(repo)
-    version_text = require_runtime_floor()
+    if manifest.get("schemaVersion") == 4:
+        version_text = require_4c_leased_runtime(candidate_selection)
+    else:
+        version_text = require_runtime_floor()
     require_models([packet["selectorModelID"] for packet in manifest["packets"]])
     _require_configured_routes(manifest)
     inspect_sha = _require_effective_config(repo)
@@ -55,9 +102,9 @@ def preflight(repo: Path, manifest: dict[str, Any], *, ledger: Path) -> dict[str
     details = _run(["codesign", "-dvvv", str(HELPER)])
     if verify.returncode != 0 or f"TeamIdentifier={TEAM}" not in details.stderr:
         raise PreflightError("installed provider auth helper signing identity is invalid")
-    app_requirement = _run(["codesign", "-dr", "-", str(APP / "Contents/MacOS/GrokBuild")]).stderr
-    helper_requirement = _run(["codesign", "-dr", "-", str(HELPER)]).stderr
-    if _requirement(app_requirement) != _requirement(helper_requirement):
+    app_requirement = _codesign_designated_requirement(APP / "Contents/MacOS/GrokBuild")
+    helper_requirement = _codesign_designated_requirement(HELPER)
+    if app_requirement != helper_requirement:
         raise PreflightError("GUI/helper designated requirements differ")
     for args in ([], ["bad/id"]):
         negative = _run([str(HELPER), *args])
@@ -66,7 +113,7 @@ def preflight(repo: Path, manifest: dict[str, Any], *, ledger: Path) -> dict[str
     selected_agent = _run(["defaults", "read", "com.grokbuild.app", "grokbuild.selectedAgent"])
     if selected_agent.returncode == 0 and selected_agent.stdout.strip():
         raise PreflightError("paid acceptance requires the inherited session agent to be Default")
-    require_absolute_ceiling_support()
+    require_absolute_ceiling_support(manifest, source_path=source_path)
     return {
         "identity": identity,
         "cliVersion": version_text,
@@ -92,6 +139,41 @@ def _sha256(path: Path) -> str:
 
 def _requirement(output: str) -> str:
     return output.split("designated =>", 1)[-1].strip()
+
+
+def _codesign_designated_requirement(path: Path) -> str:
+    """Current codesign -dr prints designated on stdout and Executable= on stderr."""
+    result = _run(["codesign", "-dr", "-", str(path)])
+    blob = f"{result.stdout}\n{result.stderr}"
+    for line in blob.splitlines():
+        stripped = line.strip()
+        if stripped.startswith("designated =>"):
+            return stripped.split("designated =>", 1)[-1].strip()
+    raise PreflightError("codesign did not report a designated requirement")
+
+
+def _same_inspect_path(left: Any, right: Path) -> bool:
+    if not isinstance(left, str) or not left.strip():
+        return False
+    return Path(left).expanduser().resolve() == right.expanduser().resolve()
+
+
+def _blocking_official_inspect_warnings(warnings: Any) -> bool:
+    """Official 1.0.4 inspect warns on later grok keys. Other warnings still block."""
+    if not isinstance(warnings, list):
+        return True
+    for item in warnings:
+        if not isinstance(item, dict):
+            return True
+        if (
+            item.get("target") == "configKey"
+            and item.get("path") == "consent"
+            and item.get("kind") == "unknown-field"
+            and item.get("reason") == "unrecognized config key"
+        ):
+            continue
+        return True
+    return False
 
 
 def _require_configured_routes(manifest: dict[str, Any]) -> None:
@@ -147,9 +229,9 @@ def _require_effective_config(repo: Path) -> str:
     if not isinstance(payload, dict):
         raise PreflightError("official inspect report is not an object")
     warnings = payload.get("configWarnings") or []
-    if not isinstance(warnings, list) or warnings:
+    if _blocking_official_inspect_warnings(warnings):
         raise PreflightError("official inspect reports effective configuration warnings")
-    if payload.get("cwd") != str(repo) or payload.get("projectRoot") != str(repo):
+    if not _same_inspect_path(payload.get("cwd"), repo) or not _same_inspect_path(payload.get("projectRoot"), repo):
         raise PreflightError("official inspect cwd/project root differs from the pinned acceptance workspace")
     sources = payload.get("configSources")
     layers = sources.get("layers") if isinstance(sources, dict) else None
@@ -189,7 +271,32 @@ def effective_config_sha(repo: Path) -> str:
     return _require_effective_config(repo)
 
 
-def require_absolute_ceiling_support() -> None:
+def require_4c_unlock_predicate(manifest: dict[str, Any], *, source_path: Path) -> None:
+    """Four-part 4C predicate. Wired from require_absolute_ceiling_support when
+    both a schema-4 manifest and its committed source path are supplied.
+    """
+    from .schema_4c import SCHEMA_VERSION, require_4c_paid_identity
+
+    try:
+        if manifest.get("schemaVersion") != SCHEMA_VERSION:
+            raise SchemaError("schemaVersion must be 4")
+        require_4c_paid_identity(manifest, source_path=source_path)
+    except SchemaError as exc:
+        raise PreflightError(f"4C unlock predicate refused: {exc}") from exc
+
+
+def require_absolute_ceiling_support(
+    manifest: dict[str, Any] | None = None,
+    *,
+    source_path: Path | None = None,
+) -> None:
+    if (
+        manifest is not None
+        and source_path is not None
+        and manifest.get("schemaVersion") == 4
+    ):
+        require_4c_unlock_predicate(manifest, source_path=source_path)
+        return
     raise PreflightError(
         "billable Slice 4 remains locked: ACP usage polling is reactive and cannot prove the absolute 4,000,000-token ceiling"
     )

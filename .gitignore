@@ -63,6 +63,7 @@ playground.xcworkspace
 
 .vscode/
 .env
+.cursor/settings.json
 
 # Python harness
 __pycache__/

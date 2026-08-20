@@ -13,7 +13,7 @@ SwiftPM windowed macOS app — UI for `grok agent stdio`, not a replacement for 
 - Version: `VERSION` file → `AppVersion.display`.
 - Installed provenance: `AppBuildIdentity` reads the repository, branch, commit, channel, and dirty state stamped into `Info.plist` by `scripts/build-identity.sh`.
 - Build: `make run`, `make test`, `make ship` (see `BUILDING.md`). This personal line does not notarize.
-- Full reference: `ARCHITECTURE.md`, agent entry: `AGENTS.md`.
+- Full reference: `GROKBUILD_ACP_CLIENT_AIM.md`, then `ARCHITECTURE.md`. Agent entry: `AGENTS.md`.
 
 ## When editing
 
@@ -26,6 +26,7 @@ SwiftPM windowed macOS app — UI for `grok agent stdio`, not a replacement for 
 
 ## Key docs
 
+- `GROKBUILD_ACP_CLIENT_AIM.md` — GUI / ACP / CLI contract (Codex start, repo root)
 - `CANONICAL_WORKTREE.md` — maintained path/remotes/branch and retired duplicate stop rule
 - `ARCHITECTURE.md` — canonical app map (update when structure/flow changes)
 - `AGENTS.md` — agent entry

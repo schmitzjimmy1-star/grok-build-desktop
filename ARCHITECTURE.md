@@ -9,7 +9,7 @@
 > repository is retired reference material. Never build or install it. Run the
 > identity preflight in `CANONICAL_WORKTREE.md` before changing code.
 
-**Read this first in every new chat after `CANONICAL_WORKTREE.md`.** This document is the canonical map of how GrokBuild works. `AGENTS.md` points here; `.cursor/rules/` add file-specific conventions.
+**Codex starts at `GROKBUILD_ACP_CLIENT_AIM.md`.** This document is the canonical map of how GrokBuild works after that contract. `AGENTS.md` points here; `.cursor/rules/` add file-specific conventions.
 
 ---
 
@@ -235,6 +235,10 @@ User must run `grok login` for authenticated sessions. Auth failures surface ins
 
 ## GrokProcess & ACP
 
+**Aim:** [`GROKBUILD_ACP_CLIENT_AIM.md`](GROKBUILD_ACP_CLIENT_AIM.md).
+GrokBuild is a thin ACP client. The CLI owns the agent. GUI chrome and errors
+name ACP methods.
+
 **File:** `Services/GrokProcess.swift`
 
 `GrokProcess` is the long-running **ACP client**. One instance per `ChatStore`. ACP startup failures append a bounded `GrokMCPRedactor` snapshot of process stderr (`redactedStartupStderr`) into `.failed` / `lastError`, so values such as `api_key=` never reach the UI.
@@ -264,7 +268,7 @@ ACP `mcpServers: []` is additive and does not override MCP servers already confi
 
 ### ACP lifecycle
 
-1. `start(workspace:options:)` — spawn process, `initializeACP()` (JSON-RPC handshake).
+1. `start(workspace:options:)` — spawn process, `initializeACP()` (JSON-RPC handshake). Unarmed `initialize` / `session/new` / `session/load` wait 15s. Armed 4C/v3 uses the same 90s budget as `armedSessionPromptTimeout` (`jsonRPCTimeoutSeconds`) so the leased pager can answer ACP before `.failed`. ChatStore's connection watchdog is 30s unarmed and 120s armed so it cannot kill a handshake that is still inside that 90s window. Failures name the pending ACP method: `ACP initialize timed out.`, `ACP initialize failed: stdio closed before the result.`, `ACP initialize failed: grok exited before the result.` (or `session/new` / `session/load` while that RPC is pending). A timeout appends redacted startup stderr when any exists. An empty `FileHandle` readability fire while the child is still running is not ACP close; keep listening until `waitpid` / `!isRunning`. True stdout EOF or a dead child fails the pending RPC immediately (`noteStdioClosed` / `beginStartupLivenessWatch`) instead of burning that watchdog. ChatStore's watchdog fallback uses the same `jsonRPCTimeoutError` text. Do not wait for the first stdout byte before sending `initialize` (stdio agents often block on the first stdin line). The error banner is one AX static text (`grok-acp-error-banner`) whose label is that ACP message.
 2. `createSession(workspace:mcpServers:)` **or** `loadSession(id:…)` if resuming. When `session/load` fails with `FS_NOT_FOUND` / “Path not found” (stale on-disk grok session), GrokBuild falls back to `session/new`, sets `sessionLoadStartedFreshFallback`, and `ChatStore` adds a system note — the app-local transcript is preserved. During load, the CLI replays history through typed `session/update` and `x.ai/session/update` notifications marked `_meta.isReplay`. `GrokProcess` captures root user/assistant chunks in a separate backend/generation-bound replay accumulator and never routes historical thought, tool, completion, or message events into the live `ChatStore` event stream. Only after the load response does `ChatStore` verify and reconcile that replay against its local presentation cache.
 3. If launch requested an explicit model, `confirmRequestedLaunchModel` compares the session readback and, when necessary, sends `session/set_model`. `.ready` is withheld unless ACP explicitly confirms the exact requested ID. This compensates for CLI versions that accept `--model` while `session/new` still starts at the default model, and prevents a custom-provider tab from silently billing Grok. A live `session/set_model` is allowed only before the first assistant response. Any assistant turn can carry provider-specific encrypted reasoning even when its visible transcript is plain text, so later changes require an explicit fresh-session boundary.
 4. MCP servers from `MCPServerConfig` passed in `session/new` (browser, computer use when enabled).
@@ -884,9 +888,13 @@ OpenAI-compatible provider URLs; not a replacement for grok-native models. Offic
 `AcceptanceBudgetGuard` is opt-in through one owner-only launch manifest and
 requires the exact SHA-256 of the final submitted prompt after MCP/file attachment
 blocks plus positive packet token/call allocations. Schema-2 packets never
-supply a Keychain selector. Schema-3 packets bind `managedProviderID`,
+supply a Keychain selector. Schema-3 provider packets bind `managedProviderID`,
 `authScheme`, and `boundProvenanceSHA256` into `GrokArmedCredentialAuthorizationV3`
-so Send can hand a v3 contract to `GrokProcess.start`. Missing, malformed, ambiguous,
+so Send can hand a v3 contract to `GrokProcess.start`. Schema-3 native 4C packets
+use the freeze `endpointSHA256 == sha256(b"nativeXAI")` with null Keychain
+selectors; mixed matrices stay valid, `ArmedV3DispatchExpectation.tryMakeNative`
+binds without a custom model, and `GrokProcess.start` `posix_spawn`s the leased
+candidate with no Keychain transfer. Missing, malformed, ambiguous,
 or mismatched manifests block Send. The live ceiling remains 4M/3M/1M. The reactive `x.ai/session/usage` Stop remains
 defense in depth, not the hard provider-billing cap.
 
@@ -1295,11 +1303,13 @@ make ship      # Apple Development install to /Applications/GrokBuild.app
 | `scripts/release.sh` | Unsigned personal GitHub release only if explicitly asked; refuses `RELEASE_TYPE=notarized` |
 | `scripts/notarize.sh` | Present but unused. `make notarize` is refused on this personal line. |
 | `scripts/grokbuild-install-update.sh` | In-app replace + relaunch |
-| `scripts/acceptance/run.py` | Agentic acceptance harness: versioned manifests, dry-run default, fixture rejection, `--billable` installed UI only; Slice 6 packet ceiling 250k; schema-3 continuation dry-run plus `_billable_v3` (4B.4 T1 `session/new`, T2/T3 `governed_fresh_process_load`, cleanup after T3; not the 4C route matrix) still fail-closed at the absolute ceiling |
+| `scripts/acceptance/run.py` | Agentic acceptance harness: versioned manifests, dry-run default, fixture rejection, `--billable` installed UI only; Slice 6 packet ceiling 250k; schema-3 continuation dry-run plus `_billable_v3` (4B.4 T1 `session/new`, T2/T3 `governed_fresh_process_load`, cleanup after T3; not the 4C route matrix); schema-4 `_billable_4c` (native → direct → brokered, 20M/19M/1M, four-arg launch) through the schema-4 ceiling dispatcher; schema-4 preflight uses the leased pager (`require_4c_leased_runtime`) while schema-3 stays on the 4M refusal and official 1.0.5+ floor. Catalog prices are campaign-confirmed. |
 | `scripts/acceptance/harness/provenance_v3.py` | Independent 4B.3 canonical provenance and nested `v3Authority` verifier; does not mutate v2 |
 | `scripts/acceptance/harness/schema_v3.py` | 4B.4 fresh-process continuation schema: `session/load` only; `resumeAfterQuit` / `session/resume` / `resume_saved_task` fail closed; `load_manifest` / `dry_run_plan` for schemaVersion 3 |
+| `scripts/acceptance/harness/schema_4c.py` | Locked 4C paid-matrix schema: frozen `campaignId` `slice4c-bounded-paid`, 20M/19M/1M, native then direct then brokered, no live bind hashes, `pricingConfirmed` true after catalog confirm. |
+| `scripts/acceptance/harness/authority_4c.py` | 4C CLI/Swift authority: nested 20M/19M/1M, `expectedCLIBuild` `1.0.5 (8226242)`, `campaignId` is not `runId`. Arm-time sidecar fills Swift `endpointSHA256` / `boundProvenanceSHA256`; native freeze is `sha256(b"nativeXAI")`. Native Keychain selectors stay null; Swift schema-3 mixed matrices now bind native-on-candidate. |
 | `scripts/acceptance/harness/receipts_v3.py` | 4B.4 continuation evaluator: three allocations, one backend, one ledger; stale `session/new` fallback, load-time prompt, and early cleanup fail closed; JSONL `append_row` / `load_ledger` |
-| `scripts/acceptance/harness/driver.py` | Installed-app UI driver. `governed_fresh_process_load` selects the retained tab by AX UUID after an allocated launch and never clicks ungoverned Resume; later packet Send performs native `session/load`. `resume_saved_task` remains the consumer-only v1 path |
+| `scripts/acceptance/harness/driver.py` | Installed-app UI driver. Idle Message composer has no AX SetValue, so `send_prompt` focuses, types, and Sends to start ACP; it never AX-clears or headed-clicks the editor. `_billable_4c` then waits with `wait_for_acp_startup_outcome` (Stop turn means `session/prompt` started; `grok-acp-error-banner` / `ACP initialize failed` / `ACP initialize timed out` mean handshake died before that). The waiter walks every AX node, not only clickable `@` refs, because the error banner is static text. Pre-prompt ACP failure never clicks Stop. A snapshot `AXFrontmost` timeout is retried, not treated as ACP startup failure. `select_model` skips an already-showing packet model so the leftover menu cannot cover Send. `governed_fresh_process_load` selects the retained tab by AX UUID after an allocated launch and never clicks ungoverned Resume; later packet Send performs native `session/load`. `resume_saved_task` remains the consumer-only v1 path |
 | `scripts/acceptance/harness/candidate_install.py` | Slice 4B.6 signed owner-private pager copy into `candidate-runtime/<sha256>/`; never `~/.grok/bin/grok`; rollback unlinks only the selection sidecar after two empty process-zero samples with distinct timestamps |
 
 **SPM targets:** `GrokBuild` (app), `GrokBuildComputerUseCore` (shared Computer Use contract library), `GrokBuildComputerUseMCP` (MCP helper), `GrokBuildTests`.
@@ -1337,6 +1347,7 @@ See `BUILDING.md` for the local install path.
 | **Browse Sessions** | `ContentView` sheet (`workspaceStore.workspaces`), `SessionBrowserView`, `SessionsBrowserPanel` (cwd-bound Resume; empty copy distinguishes no project vs no sessions) |
 | **Session restore at launch** | `ContentView.restorePersistedSessions`, `ContentView.selectSession`, `SessionRestorePolicy`, `SessionTranscriptRecovery`, `ChatStore.deliverPrompt` |
 | **Slice 6 coordination seams (2026-08-13 campaign)** | `BackgroundTaskTracker.evidenceWorkers` in `BackgroundTaskStore.swift` plus thin `ChatStore.currentTurnEvidenceWorkers()`; `SessionRuntimeRetentionPolicy` in `SessionProcessIdentity.swift` plus `ContentView.enforceConnectionCap()`; `RunHistory.snapshots` / `RunHistory.Presentation` plus `RunHistorySection.swift`; `ChatTopBar` / `ChatComposer` / `ChatHeaderReviewToggle` hosted by thin `ChatView` wrappers; source-string pins in `ACPClientContractTests.swift` |
+| **Slice 4C native freeze bind** | `AcceptanceNativeXAIFreeze`, `AcceptanceBudgetGuard`, `ArmedV3DispatchExpectation.tryMakeNative`, `GrokProcess.spawnArmedNativeCandidate`, `ACPControlPlane.authorizes` campaignId match |
 | **Continuity verifier / send gate** | `ACPSessionReplayAccumulator`, `SessionTranscriptRecovery.verifyContinuity`, `SessionSendGate`, `ChatStore.verifyContinuityBeforeResume`, `ChatStore.continuityRequiresRecovery` / `continuityIsResuming` / `isResumedSessionTab`, `ChatView.LaunchSessionChoices`, `ActivitySidebar` |
 | **Recovery candidate review / Continue as New / Relink** | `GrokProcess.fetchACPStandardSessionList` / `fetchOfficialSessionReplayTranscript`, `SessionTranscriptRecovery.recoveryCandidate`, `ChatStore.reviewRecoveryCandidates` / `continueAsNew` / `relink`, `RecoveryCandidateReviewSheet` |
 | **Lifecycle migration/integrity** | `SessionLayoutStore`, `SessionLifecycleIntegrity`, `SessionLifecycleV3Tests` |
@@ -1348,7 +1359,7 @@ spawn/ACP/session/model/MCP readiness, submit/dispatch/first-chunk/settled bound
 using only stage, time, and PID. It never records prompts, response bodies, tool
 arguments, credentials, URLs, or environment contents.
 | **Public README screenshots (2026-08-13 campaign Slice 7)** | `docs/images/grokbuild-app.png` (signed-installed New chat), `docs/images/grokbuild-run-inspector.png` (settled multi-tool/two-child Run inspector); first-screenful copy in `README.md` |
-| **Agentic acceptance harness** | `scripts/acceptance/run.py`, `scripts/acceptance/schema/v1.json`, `scripts/acceptance/manifests/installed-three-route-v1.json`, `scripts/acceptance/manifests/installed-slice6-packet-v1.json`, `scripts/acceptance/manifests/fresh-process-continuation-v3.json`; dry-run default, `--billable` after preflight, fixture-mode rejection, exact-ID cleanup, Slice 6 250k Stop packet; independent v3 provenance verifier in `scripts/acceptance/harness/provenance_v3.py`; schema-3 continuation dry-run plus fail-closed `_billable_v3` |
+| **Agentic acceptance harness** | `scripts/acceptance/run.py`, `scripts/acceptance/schema/v1.json`, `scripts/acceptance/manifests/installed-three-route-v1.json`, `scripts/acceptance/manifests/installed-slice6-packet-v1.json`, `scripts/acceptance/manifests/fresh-process-continuation-v3.json`, `scripts/acceptance/manifests/official-provider-slice4c-paid.json`; dry-run default, `--billable` after preflight, fixture-mode rejection, exact-ID cleanup, Slice 6 250k Stop packet; independent v3 provenance verifier in `scripts/acceptance/harness/provenance_v3.py`; schema-3 continuation dry-run plus fail-closed `_billable_v3`; schema-4 `_billable_4c` through the frozen-identity ceiling dispatcher and leased-pager preflight |
 | **Armed v3 credential / provenance (4B.3 T5 proven locally)** | `ArmedV3DispatchExpectation.swift`, `GrokArmedCredentialMaterializer.swift`, `HardBudgetProvenanceV3.swift`, nested ACP `v3Authority`, fail-closed `ArmedV3ResolvedSnapshot`, `TrackedConfigGeneration` / `ResolvedConfigIdentityTracker`, live `ArmedV3LiveRouteCore` plus `ArmedV3PacketBoundsObservation` (loopback endpoint SHA, deterministic `v3.<sha256>` route id, 64KiB serializer ceiling, Darwin `fd_v1`, five-tool isolation, derived conservative bound), selected-model `resolved-managed-provider` source kind, preserved `ModelEntry.model_provider`, omitted armed summary client, spawn requires already-active authority, production `GrokProcess.start` materializes v3 via the dedicated Keychain client then `posix_spawn`s the leased candidate with FD 198/197 (debug tests inject the client; schema-2 stays fail-closed; schema-3 packets carry selectors, and `ArmedV3DispatchExpectation` cross-binds them to the live custom model + provider before `HardBudgetLaunchContract`; spawn rechecks that latch (model, empty MCP, `officialHelper`, file identity) immediately before `posix_spawn`, and `initialize` must present a matching nested `v3Authority` before `.ready`; schema-3 uses 20M/19M/1M and refuses the live v1 4M governor), one cached armed `SamplingClient` per sampler actor, CLI pager FD-198 owner install, `agent::init::bootstrap` `bind_measured_v3_authority_if_present`, `bind_and_install_v3_authority`, `SamplingClient::new_with_armed_v3` / `from_process_config` |
 | **Add/remove project** | `WorkspaceStore`, `WorkspacePicker` |
 | **Browser tools** | `AgentBrowserService`, `BrowserSettingsStore`, settings `.browser` (agent-browser CLI over MCP) |
@@ -1575,9 +1586,11 @@ endpoint SHA, and apiBackend. Schema-3 packets require versioned 20M/19M/1M
 ceilings; schema-2 and the historical v2 `isEnforcing` decoder stay on 4M/3M/1M
 and cannot authorize an armed v3 packet. Swift does not invent `configIdentity`
 or a provenance digest. Schema-2 packets still supply `nil`, so ordinary Send
-without an acceptance harness does not Keychain. Native Grok routes fail the
-dispatch bind (no matching managed provider) and still fail preflight if a
-contract is constructed directly. Fake-sentinel transport stays on
+without an acceptance harness does not Keychain. Native 4C freeze packets
+(`sha256(b"nativeXAI")`, `grok-4.6`, null selectors) bind via
+`tryMakeNative` and spawn the leased candidate without Keychain; inventing
+`https://api.x.ai/v1` or treating grok-4.6 as an OpenRouter custom model still
+fails. Fake-sentinel transport stays on
 `GrokCandidateProcessLauncher`. The historical live
 `GrokBuildHardTokenBudgetCapability.isEnforcing` decoder still requires
 capability v2 / ledger v3 / bound-method v1, so a live v3 projection cannot
@@ -1604,7 +1617,14 @@ ad-hoc 4B.0 arming remain locked. 4B.4 tab-select is wired:
 allocated process with `session/load`. Schema-3 continuation dry-run and
 `_billable_v3` are wired (T1 `session/new`, T2/T3 governed tab-select, cleanup
 after T3) and still fail-closed at the absolute ceiling. That path is 4B.4
-continuation, not 4C. Paid 4C remains locked.
+continuation, not 4C. `_billable_4c` plus
+`official-provider-slice4c-paid.json` exist for the native → direct → brokered
+matrix (20M/19M/1M, frozen `campaignId` `slice4c-bounded-paid`). Schema-4
+`--billable` passes the frozen-identity ceiling dispatcher. Preflight keeps
+official grok at 1.0.4 and requires pager `1.0.5 (8226242)`. Catalog prices
+are campaign-confirmed. Native freeze bind is in tree; do not send native on
+official 1.0.4. First 4C `make ship` is dirty `18b2549`, installed Mach-O
+`1aa3318f…`. Live sidecar stays absent until a 4C packet arms it.
 Live unarmed and schema-2 packets stay on the 4M/3M/1M v1 governor.
 Schema-3 armed desktop packets use versioned 20M/19M/1M and refuse that mix.
 CLI `HardTokenBudget::from_env` vs v3 authority in the child remains a fork
@@ -1624,7 +1644,7 @@ follow-up.
 | `docs/GROKBUILD_LEFTOVER_CLOSEOUT_2026-08-15.md` | Leftover closeout (Phases 1–2 merged as `7a3006d`). Phase 3 ChatView split stays deferred. |
 | `docs/GROKBUILD_VISUAL_QUIET_CAMPAIGN_2026-08-15.md` | Proposed visual-quiet campaign (not started). Not leftover Phase 3. |
 | `docs/GROKBUILD_SLICE4_ACTIVATION_CAMPAIGN_2026-08-17.md` | Slice 4B activation authority; 4B.0–4B.6 accepted; paid 4C locked |
-| `docs/GROKBUILD_SLICE4C_EDIT_MAP_2026-08-19.md` | Pre-4C leftover closeout: new armed `_billable_4c` executor map; do not unlock `_billable_v3` |
+| `docs/GROKBUILD_SLICE4C_EDIT_MAP_2026-08-19.md` | 4C implementer map: locked executor plus step-5 leftovers; do not unlock `_billable_v3` |
 | `docs/GROKBUILD_AGENTIC_COCKPIT_CAMPAIGN_2026-08-15.md` | Closed Agentic Cockpit campaign (Phases 1/3/4 complete; Phase 2 deferred as leftover Phase 3). |
 | `.cursor/rules/` | Architecture, SwiftUI, CLI integration, AppKit panels |
 | `.cursor/skills/grokbuild-*` | Dev workflow, release, CLI checks |

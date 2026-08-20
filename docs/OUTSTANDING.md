@@ -243,7 +243,8 @@ through PR [#124](https://github.com/schmitzjimmy1-star/grok-build-desktop/pull/
 and 4B.2 cooperative credential-transport feasibility is accepted through PR
 [#126](https://github.com/schmitzjimmy1-star/grok-build-desktop/pull/126).**
 **Historical — superseded:** “4B.3 is next and remains nonbillable.” 4B.3
-through 4B.6 are accepted; current work is locked 4C. See the 4B.6 receipt
+through 4B.6 are accepted; current work is 4C (`_billable_4c` is the
+route-matrix executor; schema-3 stays locked). See the 4B.6 receipt
 below. 4B.1 uses disposable signed fixture
 candidates, a byte-identical one-shot execution copy held by FD, and
 suspended-child live CodeDirectory verification before user code as the Darwin
@@ -370,7 +371,8 @@ schema-level legacy continuation refusal, `governed_fresh_process_load` selects
 the retained tab by AX UUID, ungoverned `resumeTaskSession` refuses during
 acceptance, and packet Send prelaunches allocated `session/load`. Schema-3
 continuation dry-run and `_billable_v3` are wired and still fail-closed at the
-absolute ceiling. Paid 4C remains locked. The official CLI remains `grok 1.0.4 (d846eb93d94d) [stable]`, SHA-256
+absolute ceiling. Locked `_billable_4c` exists for the schema-4 route matrix
+and still fail-closes at that same ceiling; paid Send remains locked. The official CLI remains `grok 1.0.4 (d846eb93d94d) [stable]`, SHA-256
 `39366f7756a090b735cc1df8c93a8c0c3c7871555cf6cbb28f9351ca82936485`.
 
 **4B.4 is merged.** Desktop PR
@@ -402,15 +404,28 @@ on the pager-bin `hard_budget` filter). Darwin post-enrollment `setsid()` remain
 the known 4B.2 limit; the rename only made that existing proof run in CI. Do not
 rebuild the pager. Live Application Support `runtime-selection.json` stays
 **absent** after 4B.6 rollback; that is the ready unarmed state, not a missing
-file. Reinstalling the sidecar is a step **inside** a new 4C armed route-matrix
-executor, not paid unlock by itself. Three
+file. Reinstalling the sidecar is a step **inside** a 4C armed route-matrix
+epoch, not paid unlock by itself. Three
 independent 4C-unlock reviews of installed `29c064f` plus CLI `7e9f1ad` are
 complete: containment GO, harness NO-GO for unlocking `_billable_v3`, identity
-pins re-derived live. Paid 4C stays locked until that **new** executor exists
-([edit map](GROKBUILD_SLICE4C_EDIT_MAP_2026-08-19.md)). Product stamp remains
-`29c064f`; HEAD may carry harness/docs successors (PR #141 distinct-timestamp
-rollback, this leftover receipt) with `GrokBuild/` identical to stamp. Next
-`make ship` is the first 4C code-bearing slice. Do not `grok update`.
+pins re-derived live. Schema-4 `_billable_4c` passes the frozen-identity ceiling
+dispatcher. `require_4c_unlock_predicate` is wired from
+`require_absolute_ceiling_support` for schema-4 only. Schema-4 preflight keeps
+official grok at 1.0.4 and requires pager `1.0.5 (8226242)`. Catalog prices
+are `pricingConfirmed: true`. Brokered packet pins live
+`deepseek/deepseek-v4-flash-0731`. Native freeze bind is in tree
+(`sha256(b"nativeXAI")`, leased candidate, no Keychain). First 4C `make ship`
+landed dirty at `18b2549`, installed Mach-O
+`1aa3318ff207e0fe2a3dd8a108b1b3a3344058dec1027a3942f8e58661fa28c4`. Identity
+SHA-256
+`e1fbfe81221c3f58d9c0ef0842610e90048d9cb5616347f00761a7d751e7b11c`.
+`_billable_v3` stays the 4B.4 continuation executor. Sidecar arm and
+owner-local Sends remain. Do not `grok update`.
+**Codex start (2026-08-20):**
+[`GROKBUILD_ACP_CLIENT_AIM.md`](../GROKBUILD_ACP_CLIENT_AIM.md)
+is the GUI / ACP / CLI contract at the repository root. 4C native Sends have
+not billed. Campaign notes:
+[`docs/GROKBUILD_SLICE4C_CODEX_CONTINUE_2026-08-20.md`](GROKBUILD_SLICE4C_CODEX_CONTINUE_2026-08-20.md).
 
 PR [#124](https://github.com/schmitzjimmy1-star/grok-build-desktop/pull/124)
 passed required exact-head run `32123735441` and merged normally as
@@ -6205,15 +6220,12 @@ them:
 
 ## One-sentence new-session handoff
 
-Visual Quiet through Phase 5 is accepted; the optional welcome-only Phase 6 is
-proposed but unauthorized
-([`docs/GROKBUILD_VISUAL_QUIET_CAMPAIGN_2026-08-15.md`](GROKBUILD_VISUAL_QUIET_CAMPAIGN_2026-08-15.md)).
-Leftover closeout Phases 1–2 are merged as `7a3006d` (PR #102). Do not start
-leftover Phase 3 (`ChatView` split) unless Jimmy explicitly authorizes it, and
-do not treat that split as the visual campaign. Re-derive canonical repository
-and installed-app identity before any future work, and preserve the upstream
-Grok CLI session visibility/deletion gap without inventing a GrokBuild-side
-workaround or deletion proof.
+Start at [`GROKBUILD_ACP_CLIENT_AIM.md`](../GROKBUILD_ACP_CLIENT_AIM.md)
+on `main`. GrokBuild is a thin ACP client; the CLI owns the agent; GUI steps
+name ACP methods. Paid 4C Sends have **not** billed. Do not unlock
+`_billable_v3`, do not `grok update`, and do not rebuild pager
+`1.0.5 (8226242)`. Visual Quiet leftover Phase 3 (`ChatView` split) stays
+unauthorized. Re-derive canonical identity before any future work.
 
 ## Hard stop conditions
 

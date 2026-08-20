@@ -21,6 +21,13 @@ if str(ROOT) not in sys.path:
 
 from harness.cleanup import require_exact_ids
 from harness.authority_v2 import prepare_campaign_authority, retain_campaign_authority
+from harness.authority_4c import prepare_campaign_authority as prepare_campaign_authority_4c
+from harness.schema_4c import (
+    dry_run_plan as dry_run_plan_4c,
+    load_manifest as load_manifest_4c,
+    require_4c_paid_identity,
+    require_4c_send_ready,
+)
 from harness.driver import (
     capture_identities,
     close_current_session,
@@ -34,6 +41,7 @@ from harness.driver import (
     select_model,
     send_prompt,
     stop_turn,
+    wait_for_acp_startup_outcome,
     wait_for_terminal_checkpoint,
     wait_for_marker,
     wait_for_stop_control,
@@ -108,6 +116,8 @@ def main(argv: list[str] | None = None) -> int:
         if args.evaluate_ledger:
             version = _manifest_version(args.manifest)
             manifest = _load_manifest(args.manifest, args.run_id, version)
+            if version == 4:
+                raise HarnessError("4C ledger evaluation remains locked until paid unlock")
             if version == 3:
                 summary = evaluate_fresh_process_continuation(
                     manifest["packets"],
@@ -124,6 +134,13 @@ def main(argv: list[str] | None = None) -> int:
                 raise HarnessError("billable mode requires --run-id")
             version = _manifest_version(args.manifest)
             from harness.preflight_v2 import require_absolute_ceiling_support, require_runtime_floor
+            if version == 4:
+                # Schema-4 --billable is the 4C route-matrix executor.
+                # The dispatcher accepts only the frozen 4C identity; v3 stays
+                # on the no-arg 4M refusal below.
+                manifest = _load_manifest(args.manifest, args.run_id, version)
+                require_absolute_ceiling_support(manifest, source_path=args.manifest)
+                return _billable_4c(args)
             if version == 3:
                 # Schema-3 --billable is the 4B.4 continuation executor.
                 # Paid 4C needs a separate armed route-matrix executor.
@@ -139,7 +156,9 @@ def main(argv: list[str] | None = None) -> int:
             return _billable_v2(args)
         version = _manifest_version(args.manifest)
         manifest = _load_manifest(args.manifest, args.run_id, version)
-        if version == 3:
+        if version == 4:
+            plan = dry_run_plan_4c(manifest)
+        elif version == 3:
             plan = dry_run_plan_v3(manifest)
         elif version == 2:
             plan = dry_run_plan_v2(manifest)
@@ -291,17 +310,227 @@ def _manifest_version(path: Path) -> int:
     except (OSError, json.JSONDecodeError) as exc:
         raise HarnessError(f"manifest is unreadable: {exc}") from exc
     version = value.get("schemaVersion") if isinstance(value, dict) else None
-    if version not in {1, 2, 3}:
+    if version not in {1, 2, 3, 4}:
         raise HarnessError(f"unsupported schemaVersion {version}")
     return int(version)
 
 
 def _load_manifest(path: Path, run_id: str | None, version: int) -> dict:
+    if version == 4:
+        return load_manifest_4c(path, run_id=run_id)
     if version == 3:
         return load_manifest_v3(path, run_id=run_id)
     if version == 2:
         return load_manifest_v2(path, run_id=run_id)
     return load_manifest_v1(path, run_id=run_id)
+
+
+def _billable_4c(args: argparse.Namespace) -> int:
+    """Armed 4C route matrix. Ceiling dispatcher must accept frozen 4C first.
+
+    Clone of armed _billable_v2 control flow: four-arg launch_installed every
+    epoch, no retries, no resume_saved_task, and never a bare unarmed launch.
+    Preflight uses the leased pager, not the official 1.0.5 runtime floor.
+    """
+    from harness.preflight_v2 import effective_config_sha, preflight as preflight_v2
+
+    if not args.run_id:
+        raise HarnessError("billable mode requires --run-id")
+    require_live_run_id_v2(args.run_id)
+    manifest = load_manifest_4c(args.manifest, run_id=args.run_id)
+    require_4c_paid_identity(manifest, source_path=args.manifest)
+    require_4c_send_ready(manifest)
+    if any(packet["continuation"] is not None for packet in manifest["packets"]):
+        raise HarnessError("4C packets must not continue a session")
+    if args.candidate_selection is None:
+        raise HarnessError("4C execution requires one exact --candidate-selection authority")
+    report = preflight_v2(
+        REPO,
+        manifest,
+        ledger=args.ledger,
+        source_path=args.manifest,
+        candidate_selection=args.candidate_selection,
+    )
+    safe_print(json.dumps({"preflight": redact_value("preflight", report)}))
+    authority = prepare_campaign_authority_4c(manifest, candidate_selection=args.candidate_selection)
+    rows: list[dict] = []
+    cumulative = 0
+    current_packet: dict | None = None
+    current_identities: dict[str, str] = {}
+    attempt_is_open = False
+    terminal_is_recorded = False
+    cleanup_is_recorded = False
+    send_may_be_live = False
+    app_launch_epoch = 0
+    process_zero_samples: list[dict] | None = None
+    try:
+        packets = manifest["packets"]
+        for index, packet in enumerate(packets):
+            current_packet = packet
+            current_identities = {}
+            attempt_is_open = False
+            terminal_is_recorded = False
+            cleanup_is_recorded = False
+            send_may_be_live = False
+            allocation = int(packet["tokenAllocation"])
+            if cumulative + allocation + int(manifest["emergencyReserveTokens"]) > int(manifest["campaignTokenCeiling"]):
+                raise HarnessError(f"{packet['id']}: pre-Send reserve refusal")
+
+            launch_installed(
+                budget_file=authority.authorization,
+                cli_manifest_file=authority.cli_manifest,
+                budget_ledger_file=authority.ledger,
+                runtime_selection_file=authority.runtime_selection,
+            )
+            app_launch_epoch += 1
+            select_workspace(REPO)
+            new_chat()
+            select_model(packet["selectorModelID"])
+
+            if _sha256(Path.home() / ".grok/config.toml") != report["configSha256"]:
+                raise HarnessError("config hash drift before Send")
+            if effective_config_sha(REPO) != report["effectiveConfigSha256"]:
+                raise HarnessError("official effective configuration drift before Send")
+            if _sha256(INSTALLED_PROVIDER_HELPER) != report["helperSha256"]:
+                raise HarnessError("installed provider helper drift before Send")
+            start = attempt_started(packet, manifest["runId"], app_launch_epoch)
+            append_row_v2(args.ledger, start)
+            rows.append(start)
+            attempt_is_open = True
+            send_prompt(packet["prompt"])
+            wait_for_acp_startup_outcome(timeout_seconds=130)
+            send_may_be_live = True
+            timeout = 480 if packet["childTopology"] else 300
+            wait_for_marker(packet["marker"], timeout_seconds=timeout)
+            current_identities = capture_identities(REPO, packet["marker"])
+            terminal = extract_terminal(
+                packet,
+                manifest["runId"],
+                current_identities,
+                TRANSCRIPTS,
+                app_launch_epoch,
+            )
+            current_identities["processGeneration"] = terminal["processGeneration"]
+            candidate_cleanup = cleanup_receipt(
+                packet,
+                manifest["runId"],
+                current_identities,
+                app_launch_epoch,
+                local_tab="closedExact",
+            )
+            validation_error: Exception | None = None
+            if _sha256(Path.home() / ".grok/config.toml") != report["configSha256"]:
+                validation_error = HarnessError("config hash drift after Send")
+            elif effective_config_sha(REPO) != report["effectiveConfigSha256"]:
+                validation_error = HarnessError("official effective configuration drift after Send")
+            elif _sha256(INSTALLED_PROVIDER_HELPER) != report["helperSha256"]:
+                validation_error = HarnessError("installed provider helper drift after Send")
+            try:
+                if validation_error is None:
+                    evaluate_prefix_v2(manifest, rows + [terminal, candidate_cleanup])
+            except Exception as error:
+                validation_error = error
+            if validation_error is not None:
+                terminal = reject_terminal(terminal, str(validation_error))
+            append_row_v2(args.ledger, terminal)
+            rows.append(terminal)
+            terminal_is_recorded = True
+            attempt_is_open = False
+            send_may_be_live = False
+            if validation_error is not None:
+                raise HarnessError(f"packet evidence rejected: {validation_error}") from validation_error
+            close_current_session(current_identities["tabId"])
+            append_row_v2(args.ledger, candidate_cleanup)
+            rows.append(candidate_cleanup)
+            cleanup_is_recorded = True
+            evaluate_prefix_v2(manifest, load_ledger_v2(args.ledger))
+            cumulative += int(terminal["usage"]["totalTokens"])
+            quit_installed()
+            two_process_zero_samples()
+
+        summary = evaluate_v2(manifest, load_ledger_v2(args.ledger))
+        quit_installed()
+        process_zero_samples = two_process_zero_samples()
+        summary["processZero"] = process_zero_samples
+        safe_print(json.dumps(redact_value("summary", summary), sort_keys=True))
+        return 0
+    except Exception as exc:
+        secondary_failures: list[str] = []
+        if current_packet is not None and send_may_be_live and not terminal_is_recorded:
+            try:
+                stop_turn()
+                wait_for_terminal_checkpoint(current_packet["marker"], timeout_seconds=45)
+                current_identities = capture_identities(REPO, current_packet["marker"])
+                stopped = extract_terminal(
+                    current_packet,
+                    manifest["runId"],
+                    current_identities,
+                    TRANSCRIPTS,
+                    app_launch_epoch,
+                )
+                current_identities["processGeneration"] = stopped["processGeneration"]
+                append_row_v2(args.ledger, stopped)
+                rows.append(stopped)
+                terminal_is_recorded = True
+                attempt_is_open = False
+            except Exception:
+                secondary_failures.append("live turn could not be stopped and reconciled")
+        if attempt_is_open and current_packet is not None and not terminal_is_recorded:
+            try:
+                failure = terminal_failure(
+                    current_packet,
+                    manifest["runId"],
+                    str(exc),
+                    app_launch_epoch,
+                    current_identities,
+                )
+                append_row_v2(args.ledger, failure)
+                rows.append(failure)
+                terminal_is_recorded = True
+            except Exception:
+                secondary_failures.append("failure ledger append failed")
+        if terminal_is_recorded and not cleanup_is_recorded and current_packet is not None:
+            local_cleanup = "unknown"
+            if current_identities.get("tabId"):
+                try:
+                    close_current_session(current_identities["tabId"])
+                    local_cleanup = "closedExact"
+                except Exception:
+                    local_cleanup = "retained"
+                    secondary_failures.append("exact local-tab cleanup failed")
+            try:
+                cleanup = cleanup_receipt(
+                    current_packet,
+                    manifest["runId"],
+                    current_identities,
+                    app_launch_epoch,
+                    local_tab=local_cleanup,
+                )
+                append_row_v2(args.ledger, cleanup)
+                rows.append(cleanup)
+                cleanup_is_recorded = True
+            except Exception:
+                secondary_failures.append("cleanup ledger append failed")
+        try:
+            quit_installed()
+            process_zero_samples = two_process_zero_samples()
+        except Exception:
+            secondary_failures.append("installed app cleanup/process-zero failed")
+        if secondary_failures:
+            raise HarnessError(
+                "4C campaign stopped; " + "; ".join(secondary_failures)
+                + f" (cause: {type(exc).__name__}: {exc})"
+            ) from exc
+        if isinstance(exc, HarnessError):
+            raise
+        raise HarnessError(f"4C campaign stopped: {type(exc).__name__}") from exc
+    finally:
+        safe_print(json.dumps({
+            "authorityRetention": retain_campaign_authority(
+                authority,
+                process_zero_samples=process_zero_samples,
+            )
+        }, sort_keys=True))
 
 
 def _billable_v2(args: argparse.Namespace) -> int:

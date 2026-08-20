@@ -787,6 +787,72 @@ final class CandidateRuntimeAuthorityTests: XCTestCase {
                        CandidateRuntimeTestFixture.sha256(try Data(contentsOf: fixture.candidate)))
     }
 
+    func testSchema3NativeXAIFreezeResolvesWithoutKeychainSelectors() throws {
+        let fixture = try CandidateRuntimeTestFixture.make()
+        defer { try? FileManager.default.removeItem(at: fixture.container) }
+        CandidateRuntimeTestFixture.installSignatureOverride()
+
+        let prompt = "Return GB-S4C-NAT-CTRL"
+        let promptSHA = CandidateRuntimeTestFixture.sha256(Data(prompt.utf8))
+        let cliManifest = fixture.container.appendingPathComponent("hard-budget-manifest.json")
+        let cliManifestData = Data("{\"campaignId\":\"slice4c-bounded-paid\"}".utf8)
+        try cliManifestData.write(to: cliManifest)
+        let ledger = fixture.container.appendingPathComponent("hard-budget-ledger.json")
+        try Data("{}".utf8).write(to: ledger)
+        for path in [cliManifest.path, ledger.path] {
+            try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: path)
+        }
+        let authorization = fixture.container.appendingPathComponent("authorization.json")
+        let manifest = AcceptanceBudgetManifest(
+            schemaVersion: 3,
+            runID: "2026-08-19T00:00:00Z",
+            campaignTokenCeiling: 20_000_000,
+            emergencyReserveTokens: 1_000_000,
+            hardBudgetManifestSHA256: CandidateRuntimeTestFixture.sha256(cliManifestData),
+            expectedCLIBuild: fixture.cliBuild,
+            packets: [AcceptanceTurnBudget(
+                packetID: "S4C-NAT-CTRL",
+                allocationID: "s4c-nat-ctrl",
+                marker: "GB-S4C-NAT-CTRL",
+                promptHash: promptSHA,
+                tokenAllocation: 100,
+                maxModelCalls: 1,
+                route: AcceptanceHardBudgetRoute(
+                    model: AcceptanceNativeXAIFreeze.modelID,
+                    endpointSHA256: AcceptanceNativeXAIFreeze.endpointSHA256,
+                    apiBackend: "responses",
+                    requestBoundTokens: 100,
+                    maxPayloadBytes: 80,
+                    maxOutputTokens: 20,
+                    boundProvenanceSHA256: String(repeating: "b", count: 64)
+                )
+            )],
+            campaignId: "slice4c-bounded-paid"
+        )
+        try JSONEncoder().encode(manifest).write(to: authorization)
+        try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: authorization.path)
+
+        let resolution = AcceptanceBudgetGuard.resolve(
+            prompt: prompt,
+            arguments: [
+                "app",
+                "\(AcceptanceBudgetGuard.argumentPrefix)\(authorization.path)",
+                "\(AcceptanceBudgetGuard.cliManifestArgumentPrefix)\(cliManifest.path)",
+                "\(AcceptanceBudgetGuard.ledgerArgumentPrefix)\(ledger.path)",
+                "\(GrokCandidateRuntimeAuthority.selectionArgumentPrefix)\(fixture.selection.path)",
+            ]
+        )
+        guard case .budget(let authorized) = resolution else {
+            return XCTFail("Native freeze runtime authority was not accepted: \(resolution)")
+        }
+        XCTAssertNil(authorized.credentialAuthorizationV3)
+        XCTAssertEqual(authorized.campaignId, "slice4c-bounded-paid")
+        XCTAssertEqual(authorized.hardBudgetCampaignID, "slice4c-bounded-paid")
+        XCTAssertTrue(authorized.budget.route.isNativeXAIFreeze)
+        XCTAssertEqual(authorized.candidateExecutionLease?.identity.binarySHA256,
+                       CandidateRuntimeTestFixture.sha256(try Data(contentsOf: fixture.candidate)))
+    }
+
     private struct Fixture {
         let container: URL
         let digestDirectory: URL

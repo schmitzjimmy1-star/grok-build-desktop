@@ -7,7 +7,8 @@ description: Works with grok CLI integration in GrokBuild — auth state, versio
 
 ## Boundaries
 
-GrokBuild is a UI shell. Core agent behavior (ACP, MCP, skills, plan mode, subagents) stays in the `grok` CLI.
+Start at `GROKBUILD_ACP_CLIENT_AIM.md`. GrokBuild is a UI shell. Core agent
+behavior (ACP, MCP, skills, plan mode, subagents) stays in the `grok` CLI.
 
 `grok sessions delete <id>` removes indexed parent sessions only. Spawned
 `session_kind=subagent` child directories stay unindexed (`No session found`
@@ -65,7 +66,11 @@ prelaunches the allocated process with `resumeSessionID` (`session/load`).
 Legacy continuation (`resumeAfterQuit`, `resume_saved_task`) is rejected at
 schema. Schema-3 continuation dry-run and `_billable_v3` exist in
 `scripts/acceptance/run.py` and still refuse `--billable` at the absolute
-ceiling; paid 4C stays locked.
+ceiling. Schema-4 `_billable_4c` is the 4C route-matrix executor
+(`official-provider-slice4c-paid.json`, frozen `campaignId`
+`slice4c-bounded-paid`, 20M/19M/1M). Schema-4 `--billable` passes the ceiling
+dispatcher for that identity; catalog prices are confirmed. Schema-3 still
+refuses at the 4M ceiling. Do not unlock `_billable_v3`.
 
 4B.5 owner-local lifecycle uses a signed digest-staged pager
 (`1.0.5 (8226242)`, binary SHA-256
@@ -74,8 +79,20 @@ through `GROKBUILD_SLICE4B3_RUNTIME_SELECTION` pointed at
 `$HOME/Documents/Codex/GrokBuild-Slice4B5/runtime/runtime-selection.json`
 (pager `f434fa4f…933b`). Never point that env at
 `Documents/Codex/GrokBuild-Slice4B3/` (`14da2ef77…` / `1.0.5 (86f0c70)`). It never replaces
-`~/.grok/bin/grok`. Armed `session/prompt` waits at most 90s
-(`GrokProcess.armedSessionPromptTimeout`). The pager source
+`~/.grok/bin/grok`. Armed ACP handshake (`initialize`, `session/new`,
+`session/load`, `session/set_model`) and `session/prompt` wait at most 90s
+(`GrokProcess.armedSessionPromptTimeout` / `armedACPHandshakeTimeoutSeconds`).
+A JSON-RPC timeout names the ACP method (`ACP initialize timed out.`). Empty
+`FileHandle` readability while the child is still running is not ACP close.
+True stdout EOF or a dead child fails the pending method immediately
+(`ACP initialize failed: stdio closed before the result.` /
+`ACP initialize failed: grok exited before the result.`). Do not wait for
+first stdout before `initialize`. ChatStore's armed connection watchdog is 120s
+so it cannot pre-empt that handshake, and its fallback uses the same ACP timeout
+text. `_billable_4c` waits for Stop turn (`session/prompt` live) or the
+`grok-acp-error-banner` AX static text after Send and does not click Stop on a
+pre-prompt ACP failure. The waiter reads every AX node, not only clickable refs.
+The pager source
 `822624291de2b544605f439ad1349ae6bdc3cf10` detaches after-turn workspace work
 and skips the 120s `live_ids` drain on zero-tool turns so ACP can return after
 loopback `pong`. Tests: `Slice4B5LifecycleTests`, including
@@ -94,8 +111,13 @@ filter runs `hard_budget_receiver_closes_fd_before_raw_fork_and_setsid_descendan
 The pager binary is still source `8226242`; do not rebuild it. Darwin
 post-enrollment `setsid()` remains the known 4B.2 limit. Live Application
 Support `runtime-selection.json` stays absent after 4B.6 rollback; reinstall
-it only for a 4C paid packet. 4C paid Send stays locked behind
-`require_absolute_ceiling_support()`. `_billable_v3` is the 4B.4 continuation
+it only for a later 4C paid packet. 4C schema-4 `--billable` passes the
+ceiling dispatcher for the frozen identity; catalog prices are confirmed.
+Schema-4 preflight keeps official grok at 1.0.4 and requires pager
+`1.0.5 (8226242)` / `f434fa4f…933b`. `_billable_4c` is the route-matrix
+executor (four-arg `launch_installed`, never a bare unarmed launch). Native
+freeze bind is in tree; do not send native on official 1.0.4.
+`_billable_v3` is the 4B.4 continuation
 executor, not 4C, and must not call `resume_saved_task()`.
 
 ## Auth & status bar

@@ -18,7 +18,7 @@ struct ArmedV3DispatchExpectation: Equatable, Sendable {
     let authBoundary: ModelRouteContract.AuthBoundary
     let candidate: GrokCandidateRuntimeIdentity
     let frozenRoute: AcceptanceHardBudgetRoute
-    let credentialAuthorizationV3: GrokArmedCredentialAuthorizationV3
+    let credentialAuthorizationV3: GrokArmedCredentialAuthorizationV3?
 
     static func tryMake(
         authorization: AcceptanceBudgetAuthorization,
@@ -74,7 +74,7 @@ struct ArmedV3DispatchExpectation: Equatable, Sendable {
             return nil
         }
         return ArmedV3DispatchExpectation(
-            campaignID: authorization.runID,
+            campaignID: authorization.hardBudgetCampaignID,
             allocationID: authorization.budget.allocationID,
             selectedModelID: selected,
             managedProviderID: liveProviderID,
@@ -88,6 +88,39 @@ struct ArmedV3DispatchExpectation: Equatable, Sendable {
         )
     }
 
+    /// Armed 4C native packet: leased candidate, grok-4.6, no Keychain selectors.
+    static func tryMakeNative(
+        authorization: AcceptanceBudgetAuthorization,
+        selectedModelID: String,
+        candidate: GrokCandidateRuntimeIdentity
+    ) -> ArmedV3DispatchExpectation? {
+        let route = authorization.budget.route
+        let selected = selectedModelID.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard route.isNativeXAIFreeze,
+              selected == AcceptanceNativeXAIFreeze.modelID,
+              candidate.cliBuild == authorization.expectedCLIBuild,
+              authorization.campaignTokenCeiling == Int(HardBudgetProvenanceV3.absoluteTokenCeiling),
+              authorization.emergencyReserveTokens == Int(HardBudgetProvenanceV3.unreachableReserveTokens),
+              authorization.spendableTokenCeiling == Int(HardBudgetProvenanceV3.allocatableTokenCeiling),
+              route.credentialAuthorizationV3 == nil,
+              authorization.credentialAuthorizationV3 == nil else {
+            return nil
+        }
+        return ArmedV3DispatchExpectation(
+            campaignID: authorization.hardBudgetCampaignID,
+            allocationID: authorization.budget.allocationID,
+            selectedModelID: selected,
+            managedProviderID: "",
+            providerFacingModel: AcceptanceNativeXAIFreeze.modelID,
+            authScheme: "",
+            apiBackend: route.apiBackend,
+            authBoundary: .nativeSession,
+            candidate: candidate,
+            frozenRoute: route,
+            credentialAuthorizationV3: nil
+        )
+    }
+
     /// Resolves the live custom-model snapshot and linked provider, then binds.
     static func bind(
         authorization: AcceptanceBudgetAuthorization,
@@ -96,6 +129,13 @@ struct ArmedV3DispatchExpectation: Equatable, Sendable {
         providers: [Provider],
         candidate: GrokCandidateRuntimeIdentity
     ) -> ArmedV3DispatchExpectation? {
+        if authorization.budget.route.isNativeXAIFreeze {
+            return tryMakeNative(
+                authorization: authorization,
+                selectedModelID: selectedModelID,
+                candidate: candidate
+            )
+        }
         let customModel = CustomModelStore.runtimeEligibleModels(from: customModelSnapshot)
             .first { $0.id == selectedModelID }
         guard let customModel,
@@ -153,13 +193,15 @@ struct ArmedV3DispatchExpectation: Equatable, Sendable {
         if provenance.candidate.cliBuild != candidate.cliBuild { mismatches.append("cliBuild") }
         if provenance.candidate.binarySHA256 != candidate.binarySHA256 { mismatches.append("binarySha256") }
         if provenance.candidate.sourceCommitSHA != candidate.sourceSHA { mismatches.append("sourceCommitSha") }
-        if provenance.route.providerID != managedProviderID { mismatches.append("providerId") }
-        if provenance.route.authScheme != authScheme { mismatches.append("authScheme") }
         if provenance.route.providerFacingModel != providerFacingModel { mismatches.append("providerFacingModel") }
         if provenance.route.endpointSHA256 != frozenRoute.endpointSHA256 { mismatches.append("endpointSha256") }
         if provenance.route.apiBackend != apiBackend { mismatches.append("apiBackend") }
-        if provenance.configIdentity.managedProviderID != managedProviderID {
-            mismatches.append("configManagedProviderId")
+        if authBoundary != .nativeSession {
+            if provenance.route.providerID != managedProviderID { mismatches.append("providerId") }
+            if provenance.route.authScheme != authScheme { mismatches.append("authScheme") }
+            if provenance.configIdentity.managedProviderID != managedProviderID {
+                mismatches.append("configManagedProviderId")
+            }
         }
         guard mismatches.isEmpty else {
             return "armed v3 initialize v3Authority mismatched \(mismatches.joined(separator: ","))"
@@ -169,8 +211,10 @@ struct ArmedV3DispatchExpectation: Equatable, Sendable {
 
     func spawnAdmissionRefusal(options: GrokLaunchOptions) -> String? {
         let mcpNames = Set(options.mcpServers.map(\.name)).union(options.allowedMCPServerNames)
+        let boundaryAllowed = authBoundary == .officialHelper
+            || (authBoundary == .nativeSession && frozenRoute.isNativeXAIFreeze)
         guard options.model == selectedModelID,
-              authBoundary == .officialHelper,
+              boundaryAllowed,
               !options.mcpGatewayEnabled,
               mcpNames.isEmpty else {
             return "Acceptance route changed after authorization. No Grok process was launched."

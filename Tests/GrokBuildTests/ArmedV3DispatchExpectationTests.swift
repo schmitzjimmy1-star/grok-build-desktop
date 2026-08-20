@@ -18,8 +18,8 @@ final class ArmedV3DispatchExpectationTests: XCTestCase {
         XCTAssertEqual(expectation?.managedProviderID, "openrouter")
         XCTAssertEqual(expectation?.authScheme, "bearer")
         XCTAssertEqual(expectation?.providerFacingModel, providerFacing)
-        XCTAssertEqual(expectation?.credentialAuthorizationV3.keychainAccount, "openrouter")
-        XCTAssertEqual(expectation?.credentialAuthorizationV3.expectedProvenanceSHA256, provenanceSHA)
+        XCTAssertEqual(expectation?.credentialAuthorizationV3?.keychainAccount, "openrouter")
+        XCTAssertEqual(expectation?.credentialAuthorizationV3?.expectedProvenanceSHA256, provenanceSHA)
     }
 
     func testPacketOnlyAuthorizationIsNotSufficientWithoutMatchingLiveModel() {
@@ -33,6 +33,48 @@ final class ArmedV3DispatchExpectationTests: XCTestCase {
                 apiBackend: .responses
             ),
             provider: matchingProvider(),
+            candidate: matchingCandidate()
+        ))
+    }
+
+    func testNativeXAIFreezeBindsWithoutCustomModelOrKeychainSelectors() {
+        let native = nativeAuthorization()
+        let expectation = ArmedV3DispatchExpectation.tryMakeNative(
+            authorization: native,
+            selectedModelID: AcceptanceNativeXAIFreeze.modelID,
+            candidate: matchingCandidate()
+        )
+        XCTAssertEqual(expectation?.authBoundary, .nativeSession)
+        XCTAssertNil(expectation?.credentialAuthorizationV3)
+        XCTAssertEqual(expectation?.campaignID, "slice4c-bounded-paid")
+        XCTAssertEqual(
+            ArmedV3DispatchExpectation.bind(
+                authorization: native,
+                selectedModelID: AcceptanceNativeXAIFreeze.modelID,
+                customModelSnapshot: CustomModelStore.Snapshot(
+                    models: [],
+                    defaultModelID: nil,
+                    writeSafety: .writable,
+                    usesOfficialProviderProjection: false,
+                    officiallyProjectedModelIDs: [],
+                    unsafeFlatModelIDs: []
+                ),
+                providers: [],
+                candidate: matchingCandidate()
+            )?.authBoundary,
+            .nativeSession
+        )
+    }
+
+    func testNativeXAIFreezeRefusesInventedXAIHostAndAttachedCredentials() {
+        XCTAssertNil(ArmedV3DispatchExpectation.tryMakeNative(
+            authorization: nativeAuthorization(endpointSHA: String(repeating: "a", count: 64)),
+            selectedModelID: AcceptanceNativeXAIFreeze.modelID,
+            candidate: matchingCandidate()
+        ))
+        XCTAssertNil(ArmedV3DispatchExpectation.tryMakeNative(
+            authorization: nativeAuthorization(attachCredential: true),
+            selectedModelID: AcceptanceNativeXAIFreeze.modelID,
             candidate: matchingCandidate()
         ))
     }
@@ -308,6 +350,50 @@ final class ArmedV3DispatchExpectationTests: XCTestCase {
             hardBudgetLedgerPath: "/tmp/ledger.json",
             candidateExecutionLease: nil,
             credentialAuthorizationV3: packetAuth
+        )
+    }
+
+    private func nativeAuthorization(
+        endpointSHA: String = AcceptanceNativeXAIFreeze.endpointSHA256,
+        attachCredential: Bool = false
+    ) -> AcceptanceBudgetAuthorization {
+        let route = AcceptanceHardBudgetRoute(
+            model: AcceptanceNativeXAIFreeze.modelID,
+            endpointSHA256: endpointSHA,
+            apiBackend: "responses",
+            requestBoundTokens: 100,
+            maxPayloadBytes: 80,
+            maxOutputTokens: 20,
+            boundProvenanceSHA256: String(repeating: "b", count: 64)
+        )
+        let attached = attachCredential
+            ? GrokArmedCredentialAuthorizationV3(
+                managedProviderID: "openrouter",
+                authScheme: "bearer",
+                expectedProvenanceSHA256: String(repeating: "b", count: 64)
+            )
+            : nil
+        return AcceptanceBudgetAuthorization(
+            runID: "2026-08-19T00:00:00Z",
+            campaignTokenCeiling: 20_000_000,
+            emergencyReserveTokens: 1_000_000,
+            hardBudgetManifestSHA256: String(repeating: "a", count: 64),
+            expectedCLIBuild: "1.0.5 (86f0c70)",
+            budget: AcceptanceTurnBudget(
+                packetID: "S4C-NAT-CTRL",
+                allocationID: "s4c-nat-ctrl",
+                marker: "GB-S4C-NAT-CTRL",
+                promptHash: String(repeating: "1", count: 64),
+                tokenAllocation: 100,
+                maxModelCalls: 1,
+                route: route
+            ),
+            authorizationManifestPath: "/tmp/authorization.json",
+            hardBudgetCLIManifestPath: "/tmp/cli-manifest.json",
+            hardBudgetLedgerPath: "/tmp/ledger.json",
+            candidateExecutionLease: nil,
+            credentialAuthorizationV3: attached,
+            campaignId: "slice4c-bounded-paid"
         )
     }
 }
