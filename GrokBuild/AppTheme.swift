@@ -3,64 +3,65 @@ import AppKit
 
 /// Shared visual language for the main GrokBuild surface.
 ///
-/// The app stays cool-neutral across System, Light, and Dark appearances.
-/// Dark mode uses a cool soft-black canvas; light mode uses stone gray with a
-/// slight blue bias instead of cream. `canvasNSColor` is the same token the
-/// AppKit window uses so the transparent titlebar matches the work surface.
+/// Light is the design authority for the frontend rebuild: a quiet paper-white
+/// canvas, a subtly separated project rail, and a restrained blue action color.
+/// Dark remains a first-class adaptive fallback. `canvasNSColor` is also the
+/// AppKit window fill so the transparent titlebar stays visually continuous.
 enum AppTheme {
     enum Palette {
         static let canvasNSColor = adaptiveNSColor(
-            dark: NSColor(red: 0.07, green: 0.07, blue: 0.075, alpha: 1),
-            light: NSColor(red: 0.961, green: 0.961, blue: 0.969, alpha: 1)
+            dark: NSColor(red: 0.070, green: 0.074, blue: 0.086, alpha: 1),
+            light: NSColor(red: 0.985, green: 0.986, blue: 0.990, alpha: 1)
         )
         static let canvas = Color(nsColor: canvasNSColor)
         static let sidebarNSColor = adaptiveNSColor(
-            dark: NSColor(red: 0.045, green: 0.045, blue: 0.05, alpha: 1),
-            light: NSColor(red: 0.925, green: 0.925, blue: 0.933, alpha: 1)
+            dark: NSColor(red: 0.052, green: 0.056, blue: 0.068, alpha: 1),
+            light: NSColor(red: 0.949, green: 0.953, blue: 0.963, alpha: 1)
         )
         static let sidebar = Color(nsColor: sidebarNSColor)
         static let chrome = canvas
         static let surface = adaptive(
-            dark: NSColor(red: 0.155, green: 0.155, blue: 0.165, alpha: 1),
+            dark: NSColor(red: 0.112, green: 0.118, blue: 0.136, alpha: 1),
             light: NSColor.white
         )
         static let surfaceHover = adaptive(
-            dark: NSColor(red: 0.195, green: 0.195, blue: 0.205, alpha: 1),
-            light: NSColor(red: 0.890, green: 0.890, blue: 0.898, alpha: 1)
+            dark: NSColor(red: 0.155, green: 0.164, blue: 0.190, alpha: 1),
+            light: NSColor(red: 0.914, green: 0.925, blue: 0.949, alpha: 1)
         )
+        /// Legacy name retained while F2-F5 migrate call sites from the prior
+        /// glass vocabulary. The value is now an ordinary quiet row fill.
         static let glassTint = adaptive(
-            dark: NSColor.white.withAlphaComponent(0.035),
-            light: NSColor.black.withAlphaComponent(0.025)
+            dark: NSColor.white.withAlphaComponent(0.045),
+            light: NSColor(red: 0.900, green: 0.916, blue: 0.949, alpha: 0.54)
         )
         static let glassBorder = adaptive(
-            dark: NSColor.white.withAlphaComponent(0.085),
-            light: NSColor.black.withAlphaComponent(0.13)
+            dark: NSColor.white.withAlphaComponent(0.105),
+            light: NSColor(red: 0.120, green: 0.145, blue: 0.205, alpha: 0.16)
         )
         static let glassBorderStrong = adaptive(
-            dark: NSColor.white.withAlphaComponent(0.15),
-            light: NSColor.black.withAlphaComponent(0.24)
+            dark: NSColor.white.withAlphaComponent(0.19),
+            light: NSColor(red: 0.105, green: 0.135, blue: 0.205, alpha: 0.28)
         )
         static let accentNSColor = adaptiveNSColor(
-            dark: NSColor.white.withAlphaComponent(0.92),
-            light: NSColor.black.withAlphaComponent(0.88)
+            dark: NSColor(red: 0.555, green: 0.650, blue: 1.000, alpha: 1),
+            light: NSColor(red: 0.294, green: 0.396, blue: 0.835, alpha: 1)
         )
         static let accent = Color(nsColor: accentNSColor)
-        /// Text and symbols placed on the neutral accent fill.
+        /// Text and symbols placed on the blue primary-action fill.
         static let accentForegroundNSColor = adaptiveNSColor(
-            dark: NSColor.black.withAlphaComponent(0.90),
+            dark: NSColor(red: 0.055, green: 0.064, blue: 0.095, alpha: 1),
             light: NSColor.white
         )
         static let accentForeground = Color(nsColor: accentForegroundNSColor)
-        /// Workbench icons. Dark stays a consistent near-white so every
-        /// header control matches; Light stays ink on stone.
+        /// Workbench icons. Dark stays near-white; Light is quiet ink.
         static let titlebarControlNSColor = adaptiveNSColor(
-            dark: .white,
-            light: NSColor(white: 0.22, alpha: 1)
+            dark: NSColor(white: 0.92, alpha: 1),
+            light: NSColor(red: 0.160, green: 0.175, blue: 0.215, alpha: 1)
         )
         static let titlebarControl = Color(nsColor: titlebarControlNSColor)
         static let accentSoft = adaptive(
-            dark: NSColor.white.withAlphaComponent(0.075),
-            light: NSColor.black.withAlphaComponent(0.06)
+            dark: NSColor(red: 0.555, green: 0.650, blue: 1.000, alpha: 0.16),
+            light: NSColor(red: 0.294, green: 0.396, blue: 0.835, alpha: 0.11)
         )
         static let textMuted = adaptive(
             dark: NSColor.white.withAlphaComponent(0.62),
@@ -71,7 +72,7 @@ enum AppTheme {
             dark: NSColor.white.withAlphaComponent(0.42),
             light: NSColor.black.withAlphaComponent(0.48)
         )
-        static let shadow = Color.black.opacity(0.18)
+        static let shadow = Color.black.opacity(0.12)
         static let richContentBackground = adaptive(
             dark: NSColor.black.withAlphaComponent(0.26),
             light: NSColor.black.withAlphaComponent(0.055)
@@ -86,10 +87,10 @@ enum AppTheme {
             light: NSColor(red: 0.58, green: 0.40, blue: 0.12, alpha: 1)
         )
         static let warning = Color(nsColor: warningNSColor)
-        /// Cool slate for links and interactive emphasis that is not chrome accent.
+        /// Blue link emphasis, darker than the primary fill for text contrast.
         static let linkNSColor = adaptiveNSColor(
-            dark: NSColor(red: 0.62, green: 0.72, blue: 0.84, alpha: 1),
-            light: NSColor(red: 0.28, green: 0.40, blue: 0.55, alpha: 1)
+            dark: NSColor(red: 0.620, green: 0.710, blue: 1.000, alpha: 1),
+            light: NSColor(red: 0.180, green: 0.310, blue: 0.690, alpha: 1)
         )
         static let link = Color(nsColor: linkNSColor)
 
@@ -295,8 +296,8 @@ struct GrokChromeButtonStyle: ButtonStyle {
 }
 
 /// App-owned primary action treatment. Native `borderedProminent` inherits the
-/// user's macOS accent color, which can turn the cool-neutral workbench orange
-/// or brown; this style keeps the same semantic emphasis in Light and Dark.
+/// user's macOS accent color; this keeps the rebuild's restrained blue action
+/// hierarchy stable in Light and Dark.
 struct GrokProminentButtonStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
         GrokProminentButtonBody(configuration: configuration)

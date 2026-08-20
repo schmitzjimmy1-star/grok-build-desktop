@@ -182,6 +182,24 @@ final class SettingsTabTests: XCTestCase {
         XCTAssertEqual(AppSettingsDraft.load(defaults: defaults), saved)
     }
 
+    func testFrontendRebuildDefaultsNewInstallsToLightWithoutOverridingExistingState() {
+        let freshSuite = "grokbuild.tests.appearance.fresh.\(UUID().uuidString)"
+        let freshDefaults = UserDefaults(suiteName: freshSuite)!
+        defer { freshDefaults.removePersistentDomain(forName: freshSuite) }
+
+        XCTAssertEqual(GrokBuildAppearance.load(defaults: freshDefaults), .light)
+        AppAppearanceMigration.run(defaults: freshDefaults)
+        XCTAssertEqual(GrokBuildAppearance.load(defaults: freshDefaults), .light)
+
+        let existingSuite = "grokbuild.tests.appearance.existing.\(UUID().uuidString)"
+        let existingDefaults = UserDefaults(suiteName: existingSuite)!
+        defer { existingDefaults.removePersistentDomain(forName: existingSuite) }
+        existingDefaults.set(true, forKey: "grokbuild.existing-state")
+
+        AppAppearanceMigration.run(defaults: existingDefaults)
+        XCTAssertEqual(GrokBuildAppearance.load(defaults: existingDefaults), .dark)
+    }
+
     func testAppearanceChoicesUseIndependentAccessibleButtons() throws {
         let repositoryRoot = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent()
@@ -204,13 +222,17 @@ final class SettingsTabTests: XCTestCase {
         XCTAssertTrue(source.contains("Image(systemName: \"checkmark\")"))
     }
 
-    func testAppThemeLightCanvasIsCoolNeutral() {
+    func testAppThemeLightCanvasIsQuietAndBlueActionTokensStayDistinct() {
         let light = NSAppearance(named: .aqua)!
         let dark = NSAppearance(named: .darkAqua)!
         let canvasLight = sRGBComponents(of: AppTheme.Palette.canvasNSColor, appearance: light)
         let sidebarLight = sRGBComponents(of: AppTheme.Palette.sidebarNSColor, appearance: light)
         let canvasDark = sRGBComponents(of: AppTheme.Palette.canvasNSColor, appearance: dark)
+        let accentLight = sRGBComponents(of: AppTheme.Palette.accentNSColor, appearance: light)
+        let linkLight = sRGBComponents(of: AppTheme.Palette.linkNSColor, appearance: light)
 
+        XCTAssertGreaterThan(canvasLight.r, 0.97, "Light canvas is the near-white design authority")
+        XCTAssertLessThan(sidebarLight.r, canvasLight.r, "Project rail must separate from the canvas")
         XCTAssertGreaterThanOrEqual(canvasLight.b, canvasLight.r - 0.001,
                                     "Light canvas must not keep a warm/cream blue deficit")
         XCTAssertGreaterThanOrEqual(sidebarLight.b, sidebarLight.r - 0.001,
@@ -218,6 +240,15 @@ final class SettingsTabTests: XCTestCase {
         XCTAssertGreaterThan(canvasDark.b, canvasDark.r,
                              "Dark canvas keeps a cool bias so charcoal does not read brown")
         XCTAssertNotEqual(AppTheme.Palette.warningNSColor, AppTheme.Palette.linkNSColor)
+        XCTAssertGreaterThan(accentLight.b, accentLight.r + 0.35,
+                             "Primary actions use the restrained blue rebuild accent")
+        XCTAssertGreaterThan(linkLight.b, linkLight.r + 0.35,
+                             "Links remain blue rather than inheriting neutral chrome")
+        XCTAssertGreaterThanOrEqual(
+            contrastRatio(accentLight, (r: 1, g: 1, b: 1)),
+            4.5,
+            "White primary-action labels must keep WCAG AA contrast on the rebuild blue"
+        )
         _ = AppTheme.Palette.warning
         _ = AppTheme.Palette.link
 
@@ -310,6 +341,26 @@ final class SettingsTabTests: XCTestCase {
             color.usingColorSpace(.deviceRGB)?.getRed(&r, green: &g, blue: &b, alpha: &a)
         }
         return (r, g, b)
+    }
+
+    private func contrastRatio(
+        _ lhs: (r: CGFloat, g: CGFloat, b: CGFloat),
+        _ rhs: (r: CGFloat, g: CGFloat, b: CGFloat)
+    ) -> CGFloat {
+        let brighter = max(relativeLuminance(lhs), relativeLuminance(rhs))
+        let darker = min(relativeLuminance(lhs), relativeLuminance(rhs))
+        return (brighter + 0.05) / (darker + 0.05)
+    }
+
+    private func relativeLuminance(_ color: (r: CGFloat, g: CGFloat, b: CGFloat)) -> CGFloat {
+        func linear(_ component: CGFloat) -> CGFloat {
+            component <= 0.04045
+                ? component / 12.92
+                : pow((component + 0.055) / 1.055, 2.4)
+        }
+        return (0.2126 * linear(color.r))
+            + (0.7152 * linear(color.g))
+            + (0.0722 * linear(color.b))
     }
 
     func testSettingsLoadStatesAndStatusAccessibilityAreDistinct() {

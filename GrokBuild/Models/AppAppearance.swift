@@ -34,7 +34,7 @@ enum GrokBuildAppearance: String, CaseIterable, Codable, Equatable, Identifiable
     static func load(defaults: UserDefaults = .standard) -> Self {
         guard let raw = defaults.string(forKey: GrokSettingsKeys.appearance),
               let value = Self(rawValue: raw) else {
-            return .system
+            return .light
         }
         return value
     }
@@ -47,20 +47,18 @@ enum GrokBuildAppearance: String, CaseIterable, Codable, Equatable, Identifiable
     }
 }
 
-/// Existing installs were deliberately dark. New installs follow the user's
-/// macOS setting. The one-time migration prevents the new System default from
-/// unexpectedly changing an established user's workspace on upgrade.
+/// Existing installs were deliberately dark and keep that choice. New installs
+/// begin in the frontend rebuild's light-authority appearance; System and Dark
+/// remain explicit options in Settings.
 enum AppAppearanceMigration {
     static func run(defaults: UserDefaults = .standard) {
         guard defaults.object(forKey: GrokSettingsKeys.appearance) == nil else { return }
 
-        let hasExistingGrokBuildState = defaults
-            .persistentDomain(forName: Bundle.main.bundleIdentifier ?? "com.grokbuild.app")?
-            .keys
-            .contains { $0.hasPrefix("grokbuild.") } ?? false
+        let hasExistingGrokBuildState = defaults.dictionaryRepresentation().keys
+            .contains { $0.hasPrefix("grokbuild.") }
 
         defaults.set(
-            hasExistingGrokBuildState ? GrokBuildAppearance.dark.rawValue : GrokBuildAppearance.system.rawValue,
+            hasExistingGrokBuildState ? GrokBuildAppearance.dark.rawValue : GrokBuildAppearance.light.rawValue,
             forKey: GrokSettingsKeys.appearance
         )
     }
@@ -72,7 +70,7 @@ struct AppSettingsDraft: Codable, Equatable, Sendable {
 
     static let defaults = AppSettingsDraft(
         autoCheckEnabled: true,
-        appearance: .system
+        appearance: .light
     )
 
     static func load(defaults: UserDefaults = .standard) -> Self {
