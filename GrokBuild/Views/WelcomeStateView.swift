@@ -93,5 +93,6 @@ private struct WorkbenchIntentStarter: View {
         .help(item.prompt)
         .accessibilityLabel("\(item.title). \(item.detail)")
         .accessibilityHint("Adds an editable \(item.title.lowercased()) request to the message composer.")
+        .accessibilityRemoveTraits(.isSelected)
     }
 }

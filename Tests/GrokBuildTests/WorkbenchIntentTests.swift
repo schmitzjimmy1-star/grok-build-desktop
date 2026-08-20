@@ -76,6 +76,8 @@ final class WorkbenchIntentTests: XCTestCase {
         XCTAssertTrue(source.contains("Text(item.detail)"),
                       "Ask/Build/Review starters explain their outcome before seeding the composer")
         XCTAssertTrue(source.contains("accessibilityLabel(\"\\(item.title). \\(item.detail)\")"))
+        XCTAssertTrue(welcomeState.contains(".accessibilityRemoveTraits(.isSelected)"),
+                      "intent starters must not inherit a stale selected trait")
         XCTAssertTrue(source.contains(".frame(width: 30, height: 30)"))
         XCTAssertTrue(source.contains(".font(.system(size: 30, weight: .medium))"))
         XCTAssertTrue(source.contains(".padding(.vertical, 40)"))
