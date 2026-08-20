@@ -136,6 +136,35 @@ def _walk_named(node: Any, hits: list[dict[str, str]]) -> None:
             _walk_named(child, hits)
 
 
+def _walk_ax_text(node: Any, hits: list[dict[str, str]]) -> None:
+    """Collect AX name/value/identifier even when a node has no clickable ref.
+
+    The ACP error banner is static text. Requiring `@` refs dropped it, so the
+    harness waited for Stop after initialize had already failed.
+    """
+    if isinstance(node, dict):
+        name = str(node.get("name") or "")
+        value = str(node.get("value") or "")
+        native = node.get("native_id")
+        if isinstance(native, dict):
+            identifier = str(native.get("value") or "")
+        elif isinstance(native, str):
+            identifier = native
+        else:
+            identifier = str(node.get("identifier") or node.get("id") or "")
+        if name or value or identifier:
+            hits.append({
+                "name": name,
+                "value": value,
+                "identifier": identifier,
+            })
+        for child in node.get("children") or []:
+            _walk_ax_text(child, hits)
+    elif isinstance(node, list):
+        for child in node:
+            _walk_ax_text(child, hits)
+
+
 def _find_named(name: str, *, role: str | None = None) -> str:
     args = ["find", "--app", APP_NAME, *_window_args(), "--name", name, "--first"]
     if role:
@@ -542,6 +571,13 @@ def wait_for_stop_control(*, timeout_seconds: int = 45) -> None:
 
 ACP_STARTUP_FAILURE_MARKERS = (
     "ACP startup failed",
+    "ACP initialize failed",
+    "ACP initialize timed out",
+    "ACP session/new failed",
+    "ACP session/new timed out",
+    "ACP session/load failed",
+    "ACP session/load timed out",
+    "stdio closed",
     "Timed out while connecting to grok.",
 )
 
@@ -553,27 +589,28 @@ def _acp_startup_failure_text() -> str | None:
     hits: list[dict[str, str]] = []
     payload = _payload(snapshot)
     if isinstance(payload, dict):
-        _walk_named(payload.get("tree"), hits)
+        _walk_ax_text(payload.get("tree"), hits)
     for item in hits:
         identifier = item.get("identifier") or ""
         name = item.get("name") or ""
         value = item.get("value") or ""
         blob = f"{name} {value}"
         if identifier == "grok-acp-error-banner":
-            return name or value or "ACP startup failed"
+            return name or value or "ACP initialize failed"
         if any(marker in blob for marker in ACP_STARTUP_FAILURE_MARKERS):
             return name or value or blob.strip()
     return None
 
 
 def wait_for_acp_startup_outcome(*, timeout_seconds: int = 130) -> None:
-    """After Send, wait until ACP is live or a named startup failure is visible.
+    """After Send, wait until ACP is live or a named ACP method failure is visible.
 
-    Stop turn means a billed turn started. The error banner
-    (`grok-acp-error-banner` / ``ACP startup failed``) means handshake died
-    before ``session/prompt``. Do not assume Stop exists just because Send was
-    clicked, and do not wait for first stdout before initialize. A snapshot
-    AXFrontmost timeout is a driver flake, not ACP startup failure; retry it.
+    Stop turn means `session/prompt` started. The error banner
+    (`grok-acp-error-banner` / ``ACP initialize failed``) means handshake died
+    before ``session/prompt``. Walk AX text even without clickable refs. Do not
+    assume Stop exists just because Send was clicked, and do not wait for first stdout before initialize.
+    A snapshot AXFrontmost timeout is a driver flake,
+    not ACP startup failure; retry it.
     """
     deadline = time.time() + timeout_seconds
     last_error: Exception | None = None
@@ -597,7 +634,7 @@ def wait_for_acp_startup_outcome(*, timeout_seconds: int = 130) -> None:
             last_error = exc
         time.sleep(0.4)
     raise DriverError(
-        "ACP handshake did not reach a live turn or a named startup failure: "
+        "ACP session/prompt did not start, and no named ACP method failure was visible: "
         f"{last_error}"
     )
 

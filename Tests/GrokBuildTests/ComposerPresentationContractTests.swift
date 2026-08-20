@@ -178,6 +178,8 @@ final class ComposerPresentationContractTests: XCTestCase {
         XCTAssertTrue(contentView.contains("accessibilityIdentifier(\"grok-upgrade-banner-dismiss\")"))
         XCTAssertTrue(contentView.contains(".accessibilityElement(children: .contain)"))
         XCTAssertTrue(chatView.contains("accessibilityIdentifier(\"grok-acp-error-banner\")"))
+        XCTAssertTrue(chatView.contains("accessibilityElement(children: .ignore)"))
+        XCTAssertTrue(chatView.contains("accessibilityAddTraits(.isStaticText)"))
         XCTAssertTrue(settingsView.contains(".accessibilityIdentifier(tab.accessibilityIdentifier)"))
         XCTAssertTrue(appPane.contains("accessibilityIdentifier(\"grok-app-build-identity\")"))
         XCTAssertTrue(appPane.contains(".accessibilityElement(children: .contain)"))

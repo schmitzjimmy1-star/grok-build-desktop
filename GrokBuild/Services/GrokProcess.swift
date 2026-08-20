@@ -1134,7 +1134,7 @@ final class GrokProcess: @unchecked Sendable {
     /// distinguishable from a later `session/prompt` hang. Redacted stderr is
     /// appended only when the process actually wrote any.
     static func jsonRPCTimeoutError(method: String, redactedStderr: String) -> NSError {
-        var description = "Timed out waiting for grok (\(method))."
+        var description = "ACP \(method) timed out."
         let trimmed = redactedStderr.trimmingCharacters(in: .whitespacesAndNewlines)
         if !trimmed.isEmpty {
             description += "\n\(trimmed)"
@@ -1149,21 +1149,24 @@ final class GrokProcess: @unchecked Sendable {
         )
     }
 
-    static func startupStdioClosedError(redactedStderr: String) -> NSError {
-        var description = "grok closed stdio before ACP initialize completed."
-        let trimmed = redactedStderr.trimmingCharacters(in: .whitespacesAndNewlines)
-        if !trimmed.isEmpty {
-            description += "\n\(trimmed)"
-        }
-        return NSError(
-            domain: "ACP",
-            code: -3,
-            userInfo: [NSLocalizedDescriptionKey: description]
+    static func startupStdioClosedError(method: String = "initialize", redactedStderr: String) -> NSError {
+        acpMethodFailure(
+            method: method,
+            reason: "stdio closed before the result.",
+            redactedStderr: redactedStderr
         )
     }
 
-    static func childExitedBeforeInitializeError(redactedStderr: String) -> NSError {
-        var description = "leased grok exited before ACP initialize."
+    static func childExitedBeforeInitializeError(method: String = "initialize", redactedStderr: String) -> NSError {
+        acpMethodFailure(
+            method: method,
+            reason: "grok exited before the result.",
+            redactedStderr: redactedStderr
+        )
+    }
+
+    static func acpMethodFailure(method: String, reason: String, redactedStderr: String) -> NSError {
+        var description = "ACP \(method) failed: \(reason)"
         let trimmed = redactedStderr.trimmingCharacters(in: .whitespacesAndNewlines)
         if !trimmed.isEmpty {
             description += "\n\(trimmed)"
@@ -1171,9 +1174,23 @@ final class GrokProcess: @unchecked Sendable {
         return NSError(
             domain: "ACP",
             code: -3,
-            userInfo: [NSLocalizedDescriptionKey: description]
+            userInfo: [
+                NSLocalizedDescriptionKey: description,
+                "acpMethod": method,
+            ]
         )
     }
+
+    static func acpStartupFailureStateMessage(error: Error, extraStderr: String) -> String {
+        let description = error.localizedDescription
+        let trimmed = extraStderr.trimmingCharacters(in: .whitespacesAndNewlines)
+        let suffix = (trimmed.isEmpty || description.contains(trimmed)) ? "" : "\n\(trimmed)"
+        if description.hasPrefix("ACP ") {
+            return description + suffix
+        }
+        return "ACP startup failed: \(description)\(suffix)"
+    }
+
     /// A cancellation is advisory; receipt delivery gets one short chance before
     /// hard teardown. This is deliberately not a completion wait or provider retry.
     private static let stopReceiptDrainWindow: Duration = .milliseconds(150)
@@ -1948,12 +1965,12 @@ final class GrokProcess: @unchecked Sendable {
             state = .ready
         } catch {
             guard activeProcessGeneration == launchGeneration else { return }
-            let stderrDetails = Self.redactedStartupStderr(startupStderrSnapshot())
-            let description = error.localizedDescription
-            let suffix = (stderrDetails.isEmpty || description.contains(stderrDetails))
-                ? ""
-                : "\n\(stderrDetails)"
-            state = .failed("ACP startup failed: \(description)\(suffix)")
+            state = .failed(
+                Self.acpStartupFailureStateMessage(
+                    error: error,
+                    extraStderr: Self.redactedStartupStderr(startupStderrSnapshot())
+                )
+            )
             await cleanupProcess(setIdle: false)
             mcpServerStatuses = MCPReadinessPolicy.failedStatuses(for: options.mcpServers)
             rejectLaunchModelReceipt(identity: launchIdentity)
@@ -2934,6 +2951,7 @@ final class GrokProcess: @unchecked Sendable {
         noteStartupTransportClosed(
             processGeneration: processGeneration,
             error: Self.childExitedBeforeInitializeError(
+                method: pendingACPMethod(),
                 redactedStderr: Self.redactedStartupStderr(startupStderrSnapshot())
             )
         )
@@ -2943,9 +2961,24 @@ final class GrokProcess: @unchecked Sendable {
         noteStartupTransportClosed(
             processGeneration: processGeneration,
             error: Self.startupStdioClosedError(
+                method: pendingACPMethod(),
                 redactedStderr: Self.redactedStartupStderr(startupStderrSnapshot())
             )
         )
+    }
+
+    func pendingACPMethod() -> String {
+        ioLock.lock()
+        defer { ioLock.unlock() }
+        if pendingRequests.values.contains(where: { $0.method == "initialize" }) {
+            return "initialize"
+        }
+        return pendingRequests.values.first?.method ?? "initialize"
+    }
+
+    private func processStillRunning(processGeneration: UInt64) -> Bool {
+        guard activeProcessGeneration == processGeneration else { return false }
+        return process?.isRunning == true
     }
 
     private func noteStartupTransportClosed(processGeneration: UInt64, error: Error) {
@@ -3149,6 +3182,12 @@ final class GrokProcess: @unchecked Sendable {
         stdout.fileHandleForReading.readabilityHandler = { [weak self] handle in
             let data = handle.availableData
             if data.isEmpty {
+                // FileHandle often fires an empty read when the handler is
+                // attached. That is not an ACP close. Keep listening until the
+                // child has actually exited so `initialize` can return.
+                if self?.processStillRunning(processGeneration: processGeneration) == true {
+                    return
+                }
                 handle.readabilityHandler = nil
                 self?.noteStdioClosed(processGeneration: processGeneration)
                 return

@@ -81,12 +81,17 @@ through `GROKBUILD_SLICE4B3_RUNTIME_SELECTION` pointed at
 `~/.grok/bin/grok`. Armed ACP handshake (`initialize`, `session/new`,
 `session/load`, `session/set_model`) and `session/prompt` wait at most 90s
 (`GrokProcess.armedSessionPromptTimeout` / `armedACPHandshakeTimeoutSeconds`).
-A JSON-RPC timeout names the method and includes redacted startup stderr.
-During `.starting`, stdout EOF or a dead child fails the pending RPC immediately
-instead of burning that 90s. Do not wait for first stdout before `initialize`.
-ChatStore's armed connection watchdog is 120s so it cannot pre-empt that
-handshake. `_billable_4c` waits for Stop turn or the `grok-acp-error-banner`
-after Send and does not click Stop on a pre-prompt ACP failure. The pager source
+A JSON-RPC timeout names the ACP method (`ACP initialize timed out.`). Empty
+`FileHandle` readability while the child is still running is not ACP close.
+True stdout EOF or a dead child fails the pending method immediately
+(`ACP initialize failed: stdio closed before the result.` /
+`ACP initialize failed: grok exited before the result.`). Do not wait for
+first stdout before `initialize`. ChatStore's armed connection watchdog is 120s
+so it cannot pre-empt that handshake, and its fallback uses the same ACP timeout
+text. `_billable_4c` waits for Stop turn (`session/prompt` live) or the
+`grok-acp-error-banner` AX static text after Send and does not click Stop on a
+pre-prompt ACP failure. The waiter reads every AX node, not only clickable refs.
+The pager source
 `822624291de2b544605f439ad1349ae6bdc3cf10` detaches after-turn workspace work
 and skips the 120s `live_ids` drain on zero-tool turns so ACP can return after
 loopback `pong`. Tests: `Slice4B5LifecycleTests`, including

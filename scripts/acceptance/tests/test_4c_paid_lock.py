@@ -473,14 +473,21 @@ class Slice4CPaidLockContracts(unittest.TestCase):
         self.assertIn("disabled", source)
 
     def test_wait_for_acp_startup_outcome_races_stop_against_named_failure(self) -> None:
-        from scripts.acceptance.harness.driver import wait_for_acp_startup_outcome
+        from scripts.acceptance.harness.driver import (
+            _walk_ax_text,
+            wait_for_acp_startup_outcome,
+        )
         source = inspect.getsource(wait_for_acp_startup_outcome)
         self.assertIn("grok-acp-error-banner", source)
-        self.assertIn("ACP startup failed", source)
+        self.assertIn("ACP initialize failed", source)
+        self.assertIn("session/prompt", source)
         self.assertIn("Stop turn", source)
         self.assertIn("do not wait for first stdout before initialize", source)
         self.assertIn("AXFrontmost timeout is a driver flake", source)
         self.assertIn("continue", source)
+        self.assertIn("ACP session/prompt did not start", source)
+        walker = inspect.getsource(_walk_ax_text)
+        self.assertIn("even when a node has no clickable ref", walker)
 
     def test_select_model_picks_option_without_effort_restart(self) -> None:
         from scripts.acceptance.harness.driver import _open_model_menu, select_model

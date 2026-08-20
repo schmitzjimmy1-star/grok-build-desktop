@@ -8,7 +8,7 @@ alwaysApply: false
 
 ## Services
 
-- `GrokProcess` — spawns `grok agent … stdio`, parses ACP into `AcpEvent`s.
+- `GrokProcess` — spawns `grok agent … stdio`, parses ACP into `AcpEvent`s. Handshake and prompt failures name the pending ACP method (`ACP initialize timed out.`, `ACP session/prompt failed.`). An empty stdout `FileHandle` fire while the child is still running is not ACP close.
 - `GrokCLIService` — bounded one-shot CLI commands (`run`, session list, `--version`, structured MCP/extension management, `formatVersionOutput`).
 - `ChatStore` — bridges UI to `GrokProcess`, session resume IDs, permission settings.
 - `UpdateChecker` — grok CLI via `grok update --check --json`. The GrokBuild app-release feed stays off on this personal line. Install with `make ship`.

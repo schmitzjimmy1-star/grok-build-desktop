@@ -3804,7 +3804,7 @@ final class ACPClientContractTests: XCTestCase {
         XCTAssertNil(decoded.requests)
     }
 
-    func testArmedACPHandshakeJSONRPCTimeoutMatchesPromptBudget() {
+    func testArmedACPHandshakeJSONRPCTimeoutMatchesPromptBudget() throws {
         XCTAssertEqual(GrokProcess.armedSessionPromptTimeout, .seconds(90))
         XCTAssertEqual(GrokProcess.armedACPHandshakeTimeoutSeconds, 90)
         XCTAssertEqual(
@@ -3837,6 +3837,19 @@ final class ACPClientContractTests: XCTestCase {
             ChatStore.armedConnectionWatchdogTimeout,
             GrokProcess.armedSessionPromptTimeout
         )
+        let repositoryRoot = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        let chatStore = try String(
+            contentsOf: repositoryRoot.appendingPathComponent("GrokBuild/Services/ChatStore.swift"),
+            encoding: .utf8
+        )
+        XCTAssertTrue(chatStore.contains("jsonRPCTimeoutError(method: method, redactedStderr: \"\")"))
+        XCTAssertTrue(chatStore.contains("ACP \\(method) timed out before MCP readiness."))
+        XCTAssertTrue(chatStore.contains("ACP session/prompt failed."))
+        XCTAssertFalse(chatStore.contains("Timed out while connecting to grok."))
+        XCTAssertFalse(chatStore.contains("Failed to send to grok."))
     }
 
     func testJSONRPCTimeoutErrorNamesMethodAndIncludesRedactedStderr() {
@@ -3849,10 +3862,10 @@ final class ACPClientContractTests: XCTestCase {
         XCTAssertEqual(withStderr.userInfo["acpMethod"] as? String, "initialize")
         XCTAssertEqual(
             withStderr.localizedDescription,
-            "Timed out waiting for grok (initialize).\npager: boom"
+            "ACP initialize timed out.\npager: boom"
         )
         let empty = GrokProcess.jsonRPCTimeoutError(method: "session/new", redactedStderr: "  ")
-        XCTAssertEqual(empty.localizedDescription, "Timed out waiting for grok (session/new).")
+        XCTAssertEqual(empty.localizedDescription, "ACP session/new timed out.")
         XCTAssertEqual(empty.userInfo["acpMethod"] as? String, "session/new")
     }
 
@@ -3860,14 +3873,22 @@ final class ACPClientContractTests: XCTestCase {
         let stdio = GrokProcess.startupStdioClosedError(redactedStderr: "")
         XCTAssertEqual(stdio.domain, "ACP")
         XCTAssertEqual(stdio.code, -3)
+        XCTAssertEqual(stdio.userInfo["acpMethod"] as? String, "initialize")
         XCTAssertEqual(
             stdio.localizedDescription,
-            "grok closed stdio before ACP initialize completed."
+            "ACP initialize failed: stdio closed before the result."
         )
         let exited = GrokProcess.childExitedBeforeInitializeError(redactedStderr: "fatal: nope")
         XCTAssertEqual(
             exited.localizedDescription,
-            "leased grok exited before ACP initialize.\nfatal: nope"
+            "ACP initialize failed: grok exited before the result.\nfatal: nope"
+        )
+        XCTAssertEqual(
+            GrokProcess.acpStartupFailureStateMessage(
+                error: stdio,
+                extraStderr: ""
+            ),
+            "ACP initialize failed: stdio closed before the result."
         )
         XCTAssertFalse(stdio.localizedDescription.lowercased().contains("keychain"))
         XCTAssertFalse(exited.localizedDescription.lowercased().contains("token"))
@@ -3884,9 +3905,12 @@ final class ACPClientContractTests: XCTestCase {
         )
         XCTAssertTrue(text.contains("beginStartupLivenessWatch"))
         XCTAssertTrue(text.contains("noteStdioClosed"))
+        XCTAssertTrue(text.contains("processStillRunning"))
         XCTAssertTrue(text.contains("if !launched.process.isRunning"))
-        XCTAssertTrue(text.contains("closed stdio before ACP initialize completed"))
-        XCTAssertTrue(text.contains("leased grok exited before ACP initialize"))
+        XCTAssertTrue(text.contains("ACP \\(method) failed: \\(reason)"))
+        XCTAssertTrue(text.contains("stdio closed before the result."))
+        XCTAssertTrue(text.contains("grok exited before the result."))
+        XCTAssertTrue(text.contains("Keep listening until the"))
         XCTAssertFalse(text.contains("waitForFirstStdout"))
     }
 }

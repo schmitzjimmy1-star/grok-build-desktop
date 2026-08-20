@@ -421,6 +421,10 @@ SHA-256
 `e1fbfe81221c3f58d9c0ef0842610e90048d9cb5616347f00761a7d751e7b11c`.
 `_billable_v3` stays the 4B.4 continuation executor. Sidecar arm and
 owner-local Sends remain. Do not `grok update`.
+**Codex continue (2026-08-20):**
+[`docs/GROKBUILD_SLICE4C_CODEX_CONTINUE_2026-08-20.md`](GROKBUILD_SLICE4C_CODEX_CONTINUE_2026-08-20.md)
+owns the native ACP handshake repair, spent ledgers 6–8, and the next 4C
+command. Do not start from ledger-8 copy.
 
 PR [#124](https://github.com/schmitzjimmy1-star/grok-build-desktop/pull/124)
 passed required exact-head run `32123735441` and merged normally as
@@ -6215,15 +6219,13 @@ them:
 
 ## One-sentence new-session handoff
 
-Visual Quiet through Phase 5 is accepted; the optional welcome-only Phase 6 is
-proposed but unauthorized
-([`docs/GROKBUILD_VISUAL_QUIET_CAMPAIGN_2026-08-15.md`](GROKBUILD_VISUAL_QUIET_CAMPAIGN_2026-08-15.md)).
-Leftover closeout Phases 1–2 are merged as `7a3006d` (PR #102). Do not start
-leftover Phase 3 (`ChatView` split) unless Jimmy explicitly authorizes it, and
-do not treat that split as the visual campaign. Re-derive canonical repository
-and installed-app identity before any future work, and preserve the upstream
-Grok CLI session visibility/deletion gap without inventing a GrokBuild-side
-workaround or deletion proof.
+Paid 4C is the live campaign on `cursor/official-runtime-s4c-locked-executor`.
+Start at
+[`docs/GROKBUILD_SLICE4C_CODEX_CONTINUE_2026-08-20.md`](GROKBUILD_SLICE4C_CODEX_CONTINUE_2026-08-20.md).
+Do not unlock `_billable_v3`, do not `grok update`, and do not rebuild pager
+`1.0.5 (8226242)`. Visual Quiet through Phase 5 is accepted; leftover Phase 3
+(`ChatView` split) stays unauthorized. Re-derive canonical repository and
+installed-app identity before any future work.
 
 ## Hard stop conditions
 

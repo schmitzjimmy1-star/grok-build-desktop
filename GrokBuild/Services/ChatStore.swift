@@ -2737,12 +2737,14 @@ final class ChatStore {
 
     private func markConnectionTimedOutIfNeeded() async {
         guard connectionState == .starting else { return }
-        lastError = process.state.errorMessage ?? "Timed out while connecting to grok."
+        let method = process.pendingACPMethod()
+        lastError = process.state.errorMessage
+            ?? GrokProcess.jsonRPCTimeoutError(method: method, redactedStderr: "").localizedDescription
         mcpServerStatuses = MCPReadinessPolicy.failedStatuses(
             for: mcpServerStatuses.map(\.name),
-            reason: "The process did not reach ACP readiness before the connection timeout."
+            reason: "ACP \(method) timed out before MCP readiness."
         )
-        connectionState = .failed(lastError ?? "Timed out while connecting to grok.")
+        connectionState = .failed(lastError ?? "ACP \(method) timed out.")
         await process.stop()
     }
 
@@ -3504,7 +3506,7 @@ final class ChatStore {
         authoritativeTailAssistantID = nil
         activeTurnBackendSessionID = nil
         if latestTurnOutcome != .cancelled {
-            lastError = lastError ?? process.state.errorMessage ?? "Failed to send to grok."
+            lastError = lastError ?? process.state.errorMessage ?? "ACP session/prompt failed."
         }
         // An owned `turn_completed` is the lifecycle authority even when its
         // stop reason is error/cancelled. GrokProcess releases a missing prompt

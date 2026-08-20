@@ -150,16 +150,21 @@ Live native 4C `initialize` silence was a JSON-RPC non-response, not a
 `v3Authority` refusal. GUI/harness changes in this worktree:
 
 - Armed handshake RPCs wait 90s; ChatStore armed watchdog is 120s.
-- Timeouts name the method and append redacted startup stderr.
-- During `.starting`, stdout EOF or a dead child fails the pending RPC
+- Timeouts and transport deaths name the pending ACP method
+  (`ACP initialize timed out.`, `ACP initialize failed: stdio closed…`,
+  `ACP initialize failed: grok exited…`). Empty `FileHandle` readability
+  while the child is still running is not ACP close.
+- During `.starting`, true stdout EOF or a dead child fails the pending RPC
   immediately. Do not wait for first stdout before `initialize`.
-- `_billable_4c` waits for Stop turn or `grok-acp-error-banner` after Send.
+- `_billable_4c` waits for Stop turn (`session/prompt`) or `grok-acp-error-banner`
+  after Send. The waiter walks every AX node, not only clickable refs.
   `send_may_be_live` stays false until that live-turn signal, so pre-prompt
   ACP failure does not click Stop.
 
 These do not rebuild pager `1.0.5 (8226242)` or replace official grok 1.0.4.
-They cannot ship until Jimmy commits; installed stamp remains the last clean
-HEAD until `make ship`.
+Jimmy authorized commit + `make ship` + a new 4C ledger after this handshake
+language fix. Codex continue:
+[`docs/GROKBUILD_SLICE4C_CODEX_CONTINUE_2026-08-20.md`](GROKBUILD_SLICE4C_CODEX_CONTINUE_2026-08-20.md).
 
 ## Out of scope
 
