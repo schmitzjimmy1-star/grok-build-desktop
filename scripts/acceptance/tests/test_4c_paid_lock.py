@@ -11,13 +11,17 @@ import unittest
 from pathlib import Path
 
 from scripts.acceptance.harness.authority_4c import (
+    NATIVE_ENDPOINT_FREEZE_SHA256,
     canonical_cli_manifest,
     prepare_campaign_authority,
     swift_authorization_sidecar,
 )
 from scripts.acceptance.harness.candidate_runtime import EXPECTED_TEAM
 from scripts.acceptance.harness.errors import HarnessError, PreflightError, SchemaError
-from scripts.acceptance.harness.preflight_v2 import require_absolute_ceiling_support
+from scripts.acceptance.harness.preflight_v2 import (
+    require_4c_unlock_predicate,
+    require_absolute_ceiling_support,
+)
 from scripts.acceptance.harness.schema_4c import (
     EXPECTED_CLI_BUILD,
     FROZEN_CAMPAIGN_ID,
@@ -46,6 +50,9 @@ V2_LIVE_BIND_HASHES = {
     "5c1332d5f9242f304584f5dca3e53a8afe9d1e0c9ea153e0ab73f27e4f341bce",
     "e1e898291e8fe317aa3ff1b147d4503edd4af18808fa935da852af28a61209f1",
 }
+OPENAI_ENDPOINT_SHA256 = hashlib.sha256(b"https://api.openai.com/v1").hexdigest()
+OPENROUTER_ENDPOINT_SHA256 = hashlib.sha256(b"https://openrouter.ai/api/v1").hexdigest()
+FIXTURE_PROVENANCE_SHA256 = "a" * 64
 
 
 class Slice4CPaidLockContracts(unittest.TestCase):
@@ -80,6 +87,30 @@ class Slice4CPaidLockContracts(unittest.TestCase):
         self.assertNotIn("campaignId", v3)
         self.assertNotEqual(v2["schemaVersion"], 4)
         self.assertNotEqual(v3["schemaVersion"], 4)
+
+    def test_unlock_predicate_passes_4c_and_fails_historical_fixtures(self) -> None:
+        require_4c_unlock_predicate(self.manifest, source_path=MANIFEST)
+        v2 = json.loads(V2_MANIFEST.read_text(encoding="utf-8"))
+        v3 = json.loads(V3_MANIFEST.read_text(encoding="utf-8"))
+        with self.assertRaisesRegex(PreflightError, "unlock predicate refused"):
+            require_4c_unlock_predicate(v2, source_path=V2_MANIFEST)
+        with self.assertRaisesRegex(PreflightError, "schemaVersion must be 4"):
+            require_4c_unlock_predicate(v3, source_path=V3_MANIFEST)
+        mutated = copy.deepcopy(self.manifest)
+        mutated["campaignId"] = RUN_ID
+        with self.assertRaisesRegex(PreflightError, "unlock predicate refused"):
+            require_4c_unlock_predicate(mutated, source_path=MANIFEST)
+        ceiling = inspect.getsource(require_absolute_ceiling_support)
+        self.assertNotIn("require_4c_unlock_predicate", ceiling)
+        self.assertNotIn("require_4c_paid_identity", ceiling)
+        self.assertNotIn(FROZEN_CAMPAIGN_ID, ceiling)
+        main = RUN_PY.read_text(encoding="utf-8")
+        billable_main = main[main.index("if args.billable:") : main.index("def _cleanup")]
+        version_four = billable_main[
+            billable_main.index("if version == 4:") : billable_main.index("return _billable_4c(args)")
+        ]
+        self.assertIn("require_absolute_ceiling_support()", version_four)
+        self.assertNotIn("require_4c_unlock_predicate", version_four)
 
     def test_wrong_campaign_id_is_refused(self) -> None:
         raw = json.loads(MANIFEST.read_text(encoding="utf-8"))
@@ -146,19 +177,56 @@ class Slice4CPaidLockContracts(unittest.TestCase):
             self.assertNotIn(digest, encoded)
         self.assertNotIn("endpointSha256", encoded)
         self.assertNotIn("boundProvenanceSha256", encoded)
+        self.assertNotIn("endpointSHA256", encoded)
+        self.assertNotIn("boundProvenanceSHA256", encoded)
         with tempfile.TemporaryDirectory() as directory:
             cli_path = Path(directory) / "hard-token-campaign.json"
             cli_path.write_bytes(json.dumps(cli, sort_keys=True, separators=(",", ":")).encode())
-            sidecar = swift_authorization_sidecar(self.manifest, cli_path, Path(directory) / "ledger.json")
+            sidecar = swift_authorization_sidecar(
+                self.manifest,
+                cli_path,
+                Path(directory) / "ledger.json",
+                provenance_sha256=FIXTURE_PROVENANCE_SHA256,
+            )
         self.assertEqual(sidecar["schemaVersion"], 3)
         self.assertEqual(sidecar["runID"], RUN_ID)
         self.assertEqual(sidecar["campaignId"], FROZEN_CAMPAIGN_ID)
         self.assertNotEqual(sidecar["campaignId"], sidecar["runID"])
         self.assertEqual(sidecar["campaignTokenCeiling"], 20_000_000)
         self.assertEqual(sidecar["expectedCLIBuild"], EXPECTED_CLI_BUILD)
-        self.assertIsNone(sidecar["packets"][0]["route"]["managedProviderID"])
-        self.assertEqual(sidecar["packets"][1]["route"]["managedProviderID"], "grokbuild.saved.openai")
-        self.assertEqual(sidecar["packets"][2]["route"]["managedProviderID"], "grokbuild.saved.openrouter")
+        native_route = sidecar["packets"][0]["route"]
+        direct_route = sidecar["packets"][1]["route"]
+        brokered_route = sidecar["packets"][2]["route"]
+        self.assertEqual(NATIVE_ENDPOINT_FREEZE_SHA256, hashlib.sha256(b"nativeXAI").hexdigest())
+        self.assertEqual(native_route["endpointSHA256"], NATIVE_ENDPOINT_FREEZE_SHA256)
+        self.assertEqual(direct_route["endpointSHA256"], OPENAI_ENDPOINT_SHA256)
+        self.assertEqual(brokered_route["endpointSHA256"], OPENROUTER_ENDPOINT_SHA256)
+        for route in (native_route, direct_route, brokered_route):
+            self.assertEqual(route["boundProvenanceSHA256"], FIXTURE_PROVENANCE_SHA256)
+            self.assertNotIn(route["endpointSHA256"], V2_LIVE_BIND_HASHES)
+            self.assertNotIn(route["boundProvenanceSHA256"], V2_LIVE_BIND_HASHES)
+        self.assertIsNone(native_route["managedProviderID"])
+        self.assertIsNone(native_route["authScheme"])
+        self.assertEqual(direct_route["managedProviderID"], "grokbuild.saved.openai")
+        self.assertEqual(direct_route["authScheme"], "bearer")
+        self.assertEqual(brokered_route["managedProviderID"], "grokbuild.saved.openrouter")
+        self.assertEqual(brokered_route["authScheme"], "bearer")
+        sidecar_text = json.dumps(sidecar)
+        for digest in V2_LIVE_BIND_HASHES:
+            self.assertNotIn(digest, sidecar_text)
+
+        mutated = copy.deepcopy(self.manifest)
+        mutated["packets"][0]["routeReceipt"]["endpointIdentity"] = "https://api.x.ai/v1"
+        with tempfile.TemporaryDirectory() as directory:
+            cli_path = Path(directory) / "hard-token-campaign.json"
+            cli_path.write_bytes(b"{}")
+            with self.assertRaisesRegex(HarnessError, "must not invent an xAI host"):
+                swift_authorization_sidecar(
+                    mutated,
+                    cli_path,
+                    Path(directory) / "ledger.json",
+                    provenance_sha256=FIXTURE_PROVENANCE_SHA256,
+                )
 
     def test_prepare_writes_private_four_arg_paths(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
@@ -175,9 +243,27 @@ class Slice4CPaidLockContracts(unittest.TestCase):
             cli = json.loads(authority.cli_manifest.read_text(encoding="utf-8"))
             self.assertEqual(cli["campaignId"], FROZEN_CAMPAIGN_ID)
             self.assertNotEqual(cli["campaignId"], RUN_ID)
+            provenance = authority.candidate.provenance_sha256
+            native_cli = cli["allocations"][0]["route"]
+            self.assertEqual(native_cli["endpointSha256"], NATIVE_ENDPOINT_FREEZE_SHA256)
+            self.assertEqual(cli["allocations"][1]["route"]["endpointSha256"], OPENAI_ENDPOINT_SHA256)
+            self.assertEqual(cli["allocations"][2]["route"]["endpointSha256"], OPENROUTER_ENDPOINT_SHA256)
+            self.assertEqual(native_cli["boundProvenanceSha256"], provenance)
             sidecar = json.loads(authority.authorization.read_text(encoding="utf-8"))
             self.assertEqual(sidecar["runID"], RUN_ID)
             self.assertEqual(sidecar["campaignId"], FROZEN_CAMPAIGN_ID)
+            native_route = sidecar["packets"][0]["route"]
+            self.assertEqual(native_route["endpointSHA256"], NATIVE_ENDPOINT_FREEZE_SHA256)
+            self.assertEqual(sidecar["packets"][1]["route"]["endpointSHA256"], OPENAI_ENDPOINT_SHA256)
+            self.assertEqual(sidecar["packets"][2]["route"]["endpointSHA256"], OPENROUTER_ENDPOINT_SHA256)
+            self.assertEqual(native_route["boundProvenanceSHA256"], provenance)
+            self.assertIsNone(native_route["managedProviderID"])
+            self.assertIsNone(native_route["authScheme"])
+            encoded = authority.authorization.read_text(encoding="utf-8") + authority.cli_manifest.read_text(
+                encoding="utf-8"
+            )
+            for digest in V2_LIVE_BIND_HASHES:
+                self.assertNotIn(digest, encoded)
 
     def test_prepare_refuses_a_run_id_used_as_campaign_id(self) -> None:
         mutated = copy.deepcopy(self.manifest)
@@ -264,6 +350,7 @@ class Slice4CPaidLockContracts(unittest.TestCase):
         self.assertIn("cannot prove the absolute 4,000,000-token ceiling", ceiling)
         self.assertNotIn(FROZEN_CAMPAIGN_ID, ceiling)
         self.assertNotIn("require_4c_paid_identity", ceiling)
+        self.assertNotIn("require_4c_unlock_predicate", ceiling)
         with self.assertRaises(PreflightError):
             require_absolute_ceiling_support()
         main = source[source.index("def main") : source.index("def _cleanup")]

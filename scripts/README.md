@@ -44,8 +44,9 @@ Legacy v1 billable execution is retired. V2 receipts are owner-only append-only
 triples: reservation, typed terminal evidence, then exact local cleanup.
 Schema-4 `_billable_4c` plus `manifests/official-provider-slice4c-paid.json`
 plan the 20M/19M/1M native → direct → brokered matrix as dry-run only.
-`--billable` still refuses at the absolute ceiling. Do not treat that executor
-as paid unlock.
+`--billable` still refuses at the absolute ceiling. The drop-in
+`require_4c_unlock_predicate` exists and is not wired. Do not treat that
+executor as paid unlock.
 
 ```bash
 python3 scripts/acceptance/run.py
@@ -63,6 +64,8 @@ Focused tests: `swift test --filter AcceptanceHarnessTests`.
 |--------|---------|
 | [`acceptance/run.py`](acceptance/run.py) | Versioned agentic acceptance harness. Dry-run default; `--fixture` for zero-cost rejection; `--billable` for installed-UI Sends after preflight. |
 | [`acceptance/harness/provenance_v3.py`](acceptance/harness/provenance_v3.py) | Independent 4B.3 canonical provenance verifier, including nested `v3Authority` projection checks. Historical v2 schemas stay in `authority_v2.py`. |
+| [`acceptance/harness/schema_4c.py`](acceptance/harness/schema_4c.py) | Locked Slice 4C paid-matrix schema. Frozen `campaignId` `slice4c-bounded-paid`; committed prices stay unconfirmed. |
+| [`acceptance/harness/authority_4c.py`](acceptance/harness/authority_4c.py) | 4C CLI/Swift authority. Arm-time hashes only; native freeze is `sha256(b"nativeXAI")`. |
 | [`acceptance/harness/candidate_install.py`](acceptance/harness/candidate_install.py) | Slice 4B.6 signed pager install/rollback. Byte-copies into an owner-private digest directory; never writes `~/.grok/bin/grok`. Rollback removes only `runtime-selection.json` after two empty process-zero samples. |
 
 ## Packaging scripts

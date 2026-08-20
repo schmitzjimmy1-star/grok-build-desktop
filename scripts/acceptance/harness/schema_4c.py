@@ -120,7 +120,11 @@ def committed_identity_digest(*, path: Path | None = None, raw: dict[str, Any] |
 
 
 def require_4c_paid_identity(manifest: dict[str, Any], *, source_path: Path | None = None) -> None:
-    """Unlock-predicate helper. Not wired into require_absolute_ceiling_support()."""
+    """Identity half of the later unlock predicate. Raises SchemaError.
+
+    The PreflightError drop-in is require_4c_unlock_predicate in preflight_v2.
+    Neither helper is called from require_absolute_ceiling_support() yet.
+    """
     if manifest.get("campaignId") != FROZEN_CAMPAIGN_ID:
         raise SchemaError("4C campaignId must be the frozen product id slice4c-bounded-paid")
     if _integer(manifest.get("campaignTokenCeiling"), "campaignTokenCeiling") != CAMPAIGN_CEILING:

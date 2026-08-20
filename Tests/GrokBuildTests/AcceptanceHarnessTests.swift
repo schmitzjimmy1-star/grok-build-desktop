@@ -294,6 +294,12 @@ final class AcceptanceHarnessTests: XCTestCase {
         XCTAssertTrue(fourC.contains("require_4c_send_ready"))
         XCTAssertFalse(fourC.contains("resume_saved_task()"))
         XCTAssertFalse(fourC.contains("launch_installed()"))
+        let preflight = try String(
+            contentsOf: Self.repoRoot.appendingPathComponent("scripts/acceptance/harness/preflight_v2.py"),
+            encoding: .utf8
+        )
+        XCTAssertTrue(preflight.contains("require_4c_unlock_predicate"))
+        XCTAssertTrue(preflight.contains("reactive and cannot prove the absolute 4,000,000-token ceiling"))
         let billableRange = try XCTUnwrap(runScript.range(of: "def _billable_v3"))
         let mainRange = try XCTUnwrap(runScript.range(of: "if __name__"))
         let billable = String(runScript[billableRange.lowerBound..<mainRange.lowerBound])

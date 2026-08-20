@@ -14,7 +14,7 @@ try:
 except ModuleNotFoundError:  # pragma: no cover - exercised only on obsolete system Python.
     tomllib = None  # type: ignore[assignment]
 
-from .errors import PreflightError
+from .errors import PreflightError, SchemaError
 from .preflight import APP, DIST, TEAM, cli_version, installed_identity, marker_collisions, require_clean_test_ledger, require_models, two_process_zero_samples
 
 HELPER = APP / "Contents/MacOS/GrokBuildProviderAuthHelper"
@@ -187,6 +187,22 @@ def _require_effective_config(repo: Path) -> str:
 def effective_config_sha(repo: Path) -> str:
     """Re-evaluate official layered configuration immediately before Send."""
     return _require_effective_config(repo)
+
+
+def require_4c_unlock_predicate(manifest: dict[str, Any], *, source_path: Path) -> None:
+    """Drop-in four-part 4C predicate. Not called by require_absolute_ceiling_support().
+
+    Step 5 may wire this from main() after loading the schema-4 manifest.
+    Until then the unconditional ceiling raise still wins with no arguments.
+    """
+    from .schema_4c import SCHEMA_VERSION, require_4c_paid_identity
+
+    try:
+        if manifest.get("schemaVersion") != SCHEMA_VERSION:
+            raise SchemaError("schemaVersion must be 4")
+        require_4c_paid_identity(manifest, source_path=source_path)
+    except SchemaError as exc:
+        raise PreflightError(f"4C unlock predicate refused: {exc}") from exc
 
 
 def require_absolute_ceiling_support() -> None:

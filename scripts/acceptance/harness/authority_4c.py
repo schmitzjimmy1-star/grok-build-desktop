@@ -1,7 +1,11 @@
 """Private 4C campaign authority. campaignId is a product id, never runId.
 
-Live bind hashes are not copied from the 4M v2 fixture. The committed 4C
-matrix freezes models, routes, allocations, and unconfirmed prices only.
+Live bind hashes are filled at arm time from the candidate plus frozen
+endpointIdentity. They are never copied from the 4M v2 fixture. The
+committed 4C matrix still freezes models, routes, allocations, and
+unconfirmed prices only. Native packets use sha256(b"nativeXAI") rather
+than inventing an xAI host. Native Keychain selectors stay null; Swift
+schema-3 isValid still rejects that mixed matrix until the step-5 leftover.
 """
 
 from __future__ import annotations
@@ -9,6 +13,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import re
 import stat
 import tempfile
 from pathlib import Path
@@ -26,8 +31,12 @@ from .schema_4c import (
     STAGED_SOURCE_SHA,
 )
 
+NATIVE_ENDPOINT_FREEZE_SHA256 = hashlib.sha256(b"nativeXAI").hexdigest()
+SHA256_HEX = re.compile(r"^[0-9a-f]{64}$")
+
 __all__ = [
     "CampaignAuthority",
+    "NATIVE_ENDPOINT_FREEZE_SHA256",
     "canonical_cli_manifest",
     "prepare_campaign_authority",
     "retain_campaign_authority",
@@ -66,7 +75,14 @@ def prepare_campaign_authority(
         authorization = directory / "acceptance-budget.json"
         _write_private_exclusive(
             authorization,
-            _canonical_json(swift_authorization_sidecar(manifest, cli_manifest, ledger)),
+            _canonical_json(
+                swift_authorization_sidecar(
+                    manifest,
+                    cli_manifest,
+                    ledger,
+                    provenance_sha256=candidate.provenance_sha256,
+                )
+            ),
         )
         return CampaignAuthority(directory, cli_manifest, ledger, authorization, runtime_selection, candidate)
     except Exception:
@@ -82,6 +98,9 @@ def canonical_cli_manifest(manifest: dict[str, Any], *, candidate: Any | None = 
         raise HarnessError("4C CLI hard-budget campaignId must be slice4c-bounded-paid")
     if campaign_id == manifest.get("runId"):
         raise HarnessError("4C CLI hard-budget campaignId must not equal runId")
+    provenance = None if candidate is None else _require_sha256(
+        candidate.provenance_sha256, "candidate provenance"
+    )
     payload: dict[str, Any] = {
         "schemaVersion": 3,
         "campaignId": campaign_id,
@@ -102,13 +121,7 @@ def canonical_cli_manifest(manifest: dict[str, Any], *, candidate: Any | None = 
                 "promptSha256": packet["promptHash"],
                 "tokenCeiling": packet["tokenAllocation"],
                 "maxModelCalls": packet["maxModelCalls"],
-                "route": {
-                    "model": packet["hardBudget"]["route"]["model"],
-                    "apiBackend": packet["hardBudget"]["route"]["apiBackend"],
-                    "requestBoundTokens": packet["hardBudget"]["route"]["requestBoundTokens"],
-                    "maxPayloadBytes": packet["hardBudget"]["route"]["maxPayloadBytes"],
-                    "maxOutputTokens": packet["hardBudget"]["route"]["maxOutputTokens"],
-                },
+                "route": _cli_route(packet, provenance_sha256=provenance),
             }
             for packet in manifest["packets"]
         ],
@@ -118,13 +131,20 @@ def canonical_cli_manifest(manifest: dict[str, Any], *, candidate: Any | None = 
     return payload
 
 
-def swift_authorization_sidecar(manifest: dict[str, Any], cli_manifest: Path, ledger: Path) -> dict[str, Any]:
+def swift_authorization_sidecar(
+    manifest: dict[str, Any],
+    cli_manifest: Path,
+    ledger: Path,
+    *,
+    provenance_sha256: str,
+) -> dict[str, Any]:
     del ledger  # Path is retained next to the sidecar; Swift reads it from argv.
     digest = hashlib.sha256(cli_manifest.read_bytes()).hexdigest()
     campaign_id = manifest["campaignId"]
     run_id = manifest["runId"]
     if campaign_id == run_id:
         raise HarnessError("4C Swift sidecar campaignId must not equal runId")
+    provenance = _require_sha256(provenance_sha256, "sidecar provenance")
     return {
         "schemaVersion": 3,
         "runID": run_id,
@@ -141,19 +161,60 @@ def swift_authorization_sidecar(manifest: dict[str, Any], cli_manifest: Path, le
                 "promptHash": packet["promptHash"],
                 "tokenAllocation": packet["tokenAllocation"],
                 "maxModelCalls": packet["maxModelCalls"],
-                "route": {
-                    "model": packet["hardBudget"]["route"]["model"],
-                    "apiBackend": packet["hardBudget"]["route"]["apiBackend"],
-                    "requestBoundTokens": packet["hardBudget"]["route"]["requestBoundTokens"],
-                    "maxPayloadBytes": packet["hardBudget"]["route"]["maxPayloadBytes"],
-                    "maxOutputTokens": packet["hardBudget"]["route"]["maxOutputTokens"],
-                    "managedProviderID": packet["routeReceipt"]["officialProviderID"],
-                    "authScheme": _auth_scheme(packet),
-                },
+                "route": _swift_route(packet, provenance_sha256=provenance),
             }
             for packet in manifest["packets"]
         ],
     }
+
+
+def _cli_route(packet: dict[str, Any], *, provenance_sha256: str | None) -> dict[str, Any]:
+    hard = packet["hardBudget"]["route"]
+    route: dict[str, Any] = {
+        "model": hard["model"],
+        "apiBackend": hard["apiBackend"],
+        "requestBoundTokens": hard["requestBoundTokens"],
+        "maxPayloadBytes": hard["maxPayloadBytes"],
+        "maxOutputTokens": hard["maxOutputTokens"],
+    }
+    if provenance_sha256 is not None:
+        route["endpointSha256"] = _endpoint_sha256(packet)
+        route["boundProvenanceSha256"] = provenance_sha256
+    return route
+
+
+def _swift_route(packet: dict[str, Any], *, provenance_sha256: str) -> dict[str, Any]:
+    hard = packet["hardBudget"]["route"]
+    return {
+        "model": hard["model"],
+        "endpointSHA256": _endpoint_sha256(packet),
+        "apiBackend": hard["apiBackend"],
+        "requestBoundTokens": hard["requestBoundTokens"],
+        "maxPayloadBytes": hard["maxPayloadBytes"],
+        "maxOutputTokens": hard["maxOutputTokens"],
+        "boundProvenanceSHA256": provenance_sha256,
+        "managedProviderID": packet["routeReceipt"]["officialProviderID"],
+        "authScheme": _auth_scheme(packet),
+    }
+
+
+def _endpoint_sha256(packet: dict[str, Any]) -> str:
+    packet_id = packet["id"]
+    kind = packet["routeReceipt"]["kind"]
+    if kind == "nativeXAI":
+        if packet["routeReceipt"].get("endpointIdentity") is not None:
+            raise HarnessError(f"{packet_id}: native 4C must not invent an xAI host")
+        return NATIVE_ENDPOINT_FREEZE_SHA256
+    identity = packet["routeReceipt"].get("endpointIdentity")
+    if not isinstance(identity, str) or not identity.strip():
+        raise HarnessError(f"{packet_id}: provider packet needs endpointIdentity to bind")
+    return hashlib.sha256(identity.encode("utf-8")).hexdigest()
+
+
+def _require_sha256(value: str, where: str) -> str:
+    if not isinstance(value, str) or SHA256_HEX.fullmatch(value) is None:
+        raise HarnessError(f"{where} must be a 64-hex digest")
+    return value
 
 
 def _auth_scheme(packet: dict[str, Any]) -> str | None:

@@ -408,13 +408,15 @@ file. Reinstalling the sidecar is a step **inside** a 4C armed route-matrix
 epoch, not paid unlock by itself. Three
 independent 4C-unlock reviews of installed `29c064f` plus CLI `7e9f1ad` are
 complete: containment GO, harness NO-GO for unlocking `_billable_v3`, identity
-pins re-derived live. Locked `_billable_4c` now exists behind the still-unconditional
+pins re-derived live. Locked `_billable_4c` exists behind the still-unconditional
 `require_absolute_ceiling_support()` (schema-4 dry-run only; `--billable` still
-refuses before Send). `_billable_v3` stays the 4B.4 continuation executor.
-Catalog prices stay `pricingConfirmed: false`. Do not narrow the ceiling
-predicate in this slice. Product stamp remains
+refuses before Send). `require_4c_unlock_predicate` is the four-part drop-in
+and is not wired. Arm-time authority fills Swift sidecar hashes; native
+Keychain selectors stay null (step-5 leftover). `_billable_v3` stays the 4B.4
+continuation executor. Catalog prices stay `pricingConfirmed: false`. Do not
+narrow the ceiling predicate in this slice. Product stamp remains
 `29c064f`; HEAD may carry harness/docs successors (PR #141 distinct-timestamp
-rollback, leftover receipts, this locked 4C harness) with `GrokBuild/` identical
+rollback, leftover receipts, locked 4C harness) with `GrokBuild/` identical
 to stamp except the PR #143 transport comment. Next
 `make ship` is the first 4C **app-code** slice. Do not `grok update`.
 

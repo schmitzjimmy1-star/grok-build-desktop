@@ -1295,11 +1295,11 @@ make ship      # Apple Development install to /Applications/GrokBuild.app
 | `scripts/release.sh` | Unsigned personal GitHub release only if explicitly asked; refuses `RELEASE_TYPE=notarized` |
 | `scripts/notarize.sh` | Present but unused. `make notarize` is refused on this personal line. |
 | `scripts/grokbuild-install-update.sh` | In-app replace + relaunch |
-| `scripts/acceptance/run.py` | Agentic acceptance harness: versioned manifests, dry-run default, fixture rejection, `--billable` installed UI only; Slice 6 packet ceiling 250k; schema-3 continuation dry-run plus `_billable_v3` (4B.4 T1 `session/new`, T2/T3 `governed_fresh_process_load`, cleanup after T3; not the 4C route matrix); schema-4 `_billable_4c` (native → direct → brokered, 20M/19M/1M, four-arg launch) still fail-closed at the absolute ceiling |
+| `scripts/acceptance/run.py` | Agentic acceptance harness: versioned manifests, dry-run default, fixture rejection, `--billable` installed UI only; Slice 6 packet ceiling 250k; schema-3 continuation dry-run plus `_billable_v3` (4B.4 T1 `session/new`, T2/T3 `governed_fresh_process_load`, cleanup after T3; not the 4C route matrix); schema-4 `_billable_4c` (native → direct → brokered, 20M/19M/1M, four-arg launch) still fail-closed at the unconditional absolute ceiling. `require_4c_unlock_predicate` exists but is not wired. |
 | `scripts/acceptance/harness/provenance_v3.py` | Independent 4B.3 canonical provenance and nested `v3Authority` verifier; does not mutate v2 |
 | `scripts/acceptance/harness/schema_v3.py` | 4B.4 fresh-process continuation schema: `session/load` only; `resumeAfterQuit` / `session/resume` / `resume_saved_task` fail closed; `load_manifest` / `dry_run_plan` for schemaVersion 3 |
-| `scripts/acceptance/harness/schema_4c.py` | Locked 4C paid-matrix schema: frozen `campaignId` `slice4c-bounded-paid`, 20M/19M/1M, native then direct then brokered, no live bind hashes, `pricingConfirmed` false |
-| `scripts/acceptance/harness/authority_4c.py` | 4C CLI/Swift authority: nested 20M/19M/1M, `expectedCLIBuild` `1.0.5 (8226242)`, `campaignId` is not `runId` |
+| `scripts/acceptance/harness/schema_4c.py` | Locked 4C paid-matrix schema: frozen `campaignId` `slice4c-bounded-paid`, 20M/19M/1M, native then direct then brokered, no live bind hashes, `pricingConfirmed` false. `require_4c_paid_identity` is the SchemaError helper; paid Send still refuses at the ceiling. |
+| `scripts/acceptance/harness/authority_4c.py` | 4C CLI/Swift authority: nested 20M/19M/1M, `expectedCLIBuild` `1.0.5 (8226242)`, `campaignId` is not `runId`. Arm-time sidecar fills Swift `endpointSHA256` / `boundProvenanceSHA256`; native freeze is `sha256(b"nativeXAI")`. Native Keychain selectors stay null. |
 | `scripts/acceptance/harness/receipts_v3.py` | 4B.4 continuation evaluator: three allocations, one backend, one ledger; stale `session/new` fallback, load-time prompt, and early cleanup fail closed; JSONL `append_row` / `load_ledger` |
 | `scripts/acceptance/harness/driver.py` | Installed-app UI driver. `governed_fresh_process_load` selects the retained tab by AX UUID after an allocated launch and never clicks ungoverned Resume; later packet Send performs native `session/load`. `resume_saved_task` remains the consumer-only v1 path |
 | `scripts/acceptance/harness/candidate_install.py` | Slice 4B.6 signed owner-private pager copy into `candidate-runtime/<sha256>/`; never `~/.grok/bin/grok`; rollback unlinks only the selection sidecar after two empty process-zero samples with distinct timestamps |
@@ -1610,6 +1610,9 @@ continuation, not 4C. Locked `_billable_4c` plus
 `official-provider-slice4c-paid.json` exist for the native → direct → brokered
 matrix (20M/19M/1M, frozen `campaignId` `slice4c-bounded-paid`) and still
 refuse `--billable` at that ceiling. Paid Send remains locked.
+`require_4c_unlock_predicate` is the drop-in four-part check and is not wired
+into `require_absolute_ceiling_support()`. Native schema-3 sidecar bind remains
+a step-5 leftover. Do not send native on official 1.0.4.
 Live unarmed and schema-2 packets stay on the 4M/3M/1M v1 governor.
 Schema-3 armed desktop packets use versioned 20M/19M/1M and refuse that mix.
 CLI `HardTokenBudget::from_env` vs v3 authority in the child remains a fork
@@ -1629,7 +1632,7 @@ follow-up.
 | `docs/GROKBUILD_LEFTOVER_CLOSEOUT_2026-08-15.md` | Leftover closeout (Phases 1–2 merged as `7a3006d`). Phase 3 ChatView split stays deferred. |
 | `docs/GROKBUILD_VISUAL_QUIET_CAMPAIGN_2026-08-15.md` | Proposed visual-quiet campaign (not started). Not leftover Phase 3. |
 | `docs/GROKBUILD_SLICE4_ACTIVATION_CAMPAIGN_2026-08-17.md` | Slice 4B activation authority; 4B.0–4B.6 accepted; paid 4C locked |
-| `docs/GROKBUILD_SLICE4C_EDIT_MAP_2026-08-19.md` | 4C implementer map: locked `_billable_4c` steps 1–4 landed; step 5 paid unlock is a separate commit; do not unlock `_billable_v3` |
+| `docs/GROKBUILD_SLICE4C_EDIT_MAP_2026-08-19.md` | 4C implementer map: locked `_billable_4c` steps 1–4 plus the unwired unlock predicate and arm-time hashes; step 5 paid unlock is a separate commit; do not unlock `_billable_v3` |
 | `docs/GROKBUILD_AGENTIC_COCKPIT_CAMPAIGN_2026-08-15.md` | Closed Agentic Cockpit campaign (Phases 1/3/4 complete; Phase 2 deferred as leftover Phase 3). |
 | `.cursor/rules/` | Architecture, SwiftUI, CLI integration, AppKit panels |
 | `.cursor/skills/grokbuild-*` | Dev workflow, release, CLI checks |

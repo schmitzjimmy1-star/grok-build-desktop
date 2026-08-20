@@ -68,7 +68,8 @@ schema. Schema-3 continuation dry-run and `_billable_v3` exist in
 ceiling. Schema-4 `_billable_4c` is the locked 4C route-matrix executor
 (`official-provider-slice4c-paid.json`, frozen `campaignId`
 `slice4c-bounded-paid`, 20M/19M/1M) and also refuses `--billable` at that
-ceiling; `pricingConfirmed` stays false. Do not unlock `_billable_v3`.
+ceiling; `pricingConfirmed` stays false. `require_4c_unlock_predicate` is the
+unwired four-part drop-in. Do not unlock `_billable_v3`.
 
 4B.5 owner-local lifecycle uses a signed digest-staged pager
 (`1.0.5 (8226242)`, binary SHA-256
@@ -100,6 +101,8 @@ Support `runtime-selection.json` stays absent after 4B.6 rollback; reinstall
 it only for a later 4C paid packet. 4C paid Send stays locked behind
 `require_absolute_ceiling_support()`. `_billable_4c` is the locked route-matrix
 executor (four-arg `launch_installed`, never a bare unarmed launch).
+`require_4c_unlock_predicate` exists and is not wired. Native schema-3 sidecar
+bind is a step-5 leftover; do not send native on official 1.0.4.
 `_billable_v3` is the 4B.4 continuation
 executor, not 4C, and must not call `resume_saved_task()`.
 
