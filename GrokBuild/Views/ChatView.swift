@@ -1131,6 +1131,7 @@ struct ChatView: View {
                 .padding(.horizontal, 12)
             }
 
+            composerProjectContext
             composer
                 .accessibilitySortPriority(1)
                 .focusSection()
@@ -1535,6 +1536,43 @@ struct ChatView: View {
             isExpanded: toolActivityExpanded
         ) {
             toolActivityExpanded.toggle()
+        }
+    }
+
+    @ViewBuilder
+    private var composerProjectContext: some View {
+        if let workspace = store.currentWorkspace {
+            HStack(spacing: 8) {
+                Label(workspace.displayName, systemImage: "folder")
+                    .lineLimit(1)
+                    .padding(.horizontal, 9)
+                    .padding(.vertical, 5)
+                    .background(AppTheme.Palette.sidebarSelection, in: Capsule())
+                    .accessibilityIdentifier("grok-composer-workspace-chip")
+
+                Button(action: onSwitchBranch) {
+                    Label(
+                        GitService.currentBranch(in: workspace.path) ?? "Choose branch",
+                        systemImage: "arrow.triangle.branch"
+                    )
+                    .lineLimit(1)
+                    .padding(.horizontal, 9)
+                    .padding(.vertical, 5)
+                    .background(AppTheme.Palette.sidebarSelection, in: Capsule())
+                }
+                .buttonStyle(.plain)
+                .help("Switch branch or worktree")
+                .accessibilityIdentifier("grok-composer-branch-chip")
+
+                Spacer(minLength: 0)
+            }
+            .font(AppTheme.Typography.badge)
+            .foregroundStyle(.secondary)
+            .padding(.horizontal, 10)
+            .frame(maxWidth: AppTheme.Layout.composerMaxWidth, minHeight: 28, alignment: .leading)
+            .frame(maxWidth: .infinity)
+            .accessibilityElement(children: .contain)
+            .accessibilityLabel("Composer project context")
         }
     }
 

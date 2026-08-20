@@ -53,13 +53,16 @@ final class WorkbenchIntentTests: XCTestCase {
         )
         let source = chatView + "\n" + welcomeState + "\n" + composer
 
-        XCTAssertTrue(source.contains("Text(\"What do you want to work on?\")"))
+        XCTAssertTrue(source.contains("Text(\"What should we build?\")"))
         XCTAssertTrue(chatView.contains("WelcomeStateView("))
         XCTAssertFalse(chatView.contains("private var welcomeState"))
         XCTAssertTrue(source.contains("Text(\"Loading saved conversation…\")"))
         XCTAssertTrue(source.contains("private var restoredEmptyState"))
         XCTAssertTrue(welcomeState.contains("private struct CodexPromptPill"))
         XCTAssertTrue(welcomeState.contains("ForEach(WorkbenchIntent.defaults)"))
+        XCTAssertTrue(chatView.contains("grok-composer-workspace-chip"))
+        XCTAssertTrue(chatView.contains("grok-composer-branch-chip"))
+        XCTAssertTrue(chatView.contains("GitService.currentBranch(in: workspace.path)"))
         // The welcome model pill was removed 2026-08-03 (redundant with the composer's
         // always-visible model menu); model choice must not reappear mid-canvas.
         XCTAssertFalse(source.contains("grok-starter-model-selector"))
@@ -74,8 +77,8 @@ final class WorkbenchIntentTests: XCTestCase {
                        "Ask/Build/Review chips keep detail in VoiceOver, not on-canvas paragraphs")
         XCTAssertTrue(source.contains("accessibilityLabel(\"\\(item.title). \\(item.detail)\")"))
         XCTAssertTrue(source.contains(".frame(width: 24, height: 24)"))
-        XCTAssertTrue(source.contains("AppTheme.Typography.heading"))
-        XCTAssertTrue(source.contains(".padding(.vertical, 24)"))
+        XCTAssertTrue(source.contains(".font(.system(size: 30, weight: .medium))"))
+        XCTAssertTrue(source.contains(".padding(.vertical, 40)"))
         XCTAssertFalse(source.contains("grok-task-context-strip"),
                        "the transient task-contract bar must not return below the header")
         XCTAssertFalse(source.contains("Text(\"Recent tasks\")"))

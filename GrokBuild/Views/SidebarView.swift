@@ -66,7 +66,6 @@ enum SessionSidebarMetadata {
 
 enum SidebarRailAction: CaseIterable {
     case newChat
-    case sessions
     case plugins
     case security
 }
@@ -161,7 +160,7 @@ struct SidebarView: View {
     @State private var renamingSessionID: UUID?
     @State private var renameText = ""
 
-    private let collapsedSessionLimit = 3
+    private let collapsedSessionLimit = 5
 
     private var filtered: [Workspace] {
         let base = filter.isEmpty ? orderedWorkspaces : orderedWorkspaces.filter {
@@ -178,24 +177,8 @@ struct SidebarView: View {
         filtered.filter { !pinnedWorkspaceIDs.contains($0.id) }
     }
 
-    private var persistentSelection: Binding<SidebarPersistentSelection?> {
-        Binding(
-            get: {
-                SidebarSelectionSemantics.persistentSelection(
-                    selectedWorkspaceID: selectedWorkspaceID,
-                    selectedSessionID: visibleSelectedSessionID,
-                    isConversationRouteActive: isConversationRouteActive
-                )
-            },
-            set: { _ in
-                // Project/session buttons remain the only mutation owners. The
-                // List binding projects their state into native row selection.
-            }
-        )
-    }
-
-    /// A session can own native sidebar selection only when its row exists in
-    /// this projection. Restored/placeholder identity must not hide the selected
+    /// A session can own sidebar selection only when its row exists in this
+    /// projection. Restored/placeholder identity must not hide the selected
     /// project behind a row the user cannot see or reach.
     private var visibleSelectedSessionID: UUID? {
         guard let selectedSessionID,
@@ -269,7 +252,6 @@ struct SidebarView: View {
 
             VStack(spacing: 2) {
                 CodexRailButton(title: "New chat", systemImage: "square.and.pencil", railAction: .newChat, action: onNewChat)
-                CodexRailButton(title: "Sessions", systemImage: "clock.arrow.circlepath", railAction: .sessions, action: onBrowseSessions)
                 CodexRailButton(title: "Plugins", systemImage: "shippingbox", railAction: .plugins, action: onOpenPlugins)
                 CodexRailButton(title: "Security", systemImage: "checkmark.shield", railAction: .security, action: onOpenSecurity)
             }
@@ -278,24 +260,23 @@ struct SidebarView: View {
             .padding(.bottom, 8)
 
             if isFilterVisible {
-                TextField("Filter projects", text: $filter)
-                    .textFieldStyle(.plain)
+                HStack(spacing: 8) {
+                    Image(systemName: "magnifyingglass")
+                        .font(.caption)
+                        .foregroundStyle(.tertiary)
+                    TextField("Filter projects", text: $filter)
+                        .textFieldStyle(.plain)
+                }
                     .padding(.horizontal, 10)
-                    .padding(.vertical, 7)
-                    .background(
-                        AppTheme.Palette.glassTint,
-                        in: RoundedRectangle(cornerRadius: AppTheme.Radius.small, style: .continuous)
-                    )
-                    .overlay {
-                        RoundedRectangle(cornerRadius: AppTheme.Radius.small, style: .continuous)
-                            .stroke(AppTheme.Palette.glassBorder, lineWidth: 1)
-                    }
+                    .frame(height: 34)
+                    .background(AppTheme.Palette.sidebarSelection,
+                                in: RoundedRectangle(cornerRadius: AppTheme.Radius.small, style: .continuous))
                     .padding(.horizontal, 10)
-                    .padding(.bottom, 6)
+                    .padding(.bottom, 8)
                     .transition(.move(edge: .top).combined(with: .opacity))
             }
 
-            List(selection: persistentSelection) {
+            List {
                 if !pinnedWorkspaces.isEmpty {
                     Section("Pinned") {
                         ForEach(pinnedWorkspaces) { ws in
@@ -341,7 +322,7 @@ struct SidebarView: View {
                         let shownSessions = isExpanded
                             ? projectSessions
                             : collapsedSessions(from: projectSessions)
-                        Section("Recents") {
+                        Section {
                             if isExpanded {
                                 ForEach(shownSessions) { session in
                                     sessionRow(session)
@@ -366,6 +347,20 @@ struct SidebarView: View {
                                     isExpanded: isExpanded,
                                     hiddenCount: hidden
                                 )
+                            }
+                        } header: {
+                            HStack {
+                                Text("Recents")
+                                Spacer()
+                                Button(action: onBrowseSessions) {
+                                    Label("Browse all", systemImage: "clock.arrow.circlepath")
+                                        .labelStyle(.titleAndIcon)
+                                }
+                                .buttonStyle(.plain)
+                                .font(AppTheme.Typography.badge)
+                                .foregroundStyle(.secondary)
+                                .help("Browse all sessions")
+                                .accessibilityLabel("Browse all sessions")
                             }
                         }
                     }
@@ -393,9 +388,12 @@ struct SidebarView: View {
                         .font(AppTheme.Typography.captionStrong)
                         .lineLimit(1)
                     Spacer()
+                    Image(systemName: "gearshape")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
                 }
                 .padding(.horizontal, 12)
-                .frame(height: 36)
+                .frame(height: 48)
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
@@ -445,10 +443,9 @@ struct SidebarView: View {
             )
         }
         .buttonStyle(.plain)
-        .tag(SidebarPersistentSelection.workspace(workspace.id))
         .accessibilityAddTraits(isSelected ? .isSelected : [])
         .accessibilityRemoveTraits(isSelected ? [] : .isSelected)
-        .listRowInsets(EdgeInsets(top: 1, leading: 8, bottom: 1, trailing: 8))
+        .listRowInsets(EdgeInsets(top: 2, leading: 8, bottom: 2, trailing: 8))
         .listRowBackground(Color.clear)
         .contextMenu {
             projectContextMenu(for: workspace)
@@ -470,7 +467,7 @@ struct SidebarView: View {
             onSessionDisclosureChanged()
         } label: {
             HStack(spacing: 6) {
-                Text(isExpanded ? "Show less" : "Show more")
+                Text(isExpanded ? "Show fewer" : "Show all")
                     .font(.caption.weight(.medium))
                 Image(systemName: isExpanded ? "chevron.up" : "chevron.down")
                     .font(.caption2.weight(.semibold))
@@ -481,15 +478,9 @@ struct SidebarView: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .listRowInsets(EdgeInsets(top: 2, leading: 24, bottom: 6, trailing: 10))
+        .accessibilityValue(isExpanded ? "Expanded" : "\(hiddenCount) hidden")
+        .listRowInsets(EdgeInsets(top: 4, leading: 24, bottom: 8, trailing: 10))
         .listRowBackground(Color.clear)
-
-        if isExpanded, hiddenCount > 0 {
-            Text("\(hiddenCount) more in Browse Sessions…")
-                .font(.caption2)
-                .foregroundStyle(.tertiary)
-                .listRowInsets(EdgeInsets(top: 0, leading: 24, bottom: 6, trailing: 10))
-        }
     }
 
     private var renameAlertPresented: Binding<Bool> {
@@ -524,8 +515,7 @@ struct SidebarView: View {
             onClose: { onCloseSession(session.id) },
             onCloseLocal: { onCloseLocalSession(session.id) }
         )
-        .tag(SidebarPersistentSelection.session(session.id))
-        .listRowInsets(EdgeInsets(top: 1, leading: 16, bottom: 1, trailing: 8))
+        .listRowInsets(EdgeInsets(top: 2, leading: 16, bottom: 2, trailing: 8))
         .listRowBackground(Color.clear)
         .contextMenu {
             Button("Rename…") {
@@ -591,9 +581,7 @@ private struct CodexRailButton: View {
                 Spacer()
             }
             .padding(.horizontal, 8)
-            // Workbench W-1 (2026-08-08): denser rail, matching the target
-            // photographs' compact navigation rows.
-            .frame(height: 28)
+            .frame(height: 34)
             .background(isHovered ? AppTheme.Palette.surfaceHover : Color.clear,
                         in: RoundedRectangle(cornerRadius: AppTheme.Radius.medium))
             .contentShape(Rectangle())
@@ -644,7 +632,8 @@ private struct SessionSidebarRow: View {
                 }
                 }
                 .padding(.horizontal, 6)
-                .padding(.vertical, 3)
+                .padding(.vertical, 7)
+                .frame(minHeight: 38)
                 .contentShape(Rectangle())
                 .background(
                     isSelected ? AppTheme.Palette.sidebarSelection : Color.clear,
@@ -725,7 +714,8 @@ private struct WorkspaceRow: View {
             .accessibilityValue(workspace.path.path)
         }
         .padding(.horizontal, 6)
-        .padding(.vertical, 3)
+        .padding(.vertical, 7)
+        .frame(minHeight: 38)
         .frame(maxWidth: .infinity, alignment: .leading)
         .contentShape(Rectangle())
         .background(

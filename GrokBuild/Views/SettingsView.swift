@@ -153,7 +153,7 @@ struct SettingsView: View {
                 } label: {
                     HStack(spacing: 4) {
                         TitlebarGlyph(systemName: "chevron.left", pointSize: 12)
-                        Text("Session")
+                        Text("Back")
                     }
                 }
                 .buttonStyle(GrokChromeButtonStyle())
@@ -162,6 +162,35 @@ struct SettingsView: View {
 
                 Text("Settings")
                     .font(AppTheme.Typography.heading)
+
+                Menu {
+                    ForEach(SettingsSection.allCases) { section in
+                        Section(section.title) {
+                            ForEach(section.tabs) { tab in
+                                Button {
+                                    selectedTab = tab
+                                } label: {
+                                    Label(tab.title, systemImage: tab.systemImage)
+                                }
+                                .accessibilityIdentifier(tab.accessibilityIdentifier)
+                            }
+                        }
+                    }
+                } label: {
+                    HStack(spacing: 7) {
+                        Image(systemName: selectedTab.systemImage)
+                        Text(selectedTab.title)
+                            .lineLimit(1)
+                        Image(systemName: "chevron.up.chevron.down")
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+                .menuStyle(.borderlessButton)
+                .fixedSize()
+                .help("Choose a settings pane")
+                .accessibilityLabel("Settings navigation")
+                .accessibilityValue(selectedTab.title)
                 Spacer()
             }
             .padding(.leading, TitlebarMetrics.trafficLightLeading)
@@ -172,13 +201,9 @@ struct SettingsView: View {
             .accessibilityElement(children: .contain)
             .accessibilityLabel("Settings header")
 
-            HStack(spacing: 0) {
-                settingsSidebar
-
-                settingsContent
-                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-                    .background(AppTheme.Palette.canvas)
-            }
+            settingsContent
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+                .background(AppTheme.Palette.canvas)
         }
         .frame(minWidth: 860, minHeight: 620)
         .background(AppTheme.Palette.canvas)
@@ -213,65 +238,6 @@ struct SettingsView: View {
                 paneLoadInterval = nil
             }
         }
-    }
-
-    private var settingsSidebar: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 14) {
-                ForEach(SettingsSection.allCases) { section in
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text(section.title.uppercased())
-                            .font(AppTheme.Typography.badge)
-                            .tracking(0.7)
-                            .foregroundStyle(.tertiary)
-                            .padding(.horizontal, 10)
-                            .padding(.bottom, 2)
-
-                        ForEach(section.tabs) { tab in
-                        Button {
-                            selectedTab = tab
-                        } label: {
-                            HStack(spacing: 9) {
-                                Image(systemName: tab.systemImage)
-                                    .font(AppTheme.Typography.label)
-                                    .frame(width: 16)
-                                Text(tab.title)
-                                    .font(selectedTab == tab ? AppTheme.Typography.captionStrong : AppTheme.Typography.caption)
-                                Spacer(minLength: 0)
-                            }
-                                .lineLimit(1)
-                                .padding(.horizontal, 10)
-                                .padding(.vertical, 7)
-                                .contentShape(Rectangle())
-                        }
-                        .buttonStyle(.plain)
-                        .background(
-                            RoundedRectangle(cornerRadius: AppTheme.Radius.small, style: .continuous)
-                                .fill(selectedTab == tab ? AppTheme.Palette.accentSoft : Color.clear)
-                        )
-                        .overlay {
-                            if selectedTab == tab {
-                                RoundedRectangle(cornerRadius: AppTheme.Radius.small, style: .continuous)
-                                    .stroke(AppTheme.Palette.glassBorder)
-                            }
-                        }
-                        .foregroundStyle(selectedTab == tab ? Color.primary : Color.secondary)
-                        .accessibilityIdentifier(tab.accessibilityIdentifier)
-                        .accessibilityLabel(tab.title)
-                        .accessibilityHint("Open the \(tab.title) settings pane.")
-                        .accessibilityAddTraits(selectedTab == tab ? [.isSelected] : [])
-                        .accessibilitySortPriority(selectedTab == tab ? 2 : 1)
-                        }
-                    }
-                }
-            }
-            .padding(.horizontal, 10)
-            .padding(.vertical, 12)
-        }
-        .frame(width: AppTheme.Layout.settingsSidebarWidth)
-        .background(AppTheme.Palette.sidebar)
-        .accessibilityElement(children: .contain)
-        .accessibilityLabel("Settings navigation")
     }
 
     /// Only the selected pane owns a view/task tree. Shared pane value state stays in
@@ -596,15 +562,7 @@ struct SettingsApplyBar: View {
                     .accessibilityLabel("Applying Settings")
             }
         }
-        .padding(14)
-        .background(
-            RoundedRectangle(cornerRadius: AppTheme.Radius.medium, style: .continuous)
-                .fill(AppTheme.Palette.surface)
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: AppTheme.Radius.medium, style: .continuous)
-                .stroke(AppTheme.Palette.glassBorder)
-        )
+        .settingsSectionSurface(emphasized: canApply || isApplying)
         .accessibilityElement(children: .contain)
         .accessibilityValue(receipt?.accessibilityValue ?? scopeText)
     }
@@ -732,6 +690,19 @@ struct SettingsToggleRow: View {
 }
 
 extension View {
+    /// Routine Settings groups use one continuous document surface. Warnings,
+    /// credentials, and receipts keep their own explicit containment.
+    func settingsSectionSurface(emphasized: Bool = false) -> some View {
+        self
+            .padding(.vertical, 16)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .overlay(alignment: .bottom) {
+                Rectangle()
+                    .fill(emphasized ? AppTheme.Palette.glassBorderStrong : AppTheme.Palette.divider)
+                    .frame(height: emphasized ? 2 : 1)
+            }
+    }
+
     /// Bounds and centers Settings content within the available detail area.
     /// Keeping one readable column prevents full-screen windows from turning
     /// every control into a stretched dashboard row.
@@ -753,4 +724,3 @@ extension View {
             .background(AppTheme.Palette.canvas)
     }
 }
-

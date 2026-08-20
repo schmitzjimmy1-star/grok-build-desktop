@@ -58,7 +58,7 @@ final class SettingsTabTests: XCTestCase {
         }
     }
 
-    func testSettingsSidebarGroupsEveryTabExactlyOnce() {
+    func testSettingsNavigatorGroupsEveryTabExactlyOnce() {
         let groupedTabs = SettingsSection.allCases.flatMap(\.tabs)
         XCTAssertEqual(groupedTabs.count, SettingsTab.allCases.count)
         XCTAssertEqual(Set(groupedTabs), Set(SettingsTab.allCases))
@@ -72,6 +72,25 @@ final class SettingsTabTests: XCTestCase {
             XCTAssertFalse(section.title.isEmpty)
             XCTAssertFalse(section.tabs.isEmpty, "\(section) should contain at least one tab")
         }
+    }
+
+    func testSettingsUsesOneCompactNavigatorAndContinuousSections() throws {
+        let repositoryRoot = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        let shell = try String(
+            contentsOf: repositoryRoot.appendingPathComponent("GrokBuild/Views/SettingsView.swift"),
+            encoding: .utf8
+        )
+
+        XCTAssertTrue(shell.contains("Menu {"))
+        XCTAssertTrue(shell.contains("Text(selectedTab.title)"))
+        XCTAssertTrue(shell.contains(".accessibilityIdentifier(tab.accessibilityIdentifier)"))
+        XCTAssertFalse(shell.contains("private var settingsSidebar"))
+        XCTAssertFalse(shell.contains(".frame(width: AppTheme.Layout.settingsSidebarWidth)"))
+        XCTAssertTrue(shell.contains("func settingsSectionSurface(emphasized: Bool = false)"))
+        XCTAssertTrue(try paneSource(named: "AppUpdatesSettingsPane").contains(".settingsSectionSurface()"))
     }
 
     func testOnlySelectedPaneMountsSoHiddenTasksCancel() {

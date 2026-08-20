@@ -50,7 +50,7 @@ enum TitlebarMetrics {
     /// Shared main-canvas header height.
     static var overlayTopInset: CGFloat { contentTopInset + height }
     /// Persistent Codex-style navigation rail width at ordinary window sizes.
-    static let sidebarWidth: CGFloat = 248
+    static let sidebarWidth: CGFloat = 280
     /// The rail draws under the titlebar; its brand row clears the traffic lights.
     static let sidebarHeaderHeight: CGFloat = 72
 }

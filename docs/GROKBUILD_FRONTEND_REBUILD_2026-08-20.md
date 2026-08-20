@@ -96,12 +96,21 @@ existing projections as New chat, Plugins, Projects, Pinned/Recents, and the
 account/settings footer; do not add a Codex project or thread store. This is the
 first full-suite, `make ship`, light-mode Computer Use milestone.
 
-### F3 — welcome state and bottom composer
+### F3 — navigation cleanup, welcome state, and bottom composer
+
+Rebuild the project/session rail almost entirely around roomy custom rows and one
+clear route per destination. Recents owns session discovery in the rail; do not
+also render a top-level Sessions action. The account footer remains the single
+Settings entry, while Settings itself uses a compact categorized picker instead
+of mounting a second full-height sidebar. Flatten routine Settings cards into
+separated content sections while preserving warning, credential, receipt, and
+failure boundaries that carry meaning.
 
 Rebuild the empty conversation around a spacious prompt, workspace/branch chips,
 and the bottom-docked composer. Reuse existing workspace, Git, context, model,
-permission, voice, and send owners. Do not invent a second command or state owner.
-Focused tests and a checkpoint commit.
+permission, voice, send, settings-value, and inventory owners. Do not invent a
+second command, settings, session, or runtime owner. Focused tests and a checkpoint
+commit, then stop before F4.
 
 ### F4 — transcript, tool activity, and review presentation
 

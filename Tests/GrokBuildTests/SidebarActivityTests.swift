@@ -122,8 +122,14 @@ final class SidebarActivityTests: XCTestCase {
                       "action rail and inactive persistent rows must remove false selection")
         XCTAssertTrue(sidebarSource.contains("accessibilityAddTraits(isSelected ? .isSelected : [])"),
                       "the real selected session row must expose its visual selection in AX")
-        XCTAssertTrue(sidebarSource.contains("List(selection: persistentSelection)"),
-                      "native sidebar rows must receive the route-aware persistent selection")
+        XCTAssertTrue(sidebarSource.contains("List {"),
+                      "the sidebar keeps one plain list and owns selected-row chrome itself")
+        XCTAssertFalse(sidebarSource.contains("List(selection: persistentSelection)"),
+                       "native List selection must not draw a second selected-row layer")
+        XCTAssertFalse(sidebarSource.contains("CodexRailButton(title: \"Sessions\""),
+                       "Recents owns session discovery instead of duplicating Sessions in the rail")
+        XCTAssertTrue(sidebarSource.contains(".accessibilityLabel(\"Browse all sessions\")"),
+                      "Recents exposes the one browse-all session affordance")
 
         let contentSource = try String(
             contentsOf: repositoryRoot.appendingPathComponent("GrokBuild/ContentView.swift"),

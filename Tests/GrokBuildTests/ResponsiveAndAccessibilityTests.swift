@@ -219,8 +219,8 @@ final class ResponsiveAndAccessibilityTests: XCTestCase {
         XCTAssertFalse(SidebarVisibility.shouldShow(
             preference: true, settingsPresented: false, availableContentWidth: 1000
         ))
-        XCTAssertEqual(ResponsiveLayoutPolicy.sidebarMinimumWidth, 248,
-                       "F2: the persistent rail matches the shell width")
+        XCTAssertEqual(ResponsiveLayoutPolicy.sidebarMinimumWidth, 280,
+                       "F3: the persistent rail gives projects and sessions readable room")
     }
 
     /// M-1 closure (2026-08-08): reduce motion is code-enforced, not a manual

@@ -7,14 +7,16 @@ struct WelcomeStateView: View {
     var onSelect: (WorkbenchIntent) -> Void
 
     var body: some View {
-        VStack(spacing: 12) {
+        VStack(spacing: 18) {
             GrokBrandMarkView()
-                .frame(width: 24, height: 24)
-            Text("What do you want to work on?")
-                .font(AppTheme.Typography.heading)
-            Text(workspaceName)
-                .font(AppTheme.Typography.caption)
-                .foregroundStyle(.secondary)
+                .frame(width: 38, height: 38)
+            VStack(spacing: 6) {
+                Text("What should we build?")
+                    .font(.system(size: 30, weight: .medium))
+                Text("Start with a goal for \(workspaceName). You can edit it before anything runs.")
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+            }
 
             HStack(spacing: 8) {
                 ForEach(WorkbenchIntent.defaults) { item in
@@ -24,9 +26,9 @@ struct WelcomeStateView: View {
                 }
             }
         }
-        .frame(maxWidth: 720)
-        .frame(maxWidth: .infinity)
-        .padding(.vertical, 24)
+        .frame(maxWidth: 760)
+        .frame(maxWidth: .infinity, minHeight: 320)
+        .padding(.vertical, 40)
         .padding(.horizontal, 32)
     }
 }
@@ -67,8 +69,8 @@ private struct CodexPromptPill: View {
                     .font(AppTheme.Typography.label)
             }
             .foregroundStyle(isHovered ? Color.primary : Color.secondary)
-            .padding(.horizontal, 10)
-            .padding(.vertical, 6)
+            .padding(.horizontal, 14)
+            .frame(minHeight: 42)
             .background(
                 isHovered ? AppTheme.Palette.surfaceHover : AppTheme.Palette.surface,
                 in: Capsule()

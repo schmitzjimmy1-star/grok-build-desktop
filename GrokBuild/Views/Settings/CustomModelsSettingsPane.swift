@@ -2221,16 +2221,7 @@ struct CustomModelsSettingsPane: View {
                 .foregroundStyle(.primary)
             content()
         }
-        .padding(14)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(
-            RoundedRectangle(cornerRadius: AppTheme.Radius.medium, style: .continuous)
-                .fill(AppTheme.Palette.surface)
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: AppTheme.Radius.medium, style: .continuous)
-                .stroke(AppTheme.Palette.glassBorder)
-        )
+        .settingsSectionSurface()
     }
 
     private func settingRow<Content: View>(

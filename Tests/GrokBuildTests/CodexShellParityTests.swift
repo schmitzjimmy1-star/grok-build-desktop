@@ -116,7 +116,6 @@ final class CodexShellParityTests: XCTestCase {
 
         for retained in [
             "CodexRailButton(title: \"New chat\"",
-            "CodexRailButton(title: \"Sessions\"",
             "CodexRailButton(title: \"Plugins\"",
             "CodexRailButton(title: \"Security\"",
             "Text(\"Projects\")",
@@ -138,16 +137,22 @@ final class CodexShellParityTests: XCTestCase {
                       "workspace highlight and AX state must derive from one route-aware selection")
         XCTAssertTrue(sidebar.contains("SidebarSelectionSemantics.sessionIsSelected"),
                       "session highlight and AX state must derive from one route-aware selection")
-        XCTAssertTrue(sidebar.contains("List(selection: persistentSelection)"),
-                      "native List selection must expose the one real persistent destination")
+        XCTAssertTrue(sidebar.contains("List {"),
+                      "the sidebar keeps one plain list and one custom selected-row layer")
+        XCTAssertFalse(sidebar.contains("List(selection: persistentSelection)"),
+                       "native List selection must not duplicate the custom selection chrome")
         XCTAssertTrue(sidebar.contains("visibleSelectedSessionID"),
                       "a hidden or unavailable session row must fall back to project selection")
         XCTAssertFalse(sidebar.contains("Help and settings"),
                        "the old footer Help-and-settings copy must not return")
         XCTAssertTrue(sidebar.contains("grok-sidebar-account-settings"),
                       "the account row opens Settings; Command-comma still works")
-        XCTAssertTrue(sidebar.contains("Section(\"Recents\")"),
+        XCTAssertTrue(sidebar.contains("Text(\"Recents\")"),
                       "the selected project's session rows live in one Codex-style Recents section")
+        XCTAssertTrue(sidebar.contains("Button(action: onBrowseSessions)"),
+                      "Recents owns the single browse-all sessions route")
+        XCTAssertFalse(sidebar.contains("CodexRailButton(title: \"Sessions\""),
+                       "Sessions must not do double duty in the rail and Recents")
         XCTAssertTrue(sidebar.contains("filtered.contains(where: { $0.id == selectedWorkspaceID })"),
                       "a filtered-out project cannot leave orphaned Recents rows")
         XCTAssertFalse(sidebar.contains("Text(workspace.path.path)"),
@@ -407,7 +412,7 @@ final class CodexShellParityTests: XCTestCase {
         XCTAssertTrue(sidebar.contains("Image(systemName: \"bell\")"),
                       "Session dashboard lives in the persistent rail header")
         XCTAssertTrue(sidebar.contains("Section(\"Pinned\")"))
-        XCTAssertTrue(sidebar.contains("Section(\"Recents\")"))
+        XCTAssertTrue(sidebar.contains("Text(\"Recents\")"))
 
         XCTAssertTrue(contentView.contains("private var workspaceShell: some View"),
                       "F2 owns one explicit persistent shell")

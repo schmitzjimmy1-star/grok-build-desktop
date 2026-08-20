@@ -52,7 +52,7 @@ final class MainWindowLayoutTests: XCTestCase {
         XCTAssertEqual(TitlebarMetrics.headerIconGap, 16)
         XCTAssertEqual(TitlebarMetrics.contentTopInset, 8)
         XCTAssertEqual(TitlebarMetrics.overlayTopInset, 40)
-        XCTAssertEqual(TitlebarMetrics.sidebarWidth, 248)
+        XCTAssertEqual(TitlebarMetrics.sidebarWidth, 280)
         XCTAssertEqual(TitlebarMetrics.sidebarHeaderHeight, 72)
         XCTAssertGreaterThanOrEqual(
             TitlebarMetrics.sidebarWidth,
