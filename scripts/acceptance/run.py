@@ -41,6 +41,7 @@ from harness.driver import (
     select_model,
     send_prompt,
     stop_turn,
+    wait_for_acp_startup_outcome,
     wait_for_terminal_checkpoint,
     wait_for_marker,
     wait_for_stop_control,
@@ -396,8 +397,9 @@ def _billable_4c(args: argparse.Namespace) -> int:
             append_row_v2(args.ledger, start)
             rows.append(start)
             attempt_is_open = True
-            send_may_be_live = True
             send_prompt(packet["prompt"])
+            wait_for_acp_startup_outcome(timeout_seconds=130)
+            send_may_be_live = True
             timeout = 480 if packet["childTopology"] else 300
             wait_for_marker(packet["marker"], timeout_seconds=timeout)
             current_identities = capture_identities(REPO, packet["marker"])
@@ -517,6 +519,7 @@ def _billable_4c(args: argparse.Namespace) -> int:
         if secondary_failures:
             raise HarnessError(
                 "4C campaign stopped; " + "; ".join(secondary_failures)
+                + f" (cause: {type(exc).__name__}: {exc})"
             ) from exc
         if isinstance(exc, HarnessError):
             raise

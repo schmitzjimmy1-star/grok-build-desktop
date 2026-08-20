@@ -78,8 +78,15 @@ through `GROKBUILD_SLICE4B3_RUNTIME_SELECTION` pointed at
 `$HOME/Documents/Codex/GrokBuild-Slice4B5/runtime/runtime-selection.json`
 (pager `f434fa4f…933b`). Never point that env at
 `Documents/Codex/GrokBuild-Slice4B3/` (`14da2ef77…` / `1.0.5 (86f0c70)`). It never replaces
-`~/.grok/bin/grok`. Armed `session/prompt` waits at most 90s
-(`GrokProcess.armedSessionPromptTimeout`). The pager source
+`~/.grok/bin/grok`. Armed ACP handshake (`initialize`, `session/new`,
+`session/load`, `session/set_model`) and `session/prompt` wait at most 90s
+(`GrokProcess.armedSessionPromptTimeout` / `armedACPHandshakeTimeoutSeconds`).
+A JSON-RPC timeout names the method and includes redacted startup stderr.
+During `.starting`, stdout EOF or a dead child fails the pending RPC immediately
+instead of burning that 90s. Do not wait for first stdout before `initialize`.
+ChatStore's armed connection watchdog is 120s so it cannot pre-empt that
+handshake. `_billable_4c` waits for Stop turn or the `grok-acp-error-banner`
+after Send and does not click Stop on a pre-prompt ACP failure. The pager source
 `822624291de2b544605f439ad1349ae6bdc3cf10` detaches after-turn workspace work
 and skips the 120s `live_ids` drain on zero-tool turns so ACP can return after
 loopback `pong`. Tests: `Slice4B5LifecycleTests`, including

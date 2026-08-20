@@ -18,7 +18,11 @@ from scripts.acceptance.harness.authority_4c import (
 )
 from scripts.acceptance.harness.candidate_runtime import EXPECTED_TEAM
 from scripts.acceptance.harness.errors import HarnessError, PreflightError, SchemaError
+from scripts.acceptance.harness.driver import new_chat, send_prompt
 from scripts.acceptance.harness.preflight_v2 import (
+    _blocking_official_inspect_warnings,
+    _codesign_designated_requirement,
+    _same_inspect_path,
     preflight as preflight_v2,
     require_4c_leased_runtime,
     require_4c_unlock_predicate,
@@ -375,6 +379,18 @@ class Slice4CPaidLockContracts(unittest.TestCase):
         self.assertNotIn("resume_saved_task()", billable_4c)
         self.assertNotIn("launch_installed()", billable_4c)
         self.assertIn("launch_installed(", billable_4c)
+        self.assertLess(
+            billable_4c.index('send_prompt(packet["prompt"])'),
+            billable_4c.index("wait_for_acp_startup_outcome"),
+        )
+        self.assertLess(
+            billable_4c.index("wait_for_acp_startup_outcome"),
+            billable_4c.index("send_may_be_live = True"),
+        )
+        self.assertLess(
+            billable_4c.index("send_may_be_live = True"),
+            billable_4c.index("wait_for_marker"),
+        )
         ceiling = inspect.getsource(require_absolute_ceiling_support)
         self.assertIn("cannot prove the absolute 4,000,000-token ceiling", ceiling)
         self.assertNotIn(FROZEN_CAMPAIGN_ID, ceiling)
@@ -407,6 +423,72 @@ class Slice4CPaidLockContracts(unittest.TestCase):
         self.assertNotIn(FROZEN_CAMPAIGN_ID, leased)
         with self.assertRaisesRegex(PreflightError, "1.0.5\\+"):
             require_runtime_floor("grok 1.0.4")
+
+    def test_official_104_consent_inspect_warning_is_inert(self) -> None:
+        consent = {
+            "target": "configKey",
+            "path": "consent",
+            "kind": "unknown-field",
+            "reason": "unrecognized config key",
+        }
+        self.assertFalse(_blocking_official_inspect_warnings([]))
+        self.assertFalse(_blocking_official_inspect_warnings([consent]))
+        self.assertTrue(_blocking_official_inspect_warnings("nope"))
+        self.assertTrue(_blocking_official_inspect_warnings([{"kind": "parse"}]))
+        self.assertTrue(_blocking_official_inspect_warnings([consent, {"kind": "parse"}]))
+
+    def test_inspect_project_root_trailing_slash_is_the_same_workspace(self) -> None:
+        repo = REPO
+        self.assertTrue(_same_inspect_path(str(repo), repo))
+        self.assertTrue(_same_inspect_path(str(repo) + "/", repo))
+        self.assertFalse(_same_inspect_path(str(repo.parent), repo))
+        self.assertFalse(_same_inspect_path("", repo))
+
+    def test_codesign_designated_requirement_reads_stdout(self) -> None:
+        source = inspect.getsource(_codesign_designated_requirement)
+        self.assertIn("result.stdout", source)
+        self.assertIn("startswith(\"designated =>\")", source)
+        self.assertNotIn("return _requirement(blob)", source)
+
+    def test_new_chat_skips_build_mode_on_idle_tabs(self) -> None:
+        source = inspect.getsource(new_chat)
+        self.assertIn("_find_named(\"Message composer\", role=\"textfield\")", source)
+        self.assertIn("_find_named(\"Agent mode\")", source)
+        self.assertIn("Default currentMode is already Agent", source)
+        self.assertIn("select_build_mode()", source)
+
+    def test_menu_clicks_fall_back_to_headed_delivery(self) -> None:
+        from scripts.acceptance.harness.driver import _click_ref
+        source = inspect.getsource(_click_ref)
+        self.assertIn('["click", ref]', source)
+        self.assertIn('["--headed", "click", ref]', source)
+
+    def test_send_prompt_types_then_sends_without_ax_clear(self) -> None:
+        source = inspect.getsource(send_prompt)
+        self.assertIn("Do not AX-clear", source)
+        self.assertNotIn('["clear", ref]', source)
+        self.assertNotIn("_click_ref(ref)", source)
+        self.assertIn('["focus", ref]', source)
+        self.assertIn("_type_into(ref, prompt)", source)
+        self.assertIn("disabled", source)
+
+    def test_wait_for_acp_startup_outcome_races_stop_against_named_failure(self) -> None:
+        from scripts.acceptance.harness.driver import wait_for_acp_startup_outcome
+        source = inspect.getsource(wait_for_acp_startup_outcome)
+        self.assertIn("grok-acp-error-banner", source)
+        self.assertIn("ACP startup failed", source)
+        self.assertIn("Stop turn", source)
+        self.assertIn("do not wait for first stdout before initialize", source)
+
+    def test_select_model_picks_option_without_effort_restart(self) -> None:
+        from scripts.acceptance.harness.driver import _open_model_menu, select_model
+        source = inspect.getsource(select_model)
+        opener = inspect.getsource(_open_model_menu)
+        self.assertIn("grok-model-effort-selector", opener)
+        self.assertIn("Do not click Low", source)
+        self.assertNotIn("_click_menu_item(\"Low\")", source)
+        self.assertIn("grok-model-option-", source)
+        self.assertIn("if label in current:", source)
 
     def _candidate_selection(self, root: Path):
         runtime_root = root / "runtime"

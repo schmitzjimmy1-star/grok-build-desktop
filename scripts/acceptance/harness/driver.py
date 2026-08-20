@@ -75,7 +75,13 @@ def _ad(args: list[str], *, timeout: int = 60) -> dict[str, Any]:
     if result.returncode != 0 or data.get("ok") is False:
         error = data.get("error") if isinstance(data, dict) else {}
         code = error.get("code") if isinstance(error, dict) else result.returncode
-        raise DriverError(f"agent-desktop failed: {code}")
+        message = error.get("message") if isinstance(error, dict) else None
+        verb = args[0]
+        detail = f"{code} ({verb}"
+        if message:
+            detail += f": {message}"
+        detail += ")"
+        raise DriverError(f"agent-desktop failed: {detail}")
     return data
 
 
@@ -108,7 +114,13 @@ def _walk_named(node: Any, hits: list[dict[str, str]]) -> None:
         ref = node.get("ref_id") or node.get("ref")
         role = str(node.get("role") or "")
         value = str(node.get("value") or "")
-        identifier = str(node.get("identifier") or node.get("id") or "")
+        native = node.get("native_id")
+        if isinstance(native, dict):
+            identifier = str(native.get("value") or "")
+        elif isinstance(native, str):
+            identifier = native
+        else:
+            identifier = str(node.get("identifier") or node.get("id") or "")
         if isinstance(name, str) and isinstance(ref, str) and ref.startswith("@"):
             hits.append({
                 "name": name,
@@ -145,8 +157,18 @@ SEND_LABELS = (
 )
 
 
+def _click_ref(ref: str) -> None:
+    try:
+        _ad(["click", ref])
+    except DriverError:
+        _ad(["--headed", "click", ref])
+
+
 def _click_named(name: str, *, role: str | None = None) -> None:
-    _ad(["click", _find_named(name, role=role)])
+    try:
+        _click_ref(_find_named(name, role=role))
+    except DriverError as exc:
+        raise DriverError(f"click {name!r} failed: {exc}") from exc
 
 
 def _type_into(ref: str, text: str) -> None:
@@ -176,16 +198,67 @@ def _menu_items() -> list[dict[str, str]]:
 def _click_menu_item(label: str) -> None:
     for item in _menu_items():
         if item["name"] == label:
-            _ad(["click", item["ref"]])
+            try:
+                _click_ref(item["ref"])
+            except DriverError as exc:
+                raise DriverError(f"click menu item {label!r} failed: {exc}") from exc
             return
     raise DriverError(f"missing menu item {label}")
+
+
+def _click_menu_item_starting(prefix: str) -> None:
+    for item in _menu_items():
+        if item["name"].startswith(prefix):
+            try:
+                _click_ref(item["ref"])
+            except DriverError as exc:
+                raise DriverError(f"click menu item prefix {prefix!r} failed: {exc}") from exc
+            return
+    raise DriverError(f"missing menu item prefix {prefix}")
+
+
+def _find_native_id(native_id: str) -> str:
+    snapshot = _ad(["snapshot", "--app", APP_NAME, *_window_args(), "--surface", "window", "-i"])
+    hits: list[dict[str, str]] = []
+    payload = _payload(snapshot)
+    if isinstance(payload, dict):
+        _walk_named(payload.get("tree"), hits)
+    matches = [item for item in hits if item.get("identifier") == native_id]
+    if len(matches) != 1:
+        raise DriverError(f"missing AX identifier {native_id}")
+    return matches[0]["ref"]
+
+
+def _selector_name() -> str:
+    snapshot = _ad(["snapshot", "--app", APP_NAME, *_window_args(), "--surface", "window", "-i"])
+    hits: list[dict[str, str]] = []
+    payload = _payload(snapshot)
+    if isinstance(payload, dict):
+        _walk_named(payload.get("tree"), hits)
+    matches = [item for item in hits if item.get("identifier") == "grok-model-effort-selector"]
+    if len(matches) != 1:
+        raise DriverError("missing AX identifier grok-model-effort-selector")
+    return matches[0]["name"]
+
+
+def _dismiss_open_menu() -> None:
+    try:
+        _ad(["press", "escape", "--app", APP_NAME, *_window_args()])
+        time.sleep(0.2)
+    except DriverError:
+        pass
+
+
+def _open_model_menu() -> None:
+    _click_ref(_find_native_id("grok-model-effort-selector"))
+    time.sleep(0.4)
 
 
 MODEL_LABELS = {
     "grok-4.6": "Grok 4.6",
     "gpt-5.6-terra": "gpt-5.6-terra",
     "gpt-5.6-luna": "gpt-5.6-luna",
-    "deepseek-deepseek-v4-flash-0731": "DeepSeek V4 Flash 0731",
+    "deepseek-deepseek-v4-flash-0731": "deepseek/deepseek-v4-flash-0731",
     "openai/gpt-4.1-mini": "openai/gpt-4.1-mini",
 }
 
@@ -297,15 +370,22 @@ def select_build_mode() -> None:
 
 
 def select_model(model: str) -> None:
+    """Pick the packet model only. Do not click Low: effort change restarts ACP."""
     label = MODEL_LABELS.get(model, model)
-    _click_named("Model and reasoning effort")
-    time.sleep(0.4)
-    _click_menu_item("Low")
-    time.sleep(0.3)
-    _click_named("Model and reasoning effort")
-    time.sleep(0.4)
+    current = _selector_name()
+    if label in current:
+        return
+    option_id = "grok-model-option-" + model.replace("/", "-")
+    _open_model_menu()
+    for item in _menu_items():
+        if item.get("identifier") == option_id:
+            _click_ref(item["ref"])
+            time.sleep(0.2)
+            _dismiss_open_menu()
+            return
     _click_menu_item(label)
     time.sleep(0.2)
+    _dismiss_open_menu()
 
 
 def new_chat() -> None:
@@ -313,13 +393,25 @@ def new_chat() -> None:
     _click_named("New chat")
     time.sleep(0.8)
     deadline = time.time() + 10
+    composer_seen = False
+    last_error: Exception | None = None
     while time.time() < deadline:
         try:
             _find_named("Message composer", role="textfield")
+            composer_seen = True
+            try:
+                _find_named("Agent mode")
+            except DriverError:
+                # Fresh idle tabs keep ACP unstarted, so the mode menu is absent
+                # until Send. Default currentMode is already Agent.
+                return
             select_build_mode()
             return
-        except DriverError:
+        except DriverError as exc:
+            last_error = exc
             time.sleep(0.4)
+    if composer_seen:
+        raise DriverError(f"new chat exposed composer but could not select Build: {last_error}")
     raise DriverError("new chat did not expose Message composer")
 
 
@@ -334,7 +426,10 @@ def select_workspace(path: Path) -> None:
     matches = [item for item in hits if item["name"] == expected_name and item.get("value") == str(path)]
     if len(matches) != 1:
         raise DriverError("exact acceptance project row is not uniquely available")
-    _ad(["click", matches[0]["ref"]])
+    try:
+        _click_ref(matches[0]["ref"])
+    except DriverError as exc:
+        raise DriverError(f"click {expected_name!r} failed: {exc}") from exc
     time.sleep(0.6)
 
 
@@ -373,13 +468,27 @@ def close_current_session(tab_id: str) -> None:
 def send_prompt(prompt: str) -> None:
     """Perform exactly one billable Send actuator.
 
-    Missing labels may be searched without cost, but once a concrete control is
-    selected the harness never falls back to another click or Cmd-Return. An
-    uncertain actuator result is terminal evidence, not permission to resend.
+    Idle welcome composers expose AX readonly and do not implement SetValue, so
+    ACP never starts until a human-style type plus Send. Do not AX-clear. Missing
+    labels may be searched without cost, but once a concrete control is selected
+    the harness never falls back to another click or Cmd-Return. An uncertain
+    actuator result is terminal evidence, not permission to resend.
     """
     assert_safe_text(prompt, context="composer")
+    _dismiss_open_menu()
     ref = _find_named("Message composer", role="textfield")
-    _ad(["clear", ref])
+    try:
+        _ad(["scroll-to", ref])
+    except DriverError:
+        pass
+    try:
+        _ad(["focus", ref])
+    except DriverError:
+        try:
+            _ad(["click", ref])
+        except DriverError as exc:
+            raise DriverError(f"could not focus Message composer: {exc}") from exc
+    time.sleep(0.2)
     _type_into(ref, prompt)
     time.sleep(0.4)
     deadline = time.time() + 12
@@ -387,10 +496,23 @@ def send_prompt(prompt: str) -> None:
     while time.time() < deadline:
         for name in SEND_LABELS:
             try:
-                send_ref = _find_named(name)
-                break
+                found = _ad([
+                    "find", "--app", APP_NAME, *_window_args(),
+                    "--name", name, "--first",
+                ])
             except DriverError:
                 continue
+            refs = _matches(found)
+            if not refs:
+                continue
+            states = refs[0].get("states") or []
+            if "disabled" in states:
+                continue
+            try:
+                send_ref = _ref(refs[0])
+            except DriverError:
+                continue
+            break
         if send_ref is not None:
             break
         time.sleep(0.4)
@@ -416,6 +538,58 @@ def wait_for_stop_control(*, timeout_seconds: int = 45) -> None:
             last_error = exc
             time.sleep(0.4)
     raise DriverError(f"Stop turn did not appear: {last_error}")
+
+
+ACP_STARTUP_FAILURE_MARKERS = (
+    "ACP startup failed",
+    "Timed out while connecting to grok.",
+)
+
+
+def _acp_startup_failure_text() -> str | None:
+    snapshot = _ad(
+        ["snapshot", "--app", APP_NAME, *_window_args(), "--surface", "window", "-i"]
+    )
+    hits: list[dict[str, str]] = []
+    payload = _payload(snapshot)
+    if isinstance(payload, dict):
+        _walk_named(payload.get("tree"), hits)
+    for item in hits:
+        identifier = item.get("identifier") or ""
+        name = item.get("name") or ""
+        value = item.get("value") or ""
+        blob = f"{name} {value}"
+        if identifier == "grok-acp-error-banner":
+            return name or value or "ACP startup failed"
+        if any(marker in blob for marker in ACP_STARTUP_FAILURE_MARKERS):
+            return name or value or blob.strip()
+    return None
+
+
+def wait_for_acp_startup_outcome(*, timeout_seconds: int = 130) -> None:
+    """After Send, wait until ACP is live or a named startup failure is visible.
+
+    Stop turn means a billed turn started. The error banner
+    (`grok-acp-error-banner` / ``ACP startup failed``) means handshake died
+    before ``session/prompt``. Do not assume Stop exists just because Send was
+    clicked, and do not wait for first stdout before initialize.
+    """
+    deadline = time.time() + timeout_seconds
+    last_error: Exception | None = None
+    while time.time() < deadline:
+        failure = _acp_startup_failure_text()
+        if failure:
+            raise DriverError(failure)
+        try:
+            _find_named("Stop turn")
+            return
+        except DriverError as exc:
+            last_error = exc
+        time.sleep(0.4)
+    raise DriverError(
+        "ACP handshake did not reach a live turn or a named startup failure: "
+        f"{last_error}"
+    )
 
 
 def stop_turn() -> None:

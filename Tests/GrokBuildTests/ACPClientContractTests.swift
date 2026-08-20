@@ -3803,4 +3803,90 @@ final class ACPClientContractTests: XCTestCase {
         XCTAssertEqual(decoded.status, .settled)
         XCTAssertNil(decoded.requests)
     }
+
+    func testArmedACPHandshakeJSONRPCTimeoutMatchesPromptBudget() {
+        XCTAssertEqual(GrokProcess.armedSessionPromptTimeout, .seconds(90))
+        XCTAssertEqual(GrokProcess.armedACPHandshakeTimeoutSeconds, 90)
+        XCTAssertEqual(
+            GrokProcess.jsonRPCTimeoutSeconds(method: "initialize", isArmed: true, requestedSeconds: 15),
+            90
+        )
+        XCTAssertEqual(
+            GrokProcess.jsonRPCTimeoutSeconds(method: "session/new", isArmed: true, requestedSeconds: 15),
+            90
+        )
+        XCTAssertEqual(
+            GrokProcess.jsonRPCTimeoutSeconds(method: "session/load", isArmed: true, requestedSeconds: 15),
+            90
+        )
+        XCTAssertEqual(
+            GrokProcess.jsonRPCTimeoutSeconds(method: "session/set_model", isArmed: true, requestedSeconds: 12),
+            90
+        )
+        XCTAssertEqual(
+            GrokProcess.jsonRPCTimeoutSeconds(method: "initialize", isArmed: false, requestedSeconds: 15),
+            15
+        )
+        XCTAssertEqual(
+            GrokProcess.jsonRPCTimeoutSeconds(method: "session/set_model", isArmed: false, requestedSeconds: 12),
+            12
+        )
+        XCTAssertEqual(ChatStore.connectionWatchdogTimeout, .seconds(30))
+        XCTAssertEqual(ChatStore.armedConnectionWatchdogTimeout, .seconds(120))
+        XCTAssertGreaterThan(
+            ChatStore.armedConnectionWatchdogTimeout,
+            GrokProcess.armedSessionPromptTimeout
+        )
+    }
+
+    func testJSONRPCTimeoutErrorNamesMethodAndIncludesRedactedStderr() {
+        let withStderr = GrokProcess.jsonRPCTimeoutError(
+            method: "initialize",
+            redactedStderr: "pager: boom"
+        )
+        XCTAssertEqual(withStderr.domain, "ACP")
+        XCTAssertEqual(withStderr.code, -2)
+        XCTAssertEqual(withStderr.userInfo["acpMethod"] as? String, "initialize")
+        XCTAssertEqual(
+            withStderr.localizedDescription,
+            "Timed out waiting for grok (initialize).\npager: boom"
+        )
+        let empty = GrokProcess.jsonRPCTimeoutError(method: "session/new", redactedStderr: "  ")
+        XCTAssertEqual(empty.localizedDescription, "Timed out waiting for grok (session/new).")
+        XCTAssertEqual(empty.userInfo["acpMethod"] as? String, "session/new")
+    }
+
+    func testStartupTransportFailuresAreImmediateAndCredentialFree() {
+        let stdio = GrokProcess.startupStdioClosedError(redactedStderr: "")
+        XCTAssertEqual(stdio.domain, "ACP")
+        XCTAssertEqual(stdio.code, -3)
+        XCTAssertEqual(
+            stdio.localizedDescription,
+            "grok closed stdio before ACP initialize completed."
+        )
+        let exited = GrokProcess.childExitedBeforeInitializeError(redactedStderr: "fatal: nope")
+        XCTAssertEqual(
+            exited.localizedDescription,
+            "leased grok exited before ACP initialize.\nfatal: nope"
+        )
+        XCTAssertFalse(stdio.localizedDescription.lowercased().contains("keychain"))
+        XCTAssertFalse(exited.localizedDescription.lowercased().contains("token"))
+    }
+
+    func testArmedStartupFailsFastOnChildExitAndStdoutEOF() throws {
+        let repositoryRoot = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        let text = try String(
+            contentsOf: repositoryRoot.appendingPathComponent("GrokBuild/Services/GrokProcess.swift"),
+            encoding: .utf8
+        )
+        XCTAssertTrue(text.contains("beginStartupLivenessWatch"))
+        XCTAssertTrue(text.contains("noteStdioClosed"))
+        XCTAssertTrue(text.contains("if !launched.process.isRunning"))
+        XCTAssertTrue(text.contains("closed stdio before ACP initialize completed"))
+        XCTAssertTrue(text.contains("leased grok exited before ACP initialize"))
+        XCTAssertFalse(text.contains("waitForFirstStdout"))
+    }
 }

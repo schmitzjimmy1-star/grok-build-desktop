@@ -144,6 +144,23 @@ OpenRouter pin are in tree. First 4C `make ship` landed dirty at `18b2549`.
 - `test_4c_paid_lock.test_schema3_billable_still_cannot_send`
 - `Slice4B5LifecycleTests` pin that `_billable_v3` stays unarmed
 
+## Native ACP handshake (GUI side, 2026-08-20)
+
+Live native 4C `initialize` silence was a JSON-RPC non-response, not a
+`v3Authority` refusal. GUI/harness changes in this worktree:
+
+- Armed handshake RPCs wait 90s; ChatStore armed watchdog is 120s.
+- Timeouts name the method and append redacted startup stderr.
+- During `.starting`, stdout EOF or a dead child fails the pending RPC
+  immediately. Do not wait for first stdout before `initialize`.
+- `_billable_4c` waits for Stop turn or `grok-acp-error-banner` after Send.
+  `send_may_be_live` stays false until that live-turn signal, so pre-prompt
+  ACP failure does not click Stop.
+
+These do not rebuild pager `1.0.5 (8226242)` or replace official grok 1.0.4.
+They cannot ship until Jimmy commits; installed stamp remains the last clean
+HEAD until `make ship`.
+
 ## Out of scope
 
 Pager rebuild, official CLI replace, Darwin `setsid` “fix”, docs-only `make ship` to chase stamp, unlocking `_billable_v3`, reusing the v2/v3 manifests as the paid matrix, `resume_saved_task()`, retries, substitute models, Slice 5.

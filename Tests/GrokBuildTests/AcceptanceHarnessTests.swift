@@ -293,6 +293,7 @@ final class AcceptanceHarnessTests: XCTestCase {
         let fourC = String(runScript[fourCRange.lowerBound..<v2Range.lowerBound])
         XCTAssertTrue(fourC.contains("runtime_selection_file="))
         XCTAssertTrue(fourC.contains("require_4c_send_ready"))
+        XCTAssertTrue(fourC.contains("wait_for_acp_startup_outcome"))
         XCTAssertFalse(fourC.contains("resume_saved_task()"))
         XCTAssertFalse(fourC.contains("launch_installed()"))
         let preflight = try String(

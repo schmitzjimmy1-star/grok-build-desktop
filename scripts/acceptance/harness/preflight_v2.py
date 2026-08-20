@@ -102,9 +102,9 @@ def preflight(
     details = _run(["codesign", "-dvvv", str(HELPER)])
     if verify.returncode != 0 or f"TeamIdentifier={TEAM}" not in details.stderr:
         raise PreflightError("installed provider auth helper signing identity is invalid")
-    app_requirement = _run(["codesign", "-dr", "-", str(APP / "Contents/MacOS/GrokBuild")]).stderr
-    helper_requirement = _run(["codesign", "-dr", "-", str(HELPER)]).stderr
-    if _requirement(app_requirement) != _requirement(helper_requirement):
+    app_requirement = _codesign_designated_requirement(APP / "Contents/MacOS/GrokBuild")
+    helper_requirement = _codesign_designated_requirement(HELPER)
+    if app_requirement != helper_requirement:
         raise PreflightError("GUI/helper designated requirements differ")
     for args in ([], ["bad/id"]):
         negative = _run([str(HELPER), *args])
@@ -139,6 +139,41 @@ def _sha256(path: Path) -> str:
 
 def _requirement(output: str) -> str:
     return output.split("designated =>", 1)[-1].strip()
+
+
+def _codesign_designated_requirement(path: Path) -> str:
+    """Current codesign -dr prints designated on stdout and Executable= on stderr."""
+    result = _run(["codesign", "-dr", "-", str(path)])
+    blob = f"{result.stdout}\n{result.stderr}"
+    for line in blob.splitlines():
+        stripped = line.strip()
+        if stripped.startswith("designated =>"):
+            return stripped.split("designated =>", 1)[-1].strip()
+    raise PreflightError("codesign did not report a designated requirement")
+
+
+def _same_inspect_path(left: Any, right: Path) -> bool:
+    if not isinstance(left, str) or not left.strip():
+        return False
+    return Path(left).expanduser().resolve() == right.expanduser().resolve()
+
+
+def _blocking_official_inspect_warnings(warnings: Any) -> bool:
+    """Official 1.0.4 inspect warns on later grok keys. Other warnings still block."""
+    if not isinstance(warnings, list):
+        return True
+    for item in warnings:
+        if not isinstance(item, dict):
+            return True
+        if (
+            item.get("target") == "configKey"
+            and item.get("path") == "consent"
+            and item.get("kind") == "unknown-field"
+            and item.get("reason") == "unrecognized config key"
+        ):
+            continue
+        return True
+    return False
 
 
 def _require_configured_routes(manifest: dict[str, Any]) -> None:
@@ -194,9 +229,9 @@ def _require_effective_config(repo: Path) -> str:
     if not isinstance(payload, dict):
         raise PreflightError("official inspect report is not an object")
     warnings = payload.get("configWarnings") or []
-    if not isinstance(warnings, list) or warnings:
+    if _blocking_official_inspect_warnings(warnings):
         raise PreflightError("official inspect reports effective configuration warnings")
-    if payload.get("cwd") != str(repo) or payload.get("projectRoot") != str(repo):
+    if not _same_inspect_path(payload.get("cwd"), repo) or not _same_inspect_path(payload.get("projectRoot"), repo):
         raise PreflightError("official inspect cwd/project root differs from the pinned acceptance workspace")
     sources = payload.get("configSources")
     layers = sources.get("layers") if isinstance(sources, dict) else None

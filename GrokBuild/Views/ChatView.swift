@@ -2875,6 +2875,9 @@ private struct ErrorBanner: View {
         .background(.regularMaterial, in: RoundedRectangle(cornerRadius: AppTheme.Radius.large))
         .padding(.horizontal, 20)
         .padding(.top, 10)
+        .accessibilityElement(children: .combine)
+        .accessibilityIdentifier("grok-acp-error-banner")
+        .accessibilityLabel(message)
     }
 }
 

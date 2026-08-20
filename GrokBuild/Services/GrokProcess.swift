@@ -1108,6 +1108,72 @@ final class GrokProcess: @unchecked Sendable {
     /// Armed v3 `session/prompt` must not hang XCTest or the UI when the CLI
     /// fail-closes without a JSON-RPC result. Unarmed prompts stay unbounded.
     static let armedSessionPromptTimeout: Duration = .seconds(90)
+    /// Same budget as armed `session/prompt`. The leased pager can take longer
+    /// than 15s to answer `initialize` / `session/new` / `session/load`.
+    static let armedACPHandshakeTimeoutSeconds: Double = 90
+    static let armedACPHandshakeMethods: Set<String> = [
+        "initialize",
+        "session/new",
+        "session/load",
+        "session/set_model",
+        "session/prompt",
+    ]
+
+    static func jsonRPCTimeoutSeconds(
+        method: String,
+        isArmed: Bool,
+        requestedSeconds: Double
+    ) -> Double {
+        if isArmed, armedACPHandshakeMethods.contains(method) {
+            return armedACPHandshakeTimeoutSeconds
+        }
+        return requestedSeconds
+    }
+
+    /// JSON-RPC watchdog failure. Names the method so a silent `initialize` is
+    /// distinguishable from a later `session/prompt` hang. Redacted stderr is
+    /// appended only when the process actually wrote any.
+    static func jsonRPCTimeoutError(method: String, redactedStderr: String) -> NSError {
+        var description = "Timed out waiting for grok (\(method))."
+        let trimmed = redactedStderr.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !trimmed.isEmpty {
+            description += "\n\(trimmed)"
+        }
+        return NSError(
+            domain: "ACP",
+            code: -2,
+            userInfo: [
+                NSLocalizedDescriptionKey: description,
+                "acpMethod": method,
+            ]
+        )
+    }
+
+    static func startupStdioClosedError(redactedStderr: String) -> NSError {
+        var description = "grok closed stdio before ACP initialize completed."
+        let trimmed = redactedStderr.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !trimmed.isEmpty {
+            description += "\n\(trimmed)"
+        }
+        return NSError(
+            domain: "ACP",
+            code: -3,
+            userInfo: [NSLocalizedDescriptionKey: description]
+        )
+    }
+
+    static func childExitedBeforeInitializeError(redactedStderr: String) -> NSError {
+        var description = "leased grok exited before ACP initialize."
+        let trimmed = redactedStderr.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !trimmed.isEmpty {
+            description += "\n\(trimmed)"
+        }
+        return NSError(
+            domain: "ACP",
+            code: -3,
+            userInfo: [NSLocalizedDescriptionKey: description]
+        )
+    }
     /// A cancellation is advisory; receipt delivery gets one short chance before
     /// hard teardown. This is deliberately not a completion wait or provider retry.
     private static let stopReceiptDrainWindow: Duration = .milliseconds(150)
@@ -1137,6 +1203,9 @@ final class GrokProcess: @unchecked Sendable {
     private var stdout: Pipe?
     private var stderr: Pipe?
     private var readerTask: Task<Void, Never>?
+    /// Polls `isRunning` while `state == .starting` so a dead child fails the
+    /// pending `initialize` instead of burning the JSON-RPC watchdog.
+    private var startupLivenessTask: Task<Void, Never>?
     private var stdoutBuffer = Data()
     private var startupStderr = ""
     /// Startup diagnostics only — the earliest stderr bytes explain a launch
@@ -1155,6 +1224,7 @@ final class GrokProcess: @unchecked Sendable {
     private struct PendingRequest {
         let continuation: CheckedContinuation<Any?, Error>
         let timeoutTask: Task<Void, Never>?
+        let method: String
     }
     private var pendingRequests: [Int: PendingRequest] = [:]
     /// `session/prompt` is lifecycle-owned by `turn_completed`. Grok CLI 1.0 can
@@ -1810,8 +1880,14 @@ final class GrokProcess: @unchecked Sendable {
             stderr: launched.standardError,
             processGeneration: launchGeneration
         )
+        beginStartupLivenessWatch(processGeneration: launchGeneration)
 
         do {
+            if !launched.process.isRunning {
+                throw Self.childExitedBeforeInitializeError(
+                    redactedStderr: Self.redactedStartupStderr(startupStderrSnapshot())
+                )
+            }
             try await initializeACP()
             GrokBuildPerformance.mark(.acpReady)
             guard activeProcessGeneration == launchGeneration else { return }
@@ -1863,12 +1939,21 @@ final class GrokProcess: @unchecked Sendable {
             mcpServerStatuses = MCPReadinessPolicy.readyStatuses(for: options.mcpServers)
             settleLaunchModelReceipt(identity: launchIdentity)
             updateLaunchReceipt(outcome: launchOutcome, backendSessionID: sessionId)
+            if !launched.process.isRunning {
+                throw Self.childExitedBeforeInitializeError(
+                    redactedStderr: Self.redactedStartupStderr(startupStderrSnapshot())
+                )
+            }
+            cancelStartupLivenessWatch()
             state = .ready
         } catch {
             guard activeProcessGeneration == launchGeneration else { return }
             let stderrDetails = Self.redactedStartupStderr(startupStderrSnapshot())
-            let suffix = stderrDetails.isEmpty ? "" : "\n\(stderrDetails)"
-            state = .failed("ACP startup failed: \(error.localizedDescription)\(suffix)")
+            let description = error.localizedDescription
+            let suffix = (stderrDetails.isEmpty || description.contains(stderrDetails))
+                ? ""
+                : "\n\(stderrDetails)"
+            state = .failed("ACP startup failed: \(description)\(suffix)")
             await cleanupProcess(setIdle: false)
             mcpServerStatuses = MCPReadinessPolicy.failedStatuses(for: options.mcpServers)
             rejectLaunchModelReceipt(identity: launchIdentity)
@@ -1914,6 +1999,7 @@ final class GrokProcess: @unchecked Sendable {
     }
 
     private func cleanupProcess(setIdle: Bool, sendCancel: Bool = true) async {
+        cancelStartupLivenessWatch()
         if modelExecutionState.isPending,
            let identity = modelExecutionState.identity,
            identity.processGeneration == activeProcessGeneration {
@@ -2415,7 +2501,7 @@ final class GrokProcess: @unchecked Sendable {
                 timeoutTask = nil
             }
             ioLock.lock()
-            pendingRequests[id] = PendingRequest(continuation: c, timeoutTask: timeoutTask)
+            pendingRequests[id] = PendingRequest(continuation: c, timeoutTask: timeoutTask, method: method)
             if method == "session/prompt" {
                 activePromptRequestID = id
             }
@@ -2440,14 +2526,19 @@ final class GrokProcess: @unchecked Sendable {
             return current
         }()
         let req: [String: Any] = ["jsonrpc": "2.0", "id": id, "method": method, "params": params]
+        let timeoutSeconds = Self.jsonRPCTimeoutSeconds(
+            method: method,
+            isArmed: activeHardBudgetLaunchContract != nil,
+            requestedSeconds: seconds
+        )
 
         return try await withCheckedThrowingContinuation { c in
             let timeoutTask = Task { [weak self] in
-                try? await Task.sleep(for: .seconds(seconds))
+                try? await Task.sleep(for: .seconds(timeoutSeconds))
                 self?.timeoutPendingRequest(id: id)
             }
             ioLock.lock()
-            pendingRequests[id] = PendingRequest(continuation: c, timeoutTask: timeoutTask)
+            pendingRequests[id] = PendingRequest(continuation: c, timeoutTask: timeoutTask, method: method)
             ioLock.unlock()
             if !writeJson(req) {
                 timeoutTask.cancel()
@@ -2695,10 +2786,9 @@ final class GrokProcess: @unchecked Sendable {
         if activePromptRequestID == id { activePromptRequestID = nil }
         ioLock.unlock()
         pending.timeoutTask?.cancel()
-        pending.continuation.resume(throwing: NSError(
-            domain: "ACP",
-            code: -2,
-            userInfo: [NSLocalizedDescriptionKey: "Timed out waiting for grok."]
+        pending.continuation.resume(throwing: Self.jsonRPCTimeoutError(
+            method: pending.method,
+            redactedStderr: Self.redactedStartupStderr(startupStderrSnapshot())
         ))
     }
 
@@ -2819,6 +2909,49 @@ final class GrokProcess: @unchecked Sendable {
             item.timeoutTask?.cancel()
             item.continuation.resume(throwing: error)
         }
+    }
+
+    private func cancelStartupLivenessWatch() {
+        startupLivenessTask?.cancel()
+        startupLivenessTask = nil
+    }
+
+    private func beginStartupLivenessWatch(processGeneration: UInt64) {
+        cancelStartupLivenessWatch()
+        startupLivenessTask = Task { [weak self] in
+            while !Task.isCancelled {
+                try? await Task.sleep(for: .milliseconds(200))
+                guard !Task.isCancelled else { return }
+                self?.failStartupIfChildExited(processGeneration: processGeneration)
+            }
+        }
+    }
+
+    private func failStartupIfChildExited(processGeneration: UInt64) {
+        guard activeProcessGeneration == processGeneration else { return }
+        guard state == .starting else { return }
+        guard let process, !process.isRunning else { return }
+        noteStartupTransportClosed(
+            processGeneration: processGeneration,
+            error: Self.childExitedBeforeInitializeError(
+                redactedStderr: Self.redactedStartupStderr(startupStderrSnapshot())
+            )
+        )
+    }
+
+    private func noteStdioClosed(processGeneration: UInt64) {
+        noteStartupTransportClosed(
+            processGeneration: processGeneration,
+            error: Self.startupStdioClosedError(
+                redactedStderr: Self.redactedStartupStderr(startupStderrSnapshot())
+            )
+        )
+    }
+
+    private func noteStartupTransportClosed(processGeneration: UInt64, error: Error) {
+        guard activeProcessGeneration == processGeneration else { return }
+        guard state == .starting else { return }
+        drainPendingRequests(with: error)
     }
 
     private func startupStderrSnapshot() -> String {
@@ -3017,6 +3150,7 @@ final class GrokProcess: @unchecked Sendable {
             let data = handle.availableData
             if data.isEmpty {
                 handle.readabilityHandler = nil
+                self?.noteStdioClosed(processGeneration: processGeneration)
                 return
             }
             self?.handleStdoutData(data, processGeneration: processGeneration)

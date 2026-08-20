@@ -832,6 +832,11 @@ final class ChatStore {
     private var lastTurnEventAt = Date()
     private var stallWatchdogTask: Task<Void, Never>?
     static let turnStallThreshold: TimeInterval = 120
+    /// Unarmed tabs fail closed if ACP never reaches `.ready`. Armed 4C/v3 must
+    /// outlast `GrokProcess.armedACPHandshakeTimeoutSeconds` so ChatStore does
+    /// not kill a pager that is still answering `initialize`.
+    static let connectionWatchdogTimeout: Duration = .seconds(30)
+    static let armedConnectionWatchdogTimeout: Duration = .seconds(120)
     private(set) var isApplyingConfiguration = false
     private(set) var configurationStatusMessage: String?
     private(set) var usedContextTokens: Int?
@@ -2376,7 +2381,7 @@ final class ChatStore {
         currentMode = .agent
         isYolo = false
         lastError = nil
-        startConnectionWatchdog()
+        startConnectionWatchdog(armed: hardBudgetLaunchContract != nil)
         if hardBudgetLaunchContract == nil {
             applyBuiltInModelCatalog(await GrokModelCatalog.shared.models())
         } else {
@@ -2721,10 +2726,11 @@ final class ChatStore {
         )
     }
 
-    private func startConnectionWatchdog() {
+    private func startConnectionWatchdog(armed: Bool = false) {
         connectionWatchdogTask?.cancel()
+        let timeout = armed ? Self.armedConnectionWatchdogTimeout : Self.connectionWatchdogTimeout
         connectionWatchdogTask = Task { [weak self] in
-            try? await Task.sleep(for: .seconds(30))
+            try? await Task.sleep(for: timeout)
             await self?.markConnectionTimedOutIfNeeded()
         }
     }
