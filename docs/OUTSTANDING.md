@@ -391,10 +391,15 @@ signed owner-private digest install via
 `scripts/acceptance/harness/candidate_install.py`, class-setup copy then rerun of
 the 4B.5 matrix against that copy, rollback of the selection sidecar only.
 Rollback now refuses two process-zero samples that share one timestamp. Hostile
-`setsid`/tool-tree leftover is CLI PR [#7](https://github.com/schmitzjimmy1-star/grok-build/pull/7)
-(`hard_budget_receiver_closes_fd_before_raw_fork_and_setsid_descendant` on the
-pager-bin CI filter). Darwin post-enrollment `setsid()` remains the known 4B.2
-limit. Do not rebuild the pager. Paid 4C stays locked. Do not `grok update`.
+`setsid`/tool-tree CI leftover is merged as CLI PR
+[#7](https://github.com/schmitzjimmy1-star/grok-build/pull/7)
+`7e9f1ade576df903652b150d634ca634e5180bc4` after required `candidate-contract`
+run `32310906969` (`hard_budget_receiver_closes_fd_before_raw_fork_and_setsid_descendant`
+on the pager-bin `hard_budget` filter). Darwin post-enrollment `setsid()` remains
+the known 4B.2 limit; the rename only made that existing proof run in CI. Do not
+rebuild the pager. Paid 4C stays locked until three new independent reviews of
+the exact installed 4B.6 tree (`29c064f`) plus this leftover merge. Do not
+`grok update`.
 
 PR [#124](https://github.com/schmitzjimmy1-star/grok-build-desktop/pull/124)
 passed required exact-head run `32123735441` and merged normally as

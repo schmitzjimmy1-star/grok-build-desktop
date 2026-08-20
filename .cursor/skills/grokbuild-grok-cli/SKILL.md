@@ -85,9 +85,13 @@ Ordinary `GrokProcess.start` does not scan that directory. Armed launch still
 requires `--grokbuild-acceptance-runtime-selection-file=` plus budget/manifest/ledger.
 Rollback unlinks only the selection sidecar after two process-zero samples
 with distinct timestamps. Owner-local lifecycle tests install a copy first, then
-rerun the 4B.5 matrix against it. 4C paid Send stays locked behind
-`require_absolute_ceiling_support()`; `_billable_v3` must not call
-`resume_saved_task()`.
+rerun the 4B.5 matrix against it. CLI PR #7 merged as
+`7e9f1ade576df903652b150d634ca634e5180bc4` so the pager-bin `hard_budget` CI
+filter runs `hard_budget_receiver_closes_fd_before_raw_fork_and_setsid_descendant`.
+The pager binary is still source `8226242`; do not rebuild it. Darwin
+post-enrollment `setsid()` remains the known 4B.2 limit. 4C paid Send stays
+locked behind `require_absolute_ceiling_support()`; `_billable_v3` must not
+call `resume_saved_task()`.
 
 ## Auth & status bar
 

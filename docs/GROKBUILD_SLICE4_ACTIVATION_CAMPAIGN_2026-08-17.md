@@ -124,9 +124,10 @@ Slice 4B.0 is accepted. Jimmy explicitly authorized sequential execution of
 4B.1 and 4B.2 are accepted. 4B.3 T5 merged as PR #136. 4B.4 merged as PR #137
 (`90782f2`). **4B.5 is accepted** as merge `324ff89` (PR #139) against signed pager
 `f434fa4f…933b` / `1.0.5 (8226242)`. **4B.6 is accepted** as merge `29c064f`
-(PR #140). Hostile `setsid`/tool-tree leftover is CLI PR #7
-(`hard_budget_receiver_closes_fd_before_raw_fork_and_setsid_descendant` on the
-pager-bin `hard_budget` CI filter); Darwin post-enrollment `setsid()` remains
+(PR #140). Hostile `setsid`/tool-tree CI leftover is merged as CLI PR #7
+`7e9f1ade576df903652b150d634ca634e5180bc4` after `candidate-contract` run
+`32310906969` (`hard_budget_receiver_closes_fd_before_raw_fork_and_setsid_descendant`
+on the pager-bin `hard_budget` filter). Darwin post-enrollment `setsid()` remains
 the known 4B.2 limit. Do not rebuild the pager. Paid activation remains locked.
 
 ### Scope
@@ -552,9 +553,9 @@ Owner-local proofs live in these files. Do not retarget pager pins anywhere else
 | Armed spawn / 90s `session/prompt` | `GrokBuild/Services/GrokProcess.swift` (`armedSessionPromptTimeout`), `GrokArmedCredentialMaterializer.swift` |
 | CLI hang repairs (Outstanding, zero-tool freeze, after-turn detach) | CLI fork `crates/codegen/xai-grok-shell/src/session/acp_session_impl/{turn.rs,turn_end.rs}` and `acp_session.rs` on `cursor/official-runtime-s4b5-armed-turn-sampler` |
 | Kill-after-response-before-settlement | `loopback_provider.py` mode `hold_after_body`; `Slice4B5LifecycleTests.testKillAfterResponseBeforeSettlementChargesAmbiguousReservation` |
-| Hostile `setsid` / tool-tree | CLI spawn/process-group code in the grok-build fork. 4B.6 leftover: `hard_budget_receiver_closes_fd_before_raw_fork_and_setsid_descendant` on the pager-bin `hard_budget` CI filter. Darwin post-enrollment `setsid()` escape remains the known 4B.2 limit. |
+| Hostile `setsid` / tool-tree | CLI spawn/process-group code in the grok-build fork. CI leftover merged as PR #7 `7e9f1ad` (`hard_budget_receiver_closes_fd_before_raw_fork_and_setsid_descendant` on the pager-bin `hard_budget` filter). Darwin post-enrollment `setsid()` escape remains the known 4B.2 limit. |
 | 4B.6 signed owner-private install | `scripts/acceptance/harness/candidate_install.py`; owner-local `Slice4B5LifecycleTests` install a copy first; ordinary lookup never scans `candidate-runtime`; not `~/.grok/bin/grok`; rollback requires two empty process-zero samples with distinct timestamps |
-| 4C paid unlock | `scripts/acceptance/run.py` `require_absolute_ceiling_support()` after three reviews of the exact 4B.6 tree. Do not begin until CLI PR #7 is merged and this closeout is on `main`. |
+| 4C paid unlock | `scripts/acceptance/run.py` `require_absolute_ceiling_support()` after three new reviews of the exact installed 4B.6 tree (`29c064f`) plus CLI leftover merge `7e9f1ad`. Do not unlock `_billable_v3` or weaken lower guards. |
 
 Staged pager identity for this pass: binary SHA-256
 `f434fa4f17160c8771d3b57bfc62499e252413c4d1fc5ab22bee1a18f2bc933b`,
@@ -601,13 +602,26 @@ of `/Applications/GrokBuild.app` at stamp `29c064f` (Send labeled **Send and
 resume session** and disabled; **Resume current task** visible and not
 clicked). Paid 4C stays locked.
 
+CLI PR [#7](https://github.com/schmitzjimmy1-star/grok-build/pull/7) passed
+required `candidate-contract` run `32310906969` (armed pager tests plus staged
+release candidate and provenance) and merged normally as
+`7e9f1ade576df903652b150d634ca634e5180bc4`. Local CLI `personal/main` is that
+merge. The pager on disk is still SHA-256
+`f434fa4f17160c8771d3b57bfc62499e252413c4d1fc5ab22bee1a18f2bc933b`; selection
+sidecar remains absent. Official CLI remains `1.0.4` /
+`39366f7756a090b735cc1df8c93a8c0c3c7871555cf6cbb28f9351ca82936485`. Local
+`cargo test` under this space-containing worktree path is environmental, not a
+product leftover; do not refill `/tmp` with another pager compile.
+
 ## Paid unlock and execution
 
 4C is a separate decision boundary. It cannot begin merely because the code is
 merged or the unconditional lock is easy to delete. Three independent skeptical
-reviews must approve the exact installed 4B.6 tree and retained nonbillable
-evidence. The unlock commit must replace the first-branch refusal with a narrow,
-testable predicate for that exact campaign; it may not weaken any lower guard.
+reviews must approve the exact installed 4B.6 tree (`29c064f`), the CLI leftover
+merge `7e9f1ad`, and retained nonbillable evidence. The unlock commit must
+replace the first-branch refusal with a narrow, testable predicate for that
+exact campaign; it may not weaken any lower guard or send `_billable_v3` on
+the official 1.0.4 path.
 
 The paid manifest freezes exact catalog-confirmed models, routes, prices,
 allocations, prompts, tools, and expected receipts. Its allocation sum is at
