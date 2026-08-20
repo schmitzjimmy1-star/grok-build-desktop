@@ -572,12 +572,22 @@ def wait_for_acp_startup_outcome(*, timeout_seconds: int = 130) -> None:
     Stop turn means a billed turn started. The error banner
     (`grok-acp-error-banner` / ``ACP startup failed``) means handshake died
     before ``session/prompt``. Do not assume Stop exists just because Send was
-    clicked, and do not wait for first stdout before initialize.
+    clicked, and do not wait for first stdout before initialize. A snapshot
+    AXFrontmost timeout is a driver flake, not ACP startup failure; retry it.
     """
     deadline = time.time() + timeout_seconds
     last_error: Exception | None = None
+    try:
+        _ad(["focus-window", "--app", APP_NAME, *_window_args()], timeout=15)
+    except DriverError:
+        pass
     while time.time() < deadline:
-        failure = _acp_startup_failure_text()
+        try:
+            failure = _acp_startup_failure_text()
+        except DriverError as exc:
+            last_error = exc
+            time.sleep(0.4)
+            continue
         if failure:
             raise DriverError(failure)
         try:

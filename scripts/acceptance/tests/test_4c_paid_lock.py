@@ -479,6 +479,8 @@ class Slice4CPaidLockContracts(unittest.TestCase):
         self.assertIn("ACP startup failed", source)
         self.assertIn("Stop turn", source)
         self.assertIn("do not wait for first stdout before initialize", source)
+        self.assertIn("AXFrontmost timeout is a driver flake", source)
+        self.assertIn("continue", source)
 
     def test_select_model_picks_option_without_effort_restart(self) -> None:
         from scripts.acceptance.harness.driver import _open_model_menu, select_model
