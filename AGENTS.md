@@ -36,6 +36,23 @@ stores, minimize scope, and match surrounding Swift/SwiftUI conventions.
 
 ## Required verification for every code change
 
+### Frontend rebuild branch exception
+
+The branch `codex/frontend-rebuild-com-grokbuild-app` is an explicitly authorized
+multi-checkpoint rebuild branch for the canonical `com.grokbuild.app` product. Its
+checkpoint commits accumulate on that one branch and must not be merged
+individually. The governing scope and tranche exit gate live in
+[`docs/GROKBUILD_FRONTEND_REBUILD_2026-08-20.md`](docs/GROKBUILD_FRONTEND_REBUILD_2026-08-20.md).
+
+On that branch, every checkpoint still requires focused behavioral or contract
+tests, `git diff --check`, review of every intended path, an exact-path commit,
+and a push to `personal`. Run the full `make test` suite at the shell, transcript,
+and merge-candidate milestones instead of repeating it after each small
+presentation checkpoint. Run `make ship` and installed Computer Use acceptance
+only at those same named visual milestones. Never install a dirty checkpoint.
+This exception does not waive identity, signing, provider, ACP, credential,
+runtime-ownership, or process-zero boundaries.
+
 - Add or update behavioral tests in `Tests/GrokBuildTests/`; run focused tests, then
   `make test`.
 - Package, sign, and install only through `make`; final acceptance uses `make ship`

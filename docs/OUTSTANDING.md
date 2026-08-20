@@ -14,6 +14,15 @@
 > `make ship` under Apple Development Team `DD2GCQJVB4`. It does not authorize
 > notarized GitHub releases.
 >
+> **2026-08-20 frontend-rebuild exception:** Jimmy replaced merge-per-slice for
+> the frontend rethink with one accumulating checkpoint branch:
+> `codex/frontend-rebuild-com-grokbuild-app`. Checkpoints are committed and pushed
+> there, but opening or merging a PR is forbidden until the tranche exit gate in
+> [`docs/GROKBUILD_FRONTEND_REBUILD_2026-08-20.md`](GROKBUILD_FRONTEND_REBUILD_2026-08-20.md)
+> is satisfied and Jimmy explicitly accepts the coherent rebuild candidate. This
+> exception is presentation-only and does not unlock paid 4C, provider, auth,
+> credential, CLI, ACP-ownership, signing, or bundle-identity work.
+>
 > **2026-08-14 residual-closeout authority:** Jimmy authorized
 > [`docs/GROKBUILD_RESIDUAL_CLOSEOUT_2026-08-14.md`](GROKBUILD_RESIDUAL_CLOSEOUT_2026-08-14.md).
 > That campaign may `make ship` to close stamp == HEAD, run billable prompts in
@@ -65,6 +74,24 @@
 > Prior campaigns: 2026-08-15 Visual Quiet complete and merged through `3947136` (PR #113);
 > 2026-08-14 Residual Closeout (Phases 0–6) complete and merged as `4613bde` (PR #94);
 > 2026-08-13 campaign (Slices 0–7) closed at merge `c0895ee` (PR #86).
+
+## Frontend rebuild — 2026-08-20 (active accumulating branch; no merge)
+
+The active visual rethink is governed by
+[`docs/GROKBUILD_FRONTEND_REBUILD_2026-08-20.md`](GROKBUILD_FRONTEND_REBUILD_2026-08-20.md).
+It starts from clean personal `main` merge `532dea26c520428c908913f1f34c2d6a049bcebe`
+and preserves canonical bundle ID `com.grokbuild.app`, Team `DD2GCQJVB4`, the
+official CLI/ACP runtime boundary, and the locked paid 4C state. It is a native
+SwiftUI clean-room rebuild of the presentation shell inspired by the general
+layout of `msk-labs/grok-build-gui`: a light-first canvas, project/session rail,
+calm workspace, compact workspace/branch controls, and bottom-docked composer.
+No Electron/React implementation, source, asset, dependency, or backend is copied.
+
+Checkpoint commits accumulate and push to
+`personal/codex/frontend-rebuild-com-grokbuild-app`. Do not open or merge a PR
+until the campaign exit gate is satisfied. The broad historical `ChatView` split
+remains unauthorized unless this campaign names a bounded extraction before the
+edit.
 
 ## Official Runtime Alignment — 2026-08-16 (Slices 0–3 complete; Slice 4B.0–4B.6 accepted; paid 4C locked)
 
