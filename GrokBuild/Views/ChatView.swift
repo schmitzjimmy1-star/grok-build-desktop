@@ -539,7 +539,15 @@ struct ChatView: View {
             parts.append("Thinking")
         }
         if !trace.tools.isEmpty {
-            parts.append("\(trace.tools.count) \(trace.tools.count == 1 ? "tool" : "tools")")
+            parts.append(ToolActivitySummaryPresentation.summary(for: trace.tools.map {
+                .init(
+                    title: $0.title,
+                    kind: $0.kind ?? "tool",
+                    status: $0.status,
+                    isFailed: ToolCallTerminalStatus.from(rawStatus: $0.status) == .failed,
+                    isRecovered: false
+                )
+            }))
         }
         return parts.isEmpty ? "Details" : parts.joined(separator: " · ")
     }

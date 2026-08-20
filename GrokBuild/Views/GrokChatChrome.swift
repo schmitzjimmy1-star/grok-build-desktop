@@ -230,6 +230,105 @@ struct ToolCallRow: View {
     }
 }
 
+/// Clean-room presentation policy for the collapsed tool-activity row. It
+/// borrows the useful product idea of describing *what kind of work happened*
+/// instead of repeating a bare receipt count, while retaining GrokBuild's own
+/// ACP-derived status and failure authority. Live command arguments stay behind
+/// the explicit disclosure so a streaming summary never leaks them by accident.
+enum ToolActivitySummaryPresentation {
+    struct Item: Equatable {
+        let title: String
+        let kind: String
+        let status: String?
+        let isFailed: Bool
+        let isRecovered: Bool
+    }
+
+    private enum Kind: Hashable {
+        case read
+        case edit
+        case search
+        case command
+        case web
+        case media
+        case other
+    }
+
+    static func summary(for items: [Item], liveThought: Bool = false) -> String {
+        let unresolvedFailures = items.filter { $0.isFailed && !$0.isRecovered }.count
+        if unresolvedFailures > 0 {
+            return "\(unresolvedFailures) tool \(unresolvedFailures == 1 ? "call" : "calls") failed"
+        }
+
+        if let active = items.last(where: { isActive($0.status) }) {
+            return activeSummary(for: active)
+        }
+        if liveThought, items.isEmpty { return "Thinking…" }
+        guard !items.isEmpty else { return "Tool activity" }
+
+        var order: [Kind] = []
+        var counts: [Kind: Int] = [:]
+        for item in items {
+            let itemKind = classify(item)
+            if counts[itemKind] == nil { order.append(itemKind) }
+            counts[itemKind, default: 0] += 1
+        }
+        return order.map { completedSummary(for: $0, count: counts[$0, default: 1]) }
+            .joined(separator: " · ")
+    }
+
+    static func isActive(_ status: String?) -> Bool {
+        switch status?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() {
+        case "pending", "queued", "in_progress", "inprogress", "running": true
+        default: false
+        }
+    }
+
+    private static func activeSummary(for item: Item) -> String {
+        switch classify(item) {
+        case .read: "Reading \(safeTitle(item.title, fallback: "files"))"
+        case .edit: "Editing \(safeTitle(item.title, fallback: "files"))"
+        case .search: "Searching"
+        case .command: "Running command"
+        case .web: "Browsing"
+        case .media: "Generating image"
+        case .other: "Using \(safeTitle(item.title, fallback: "tool"))"
+        }
+    }
+
+    private static func completedSummary(for kind: Kind, count: Int) -> String {
+        switch kind {
+        case .read: count == 1 ? "Read file" : "Read files"
+        case .edit: count == 1 ? "Edited file" : "Edited files"
+        case .search: "Searched"
+        case .command: count == 1 ? "Ran command" : "Ran commands"
+        case .web: "Browsed"
+        case .media: count == 1 ? "Generated image" : "Generated images"
+        case .other: count == 1 ? "Used tool" : "Used tools"
+        }
+    }
+
+    private static func classify(_ item: Item) -> Kind {
+        let haystack = "\(item.kind) \(item.title)".lowercased()
+        if containsAny(haystack, ["imagine", "image", "media"]) { return .media }
+        if containsAny(haystack, ["browser", "navigate", "fetch", "http", "web"]) { return .web }
+        if containsAny(haystack, ["search", "find", "grep", "ripgrep"]) { return .search }
+        if containsAny(haystack, ["edit", "write", "patch", "apply_patch"]) { return .edit }
+        if containsAny(haystack, ["read", "inspect", "open_file"]) { return .read }
+        if containsAny(haystack, ["execute", "exec", "terminal", "shell", "command", "run"]) { return .command }
+        return .other
+    }
+
+    private static func containsAny(_ value: String, _ needles: [String]) -> Bool {
+        needles.contains(where: value.contains)
+    }
+
+    private static func safeTitle(_ title: String, fallback: String) -> String {
+        let value = TranscriptTextPresentation.singleLine(title, maxLength: 80)
+        return value.isEmpty ? fallback : value
+    }
+}
+
 struct ToolActivityGroup: View {
     let tools: [ChatStore.LiveToolCall]
     let turnOutcome: ChatStore.TurnOutcome?
@@ -310,20 +409,15 @@ struct ToolActivityGroup: View {
     }
 
     private var summaryTitle: String {
-        let failures = tools.filter(\.isFailed).count
-        if failures > 0 {
-            return "\(failures) tool calls failed"
-        }
-        if tools.count == 1, let tool = tools.first {
-            return tool.title
-        }
-        if browserToolCount == tools.count {
-            return "Browser activity"
-        }
-        if browserToolCount > 0 {
-            return "Tool activity · \(browserToolCount) browser"
-        }
-        return "Tool activity"
+        ToolActivitySummaryPresentation.summary(for: tools.map {
+            .init(
+                title: $0.title,
+                kind: $0.kind,
+                status: $0.status,
+                isFailed: $0.isFailed,
+                isRecovered: $0.isRecovered
+            )
+        })
     }
 
     private var summaryIconName: String {
